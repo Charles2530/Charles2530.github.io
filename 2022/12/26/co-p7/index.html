@@ -181,9 +181,13 @@
 
     
     
+        <span class="article-wordcount article-meta-item">
+            <i class="fas fa-file-word"></i>&nbsp;<span>2.4k Words</span>
+        </span>
+    
     
         <span class="article-min2read article-meta-item">
-            <i class="fas fa-clock"></i>&nbsp;<span>1 Mins</span>
+            <i class="fas fa-clock"></i>&nbsp;<span>8 Mins</span>
         </span>
     
     
@@ -199,7 +203,60 @@
         
 
         <div class="article-content markdown-body">
-            
+            <h3 id="异常清空需要屏蔽写能信号"><a href="#异常清空需要屏蔽写能信号" class="headerlink" title="异常清空需要屏蔽写能信号"></a>异常清空需要屏蔽写能信号</h3><p>如果某一时刻，中断（或指令异常）到来，我们必须清空宏观 PC（或受害指令）及其之后的指令。不仅如此，在这一时刻，在宏观 PC（或受害指令）及其之后的指令所在的流水级，不应该对部件的状态进行改变。</p>
+<p>考虑中断，假设宏观 PC 表示 M 级的 PC，CP0 在 M 级，那么 MDU （在 E 级）， DM （在 M 级）， CP0 （在 M 级）的写能信号应该屏蔽（GRF 不需要因为它在 W 级）。如果不是中断而是指令异常，假设指令异常统一在 M 级处理，也是这三个部件的写能信号应该屏蔽。</p>
+<p>在这种情况下，在 M 级的 DM 和 CP0 的状态改变被完全撤回，但是在 E 级的 MDU 的状态改变有可能不能被撤回（我们的设计被允许在这种情况下不撤回，如果非要撤回，需要额外的实现）。所以如果使用宏观 PC ，那么宏观 PC 最好不要在 W 级，因为这样就必须实现 DM 和 CP0 的撤回，成本很高。如果指令异常在某一级流水线统一处理，那么这个流水级也最好不要是 W 级，一样的原因。</p>
+<h3 id="多异常的处理"><a href="#多异常的处理" class="headerlink" title="多异常的处理"></a>多异常的处理</h3><p>如果有多个指令将触发多个异常，我们需要确保指令序列前面的指令先触发异常，后面的指令再触发异常。</p>
+<blockquote>
+<p>注意：<strong>有多个指令将触发多个异常</strong>并不等价于<strong>有多个指令将同时触发多个异常</strong>（保证在后者的条件下前面的指令先触发异常，是不足够的），因此一旦探测到异常就处理是不对的，还需要考虑前面的指令有没有潜在的异常。只有明确了该指令前面的所有指令<strong>以后都不会发生异常</strong>，才能进入中断处理程序。为了简便地实现这一目的，我们可以使用流水线，将异常码 (Exception code) 流水，到某一个流水级统一处理。由于最晚触发的指令异常在 E 级（根据不同实现也可能是 M 级），所以在 E 级、 M 级处理指令异常都是可以的（前面所说的 W 级撤回成本高）。</p>
+</blockquote>
+<blockquote>
+<p>Q: 我们讨论了宏观 PC 的位置（F&#x2F;D&#x2F;E&#x2F;M）和指令异常处理级的位置（E&#x2F;M），那么 CP0 的位置呢？</p>
+<p>A: 首先排除 F 级，那样就无法实现 <code>mtc0</code> 。不建议在 D 级和 W 级，那么会使得流水级延迟高，限制时钟周期。所以 E 级和 M 级是最佳选择。此外，假如你的宏观 PC 和指令异常处理的流水级二者有任意一个选择的是 M 级，你的 CP0 就不能放在 E 级（无法撤回）。</p>
+</blockquote>
+<p>如果有一个指令将触发多个异常，我们需要确保其触发流水级低的异常。</p>
+<blockquote>
+<p>例如：<code>pc</code> 所对应的地址并不在分配给 IM 的地址空间之中，这时候我们将触发 <code>AdEL</code> 取指异常，但这时取出来的指令恰好是存储指令并且恰好将触发 <code>AdES</code> 存数异常，这时发送给 CP0 的应该是 <code>AdEL</code> 而非 <code>AdES</code> 。</p>
+<p>课下似乎不会涉及这个问题，但这周的课上就涉及到了。</p>
+</blockquote>
+<p>中断优先级高于异常优先级。</p>
+<h3 id="中断时宏观-PC-为冒泡"><a href="#中断时宏观-PC-为冒泡" class="headerlink" title="中断时宏观 PC 为冒泡"></a>中断时宏观 PC 为冒泡</h3><p>中断有可能在宏观 PC 为<strong>冒泡</strong> (Bubble) 的时刻到来。为了实现精准异常，我们可以保持流水线中指导 EPC 的信息（指 <code>pcReadData</code> 和 <code>branchDelay</code> ）不被清空 (Clear) ，从而使得冒泡的 <code>pcReadData</code> 和 <code>branchDelay</code> <strong>与后一个指令相同</strong>（指的是后一个<strong>非冒泡</strong>指令，下同）。通过这种方法，如果后一个指令是延迟槽（即前一个指令是跳转指令），那么 EPC 就是跳转指令（前一个指令）；如果后一个指令是非延迟槽，那么 EPC 就是后一个指令，从而实现精准异常。</p>
+<blockquote>
+<p>Q: 冒泡的 <code>pcReadData</code> 和 <code>branchDelay</code> <strong>与前一个指令相同</strong>可以吗？</p>
+<p>A: 不可以。如果前一个指令是跳转指令，这没什么问题。但是如果前一个指令不是跳转指令，这样做会使得前一条指令被执行两次（在 MIPS 指令集中，跳转指令执行一次与多次的效果是一样的，但非跳转指令则不能保证）。</p>
+<p>注意：如果前一个指令是跳转指令（无论冒泡的 <code>pcReadData</code> 和 <code>branchDelay</code> 与后一个指令相同还是与前一个指令相同），跳转指令总是会执行两次，所以 <code>jalr</code> 的 <code>rs</code> 和 <code>rd</code> 不能相同（否则总是不跳转），因为在这种情况下，<code>jal</code> 和 <code>jalr</code> 总是会写入两次 <code>$ra</code> 或 <code>rd</code>。</p>
+</blockquote>
+<blockquote>
+<p>Q: 相应地，指令异常也有可能在受害指令为冒泡的时刻到来吗？</p>
+<p>A: 我们无需担心这一点，因为在我们的设计中，通常能够保证冒泡不会产生异常（即受害指令不会是冒泡）。</p>
+</blockquote>
+<h3 id="EPC-的数据冒险-Data-hazard"><a href="#EPC-的数据冒险-Data-hazard" class="headerlink" title="EPC 的数据冒险 (Data hazard)"></a>EPC 的数据冒险 (Data hazard)</h3><p>EPC 可能在 CP0 所在流水级之前使用（ <code>eret</code> ），因此需要解决数据冒险（利用阻塞，甚至可以转发）。</p>
+<blockquote>
+<p>为了简便，只阻塞就可以了。</p>
+</blockquote>
+<h3 id="某一时刻，你的流水线中可能既有用户指令（指-text-段内的指令），又有内核指令（指-ktext-段内的指令）"><a href="#某一时刻，你的流水线中可能既有用户指令（指-text-段内的指令），又有内核指令（指-ktext-段内的指令）" class="headerlink" title="某一时刻，你的流水线中可能既有用户指令（指 .text 段内的指令），又有内核指令（指 .ktext 段内的指令）"></a>某一时刻，你的流水线中可能既有用户指令（指 <code>.text</code> 段内的指令），又有内核指令（指 <code>.ktext</code> 段内的指令）</h3><p>这种情况下应该禁止中断，也就是说 EXL 应该置 1（我一直置的是 0，导致需要一些额外的实现）。</p>
+<h1 id="设计思考——两个思想"><a href="#设计思考——两个思想" class="headerlink" title="设计思考——两个思想"></a>设计思考——两个思想</h1><p>P7做的比较艰难，主要是刚开始对教程不太理解，后来在对于微系统的实现以及debug过程中与同学、助教进行了许多交流，才觉得对于P7微系统的稍微理解。回顾来看，我认为P7困扰我的其实是两个思想——<strong>软硬件协同的视角</strong>以及<strong>模块封装的思想</strong>，遂作此文，以分享笔者粗浅的思考。</p>
+<h2 id="软硬件协同的视角"><a href="#软硬件协同的视角" class="headerlink" title="软硬件协同的视角"></a>软硬件协同的视角</h2><p>此处引用一位助教的原话“<strong>我们的硬件只需要忠诚地翻译指令</strong>”，所以我们只是实现硬件而不用去看软件要干什么，我们只要知道软件提出了什么需求，也就是我们的硬件要去实现怎样的接口（这里助教给我讲了一个形象的例子，后端-API-前端,后端不用去思考前端去干什么，实现好API接口即可）。 这也就解答了我在最初设计时两个很大的困惑：</p>
+<ul>
+<li>如何处理中断？是在中断时把<code>m_data_addr</code>变成<code>0x7f20</code>吗？<br>答案是不用的， 是否访问<code>0x7f20</code>是软件程序去决定的事情，而我们的硬件只用支持软件去访问<code>0x7f20</code>即可。这也就实现了教程所言“<strong>对中断发生器的响应是通过系统桥来实现的，通过 store 类指令访问地址 0x7F20，就可以达到响应中断的目的</strong>”。</li>
+<li>异常处理是怎样处理的？<br>这个问题真的困扰了我很久，但其实这是我们不用考虑的，异常处理是异常处理程序的事情，而我们的硬件只需要实现<strong>能够支持异常处理程序执行</strong>,也就是可以忠诚地翻译相应指令并且实现异常处理程序所需要的接口（也可以理解为保存好现场）即可。</li>
+</ul>
+<h2 id="模块封装"><a href="#模块封装" class="headerlink" title="模块封装"></a>模块封装</h2><p>我感觉刚做P7会有一种手忙脚乱的感觉，现在回看，<strong>模块封装</strong>的思想会帮助我们理清到底要干什么。其实我们要做的事情就是：</p>
+<ul>
+<li>在原来的流水线CPU中加入CP0模块，将其封装成新的CPU模块（这其中当然包括各种异常信号的识别与流水）</li>
+<li>实现Bridge模块</li>
+<li>实例化两个Timer</li>
+<li>将CPU、Bridge 、Timer0、Timer1封装成我们的MIPS微系统<br>然后按照一个模块一个模块来实现，再把线都接上就好</li>
+</ul>
+<h1 id="Bug分享"><a href="#Bug分享" class="headerlink" title="Bug分享"></a>Bug分享</h1><p>因为自己和身边的同学都或多或少找到了中测没测出来的bug，我觉得大家如果愿意的话可以在这篇帖子下面分享自己bug。（P7debug过程实在艰难）</p>
+<ul>
+<li>Req越沿采样错误，应该是Req置高的下一个周期F级pc才变为<code>0x4180</code>（笔者的Req是wire型，组合逻辑运算输出）<br>此处再次引用助教的讲解，信号在一个时钟周期中应该是<strong>左开右闭</strong>的。<strong>左开</strong>是为了在时钟上升沿保持稳定，<strong>右闭</strong>是为了保证下一时钟上升沿在稳定状态采样，所以要遵循这个理念，不能够越沿采样。</li>
+<li>中断的优先级高于异常，即如果CP0中中断信号有效那么ExcCode就是<code>5&#39;d0</code>，否则才是输入的ExcCode</li>
+<li>sw指令可以访存Timer的前两个寄存器，而不能访问count寄存器，这里可以根据Timer设计文档确定count的Addr</li>
+<li>W级流水寄存器在Req信号置高时也是要清空的，所有流水寄存器都要在Req信号置高时清空</li>
+<li>各种地址范围敲错</li>
+</ul>
+
         </div>
 
         
@@ -373,7 +430,7 @@
             <div class="post-toc-wrap">
     <div class="post-toc">
         <div style="font-size: 1.3rem;margin-top: 0; margin-bottom: 0.8rem; transition-duration: 0.1s;"><i class="fa-solid fa-list-tree"></i> <strong>Contents</strong></div>
-        
+        <ol class="nav"><li class="nav-item nav-level-3"><a class="nav-link" href="#%E5%BC%82%E5%B8%B8%E6%B8%85%E7%A9%BA%E9%9C%80%E8%A6%81%E5%B1%8F%E8%94%BD%E5%86%99%E8%83%BD%E4%BF%A1%E5%8F%B7"><span class="nav-text">异常清空需要屏蔽写能信号</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#%E5%A4%9A%E5%BC%82%E5%B8%B8%E7%9A%84%E5%A4%84%E7%90%86"><span class="nav-text">多异常的处理</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#%E4%B8%AD%E6%96%AD%E6%97%B6%E5%AE%8F%E8%A7%82-PC-%E4%B8%BA%E5%86%92%E6%B3%A1"><span class="nav-text">中断时宏观 PC 为冒泡</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#EPC-%E7%9A%84%E6%95%B0%E6%8D%AE%E5%86%92%E9%99%A9-Data-hazard"><span class="nav-text">EPC 的数据冒险 (Data hazard)</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#%E6%9F%90%E4%B8%80%E6%97%B6%E5%88%BB%EF%BC%8C%E4%BD%A0%E7%9A%84%E6%B5%81%E6%B0%B4%E7%BA%BF%E4%B8%AD%E5%8F%AF%E8%83%BD%E6%97%A2%E6%9C%89%E7%94%A8%E6%88%B7%E6%8C%87%E4%BB%A4%EF%BC%88%E6%8C%87-text-%E6%AE%B5%E5%86%85%E7%9A%84%E6%8C%87%E4%BB%A4%EF%BC%89%EF%BC%8C%E5%8F%88%E6%9C%89%E5%86%85%E6%A0%B8%E6%8C%87%E4%BB%A4%EF%BC%88%E6%8C%87-ktext-%E6%AE%B5%E5%86%85%E7%9A%84%E6%8C%87%E4%BB%A4%EF%BC%89"><span class="nav-text">某一时刻，你的流水线中可能既有用户指令（指 .text 段内的指令），又有内核指令（指 .ktext 段内的指令）</span></a></li></ol></li></ol></li><li class="nav-item nav-level-1"><a class="nav-link" href="#%E8%AE%BE%E8%AE%A1%E6%80%9D%E8%80%83%E2%80%94%E2%80%94%E4%B8%A4%E4%B8%AA%E6%80%9D%E6%83%B3"><span class="nav-text">设计思考——两个思想</span></a><ol class="nav-child"><li class="nav-item nav-level-2"><a class="nav-link" href="#%E8%BD%AF%E7%A1%AC%E4%BB%B6%E5%8D%8F%E5%90%8C%E7%9A%84%E8%A7%86%E8%A7%92"><span class="nav-text">软硬件协同的视角</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#%E6%A8%A1%E5%9D%97%E5%B0%81%E8%A3%85"><span class="nav-text">模块封装</span></a></li></ol></li><li class="nav-item nav-level-1"><a class="nav-link" href="#Bug%E5%88%86%E4%BA%AB"><span class="nav-text">Bug分享</span></a>
     </div>
 </div>
         </aside>
