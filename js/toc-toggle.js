@@ -1,13 +1,13 @@
 /* global REDEFINE */
 
-function initLeftSideToggle() {
-  REDEFINE.utils.leftSideToggle = {
+function initTocToggle() {
+  REDEFINE.utils.TocToggle = {
 
     toggleBar: document.querySelector('.page-aside-toggle'),
-    pageTopDom: document.querySelector('.page-main-content-top'),
-    containerDom: document.querySelector('.page-container'),
-    leftAsideDom: document.querySelector('.page-aside'),
+    postPageContainerDom: document.querySelector('.post-page-container'),
     toggleBarIcon: document.querySelector('.page-aside-toggle i'),
+    articleContentContainerDom: document.querySelector('.article-content-container'),
+    mainContentDom: document.querySelector('.main-content'),
 
     isOpenPageAside: false,
 
@@ -21,11 +21,9 @@ function initLeftSideToggle() {
     },
 
     changePageLayoutWhenOpenToggle(isOpen) {
-      this.toggleBarIcon && (this.toggleBarIcon.className = isOpen ? 'fas fa-outdent' : 'fas fa-indent');
-      const pageAsideWidth = REDEFINE.theme_config.style.left_side_width || '260px';
-      this.containerDom.style.paddingLeft = isOpen ? "210px" : '0';
-      //this.pageTopDom.style.paddingLeft = isOpen ? pageAsideWidth : '0';
-      this.leftAsideDom.style.left = isOpen ? '2.9%' : `-${pageAsideWidth}`;
+      this.toggleBarIcon && (this.toggleBarIcon.className = isOpen ? 'fas fa-indent' : 'fas fa-outdent');
+      this.postPageContainerDom.className = isOpen ? 'post-page-container show-toc' : 'post-page-container';
+      this.mainContentDom.className = isOpen ? 'main-content has-toc' : 'main-content';
     },
 
     pageAsideHandleOfTOC(isOpen) {
@@ -34,11 +32,11 @@ function initLeftSideToggle() {
       this.changePageLayoutWhenOpenToggle(isOpen);
     }
   }
-  REDEFINE.utils.leftSideToggle.initToggleBarButton();
+  REDEFINE.utils.TocToggle.initToggleBarButton();
 }
 
 if (REDEFINE.theme_config.pjax.enable === true && REDEFINE.utils) {
-  initLeftSideToggle();
+  initTocToggle();
 } else {
-  window.addEventListener('DOMContentLoaded', initLeftSideToggle);
+  window.addEventListener('DOMContentLoaded', initTocToggle);
 }
