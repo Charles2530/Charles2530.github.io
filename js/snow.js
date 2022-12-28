@@ -4,9 +4,9 @@
     documentHeight  = $(document).height(),
     documentWidth   = $(document).width(),
     defaults = {
-        minSize     : 10,
-        maxSize     : 20,
-        newOn       : 1000,
+        minSize     : 5,
+        maxSize     : 10,
+        newOn       : 1500,
         flakeColor  : "#AFDAEF" /* �˴����Զ���ѩ����ɫ����Ҫ��ɫ���Ը�Ϊ#FFFFFF */
     },
     options = $.extend({}, defaults, options);
