@@ -5,7 +5,7 @@ Global.initUtils = () => {
     html_root_dom: document.querySelector("html"),
     pageContainer_dom: document.querySelector(".page-container"),
     pageTop_dom: document.querySelector(".main-content-header"),
-    firstScreen_dom: document.querySelector(".home-banner-container"),
+    homeBanner_dom: document.querySelector(".home-banner-container"),
     scrollProgressBar_dom: document.querySelector(".scroll-progress-bar"),
     pjaxProgressBar_dom: document.querySelector(".pjax-progress-bar"),
     pjaxProgressIcon_dom: document.querySelector(".pjax-progress-icon"),
@@ -44,6 +44,8 @@ Global.initUtils = () => {
     
       if (Global.theme_config.navbar.auto_hide) {
         this.pageTop_dom.classList.toggle('hide', (this.prevScrollValue > clientHeight && scrollTop  > this.prevScrollValue) );
+      } else {
+        this.pageTop_dom.classList.remove('hide');
       }
       this.prevScrollValue = scrollTop;
     },
@@ -52,9 +54,7 @@ Global.initUtils = () => {
     registerWindowScroll() {
       window.addEventListener("scroll", () => {
         // style handle when scroll
-        if (this.isHasScrollPercent || this.isHasScrollProgressBar) {
-          this.updateScrollStyle();
-        }
+        this.updateScrollStyle();
 
         // TOC scroll handle
         if (
@@ -66,6 +66,22 @@ Global.initUtils = () => {
 
         // navbar shrink
         navbarShrink.init();
+
+        // scroll blur
+        if (Global.theme_config.home_banner.style === "fixed" && location.pathname === Global.hexo_config.root) {
+          const blurElement = document.querySelector(".home-banner-background");
+          const viewHeight = window.innerHeight;
+          const scrollY = window.scrollY || window.pageYOffset;
+          const triggerViewHeight = viewHeight / 2;
+          const blurValue =
+            scrollY >= triggerViewHeight
+              ? 15
+              : 0;
+          try {
+            blurElement.style.transition = "0.3s";
+            blurElement.style.webkitFilter = `blur(${blurValue}px)`;
+          } catch (e) {}
+        }
 
         // auto hide tools
         var y = window.pageYOffset;
@@ -239,8 +255,13 @@ Global.initUtils = () => {
       this.goComment_dom = document.querySelector(".go-comment");
       if (this.goComment_dom) {
         this.goComment_dom.addEventListener("click", () => {
-          document.querySelector("#comment-anchor").scrollIntoView({
-            behavior: "smooth",
+          const target = document.querySelector("#comment-anchor");
+          const offset = target.getBoundingClientRect().top + window.scrollY;
+          window.anime({
+            targets: document.scrollingElement,
+            duration: 500,
+            easing: 'linear',
+            scrollTop: offset - 10
           });
         });
       }
@@ -253,14 +274,14 @@ Global.initUtils = () => {
     },
 
     // init first screen height
-    initFirstScreenHeight() {
-      this.firstScreen_dom &&
-        (this.firstScreen_dom.style.height = this.innerHeight + "px");
+    inithomeBannerHeight() {
+      this.homeBanner_dom &&
+        (this.homeBanner_dom.style.height = this.innerHeight + "px");
     },
 
     // init page height handle
     initPageHeightHandle() {
-      if (this.firstScreen_dom) return;
+      if (this.homeBanner_dom) return;
       const temp_h1 = this.getElementHeight(".main-content-header");
       const temp_h2 = this.getElementHeight(".main-content-body");
       const temp_h3 = this.getElementHeight(".main-content-footer");
@@ -501,7 +522,7 @@ Global.initUtils = () => {
   Global.utils.initPageHeightHandle();
 
   // init first screen height
-  Global.utils.initFirstScreenHeight();
+  Global.utils.inithomeBannerHeight();
 
   // big image viewer handle
   Global.utils.imageViewer();

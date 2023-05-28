@@ -31,13 +31,26 @@ const navbarShrink = {
 
     if (document.querySelector('.navbar-drawer')) {
       domList.push(...document.querySelectorAll('.navbar-drawer .drawer-navbar-list .drawer-navbar-item'));
+      domList.push(...document.querySelectorAll('.navbar-drawer .drawer-navbar-list .dropdown-item'));
     }
 
     domList.forEach(v => {
-      v.addEventListener('click', () => {
-        document.body.classList.toggle('navbar-drawer-show');
-      });
+      if (!v.dataset.navbarInitialized)
+      {
+        v.dataset.navbarInitialized = 1;
+        v.addEventListener('click', () => {
+          document.body.classList.toggle('navbar-drawer-show');
+        });
+      }
     });
+
+    const logoTitleDom = document.querySelector('.navbar-container .navbar-content .logo-title')
+    if (logoTitleDom && !logoTitleDom.dataset.navbarInitialized) {
+      logoTitleDom.dataset.navbarInitialized = 1;
+      logoTitleDom.addEventListener('click', () => {
+        document.body.classList.remove('navbar-drawer-show');
+      });
+    }
   }
 };
 
