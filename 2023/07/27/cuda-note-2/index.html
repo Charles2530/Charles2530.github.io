@@ -502,7 +502,7 @@
 <div class="highlight-container" data-rel="C"><figure class="iseeu highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br></pre></td><td class="code"><pre><span class="line"><span class="type">int</span> <span class="title function_">main</span><span class="params">()</span></span><br><span class="line">&#123;</span><br><span class="line">    <span class="type">int</span> N = <span class="number">1</span> &lt;&lt; <span class="number">20</span>;</span><br><span class="line">    <span class="type">int</span> nBytes = N * <span class="keyword">sizeof</span>(<span class="type">float</span>);</span><br><span class="line"></span><br><span class="line">    <span class="comment">// 申请托管内存</span></span><br><span class="line">    <span class="type">float</span> *x, *y, *z;</span><br><span class="line">    cudaMallocManaged((<span class="type">void</span>**)&amp;x, nBytes);</span><br><span class="line">    cudaMallocManaged((<span class="type">void</span>**)&amp;y, nBytes);</span><br><span class="line">    cudaMallocManaged((<span class="type">void</span>**)&amp;z, nBytes);</span><br><span class="line"></span><br><span class="line">    <span class="comment">// 初始化数据</span></span><br><span class="line">    <span class="keyword">for</span> (<span class="type">int</span> i = <span class="number">0</span>; i &lt; N; ++i)</span><br><span class="line">    &#123;</span><br><span class="line">        x[i] = <span class="number">10.0</span>;</span><br><span class="line">        y[i] = <span class="number">20.0</span>;</span><br><span class="line">    &#125;</span><br><span class="line"></span><br><span class="line">    <span class="comment">// 定义kernel的执行配置</span></span><br><span class="line">    dim3 <span class="title function_">blockSize</span><span class="params">(<span class="number">256</span>)</span>;</span><br><span class="line">    dim3 <span class="title function_">gridSize</span><span class="params">((N + blockSize.x - <span class="number">1</span>) / blockSize.x)</span>;</span><br><span class="line">    <span class="comment">// 执行kernel</span></span><br><span class="line">    add &lt;&lt; &lt; gridSize, blockSize &gt;&gt; &gt;(x, y, z, N);</span><br><span class="line"></span><br><span class="line">    <span class="comment">// 同步device 保证结果能正确访问</span></span><br><span class="line">    cudaDeviceSynchronize();</span><br><span class="line">    <span class="comment">// 检查执行结果</span></span><br><span class="line">    <span class="type">float</span> maxError = <span class="number">0.0</span>;</span><br><span class="line">    <span class="keyword">for</span> (<span class="type">int</span> i = <span class="number">0</span>; i &lt; N; i++)</span><br><span class="line">        maxError = fmax(maxError, <span class="built_in">fabs</span>(z[i] - <span class="number">30.0</span>));</span><br><span class="line">    <span class="built_in">std</span>::<span class="built_in">cout</span> &lt;&lt; <span class="string">&quot;最大误差: &quot;</span> &lt;&lt; maxError &lt;&lt; <span class="built_in">std</span>::<span class="built_in">endl</span>;</span><br><span class="line"></span><br><span class="line">    <span class="comment">// 释放内存</span></span><br><span class="line">    cudaFree(x);</span><br><span class="line">    cudaFree(y);</span><br><span class="line">    cudaFree(z);</span><br><span class="line"></span><br><span class="line">    <span class="keyword">return</span> <span class="number">0</span>;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure></div>
 <p>相比之前的代码，使用统一内存更简洁了，值得注意的是kernel执行是与host异步的，由于托管内存自动进行数据传输，这里要用cudaDeviceSynchronize()函数保证device和host同步，这样后面才可以正确访问kernel计算的结果。</p>
 <h4 id="矩阵乘法实例"><a class="markdownIt-Anchor" href="#矩阵乘法实例"></a> 矩阵乘法实例</h4>
-<p>最后我们再实现一个稍微复杂一些的例子，就是两个矩阵的乘法，设输入矩阵为 A 和 B ，要得到 C=A×B 。实现思路是每个线程计算 C的一个元素值<span class="katex"><span class="katex-mathml"><math><semantics><mrow><msub><mi>C</mi><mrow><mi>i</mi><mi>j</mi></mrow></msub></mrow><annotation encoding="application/x-tex">C_{ij}</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.969438em;vertical-align:-0.286108em;"></span><span class="mord"><span class="mord mathdefault" style="margin-right:0.07153em;">C</span><span class="msupsub"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height:0.311664em;"><span style="top:-2.5500000000000003em;margin-left:-0.07153em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mtight"><span class="mord mathdefault mtight">i</span><span class="mord mathdefault mtight" style="margin-right:0.05724em;">j</span></span></span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height:0.286108em;"><span></span></span></span></span></span></span></span></span></span>对于矩阵运算，应该选用grid和block为2-D的。首先定义矩阵的结构体：</p>
+<p>最后我们再实现一个稍微复杂一些的例子，就是两个矩阵的乘法，设输入矩阵为 A 和 B ，要得到 C=A×B 。实现思路是每个线程计算 C的一个元素值$C_{ij}$对于矩阵运算，应该选用grid和block为2-D的。首先定义矩阵的结构体：</p>
 <div class="highlight-container" data-rel="C"><figure class="iseeu highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">// 矩阵类型，行优先，M(row, col) = *(M.elements + row * M.width + col)</span></span><br><span class="line"><span class="class"><span class="keyword">struct</span> <span class="title">Matrix</span></span></span><br><span class="line"><span class="class">&#123;</span></span><br><span class="line">    <span class="type">int</span> width;</span><br><span class="line">    <span class="type">int</span> height;</span><br><span class="line">    <span class="type">float</span> *elements;</span><br><span class="line">&#125;;</span><br></pre></td></tr></table></figure></div>
 <p><img  
                      lazyload
@@ -564,27 +564,27 @@
     <div class="recommended-article-header">
      <i aria-hidden="true"></i><span>recommend_articles</span>
     </div>
-    <div class="recommended-article-group"><a class="recommended-article-item" href="/2022/12/31/tinyml-note/" title="TinyML-note" rel="bookmark">
-  <img src="https://charles2530.github.io/image/background/p4.jpg" alt="TinyML-note">
-  <span class="title">TinyML-note</span>
-</a><a class="recommended-article-item" href="/2023/01/10/high-precision-algorithm/" title="high-precision-algorithm" rel="bookmark">
-  <img src="https://charles2530.github.io/image/background/p2.jfif" alt="high-precision-algorithm">
-  <span class="title">high-precision-algorithm</span>
-</a><a class="recommended-article-item" href="/2023/03/02/lab0-report/" title="lab0_report" rel="bookmark">
-  <img src="https://charles2530.github.io/image/background/p2.jpg" alt="lab0_report">
-  <span class="title">lab0_report</span>
+    <div class="recommended-article-group"><a class="recommended-article-item" href="/2023/01/04/topological-sorting/" title="Topological-sorting" rel="bookmark">
+  <img src="https://charles2530.github.io/image/background/p1.jfif" alt="Topological-sorting">
+  <span class="title">Topological-sorting</span>
+</a><a class="recommended-article-item" href="/2022/12/27/co-mips/" title="CO-Mips" rel="bookmark">
+  <img src="https://charles2530.github.io/image/background/p1.jfif" alt="CO-Mips">
+  <span class="title">CO-Mips</span>
+</a><a class="recommended-article-item" href="/2023/07/17/cuda-note-1/" title="CUDA_note_1" rel="bookmark">
+  <img src="https://charles2530.github.io/image/background/p6.jpg" alt="CUDA_note_1">
+  <span class="title">CUDA_note_1</span>
 </a></div>
    </div>
    <div class="recommended-mobile">
    <div class="recommended-article-header">
      <i aria-hidden="true"></i><span>recommend_articles</span>
    </div>
-   <div class="recommended-article-group"><a class="recommended-article-item" href="/2022/12/31/tinyml-note/" title="TinyML-note" rel="bookmark">
-  <img src="https://charles2530.github.io/image/background/p4.jpg" alt="TinyML-note">
-  <span class="title">TinyML-note</span>
-</a><a class="recommended-article-item" href="/2023/01/10/high-precision-algorithm/" title="high-precision-algorithm" rel="bookmark">
-  <img src="https://charles2530.github.io/image/background/p2.jfif" alt="high-precision-algorithm">
-  <span class="title">high-precision-algorithm</span>
+   <div class="recommended-article-group"><a class="recommended-article-item" href="/2023/01/04/topological-sorting/" title="Topological-sorting" rel="bookmark">
+  <img src="https://charles2530.github.io/image/background/p1.jfif" alt="Topological-sorting">
+  <span class="title">Topological-sorting</span>
+</a><a class="recommended-article-item" href="/2022/12/27/co-mips/" title="CO-Mips" rel="bookmark">
+  <img src="https://charles2530.github.io/image/background/p1.jfif" alt="CO-Mips">
+  <span class="title">CO-Mips</span>
 </a></div>
    </div>
   </div>
@@ -971,21 +971,6 @@
 
 
   
-<script type="text/x-mathjax-config">
-  MathJax.Hub.Config({
-        tex2jax: {
-            inlineMath: [ ["$","$"], ["\\(","\\)"] ],
-            skipTags: ['script', 'noscript', 'style', 'textarea', 'pre', 'code'],
-            processEscapes: true
-        }
-    });
-    MathJax.Hub.Queue(function() {
-        var all = MathJax.Hub.getAllJax();
-        for (var i = 0; i < all.length; ++i)
-            all[i].SourceElement().parentNode.className += ' has-jax';
-    });
-</script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/mathjax/2.7.1/MathJax.js?config=TeX-MML-AM_CHTML"></script>
 </body>
 
 </html>
