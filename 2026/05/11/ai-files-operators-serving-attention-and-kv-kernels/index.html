@@ -1,0 +1,1580 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="keywords" content="Charles">
+    
+    
+    <meta name="author" content="Charles">
+    
+    <!-- Completely eliminate flash of wrong theme -->
+    <script>
+        (function() {
+            const THEME_KEY = "REDEFINE-THEME-STATUS";
+            const DARK = "dark", LIGHT = "light";
+            
+            // Get preferred theme
+            function getTheme() {
+                try {
+                    const saved = localStorage.getItem(THEME_KEY);
+                    if (saved) {
+                        const { isDark } = JSON.parse(saved);
+                        return isDark ? DARK : LIGHT;
+                    }
+                } catch (e) {}
+                
+                return matchMedia("(prefers-color-scheme: dark)").matches ? DARK : LIGHT;
+            }
+            
+            // Apply theme to document
+            function applyTheme(theme) {
+                const isDark = theme === DARK;
+                const root = document.documentElement;
+                
+                // Set classes for compatibility
+                root.classList.add(theme);
+                root.classList.remove(isDark ? LIGHT : DARK);
+                root.style.colorScheme = theme;
+            }
+            
+            // Initial application
+            const theme = getTheme();
+            applyTheme(theme);
+            
+            // Listen for system preference changes
+            matchMedia("(prefers-color-scheme: dark)").addEventListener("change", ({ matches }) => {
+                // Only update if using system preference (no localStorage entry)
+                if (!localStorage.getItem(THEME_KEY)) {
+                    applyTheme(matches ? DARK : LIGHT);
+                }
+            });
+            
+            // Set body classes ASAP (before DOMContentLoaded)
+            (function() {
+                const addBodyClass = () => {
+                    const b = document.body;
+                    if (!b) return false;
+                    b.classList.add(theme + "-mode");
+                    return true;
+                };
+
+                // Try immediately
+                if (addBodyClass()) return;
+
+                // Observe until body exists
+                const mo = new MutationObserver(() => {
+                    if (addBodyClass()) mo.disconnect();
+                });
+                mo.observe(document.documentElement, { childList: true, subtree: true });
+            })();
+        })();
+    </script>
+    
+    <!-- preconnect -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+
+    
+    <!--- Seo Part-->
+    
+    <link rel="canonical" href="https://charles2530.github.io/2026/05/11/ai-files-operators-serving-attention-and-kv-kernels/"/>
+    <meta name="robots" content="index,follow">
+    <meta name="googlebot" content="index,follow">
+    <meta name="revisit-after" content="1 days">
+    
+    
+        
+        <meta name="description" content="This is Charles&#39;s Castle.">
+<meta property="og:type" content="article">
+<meta property="og:title" content="服务态 Attention 与 KV Kernel">
+<meta property="og:url" content="https://charles2530.github.io/2026/05/11/ai-files-operators-serving-attention-and-kv-kernels/index.html">
+<meta property="og:site_name" content="Charles&#39;s Castle">
+<meta property="og:description" content="This is Charles&#39;s Castle.">
+<meta property="og:locale" content="en_US">
+<meta property="og:image" content="https://charles2530.github.io/image/background/logo.jpg">
+<meta property="article:published_time" content="2026-05-11T02:09:00.000Z">
+<meta property="article:modified_time" content="2026-05-11T02:09:00.000Z">
+<meta property="article:author" content="Du Jinyang">
+<meta property="article:tag" content="AI">
+<meta property="article:tag" content="Diffusion Models">
+<meta property="article:tag" content="GPU Systems">
+<meta property="article:tag" content="Inference">
+<meta property="article:tag" content="Operators">
+<meta name="twitter:card" content="summary">
+<meta name="twitter:image" content="https://charles2530.github.io/image/background/logo.jpg">
+    
+    
+    <!--- Icon Part-->
+    <link rel="icon" type="image/png" href="https://charles2530.github.io/image/background/favicon.png" sizes="192x192">
+    <link rel="apple-touch-icon" sizes="180x180" href="https://charles2530.github.io/image/background/favicon.png">
+    <meta name="theme-color" content="#A31F34">
+    <link rel="shortcut icon" href="https://charles2530.github.io/image/background/favicon.png">
+    <!--- Page Info-->
+    
+    <title>
+        
+            服务态 Attention 与 KV Kernel | Charles&#39;s Castle
+        
+    </title>
+
+    
+<link rel="stylesheet" href="/fonts/Chillax/chillax.css">
+
+
+    <!--- Inject Part-->
+    
+        
+            
+    
+            
+    
+            
+                
+                    <script data-swup-reload-script> var _hmt = _hmt || []; (function() { var hm = document.createElement("script"); hm.src = "https://hm.baidu.com/hm.js?8e0e5f382d14d87cbeadc33a36e71e86"; var s = document.getElementsByTagName("script")[0]; s.parentNode.insertBefore(hm, s); })(); </script>
+                
+    
+
+    
+<link rel="stylesheet" href="/css/style.css">
+
+
+    
+        
+<link rel="stylesheet" href="/css/build/tailwind.css">
+
+    
+
+    
+<link rel="stylesheet" href="/fonts/GeistMono/geist-mono.css">
+
+    
+<link rel="stylesheet" href="/fonts/Geist/geist.css">
+
+    <!--- Font Part-->
+    
+    
+    
+    
+    
+    
+        
+<script src="/js/build/libs/anime.min.js"></script>
+
+    
+
+    <script id="hexo-configurations">
+    window.config = {"hostname":"charles2530.github.io","root":"/","language":"en","path":"search.xml"};
+    window.theme = {"articles":{"style":{"font_size":"16px","line_height":1.5,"image_border_radius":"14px","image_alignment":"center","image_caption":false,"link_icon":true,"delete_mask":false,"title_alignment":"left","headings_top_spacing":{"h1":"5rem","h2":"4rem","h3":"2.8rem","h4":"2.5rem","h5":"2.2rem","h6":"2rem"}},"word_count":{"enable":true,"count":true,"min2read":true},"author_label":{"enable":true,"auto":true,"list":["lol","Neo","God"]},"code_block":{"copy":true,"style":"mac","highlight_theme":{"light":"github","dark":"vs2015"},"font":{"enable":false,"family":null,"url":null}},"toc":{"enable":true,"max_depth":6,"number":false,"expand":true,"init_open":true},"copyright":{"enable":true,"default":"cc_by_nc_sa"},"lazyload":true,"pangu_js":false,"recommendation":{"enable":false,"title":"recommend_articles","limit":3,"mobile_limit":2,"placeholder":"https://charles2530.github.io/image/background/p3.jfif","skip_dirs":[]}},"colors":{"primary":"#A31F34","secondary":"#1890ff","default_mode":"light"},"global":{"fonts":{"chinese":{"enable":false,"family":null,"url":null},"english":{"enable":false,"family":null,"url":null},"title":{"enable":false,"family":null,"url":null}},"content_max_width":"1000px","sidebar_width":"210px","hover":{"shadow":true,"scale":true},"scroll_progress":{"bar":true,"percentage":true},"website_counter":{"url":"https://cn.vercount.one/js","enable":true,"site_pv":true,"site_uv":true,"post_pv":true},"single_page":true,"preloader":{"enable":true,"custom_message":null},"side_tools":{"gear_rotation":true,"auto_expand":false},"open_graph":{"enable":true,"image":"https://charles2530.github.io/image/background/logo.jpg","description":"This is Charles's Castle."},"google_analytics":{"enable":false,"id":null}},"home_banner":{"enable":true,"style":"fixed","image":{"light":"https://charles2530.github.io/image/background/background-light1.jpg","dark":"https://charles2530.github.io/image/background/background-dark1.jpg"},"title":"Charles's Castle","subtitle":{"text":["Happiness is best!","Never give up!","Everyday is a gift!"],"hitokoto":{"enable":false,"show_author":false,"api":"https://v1.hitokoto.cn"},"typing_speed":100,"backing_speed":80,"starting_delay":500,"backing_delay":1500,"loop":true,"smart_backspace":true},"text_color":{"light":"#000000","dark":"#d1d1b6"},"text_style":{"title_size":"3.2rem","subtitle_size":"1.5rem","line_height":1.2},"custom_font":{"enable":false,"family":null,"url":null},"social_links":{"enable":true,"style":"center","links":[{"icon":"fa-brands fa-github","url":"https://github.com/Charles2530/"},{"icon":"fa-brands fa-zhihu","url":"https://www.zhihu.com/people/yang-guang-xiao-zi-55-55"},{"icon":"fa-solid fa-at","url":"mailto:charles2530@163.com"},{"icon":"fa-brands fa-telegram","url":null},{"icon":"/images/custom-icon.svg","url":null}],"qrs":[{"icon":"fa-brands fa-weixin","qr":"https://charles2530.github.io/image/background/Wechat_icon.png"},{"icon":"/images/custom-icon.svg","qr":null}]}},"plugins":{"feed":{"enable":true},"aplayer":{"enable":false,"type":"fixed","audios":[{"name":null,"artist":null,"url":null,"cover":null,"lrc":null}]},"mermaid":{"enable":true,"version":"11.4.1","theme":{"light":"default","dark":"dark"}}},"version":"2.9.0","navbar":{"auto_hide":true,"color":{"left":"#f78736","right":"#367df7","transparency":35},"width":{"home":"1200px","pages":"1000px"},"links":{"Home":{"path":"/","icon":"fa-regular fa-house"},"Categories":{"path":"/categories","icon":"fas fa-bookmark"},"Tags":{"path":"/tags","icon":"fas fa-tags"},"About":{"icon":"fa-regular fa-user","submenus":{"Me":"/about","Github":"https://github.com/Charles2530/","Blog":"https://charles2530.github.io","Statistics":"https://tongji.baidu.com/"}}},"search":{"enable":true,"preload":true}},"page_templates":{"friends_column":2,"tags_style":"blur","masonry":{"batch_size":12,"initial_batch_size":24}},"home":{"sidebar":{"enable":true,"position":"left","first_item":"menu","announcement":"This is Charles's Castle","show_on_mobile":true,"links":{"Archives":{"path":"/archives","icon":"fa-regular fa-archive"},"Photos":{"icon":"fa-solid fa-image","path":"/masonry/"},"Essays":{"icon":"fa-solid fa-message-lines","path":"/essay/"},"Friends":{"icon":"fa-solid fa-user-group","path":"/friends/"}}},"article_date_format":"auto","excerpt_length":200,"categories":{"enable":true,"limit":3},"tags":{"enable":true,"limit":3}},"footer":{"runtime":true,"icon":"<i class=\"fa-solid fa-heart fa-beat\" style=\"--fa-animation-duration: 0.5s; color: #f54545\"></i>","start":"2022/12/27 00:00:00","statistics":true,"customize":null,"icp":{"enable":false,"number":null,"url":null}},"footerStart":"2022/12/27 00:00:00","mermaid":{"style":{"light":"default","dark":"dark"}}};
+    window.lang_ago = {"second":"%s seconds ago","minute":"%s minutes ago","hour":"%s hours ago","day":"%s days ago","week":"%s weeks ago","month":"%s months ago","year":"%s years ago"};
+    window.i18n = {"search":"Search...","toc":"On this page","prev":"Prev","next":"Next","prev_posts":"Prev posts","next_posts":"Next posts","page":"Page %d","recent_posts":"Recent Posts","share":"Share","powered_by":"POWERED BY %s","theme":"THEME","rss_feed":"RSS Feed","category":"Category","categories":"Categories","tag":"Tag","tags":"Tags","post":"Post","posts":"Posts","tagcloud":"Tag Cloud","comment":"Comment","comments":"Comments","home":"Home","archive":"Archive","archives":"Archives","top":"TOP","sticky":"Sticky","go-back-home":"Go Back Home","masonry_loading":"Loading photos...","image_viewer":"Image viewer","close":"Close","exif":{"title":"EXIF","cards":{"camera":"Camera","lens":"Lens","exposure":"Exposure","other":"Other"},"fields":{"make":"Brand","model":"Model","date_taken":"Date taken","lens_model":"Lens","focal_length":"Focal length","focus_mode":"Focus mode","shutter":"Shutter","aperture":"Aperture","iso":"ISO","exposure_program":"Exposure program","exposure_compensation":"Exposure compensation","metering_mode":"Metering mode","flash":"Flash","white_balance":"White balance","latitude":"Latitude","longitude":"Longitude","altitude":"Altitude"},"status":{"loading":"Loading...","no_exif":"No EXIF available","library_missing":"EXIF library not loaded","image_source_missing":"Image source unavailable","unavailable":"EXIF unavailable (blocked by CORS or missing metadata)","flag_unavailable":"EXIF unavailable"}},"about":"About","changelog":"Changelog","links":"Links","link":"Link","friends":"Friends","friend":"Friend","timeline":"Timeline","shuoshuo":"Shuoshuo","bookmarks":"Bookmarks","site_uv":"VISITOR COUNT","site_pv":"TOTAL PAGE VIEWS","read_more":"Read more","wordcount":"Words","min2read":"Mins","status":"Status","runtime":"Blog up for","days":"days","hours":"hrs","minutes":"Min","seconds":"Sec","optimized_by":"and Optimized by Evan","rights":"All Rights Reserved","site_posts":"%s posts in total","site_wordcount":"%s words in total","copyright":{"author":"Author","title":"Title","link":"Link","create_time":"Created at","update_time":"Updated at","license_title":"License","license_content":"This work is licensed under %s.","all_rights_reserved":"All Rights Reserved &#169; %s","public_domain":"This work is in the public domain."},"ago":{"second":"%s seconds ago","minute":"%s minutes ago","hour":"%s hours ago","day":"%s days ago","week":"%s weeks ago","month":"%s months ago","year":"%s years ago"},"create_time":"Created","update_time":"Updated","expired":"This post is written %s days ago, and the content may not be up to date."};
+    window.data = {"masonry":true};
+  </script>
+    
+    <!--- Fontawesome Part-->
+    
+<link rel="stylesheet" href="/fontawesome/fontawesome.min.css">
+
+    
+<link rel="stylesheet" href="/fontawesome/brands.min.css">
+
+    
+<link rel="stylesheet" href="/fontawesome/solid.min.css">
+
+    
+<link rel="stylesheet" href="/fontawesome/regular.min.css">
+
+    
+    
+    
+    
+<meta name="generator" content="Hexo 6.3.0"><link rel="alternate" href="/atom.xml" title="Charles's Castle" type="application/atom+xml">
+<link rel="stylesheet" href="/css/prism-tomorrow.css" type="text/css"></head>
+
+
+<body>
+	<div class="progress-bar-container">
+	
+	<span class="scroll-progress-bar"></span>
+	
+
+	
+	<span class="pjax-progress-bar"></span>
+	<!--        <span class="swup-progress-icon">-->
+	<!--            <i class="fa-solid fa-circle-notch fa-spin"></i>-->
+	<!--        </span>-->
+	
+</div>
+
+<style>
+    :root {
+        --preloader-background-color: #fff;
+        --preloader-text-color: #000;
+    }
+
+    @media (prefers-color-scheme: dark) {
+        :root {
+            --preloader-background-color: #202124;
+            --preloader-text-color: #fff;
+        }
+    }
+
+    @media (prefers-color-scheme: light) {
+        :root {
+            --preloader-background-color: #fff;
+            --preloader-text-color: #000;
+        }
+    }
+
+    @media (max-width: 600px) {
+        .ml13 {
+            font-size: 2.6rem !important; /* Adjust this value as needed */
+        }
+    }
+
+    .preloader {
+        display: flex;
+        flex-direction: column;
+        gap: 1rem; /* Tailwind 'gap-4' is 1rem */
+        align-items: center;
+        justify-content: center;
+        position: fixed;
+        padding: 12px;
+        top: 0;
+        right: 0;
+        bottom: 0;
+        left: 0;
+        width: 100vw;
+        height: 100vh; /* 'h-screen' is 100% of the viewport height */
+        background-color: var(--preloader-background-color);
+        z-index: 1100; /* 'z-[1100]' sets the z-index */
+        transition: opacity 0.2s ease-in-out;
+    }
+
+    .ml13 {
+        font-size: 3.2rem;
+        /* text-transform: uppercase; */
+        color: var(--preloader-text-color);
+        letter-spacing: -1px;
+        font-weight: 500;
+        font-family: 'Chillax-Variable', sans-serif;
+        text-align: center;
+    }
+
+    .ml13 .word {
+        display: inline-flex;
+        flex-wrap: wrap;
+        white-space: nowrap;
+    }
+
+    .ml13 .letter {
+        display: inline-block;
+        line-height: 1em;
+    }
+</style>
+
+<div class="preloader">
+    <h2 class="ml13">
+        Charles&#39;s Castle
+    </h2>
+    <script>
+        var textWrapper = document.querySelector('.ml13');
+        // Split text into words
+        var words = textWrapper.textContent.trim().split(' ');
+
+        // Clear the existing content
+        textWrapper.innerHTML = '';
+
+        // Wrap each word and its letters in spans
+        words.forEach(function(word) {
+            var wordSpan = document.createElement('span');
+            wordSpan.classList.add('word');
+            wordSpan.innerHTML = word.replace(/\S/g, "<span class='letter'>$&</span>");
+            textWrapper.appendChild(wordSpan);
+            textWrapper.appendChild(document.createTextNode(' ')); // Add space between words
+        });
+
+        var animation = anime.timeline({ loop: true })
+            .add({
+                targets: '.ml13 .letter',
+                translateY: [20, 0],
+                translateZ: 0,
+                opacity: [0, 1],
+                filter: ['blur(5px)', 'blur(0px)'],
+                easing: "easeOutExpo",
+                duration: 1200,
+                delay: (el, i) => 300 + 20 * i,
+            })
+            .add({
+                targets: '.ml13 .letter',
+                translateY: [0, -20],
+                opacity: [1, 0],
+                filter: ['blur(0px)', 'blur(5px)'],
+                easing: "easeInExpo",
+                duration: 1000,
+                delay: (el, i) => 15 * i,
+                complete: function() {
+                    hidePreloader();
+                }
+            }, '-=700');
+
+
+        let themeStatus = JSON.parse(localStorage.getItem('REDEFINE-THEME-STATUS'))?.isDark;
+
+        // If the theme status is not found in local storage, check the preferred color scheme
+        if (themeStatus === undefined || themeStatus === null) {
+            if (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) {
+                themeStatus = 'dark';
+            } else {
+                themeStatus = 'light';
+            }
+        }
+
+        // Now you can use the themeStatus variable in your code
+        if (themeStatus) {
+            document.documentElement.style.setProperty('--preloader-background-color', '#202124');
+            document.documentElement.style.setProperty('--preloader-text-color', '#fff');
+        } else {
+            document.documentElement.style.setProperty('--preloader-background-color', '#fff');
+            document.documentElement.style.setProperty('--preloader-text-color', '#000');
+        }
+
+        window.addEventListener('load', function () {
+            setTimeout(hidePreloader, 5000); // Call hidePreloader after 5000 milliseconds if not already called by animation
+        });
+
+        function hidePreloader() {
+            var preloader = document.querySelector('.preloader');
+            preloader.style.opacity = '0';
+            setTimeout(function () {
+                preloader.style.display = 'none';
+            }, 200);
+        }
+    </script>
+</div>
+
+<main class="page-container" id="swup">
+
+	
+
+	<div class="main-content-container flex flex-col justify-between min-h-dvh">
+		<div class="main-content-header">
+			<header class="navbar-container px-6 md:px-12">
+    <div class="navbar-content transition-navbar ">
+        <div class="left">
+            
+                <a class="logo-image h-8 w-8 sm:w-10 sm:h-10 mr-3" href="/">
+                    <img src="https://charles2530.github.io/image/background/logo.jpg" class="w-full h-full rounded-xs">
+                </a>
+            
+            <a class="logo-title" href="/">
+                
+                Charles&#39;s Castle
+                
+            </a>
+        </div>
+
+        <div class="right">
+            <!-- PC -->
+            <div class="desktop">
+                <ul class="navbar-list">
+                    
+                        
+                            
+
+                            <li class="navbar-item">
+                                <!-- Menu -->
+                                <a class=""
+                                   href="/"
+                                        >
+                                    <i class="fa-regular fa-house fa-fw"></i>
+                                    HOME
+                                    
+                                </a>
+
+                                <!-- Submenu -->
+                                
+                            </li>
+                    
+                        
+                            
+
+                            <li class="navbar-item">
+                                <!-- Menu -->
+                                <a class=""
+                                   href="/categories"
+                                        >
+                                    <i class="fas fa-bookmark fa-fw"></i>
+                                    CATEGORIES
+                                    
+                                </a>
+
+                                <!-- Submenu -->
+                                
+                            </li>
+                    
+                        
+                            
+
+                            <li class="navbar-item">
+                                <!-- Menu -->
+                                <a class=""
+                                   href="/tags"
+                                        >
+                                    <i class="fas fa-tags fa-fw"></i>
+                                    TAGS
+                                    
+                                </a>
+
+                                <!-- Submenu -->
+                                
+                            </li>
+                    
+                        
+                            
+
+                            <li class="navbar-item">
+                                <!-- Menu -->
+                                <a class="has-dropdown"
+                                   href="#"
+                                        onClick=&#34;return false;&#34;>
+                                    <i class="fa-regular fa-user fa-fw"></i>
+                                    ABOUT
+                                    <i class="fa-solid fa-chevron-down fa-fw"></i>
+                                </a>
+
+                                <!-- Submenu -->
+                                
+                                    <ul class="sub-menu">
+                                        
+                                            <li>
+                                                <a href="/about">
+                                                    ME
+                                                </a>
+                                            </li>
+                                        
+                                            <li>
+                                                <a target="_blank" rel="noopener" href="https://github.com/Charles2530/">
+                                                    GITHUB
+                                                </a>
+                                            </li>
+                                        
+                                            <li>
+                                                <a href="https://charles2530.github.io">
+                                                    BLOG
+                                                </a>
+                                            </li>
+                                        
+                                            <li>
+                                                <a target="_blank" rel="noopener" href="https://tongji.baidu.com/">
+                                                    STATISTICS
+                                                </a>
+                                            </li>
+                                        
+                                    </ul>
+                                
+                            </li>
+                    
+                    
+                        <li class="navbar-item search search-popup-trigger">
+                            <i class="fa-solid fa-magnifying-glass"></i>
+                        </li>
+                    
+                </ul>
+            </div>
+            <!-- Mobile -->
+            <div class="mobile">
+                
+                    <div class="icon-item search search-popup-trigger"><i class="fa-solid fa-magnifying-glass"></i>
+                    </div>
+                
+                <div class="icon-item navbar-bar">
+                    <div class="navbar-bar-middle"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Mobile sheet -->
+    <div class="navbar-drawer h-dvh w-full absolute top-0 left-0 bg-background-color flex flex-col justify-between">
+        <ul class="drawer-navbar-list flex flex-col px-4 justify-center items-start">
+            
+                
+                    
+
+                    <li class="drawer-navbar-item text-base my-1.5 flex flex-col w-full">
+                        
+                        <a class="py-1.5 px-2 flex flex-row items-center justify-between gap-1 hover:!text-primary active:!text-primary text-2xl font-semibold group border-b border-border-color hover:border-primary w-full "
+                           href="/"
+                        >
+                            <span>
+                                HOME
+                            </span>
+                            
+                                <i class="fa-regular fa-house fa-sm fa-fw"></i>
+                            
+                        </a>
+                        
+
+                        
+                    </li>
+            
+                
+                    
+
+                    <li class="drawer-navbar-item text-base my-1.5 flex flex-col w-full">
+                        
+                        <a class="py-1.5 px-2 flex flex-row items-center justify-between gap-1 hover:!text-primary active:!text-primary text-2xl font-semibold group border-b border-border-color hover:border-primary w-full "
+                           href="/categories"
+                        >
+                            <span>
+                                CATEGORIES
+                            </span>
+                            
+                                <i class="fas fa-bookmark fa-sm fa-fw"></i>
+                            
+                        </a>
+                        
+
+                        
+                    </li>
+            
+                
+                    
+
+                    <li class="drawer-navbar-item text-base my-1.5 flex flex-col w-full">
+                        
+                        <a class="py-1.5 px-2 flex flex-row items-center justify-between gap-1 hover:!text-primary active:!text-primary text-2xl font-semibold group border-b border-border-color hover:border-primary w-full "
+                           href="/tags"
+                        >
+                            <span>
+                                TAGS
+                            </span>
+                            
+                                <i class="fas fa-tags fa-sm fa-fw"></i>
+                            
+                        </a>
+                        
+
+                        
+                    </li>
+            
+                
+                    
+
+                    <li class="drawer-navbar-item-sub text-base my-1.5 flex flex-col w-full">
+                        
+                        <div class="py-1.5 px-2 flex flex-row items-center justify-between gap-1 hover:!text-primary active:!text-primary cursor-pointer text-2xl font-semibold group border-b border-border-color hover:border-primary w-full "
+                             navbar-data-toggle="submenu-About"
+                        >
+                            <span>
+                                ABOUT
+                            </span>
+                            
+                                <i class="fa-solid fa-chevron-right fa-sm fa-fw transition-all"></i>
+                            
+                        </div>
+                        
+
+                        
+                            <div class="flex-col items-start px-2 py-2 hidden" data-target="submenu-About">
+                                
+                                    <div class="drawer-navbar-item text-base flex flex-col justify-center items-start hover:underline active:underline hover:underline-offset-1 rounded-3xl">
+                                        <a class=" text-third-text-color text-xl"
+                                           href="/about">ME</a>
+                                    </div>
+                                
+                                    <div class="drawer-navbar-item text-base flex flex-col justify-center items-start hover:underline active:underline hover:underline-offset-1 rounded-3xl">
+                                        <a class=" text-third-text-color text-xl"
+                                           target="_blank" rel="noopener" href="https://github.com/Charles2530/">GITHUB</a>
+                                    </div>
+                                
+                                    <div class="drawer-navbar-item text-base flex flex-col justify-center items-start hover:underline active:underline hover:underline-offset-1 rounded-3xl">
+                                        <a class=" text-third-text-color text-xl"
+                                           href="https://charles2530.github.io">BLOG</a>
+                                    </div>
+                                
+                                    <div class="drawer-navbar-item text-base flex flex-col justify-center items-start hover:underline active:underline hover:underline-offset-1 rounded-3xl">
+                                        <a class=" text-third-text-color text-xl"
+                                           target="_blank" rel="noopener" href="https://tongji.baidu.com/">STATISTICS</a>
+                                    </div>
+                                
+                            </div>
+                        
+                    </li>
+            
+
+            
+            
+                
+                    
+                    <li class="drawer-navbar-item text-base my-1.5 flex flex-col w-full">
+                        <a class="py-1.5 px-2 flex flex-row items-center justify-between gap-1 hover:!text-primary active:!text-primary text-2xl font-semibold group border-b border-border-color hover:border-primary w-full active"
+                           href="/archives"
+                        >
+                            <span>Archives</span>
+                            <i class="fa-regular fa-archive fa-sm fa-fw"></i>
+                        </a>
+                    </li>
+                
+                    
+                    <li class="drawer-navbar-item text-base my-1.5 flex flex-col w-full">
+                        <a class="py-1.5 px-2 flex flex-row items-center justify-between gap-1 hover:!text-primary active:!text-primary text-2xl font-semibold group border-b border-border-color hover:border-primary w-full active"
+                           href="/masonry/"
+                        >
+                            <span>Photos</span>
+                            <i class="fa-solid fa-image fa-sm fa-fw"></i>
+                        </a>
+                    </li>
+                
+                    
+                    <li class="drawer-navbar-item text-base my-1.5 flex flex-col w-full">
+                        <a class="py-1.5 px-2 flex flex-row items-center justify-between gap-1 hover:!text-primary active:!text-primary text-2xl font-semibold group border-b border-border-color hover:border-primary w-full active"
+                           href="/essay/"
+                        >
+                            <span>Essays</span>
+                            <i class="fa-solid fa-message-lines fa-sm fa-fw"></i>
+                        </a>
+                    </li>
+                
+                    
+                    <li class="drawer-navbar-item text-base my-1.5 flex flex-col w-full">
+                        <a class="py-1.5 px-2 flex flex-row items-center justify-between gap-1 hover:!text-primary active:!text-primary text-2xl font-semibold group border-b border-border-color hover:border-primary w-full active"
+                           href="/friends/"
+                        >
+                            <span>Friends</span>
+                            <i class="fa-solid fa-user-group fa-sm fa-fw"></i>
+                        </a>
+                    </li>
+                
+            
+        </ul>
+
+        <div class="statistics flex justify-around my-2.5">
+    <a class="item tag-count-item flex flex-col justify-center items-center w-20" href="/tags">
+        <div class="number text-2xl sm:text-xl text-second-text-color font-semibold">45</div>
+        <div class="label text-third-text-color text-sm">Tags</div>
+    </a>
+    <a class="item tag-count-item flex flex-col justify-center items-center w-20" href="/categories">
+        <div class="number text-2xl sm:text-xl text-second-text-color font-semibold">97</div>
+        <div class="label text-third-text-color text-sm">Categories</div>
+    </a>
+    <a class="item tag-count-item flex flex-col justify-center items-center w-20" href="/archives">
+        <div class="number text-2xl sm:text-xl text-second-text-color font-semibold">479</div>
+        <div class="label text-third-text-color text-sm">Posts</div>
+    </a>
+</div>
+    </div>
+
+    <div class="window-mask"></div>
+
+</header>
+
+
+		</div>
+
+		<div class="main-content-body transition-fade-up">
+			
+
+			<div class="main-content">
+				<div class="post-page-container flex relative justify-between box-border w-full h-full">
+	<div class="article-content-container">
+
+		<div class="article-title relative w-full">
+			
+			<div class="w-full flex items-center pt-6 justify-start">
+				<h1 class="article-title-regular text-second-text-color tracking-tight text-4xl md:text-6xl font-semibold px-2 sm:px-6 md:px-8 py-3">服务态 Attention 与 KV Kernel</h1>
+			</div>
+			
+		</div>
+
+		
+		<div class="article-header flex flex-row gap-2 items-center px-2 sm:px-6 md:px-8">
+			<div class="avatar w-[46px] h-[46px] shrink-0 rounded-medium border border-border-color p-px">
+				<img src="https://charles2530.github.io/image/background/logo2.jpg">
+			</div>
+			<div class="info flex flex-col justify-between">
+				<div class="author flex items-center">
+					<span class="name text-default-text-color text-lg font-semibold">Charles</span>
+					
+					<span class="author-label ml-1.5 text-xs px-2 py-0.5 rounded-small text-third-text-color border border-shadow-color-1">Lv7</span>
+					
+				</div>
+				<div class="meta-info">
+					<div class="article-meta-info">
+    <span class="article-date article-meta-item">
+        <i class="fa-regular fa-pen-fancy"></i>&nbsp;
+        <span class="desktop">2026-05-11 10:09</span>
+        <span class="mobile">2026-05-11 10:09</span>
+        <span class="hover-info">Created</span>
+    </span>
+    
+        <span class="article-date article-meta-item">
+            <i class="fa-regular fa-wrench"></i>&nbsp;
+            <span class="desktop">2026-05-11 10:09</span>
+            <span class="mobile">2026-05-11 10:09</span>
+            <span class="hover-info">Updated</span>
+        </span>
+    
+
+    
+        <span class="article-categories article-meta-item">
+            <i class="fa-regular fa-folders"></i>&nbsp;
+            <ul>
+                
+                
+                    
+                        
+                        <li>
+                            <a href="/categories/AI/">AI</a>&nbsp;
+                        </li>
+                    
+                    
+                
+                    
+                        
+                            <li>></li>
+                        
+                        <li>
+                            <a href="/categories/AI/Operators/">Operators</a>&nbsp;
+                        </li>
+                    
+                    
+                
+            </ul>
+        </span>
+    
+    
+        <span class="article-tags article-meta-item">
+            <i class="fa-regular fa-tags"></i>&nbsp;
+            <ul>
+                
+                    <li>
+                        <a href="/tags/AI/">AI</a>&nbsp;
+                    </li>
+                
+                    <li>
+                        | <a href="/tags/Diffusion-Models/">Diffusion Models</a>&nbsp;
+                    </li>
+                
+                    <li>
+                        | <a href="/tags/GPU-Systems/">GPU Systems</a>&nbsp;
+                    </li>
+                
+                    <li>
+                        | <a href="/tags/Inference/">Inference</a>&nbsp;
+                    </li>
+                
+                    <li>
+                        | <a href="/tags/Operators/">Operators</a>&nbsp;
+                    </li>
+                
+            </ul>
+        </span>
+    
+
+    
+    
+        <span class="article-wordcount article-meta-item">
+            <i class="fa-regular fa-typewriter"></i>&nbsp;<span>3.3k Words</span>
+        </span>
+    
+    
+        <span class="article-min2read article-meta-item">
+            <i class="fa-regular fa-clock"></i>&nbsp;<span>11 Mins</span>
+        </span>
+    
+    
+        <span class="article-pv article-meta-item">
+            <i class="fa-regular fa-eye"></i>&nbsp;<span id="busuanzi_value_page_pv"></span>
+        </span>
+    
+</div>
+
+				</div>
+			</div>
+		</div>
+		
+
+		
+
+
+		<div class="article-content markdown-body px-2 sm:px-6 md:px-8 pb-8">
+			<p>训练里的 attention kernel 和在线服务里的 attention kernel，看起来在算同一个公式，实际上往往面对完全不同的系统条件。训练时更像规则的大矩阵运算；服务时尤其是 decode 阶段，更像一个在动态批处理、KV 页面管理、长短请求混杂和 tail latency 约束下运作的内存系统。</p>
+<p>因此“服务态 attention”最好被单独拿出来看。它的核心问题不只是 attention 算得快不快，而是：</p>
+<ol>
+<li>KV cache 如何布局；</li>
+<li>page table 如何组织；</li>
+<li>prefill 和 decode 是否走同一类 kernel；</li>
+<li>MQA/GQA 对读写模式有什么影响；</li>
+<li>prefix reuse 和 paged attention 如何互相作用。</li>
+</ol>
+<div class="callout callout--titled info mb-4 rounded-small shadow-redefine-flat bg-(--callout-bg-color) p-3 pl-1 relative flex flex-row gap-2"><div role="none" class="rounded-full self-stretch w-0.5 bg-(--callout-primary-color) shrink-0 opacity-60"></div><div class="flex flex-col gap-2"><div class="callout__title flex items-center gap-2 font-semibold tracking-tight">初学者先抓住</div><div class="callout__content markdown-body flex-1 min-w-0"><p>服务态 attention 的重点是动态内存系统。Prefill 像大块规则计算，decode 像每步读取不断变化的 KV 历史；KV page、prefix cache、MQA/GQA 和连续批处理会一起决定尾延迟。</p></div></div></div>
+<div class="callout callout--titled default mb-4 rounded-small shadow-redefine-flat bg-(--callout-bg-color) p-3 pl-1 relative flex flex-row gap-2"><div role="none" class="rounded-full self-stretch w-0.5 bg-(--callout-primary-color) shrink-0 opacity-60"></div><div class="flex flex-col gap-2"><div class="callout__title flex items-center gap-2 font-semibold tracking-tight">有趣例子：图书馆借阅系统</div><div class="callout__content markdown-body flex-1 min-w-0"><p>训练 attention 像一次性处理一整摞固定资料；服务 decode 像许多人不断借还不同书页。书页怎么编号、缓存、复用和回收，往往比单次阅读速度更影响效率。</p></div></div></div>
+<h2 id="1-为什么服务态-attention-要单独讲"><a class="markdownIt-Anchor" href="#1-为什么服务态-attention-要单独讲"></a> 1. 为什么服务态 attention 要单独讲</h2>
+<p><strong>最直接的原因是</strong>：服务里的瓶颈画像和训练不同。</p>
+<ol>
+<li>请求长度动态变化；</li>
+<li>每步 decode 工作量很小；</li>
+<li>KV cache 生命周期不同步；</li>
+<li>连续批处理使活跃序列集合不断变化；</li>
+<li>多租户或多 LoRA 会让 shape 更碎。</li>
+</ol>
+<p>在这种条件下，即使 attention 的数学公式完全一样，最优 kernel 设计也会显著不同。</p>
+<h2 id="2-prefill-attention-与-decode-attention-的差异"><a class="markdownIt-Anchor" href="#2-prefill-attention-与-decode-attention-的差异"></a> 2. Prefill Attention 与 Decode Attention 的差异</h2>
+<h3 id="21-prefill"><a class="markdownIt-Anchor" href="#21-prefill"></a> 2.1 Prefill</h3>
+<p>Prefill 更接近“长序列、大矩阵、规则批处理”的问题，重点通常是：</p>
+<ol>
+<li>长上下文吞吐；</li>
+<li>FlashAttention 一类 I/O 感知优化；</li>
+<li>Tensor Core 利用；</li>
+<li>长序列 tile 设计。</li>
+</ol>
+<h3 id="22-decode"><a class="markdownIt-Anchor" href="#22-decode"></a> 2.2 Decode</h3>
+<p>Decode 更接近“小步迭代、频繁读取 KV cache”的问题，重点通常是：</p>
+<ol>
+<li>小 batch 下的 kernel 粒度；</li>
+<li>不规则页面访问；</li>
+<li>KV layout；</li>
+<li>launch 开销；</li>
+<li>读带宽与 cache 命中。</li>
+</ol>
+<h3 id="23-为什么不能把-prefill-kernel-直接拿来做-decode"><a class="markdownIt-Anchor" href="#23-为什么不能把-prefill-kernel-直接拿来做-decode"></a> 2.3 为什么不能把 prefill kernel 直接拿来做 decode</h3>
+<p><strong>因为 decode 时</strong>：</p>
+<ol>
+<li>每步只增加少量 token；</li>
+<li>K/V 的历史长度大，新增长度小；</li>
+<li>主要是“读历史、写少量新增”；</li>
+<li>动态 batch 会让活跃序列长度分布非常不整齐。</li>
+</ol>
+<p>所以 decode 的最佳实现，通常比 prefill 更像一个精细的读取系统。</p>
+<h2 id="3-flashattention-在服务里还重要吗"><a class="markdownIt-Anchor" href="#3-flashattention-在服务里还重要吗"></a> 3. FlashAttention 在服务里还重要吗</h2>
+<p>重要，但形式会变化。<br />
+FlashAttention 的核心思想是减少中间 score 矩阵的 materialization 和 HBM 往返，这在服务里依然成立。<br />
+但服务态 attention 通常还要额外面对：</p>
+<ol>
+<li>paged KV；</li>
+<li>prefix cache；</li>
+<li>多请求长度不一致；</li>
+<li>decode 的极小步长。</li>
+</ol>
+<h3 id="31-flashattention-的服务价值"><a class="markdownIt-Anchor" href="#31-flashattention-的服务价值"></a> 3.1 FlashAttention 的服务价值</h3>
+<ol>
+<li>prefill 阶段极其重要；</li>
+<li>长上下文 decode 的某些场景也有价值；</li>
+<li>它提供了一种 I/O 感知的基础思路，后续 paged attention 也在沿着这条思路组织数据流。</li>
+</ol>
+<h2 id="4-pagedattention-的系统本质"><a class="markdownIt-Anchor" href="#4-pagedattention-的系统本质"></a> 4. PagedAttention 的系统本质</h2>
+<p>PagedAttention 的核心并不是“新的数学公式”，而是把 KV cache 组织成更像虚拟内存分页的结构。这样做的好处是：</p>
+<ol>
+<li>降低碎片；</li>
+<li>便于动态请求加入和退出；</li>
+<li>让不同长度请求更容易复用内存块；</li>
+<li>更适合 continuous batching。</li>
+</ol>
+<h3 id="41-为什么页面化会改变-kernel-设计"><a class="markdownIt-Anchor" href="#41-为什么页面化会改变-kernel-设计"></a> 4.1 为什么页面化会改变 kernel 设计</h3>
+<p>因为此时 attention kernel 读取的已经不再是简单连续的 K/V 张量，而是：</p>
+<ol>
+<li>page table；</li>
+<li>page 内偏移；</li>
+<li>可能跨多个页面的逻辑序列；</li>
+<li>某些请求共享的前缀页面。</li>
+</ol>
+<p>这使得 decode attention 读取路径变成“结构化不连续访问”，因此 kernel 必须同时考虑：</p>
+<ol>
+<li>页面索引；</li>
+<li>读放大；</li>
+<li>page size；</li>
+<li>cache 行为；</li>
+<li>对齐和向量化。</li>
+</ol>
+<h2 id="5-page-size-不是纯内存参数"><a class="markdownIt-Anchor" href="#5-page-size-不是纯内存参数"></a> 5. Page Size 不是纯内存参数</h2>
+<p><strong>page size 会同时影响</strong>：</p>
+<ol>
+<li>碎片率；</li>
+<li>page table 大小；</li>
+<li>kernel 读取粒度；</li>
+<li>prefix 复用效率；</li>
+<li>decode 的访存局部性。</li>
+</ol>
+<h3 id="51-page-太小的问题"><a class="markdownIt-Anchor" href="#51-page-太小的问题"></a> 5.1 page 太小的问题</h3>
+<ol>
+<li>page table 元数据开销大；</li>
+<li>索引跳转更频繁；</li>
+<li>某些向量化读取变差；</li>
+<li>kernel 逻辑更碎。</li>
+</ol>
+<h3 id="52-page-太大的问题"><a class="markdownIt-Anchor" href="#52-page-太大的问题"></a> 5.2 page 太大的问题</h3>
+<ol>
+<li>内部碎片变大；</li>
+<li>短请求也要占更多空间；</li>
+<li>prefix 共享粒度变粗；</li>
+<li>某些动态释放场景下回收效率下降。</li>
+</ol>
+<p>所以服务态 attention 的 page 设计，本质上是内存系统与 kernel 设计的共同折中。</p>
+<h2 id="6-prefix-cache-与-attention-kernel-的关系"><a class="markdownIt-Anchor" href="#6-prefix-cache-与-attention-kernel-的关系"></a> 6. Prefix Cache 与 Attention Kernel 的关系</h2>
+<p>很多人把 prefix cache 看成“系统层优化”，但它其实会直接影响 attention kernel：</p>
+<ol>
+<li>某些 K/V 页面变成只读共享；</li>
+<li>访问模式更偏向“复用老页面 + 追加新页面”；</li>
+<li>prefill 工作可被部分消除；</li>
+<li>decode 阶段的热数据分布发生变化。</li>
+</ol>
+<h3 id="61-prefix-cache-为什么能显著改变-ttft"><a class="markdownIt-Anchor" href="#61-prefix-cache-为什么能显著改变-ttft"></a> 6.1 Prefix cache 为什么能显著改变 TTFT</h3>
+<p>因为共享前缀若已被编码，就不必再次进行完整 prefill。<br />
+这相当于把服务的一部分 attention 计算提前做掉并缓存起来。</p>
+<h3 id="62-prefix-cache-为什么又很难完全做好"><a class="markdownIt-Anchor" href="#62-prefix-cache-为什么又很难完全做好"></a> 6.2 Prefix cache 为什么又很难完全做好</h3>
+<p><strong>因为它要求</strong>：</p>
+<ol>
+<li>前缀一致性判断；</li>
+<li>安全隔离；</li>
+<li>页面生命周期管理；</li>
+<li>不同租户之间的数据隔离；</li>
+<li>prefix 与后续 token 拼接时的布局兼容。</li>
+</ol>
+<h2 id="7-mqa-gqa-为什么会改变服务性能"><a class="markdownIt-Anchor" href="#7-mqa-gqa-为什么会改变服务性能"></a> 7. MQA / GQA 为什么会改变服务性能</h2>
+<p>多查询注意力 <code>MQA</code> 和分组查询注意力 <code>GQA</code> 的核心收益之一，就是减少 K/V 存储和访问压力。</p>
+<h3 id="71-为什么这对服务特别重要"><a class="markdownIt-Anchor" href="#71-为什么这对服务特别重要"></a> 7.1 为什么这对服务特别重要</h3>
+<p>因为服务尤其 decode 阶段，K/V 读取经常是带宽主瓶颈。<br />
+若多个 query head 共享更少的 K/V 组，就意味着：</p>
+<ol>
+<li>KV cache 更小；</li>
+<li>读取更少；</li>
+<li>长上下文服务更便宜；</li>
+<li>page 管理压力更低。</li>
+</ol>
+<h3 id="72-它不是纯模型设计问题"><a class="markdownIt-Anchor" href="#72-它不是纯模型设计问题"></a> 7.2 它不是纯模型设计问题</h3>
+<p>从服务视角看，MQA/GQA 会改变：</p>
+<ol>
+<li>cache layout；</li>
+<li>kernel 中 head 维的并行映射；</li>
+<li>页面对齐方式；</li>
+<li>实际带宽消耗。</li>
+</ol>
+<p>因此它同时是模型结构和 kernel 工程问题。</p>
+<h2 id="8-long-context-服务里的-attention-痛点"><a class="markdownIt-Anchor" href="#8-long-context-服务里的-attention-痛点"></a> 8. Long Context 服务里的 attention 痛点</h2>
+<p>长上下文服务面临的不是单一瓶颈，而是一串耦合问题：</p>
+<ol>
+<li>prefill attention 很重；</li>
+<li>KV cache 很大；</li>
+<li>decode 时历史读取很长；</li>
+<li>page table 更大；</li>
+<li>prefix reuse 和上下文压缩是否配合良好。</li>
+</ol>
+<h3 id="81-为什么长上下文系统往往不能只靠更大显存"><a class="markdownIt-Anchor" href="#81-为什么长上下文系统往往不能只靠更大显存"></a> 8.1 为什么长上下文系统往往不能只靠“更大显存”</h3>
+<p>因为问题不只是装不装得下，还包括：</p>
+<ol>
+<li>TTFT 是否可接受；</li>
+<li>decode 是否被超长 KV 拖慢；</li>
+<li>并发是否被长请求吃掉；</li>
+<li>tail latency 是否失控。</li>
+</ol>
+<p>所以长上下文 attention kernel 必须和缓存、调度、压缩策略一起设计。</p>
+<h2 id="9-decode-下的-kernel-颗粒度问题"><a class="markdownIt-Anchor" href="#9-decode-下的-kernel-颗粒度问题"></a> 9. Decode 下的 kernel 颗粒度问题</h2>
+<p>Decode 每步只生成极少数 token，因此很多操作开始呈现“太小而不够密”的特征。<br />
+<strong>这时常见的问题是</strong>：</p>
+<ol>
+<li>单步 kernel 太多；</li>
+<li>每个 kernel 工作量太小；</li>
+<li>launch 开销占比高；</li>
+<li>连续批处理下 shape constantly changing。</li>
+</ol>
+<h3 id="91-为什么小-kernel-融合在-decode-下格外重要"><a class="markdownIt-Anchor" href="#91-为什么小-kernel-融合在-decode-下格外重要"></a> 9.1 为什么小 kernel 融合在 decode 下格外重要</h3>
+<p>因为 decode 每步本来就没有多少计算可摊薄。<br />
+<strong>只要把</strong>：</p>
+<ol>
+<li>rope；</li>
+<li>norm；</li>
+<li>bias；</li>
+<li>logits 后处理；</li>
+</ol>
+<p>这类小操作融合起来，就可能显著改善单步延迟。</p>
+<h2 id="10-pagedattention-的常见失效模式"><a class="markdownIt-Anchor" href="#10-pagedattention-的常见失效模式"></a> 10. PagedAttention 的常见失效模式</h2>
+<h3 id="101-页面访问过碎"><a class="markdownIt-Anchor" href="#101-页面访问过碎"></a> 10.1 页面访问过碎</h3>
+<p>如果页面布局和调度不匹配，kernel 会频繁跨页跳转，导致：</p>
+<ol>
+<li>读不连续；</li>
+<li>向量化差；</li>
+<li>L2 利用不稳定。</li>
+</ol>
+<h3 id="102-page-元数据负担过重"><a class="markdownIt-Anchor" href="#102-page-元数据负担过重"></a> 10.2 page 元数据负担过重</h3>
+<p>某些情况下并不是主数据慢，而是：</p>
+<ol>
+<li>page table 查找；</li>
+<li>索引重排；</li>
+<li>pointer chasing；</li>
+</ol>
+<p>这些辅助逻辑开始变得显著。</p>
+<h3 id="103-共享前缀和回收策略冲突"><a class="markdownIt-Anchor" href="#103-共享前缀和回收策略冲突"></a> 10.3 共享前缀和回收策略冲突</h3>
+<p>如果 prefix cache 做得不好，就可能出现：</p>
+<ol>
+<li>页面该回收时回收不了；</li>
+<li>某些共享页占着显存过久；</li>
+<li>反而损害整体并发。</li>
+</ol>
+<h2 id="11-诊断服务态-attention-的顺序"><a class="markdownIt-Anchor" href="#11-诊断服务态-attention-的顺序"></a> 11. 诊断服务态 attention 的顺序</h2>
+<p>如果怀疑服务里的 attention 是瓶颈，较稳妥的排查顺序通常是：</p>
+<ol>
+<li>先区分 prefill 还是 decode 主导；</li>
+<li>再看是 attention kernel 本身，还是 KV cache / page 管理主导；</li>
+<li>再看是否是 prefix reuse 不足；</li>
+<li>再看是否和 MQA/GQA、LoRA、多租户交互有关；</li>
+<li>最后才决定是换 kernel、改 page size、改 layout 还是改调度。</li>
+</ol>
+<h2 id="12-一个形象比喻"><a class="markdownIt-Anchor" href="#12-一个形象比喻"></a> 12. 一个形象比喻</h2>
+<p>服务态 attention 可以想成图书馆里的阅览和存档系统。Prefill 像一次性把整本书扫描入库，decode 像读者不断来借阅之前存下的章节。PagedAttention 就像把书分成标准档案盒管理，prefix cache 像把热门前几章提前复印好共享。真正的难点，不只是扫描速度，而是如何让不同读者以最低冲突成本访问同一批资料，同时不把档案室塞爆。</p>
+<h2 id="13-小结"><a class="markdownIt-Anchor" href="#13-小结"></a> 13. 小结</h2>
+<p>服务态 attention 与 KV kernel 的关键，不在于把 attention 数学公式算出来，而在于把长时历史、页面管理、动态批处理和内存局部性组织成一条稳定高效的数据路径。也正因为如此，它已经不只是 kernel 问题，而是 attention kernel、KV cache、prefix 复用、调度和模型结构共同构成的系统问题。</p>
+<p>理解这一点，才能真正看懂为什么现代 LLM serving 框架会把 <code>FlashAttention</code>、<code>PagedAttention</code>、<code>KV paging</code>、<code>prefix cache</code> 和 <code>continuous batching</code> 放在同一张系统图里。</p>
+<h2 id="实践补充与检查"><a class="markdownIt-Anchor" href="#实践补充与检查"></a> 实践补充与检查</h2>
+<h3 id="把-服务态-attention-与-kv-kernel-放回真实系统里理解"><a class="markdownIt-Anchor" href="#把-服务态-attention-与-kv-kernel-放回真实系统里理解"></a> 把 <strong>服务态 Attention 与 KV Kernel</strong> 放回真实系统里理解</h3>
+<p>很多页面在介绍算子或排查方法时，读者最容易获得的是一组术语，但真正落地时更关键的是：<strong>这个主题究竟在训练、推理、编译器、运行时和硬件拓扑之间扮演什么角色</strong>。围绕 <strong>服务态 Attention 与 KV Kernel</strong>，更实用的切入方式不是先记定义，而是先把问题拆成几个稳定坐标：</p>
+<ol>
+<li><strong>paged attention、MQA/GQA、KV 布局、decode 小形状、cache locality</strong>。</li>
+</ol>
+<p>之所以要先做这一步，是因为大量“优化失败”并不是实现不够努力，而是一开始就把问题建模错了。比如明明是 <strong>shape family</strong> 失控，却去盯某个单一 kernel；明明是 <strong>拓扑或缓存生命周期</strong> 在拖后腿，却把矛头指向单步 FLOPs；明明应该在 <strong>运行时</strong> 解决，却试图把所有复杂度压进一个更重的 fused kernel。只要坐标系没建立，后续 benchmark、profile、灰度和上线都容易失真。</p>
+<h3 id="更像工程手册的排查顺序"><a class="markdownIt-Anchor" href="#更像工程手册的排查顺序"></a> 更像工程手册的排查顺序</h3>
+<p>针对 <strong>服务态 Attention 与 KV Kernel</strong>，一个更稳妥的工程排查顺序通常是：</p>
+<ol>
+<li><strong>先确认真实工作负载</strong>。不要只拿一个热 shape 或论文默认配置来代表全系统；</li>
+<li><strong>再确认瓶颈层级</strong>。区分是算子本身、调度路径、拓扑链路、还是缓存/内存生命周期在主导；</li>
+<li><strong>然后才进入 microbenchmark</strong>。只有当端到端关键路径已被确认，单算子基准才有解释力；</li>
+<li><strong>把热路径和尾路径分开</strong>。很多主题在平均值上看起来很好，但在尾部 shape、极端长度或混合流量上完全是另一回事；</li>
+<li><strong>最后写清回退条件</strong>。没有回退条件的优化，就不算真正可上线的优化。</li>
+</ol>
+<p>如果团队把这套顺序固化下来，<strong>服务态 Attention 与 KV Kernel</strong> 就不再只是“某个高手会调的点”，而会逐渐变成组织可继承的能力。</p>
+<h3 id="最常见的误判与失败模式"><a class="markdownIt-Anchor" href="#最常见的误判与失败模式"></a> 最常见的误判与失败模式</h3>
+<p>围绕 <strong>服务态 Attention 与 KV Kernel</strong>，最常见的误判往往不是“完全不知道问题”，而是知道一半：</p>
+<ol>
+<li><strong>只优化 GEMM 主干</strong>。</li>
+<li><strong>忽略 page 访问离散</strong>。</li>
+<li><strong>KV 元数据开销被低估</strong>。</li>
+</ol>
+<p>这些误判之所以反复出现，是因为算子工程天然跨层。一个现象可能同时带着 <strong>kernel</strong>、<strong>runtime</strong>、<strong>拓扑</strong>、<strong>数据布局</strong> 和 <strong>服务负载</strong> 五层因素。若团队只盯其中一层，很容易做出“局部更优、全局更差”的决策。因此，这类主题最需要的往往不是更多零碎技巧，而是<strong>把失败模式写成制度化案例</strong>：什么情况下该怀疑布局，什么情况下该怀疑 cache，什么情况下应先改 dispatch，什么情况下必须回到硬件日志与链路测量。</p>
+<h3 id="验收-回归与长期维护"><a class="markdownIt-Anchor" href="#验收-回归与长期维护"></a> 验收、回归与长期维护</h3>
+<p>真正让 <strong>服务态 Attention 与 KV Kernel</strong> 站得住，不是一次 benchmark 跑得漂亮，而是它能否进入长期维护循环。更成熟的验收方式通常包括：</p>
+<ol>
+<li><strong>同时看 kernel 与 runtime</strong>。</li>
+<li><strong>跟踪 page hit/locality</strong>。</li>
+<li><strong>比较不同 head 结构</strong>。</li>
+<li><strong>长跑观察碎片化</strong>。</li>
+</ol>
+<p>除此之外，还建议把 <strong>服务态 Attention 与 KV Kernel</strong> 相关改动长期绑定四类材料：</p>
+<ol>
+<li><strong>代表性 probe</strong>，用于快速复验是否退化；</li>
+<li><strong>端到端案例</strong>，用于防止只赢 microbenchmark；</li>
+<li><strong>已知黑名单 shape / 路径</strong>，避免后来人重复踩坑；</li>
+<li><strong>升级对照记录</strong>，包括驱动、编译器、框架、运行时变化前后的差异。</li>
+</ol>
+<p>做到这一步后，<strong>服务态 Attention 与 KV Kernel</strong> 才会真正从“概念页”变成“方法页”，再从“方法页”变成“平台资产页”。</p>
+
+		</div>
+
+		
+		<div class="post-copyright-info w-full my-8 px-2 sm:px-6 md:px-8">
+			<div class="article-copyright-info-container">
+    <ul>
+        <li><strong>Title:</strong> 服务态 Attention 与 KV Kernel</li>
+        <li><strong>Author:</strong> Charles</li>
+        <li><strong>Created at
+                :</strong> 2026-05-11 10:09:00</li>
+        
+            <li>
+                <strong>Updated at
+                    :</strong> 2026-05-11 10:09:00
+            </li>
+        
+        <li>
+            <strong>Link:</strong> https://charles2530.github.io/2026/05/11/ai-files-operators-serving-attention-and-kv-kernels/
+        </li>
+        <li>
+            <strong>
+                License:
+            </strong>
+            
+
+            
+                This work is licensed under <a class="license" target="_blank" rel="noopener" href="https://creativecommons.org/licenses/by-nc-sa/4.0">CC BY-NC-SA 4.0</a>.
+            
+        </li>
+    </ul>
+</div>
+
+		</div>
+		
+
+		
+		<ul class="post-tags-box text-lg mt-1.5 flex-wrap justify-center flex md:hidden">
+			
+			<li class="tag-item mx-0.5">
+				<a href="/tags/AI/">#AI</a>&nbsp;
+			</li>
+			
+			<li class="tag-item mx-0.5">
+				<a href="/tags/Diffusion-Models/">#Diffusion Models</a>&nbsp;
+			</li>
+			
+			<li class="tag-item mx-0.5">
+				<a href="/tags/GPU-Systems/">#GPU Systems</a>&nbsp;
+			</li>
+			
+			<li class="tag-item mx-0.5">
+				<a href="/tags/Inference/">#Inference</a>&nbsp;
+			</li>
+			
+			<li class="tag-item mx-0.5">
+				<a href="/tags/Operators/">#Operators</a>&nbsp;
+			</li>
+			
+		</ul>
+		
+
+		
+
+		
+		<div class="article-nav my-8 flex justify-between items-center px-2 sm:px-6 md:px-8">
+			
+			<div class="article-prev border-border-color shadow-redefine-flat shadow-shadow-color-2 rounded-medium px-4 py-2 hover:shadow-redefine-flat-hover hover:shadow-shadow-color-2">
+				<a class="prev" rel="prev" href="/2026/05/11/ai-files-operators-testing-regression-and-maintenance/">
+					<span class="left arrow-icon flex justify-center items-center">
+						<i class="fa-solid fa-chevron-left"></i>
+					</span>
+					<span class="title flex justify-center items-center">
+						<span class="post-nav-title-item truncate max-w-48">测试、回归与维护</span>
+						<span class="post-nav-item">Prev posts</span>
+					</span>
+				</a>
+			</div>
+			
+			
+			<div class="article-next border-border-color shadow-redefine-flat shadow-shadow-color-2 rounded-medium px-4 py-2 hover:shadow-redefine-flat-hover hover:shadow-shadow-color-2">
+				<a class="next" rel="next" href="/2026/05/11/ai-files-operators-runtime-dispatch-and-kernel-selection/">
+					<span class="title flex justify-center items-center">
+						<span class="post-nav-title-item truncate max-w-48">运行时 Dispatch 与 Kernel 选择</span>
+						<span class="post-nav-item">Next posts</span>
+					</span>
+					<span class="right arrow-icon flex justify-center items-center">
+						<i class="fa-solid fa-chevron-right"></i>
+					</span>
+				</a>
+			</div>
+			
+		</div>
+		
+
+
+		
+		<div class="comment-container px-2 sm:px-6 md:px-8 pb-8">
+			<div class="comments-container mt-10 w-full ">
+    <div id="comment-anchor" class="w-full h-2.5"></div>
+    <div class="comment-area-title w-full my-1.5 md:my-2.5 text-xl md:text-3xl font-bold">
+        Comments
+    </div>
+    
+
+        
+            
+    <div id="gitalk-container"></div>
+    <script data-swup-reload-script
+            src="https://cdnjs.cloudflare.com/ajax/libs/gitalk/1.8.0/gitalk.min.js"></script>
+    <script data-swup-reload-script>
+        (function() {
+            const startPath = location.pathname;
+            const startTime = Date.now();
+            const retryDelay = 200;
+            const retryLimit = 5000;
+
+            const runGitalk = () => {
+                if (location.pathname !== startPath) {
+                    return;
+                }
+
+                const container = document.getElementById('gitalk-container');
+                if (!container || typeof Gitalk === 'undefined') {
+                    if (Date.now() - startTime < retryLimit) {
+                        setTimeout(runGitalk, retryDelay);
+                    }
+                    return;
+                }
+
+                container.innerHTML = '';
+
+                let pageKey = decodeURI(location.pathname);
+                const maxLength = 50;
+                if (pageKey.length > maxLength) {
+                    pageKey = pageKey.substring(0, maxLength - 3) + '...';
+                }
+
+                try {
+                    new Gitalk({
+                        clientID: '8083299a8ee2aaf23879',
+                        clientSecret: 'a8161e81d4872181e884fdb69f7be24916b6a9d0',
+                        repo: 'charles2530_issues',
+                        owner: 'Charles2530',
+                        admin: ['Charles2530'],
+                        id: pageKey,
+                        language: 'en',
+                        proxy: 'https://github.com/login/oauth/access_token'
+                    }).render(container);
+                } catch (e) {
+                    window.Gitalk = null;
+                }
+            };
+
+            runGitalk();
+        })();
+    </script>
+
+
+
+        
+    
+</div>
+
+		</div>
+		
+	</div>
+
+	
+	<div class="toc-content-container">
+		<div class="post-toc-wrap">
+	<div class="post-toc">
+		<div class="toc-title">On this page</div>
+		<div class="page-title">服务态 Attention 与 KV Kernel</div>
+		<ol class="nav"><li class="nav-item nav-level-2"><a class="nav-link" href="#1-%E4%B8%BA%E4%BB%80%E4%B9%88%E6%9C%8D%E5%8A%A1%E6%80%81-attention-%E8%A6%81%E5%8D%95%E7%8B%AC%E8%AE%B2"><span class="nav-text"> 1. 为什么服务态 attention 要单独讲</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#2-prefill-attention-%E4%B8%8E-decode-attention-%E7%9A%84%E5%B7%AE%E5%BC%82"><span class="nav-text"> 2. Prefill Attention 与 Decode Attention 的差异</span></a><ol class="nav-child"><li class="nav-item nav-level-3"><a class="nav-link" href="#21-prefill"><span class="nav-text"> 2.1 Prefill</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#22-decode"><span class="nav-text"> 2.2 Decode</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#23-%E4%B8%BA%E4%BB%80%E4%B9%88%E4%B8%8D%E8%83%BD%E6%8A%8A-prefill-kernel-%E7%9B%B4%E6%8E%A5%E6%8B%BF%E6%9D%A5%E5%81%9A-decode"><span class="nav-text"> 2.3 为什么不能把 prefill kernel 直接拿来做 decode</span></a></li></ol></li><li class="nav-item nav-level-2"><a class="nav-link" href="#3-flashattention-%E5%9C%A8%E6%9C%8D%E5%8A%A1%E9%87%8C%E8%BF%98%E9%87%8D%E8%A6%81%E5%90%97"><span class="nav-text"> 3. FlashAttention 在服务里还重要吗</span></a><ol class="nav-child"><li class="nav-item nav-level-3"><a class="nav-link" href="#31-flashattention-%E7%9A%84%E6%9C%8D%E5%8A%A1%E4%BB%B7%E5%80%BC"><span class="nav-text"> 3.1 FlashAttention 的服务价值</span></a></li></ol></li><li class="nav-item nav-level-2"><a class="nav-link" href="#4-pagedattention-%E7%9A%84%E7%B3%BB%E7%BB%9F%E6%9C%AC%E8%B4%A8"><span class="nav-text"> 4. PagedAttention 的系统本质</span></a><ol class="nav-child"><li class="nav-item nav-level-3"><a class="nav-link" href="#41-%E4%B8%BA%E4%BB%80%E4%B9%88%E9%A1%B5%E9%9D%A2%E5%8C%96%E4%BC%9A%E6%94%B9%E5%8F%98-kernel-%E8%AE%BE%E8%AE%A1"><span class="nav-text"> 4.1 为什么页面化会改变 kernel 设计</span></a></li></ol></li><li class="nav-item nav-level-2"><a class="nav-link" href="#5-page-size-%E4%B8%8D%E6%98%AF%E7%BA%AF%E5%86%85%E5%AD%98%E5%8F%82%E6%95%B0"><span class="nav-text"> 5. Page Size 不是纯内存参数</span></a><ol class="nav-child"><li class="nav-item nav-level-3"><a class="nav-link" href="#51-page-%E5%A4%AA%E5%B0%8F%E7%9A%84%E9%97%AE%E9%A2%98"><span class="nav-text"> 5.1 page 太小的问题</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#52-page-%E5%A4%AA%E5%A4%A7%E7%9A%84%E9%97%AE%E9%A2%98"><span class="nav-text"> 5.2 page 太大的问题</span></a></li></ol></li><li class="nav-item nav-level-2"><a class="nav-link" href="#6-prefix-cache-%E4%B8%8E-attention-kernel-%E7%9A%84%E5%85%B3%E7%B3%BB"><span class="nav-text"> 6. Prefix Cache 与 Attention Kernel 的关系</span></a><ol class="nav-child"><li class="nav-item nav-level-3"><a class="nav-link" href="#61-prefix-cache-%E4%B8%BA%E4%BB%80%E4%B9%88%E8%83%BD%E6%98%BE%E8%91%97%E6%94%B9%E5%8F%98-ttft"><span class="nav-text"> 6.1 Prefix cache 为什么能显著改变 TTFT</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#62-prefix-cache-%E4%B8%BA%E4%BB%80%E4%B9%88%E5%8F%88%E5%BE%88%E9%9A%BE%E5%AE%8C%E5%85%A8%E5%81%9A%E5%A5%BD"><span class="nav-text"> 6.2 Prefix cache 为什么又很难完全做好</span></a></li></ol></li><li class="nav-item nav-level-2"><a class="nav-link" href="#7-mqa-gqa-%E4%B8%BA%E4%BB%80%E4%B9%88%E4%BC%9A%E6%94%B9%E5%8F%98%E6%9C%8D%E5%8A%A1%E6%80%A7%E8%83%BD"><span class="nav-text"> 7. MQA &#x2F; GQA 为什么会改变服务性能</span></a><ol class="nav-child"><li class="nav-item nav-level-3"><a class="nav-link" href="#71-%E4%B8%BA%E4%BB%80%E4%B9%88%E8%BF%99%E5%AF%B9%E6%9C%8D%E5%8A%A1%E7%89%B9%E5%88%AB%E9%87%8D%E8%A6%81"><span class="nav-text"> 7.1 为什么这对服务特别重要</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#72-%E5%AE%83%E4%B8%8D%E6%98%AF%E7%BA%AF%E6%A8%A1%E5%9E%8B%E8%AE%BE%E8%AE%A1%E9%97%AE%E9%A2%98"><span class="nav-text"> 7.2 它不是纯模型设计问题</span></a></li></ol></li><li class="nav-item nav-level-2"><a class="nav-link" href="#8-long-context-%E6%9C%8D%E5%8A%A1%E9%87%8C%E7%9A%84-attention-%E7%97%9B%E7%82%B9"><span class="nav-text"> 8. Long Context 服务里的 attention 痛点</span></a><ol class="nav-child"><li class="nav-item nav-level-3"><a class="nav-link" href="#81-%E4%B8%BA%E4%BB%80%E4%B9%88%E9%95%BF%E4%B8%8A%E4%B8%8B%E6%96%87%E7%B3%BB%E7%BB%9F%E5%BE%80%E5%BE%80%E4%B8%8D%E8%83%BD%E5%8F%AA%E9%9D%A0%E6%9B%B4%E5%A4%A7%E6%98%BE%E5%AD%98"><span class="nav-text"> 8.1 为什么长上下文系统往往不能只靠“更大显存”</span></a></li></ol></li><li class="nav-item nav-level-2"><a class="nav-link" href="#9-decode-%E4%B8%8B%E7%9A%84-kernel-%E9%A2%97%E7%B2%92%E5%BA%A6%E9%97%AE%E9%A2%98"><span class="nav-text"> 9. Decode 下的 kernel 颗粒度问题</span></a><ol class="nav-child"><li class="nav-item nav-level-3"><a class="nav-link" href="#91-%E4%B8%BA%E4%BB%80%E4%B9%88%E5%B0%8F-kernel-%E8%9E%8D%E5%90%88%E5%9C%A8-decode-%E4%B8%8B%E6%A0%BC%E5%A4%96%E9%87%8D%E8%A6%81"><span class="nav-text"> 9.1 为什么小 kernel 融合在 decode 下格外重要</span></a></li></ol></li><li class="nav-item nav-level-2"><a class="nav-link" href="#10-pagedattention-%E7%9A%84%E5%B8%B8%E8%A7%81%E5%A4%B1%E6%95%88%E6%A8%A1%E5%BC%8F"><span class="nav-text"> 10. PagedAttention 的常见失效模式</span></a><ol class="nav-child"><li class="nav-item nav-level-3"><a class="nav-link" href="#101-%E9%A1%B5%E9%9D%A2%E8%AE%BF%E9%97%AE%E8%BF%87%E7%A2%8E"><span class="nav-text"> 10.1 页面访问过碎</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#102-page-%E5%85%83%E6%95%B0%E6%8D%AE%E8%B4%9F%E6%8B%85%E8%BF%87%E9%87%8D"><span class="nav-text"> 10.2 page 元数据负担过重</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#103-%E5%85%B1%E4%BA%AB%E5%89%8D%E7%BC%80%E5%92%8C%E5%9B%9E%E6%94%B6%E7%AD%96%E7%95%A5%E5%86%B2%E7%AA%81"><span class="nav-text"> 10.3 共享前缀和回收策略冲突</span></a></li></ol></li><li class="nav-item nav-level-2"><a class="nav-link" href="#11-%E8%AF%8A%E6%96%AD%E6%9C%8D%E5%8A%A1%E6%80%81-attention-%E7%9A%84%E9%A1%BA%E5%BA%8F"><span class="nav-text"> 11. 诊断服务态 attention 的顺序</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#12-%E4%B8%80%E4%B8%AA%E5%BD%A2%E8%B1%A1%E6%AF%94%E5%96%BB"><span class="nav-text"> 12. 一个形象比喻</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#13-%E5%B0%8F%E7%BB%93"><span class="nav-text"> 13. 小结</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#%E5%AE%9E%E8%B7%B5%E8%A1%A5%E5%85%85%E4%B8%8E%E6%A3%80%E6%9F%A5"><span class="nav-text"> 实践补充与检查</span></a><ol class="nav-child"><li class="nav-item nav-level-3"><a class="nav-link" href="#%E6%8A%8A-%E6%9C%8D%E5%8A%A1%E6%80%81-attention-%E4%B8%8E-kv-kernel-%E6%94%BE%E5%9B%9E%E7%9C%9F%E5%AE%9E%E7%B3%BB%E7%BB%9F%E9%87%8C%E7%90%86%E8%A7%A3"><span class="nav-text"> 把 服务态 Attention 与 KV Kernel 放回真实系统里理解</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#%E6%9B%B4%E5%83%8F%E5%B7%A5%E7%A8%8B%E6%89%8B%E5%86%8C%E7%9A%84%E6%8E%92%E6%9F%A5%E9%A1%BA%E5%BA%8F"><span class="nav-text"> 更像工程手册的排查顺序</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#%E6%9C%80%E5%B8%B8%E8%A7%81%E7%9A%84%E8%AF%AF%E5%88%A4%E4%B8%8E%E5%A4%B1%E8%B4%A5%E6%A8%A1%E5%BC%8F"><span class="nav-text"> 最常见的误判与失败模式</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#%E9%AA%8C%E6%94%B6-%E5%9B%9E%E5%BD%92%E4%B8%8E%E9%95%BF%E6%9C%9F%E7%BB%B4%E6%8A%A4"><span class="nav-text"> 验收、回归与长期维护</span></a></li></ol></li></ol>
+
+	</div>
+</div>
+	</div>
+	
+</div>
+
+			</div>
+
+			
+		</div>
+
+		<div class="main-content-footer">
+			<footer class="footer mt-5 py-5 h-auto text-base text-third-text-color relative border-t-2 border-t-border-color">
+    <div class="info-container py-3 text-center">
+        
+        <div class="text-center">
+            &copy;
+            
+              <span>2022</span>
+              -
+            
+            2026&nbsp;&nbsp;<i class="fa-solid fa-heart fa-beat" style="--fa-animation-duration: 0.5s; color: #f54545"></i>&nbsp;&nbsp;<a href="/">Charles</a>
+            
+                
+                <p class="post-count space-x-0.5">
+                    <span>
+                        479 posts in total
+                    </span>
+                    
+                        <span>
+                            1896.8k words in total
+                        </span>
+                    
+                </p>
+            
+        </div>
+        
+            <script data-swup-reload-script src="https://cn.vercount.one/js"></script>
+            <div class="relative text-center lg:absolute lg:right-[20px] lg:top-1/2 lg:-translate-y-1/2 lg:text-right">
+                
+                    <span id="busuanzi_container_site_uv" class="lg:!block">
+                        <span class="text-sm">VISITOR COUNT</span>
+                        <span id="busuanzi_value_site_uv"></span>
+                    </span>
+                
+                
+                    <span id="busuanzi_container_site_pv" class="lg:!block">
+                        <span class="text-sm">TOTAL PAGE VIEWS</span>
+                        <span id="busuanzi_value_site_pv"></span>
+                    </span>
+                
+            </div>
+        
+        <div class="relative text-center lg:absolute lg:left-[20px] lg:top-1/2 lg:-translate-y-1/2 lg:text-left">
+            <span class="lg:block text-sm">POWERED BY <?xml version="1.0" encoding="utf-8"?><!DOCTYPE svg PUBLIC "-//W3C//DTD SVG 1.1//EN" "http://www.w3.org/Graphics/SVG/1.1/DTD/svg11.dtd"><svg class="relative top-[2px] inline-block align-baseline" version="1.1" id="圖層_1" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" x="0px" y="0px" width="1rem" height="1rem" viewBox="0 0 512 512" enable-background="new 0 0 512 512" xml:space="preserve"><path fill="#0E83CD" d="M256.4,25.8l-200,115.5L56,371.5l199.6,114.7l200-115.5l0.4-230.2L256.4,25.8z M349,354.6l-18.4,10.7l-18.6-11V275H200v79.6l-18.4,10.7l-18.6-11v-197l18.5-10.6l18.5,10.8V237h112v-79.6l18.5-10.6l18.5,10.8V354.6z"/></svg><a target="_blank" class="text-base" href="https://hexo.io">Hexo</a></span>
+            <span class="text-sm lg:block">THEME&nbsp;<a class="text-base" target="_blank" href="https://github.com/EvanNotFound/hexo-theme-redefine">Redefine v2.9.0</a></span>
+        </div>
+        
+        
+            <div>
+                Blog up for <span class="odometer" id="runtime_days" ></span> days <span class="odometer" id="runtime_hours"></span> hrs <span class="odometer" id="runtime_minutes"></span> Min <span class="odometer" id="runtime_seconds"></span> Sec
+            </div>
+        
+        
+            <script data-swup-reload-script>
+                try {
+                    function odometer_init() {
+                    const elements = document.querySelectorAll('.odometer');
+                    elements.forEach(el => {
+                        new Odometer({
+                            el,
+                            format: '( ddd).dd',
+                            duration: 200
+                        });
+                    });
+                    }
+                    odometer_init();
+                } catch (error) {}
+            </script>
+        
+        
+            
+                
+        
+                
+        
+                
+
+                    
+                        <script data-swup-reload-script type="text/javascript" src="/js/love.js"></script>
+                    
+        
+        
+    </div>  
+</footer>
+		</div>
+	</div>
+
+	
+	<div class="post-tools">
+		<div class="post-tools-container">
+	<ul class="article-tools-list">
+		<!-- TOC aside toggle -->
+		
+		<li class="right-bottom-tools page-aside-toggle">
+			<i class="fa-regular fa-outdent"></i>
+		</li>
+		
+
+		<!-- go comment -->
+		
+		<li class="go-comment">
+			<i class="fa-regular fa-comments"></i>
+		</li>
+		
+	</ul>
+</div>
+	</div>
+	
+
+	<div class="right-side-tools-container">
+		<div class="side-tools-container">
+	<ul class="hidden-tools-list">
+		<li class="right-bottom-tools tool-font-adjust-plus flex justify-center items-center">
+			<i class="fa-regular fa-magnifying-glass-plus"></i>
+		</li>
+
+		<li class="right-bottom-tools tool-font-adjust-minus flex justify-center items-center">
+			<i class="fa-regular fa-magnifying-glass-minus"></i>
+		</li>
+
+		<li class="right-bottom-tools tool-dark-light-toggle flex justify-center items-center">
+			<i class="fa-regular fa-moon"></i>
+		</li>
+
+		<!-- rss -->
+		
+		<li class="right-bottom-tools rss flex justify-center items-center">
+			<a class="flex justify-center items-center" href="/atom.xml" target="_blank">
+				<i class="fa-regular fa-rss"></i>
+			</a>
+		</li>
+		
+
+		
+
+		<li class="right-bottom-tools tool-scroll-to-bottom flex justify-center items-center">
+			<i class="fa-regular fa-arrow-down"></i>
+		</li>
+	</ul>
+
+	<ul class="visible-tools-list">
+		<li class="right-bottom-tools toggle-tools-list flex justify-center items-center">
+			<i class="fa-regular fa-cog fa-spin"></i>
+		</li>
+		
+		<li class="right-bottom-tools tool-scroll-to-top flex justify-center items-center">
+			<i class="arrow-up fas fa-arrow-up"></i>
+			<span class="percent"></span>
+		</li>
+		
+		
+	</ul>
+</div>
+	</div>
+
+	<div class="image-viewer-container" role="dialog" aria-modal="true" aria-label="Image viewer">
+	<button class="image-viewer-close" type="button" aria-label="Close">
+		<i class="fa-solid fa-xmark"></i>
+	</button>
+	<button class="image-viewer-prev" type="button" aria-label="Prev">
+		<i class="fa-solid fa-chevron-left"></i>
+	</button>
+	<div class="image-viewer-frame">
+		<img src="" alt="">
+	</div>
+	<div class="image-viewer-exif-panel hidden absolute left-1/2 bottom-20 -translate-x-1/2 w-[min(92vw,420px)] max-h-[60vh] overflow-hidden rounded-2xl bg-background-color-transparent-80 p-4 text-left shadow-redefine-flat backdrop-blur-md" role="dialog" aria-label="EXIF" aria-hidden="true">
+		<div class="flex items-center justify-between mb-3">
+			<span class="text-sm font-semibold text-first-text-color">EXIF</span>
+			<button class="image-viewer-exif-close flex h-8 w-8 items-center justify-center rounded-full bg-background-color-transparent-80 text-first-text-color transition hover:bg-background-color-transparent-40" type="button" aria-label="Close">
+				<i class="fa-solid fa-xmark text-[0.65rem]"></i>
+			</button>
+		</div>
+		<div class="image-viewer-exif-cards grid grid-cols-1 sm:grid-cols-2 gap-3 max-h-[50vh] overflow-y-auto pr-1 scrollbar-hide"></div>
+		<template class="image-viewer-exif-card-template">
+			<div class="rounded-lg bg-background-color-transparent-40 px-3 py-2">
+				<div class="image-viewer-exif-card-header flex items-center gap-2 mb-1">
+					<i class="image-viewer-exif-card-icon fa-solid fa-circle-info text-xs text-third-text-color"></i>
+					<div class="image-viewer-exif-card-title text-xs font-semibold text-first-text-color"></div>
+				</div>
+				<div class="image-viewer-exif-card-items flex flex-col gap-1"></div>
+			</div>
+		</template>
+	</div>
+	<button class="image-viewer-exif-toggle flex items-center gap-2 hidden absolute left-1/2 bottom-6 -translate-x-1/2 rounded-full border border-border-color bg-background-color-transparent-80 px-4 py-2 text-first-text-color backdrop-blur-md transition hover:bg-background-color-transparent-40" type="button" aria-label="EXIF" aria-expanded="false">
+		<i class="fa-solid fa-circle-info text-xs"></i>
+		<span class="text-xs font-semibold uppercase tracking-wider">EXIF</span>
+	</button>
+	<button class="image-viewer-next" type="button" aria-label="Next">
+		<i class="fa-solid fa-chevron-right"></i>
+	</button>
+</div>
+
+
+	
+	<div class="search-pop-overlay">
+	<div class="popup search-popup">
+		<div class="search-header">
+			<span class="search-input-field-pre">
+				<i class="fa-solid fa-keyboard"></i>
+			</span>
+			<div class="search-input-container">
+				<input autocomplete="off" autocorrect="off" autocapitalize="off" placeholder="Search..." spellcheck="false" type="search" class="search-input">
+			</div>
+			<span class="popup-btn-close">
+				<i class="fa-solid fa-times"></i>
+			</span>
+		</div>
+		<div id="search-result">
+			<div id="no-result">
+				<i class="fa-solid fa-spinner fa-spin-pulse fa-5x fa-fw"></i>
+			</div>
+		</div>
+	</div>
+</div>
+	
+
+</main>
+
+
+
+<script src="/js/build/libs/Swup.min.js"></script>
+
+<script src="/js/build/libs/SwupSlideTheme.min.js"></script>
+
+<script src="/js/build/libs/SwupScriptsPlugin.min.js"></script>
+
+<script src="/js/build/libs/SwupProgressPlugin.min.js"></script>
+
+<script src="/js/build/libs/SwupScrollPlugin.min.js"></script>
+
+<script src="/js/build/libs/SwupPreloadPlugin.min.js"></script>
+
+<script>
+    window.swup = new Swup({
+        plugins: [
+            new SwupScriptsPlugin({
+                optin: true,
+            }),
+            new SwupProgressPlugin(),
+            new SwupScrollPlugin({
+                offset: 80,
+            }),
+            new SwupSlideTheme({
+                mainElement: ".main-content-body",
+            }),
+            new SwupPreloadPlugin(),
+        ],
+        containers: ["#swup"],
+    });
+
+    window.dispatchEvent(
+        new CustomEvent("redefine:swup:ready", {
+            detail: {
+                swup: window.swup,
+            },
+        }),
+    );
+</script>
+
+
+
+
+	
+<script src="/js/build/main.js" type="module"></script>
+
+
+
+    
+<script src="/js/build/libs/odometer.min.js"></script>
+
+    
+<link rel="stylesheet" href="/assets/odometer-theme-minimal.css">
+
+
+
+
+
+
+
+  
+<script src="/js/build/libs/Typed.min.js"></script>
+
+
+
+
+    
+        
+<script src="/js/build/libs/mermaid.min.js"></script>
+
+    
+
+
+
+
+
+    
+<script src="/js/build/libs/minimasonry.min.js" data-swup-reload-script=""></script>
+
+
+
+
+<script src="/js/build/libs/moment-with-locales.min.js" data-swup-reload-script=""></script>
+
+
+
+	
+<script type="text/x-mathjax-config">
+  MathJax.Hub.Config({
+        tex2jax: {
+            inlineMath: [ ["$","$"], ["\\(","\\)"] ],
+            skipTags: ['script', 'noscript', 'style', 'textarea', 'pre', 'code'],
+            processEscapes: true
+        }
+    });
+    MathJax.Hub.Queue(function() {
+        var all = MathJax.Hub.getAllJax();
+        for (var i = 0; i < all.length; ++i)
+            all[i].SourceElement().parentNode.className += ' has-jax';
+    });
+</script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/mathjax/2.7.1/MathJax.js?config=TeX-MML-AM_CHTML"></script>
+</body>
+
+</html>

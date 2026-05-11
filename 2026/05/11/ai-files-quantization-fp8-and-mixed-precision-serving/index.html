@@ -1,0 +1,1613 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="keywords" content="Charles">
+    
+    
+    <meta name="author" content="Charles">
+    
+    <!-- Completely eliminate flash of wrong theme -->
+    <script>
+        (function() {
+            const THEME_KEY = "REDEFINE-THEME-STATUS";
+            const DARK = "dark", LIGHT = "light";
+            
+            // Get preferred theme
+            function getTheme() {
+                try {
+                    const saved = localStorage.getItem(THEME_KEY);
+                    if (saved) {
+                        const { isDark } = JSON.parse(saved);
+                        return isDark ? DARK : LIGHT;
+                    }
+                } catch (e) {}
+                
+                return matchMedia("(prefers-color-scheme: dark)").matches ? DARK : LIGHT;
+            }
+            
+            // Apply theme to document
+            function applyTheme(theme) {
+                const isDark = theme === DARK;
+                const root = document.documentElement;
+                
+                // Set classes for compatibility
+                root.classList.add(theme);
+                root.classList.remove(isDark ? LIGHT : DARK);
+                root.style.colorScheme = theme;
+            }
+            
+            // Initial application
+            const theme = getTheme();
+            applyTheme(theme);
+            
+            // Listen for system preference changes
+            matchMedia("(prefers-color-scheme: dark)").addEventListener("change", ({ matches }) => {
+                // Only update if using system preference (no localStorage entry)
+                if (!localStorage.getItem(THEME_KEY)) {
+                    applyTheme(matches ? DARK : LIGHT);
+                }
+            });
+            
+            // Set body classes ASAP (before DOMContentLoaded)
+            (function() {
+                const addBodyClass = () => {
+                    const b = document.body;
+                    if (!b) return false;
+                    b.classList.add(theme + "-mode");
+                    return true;
+                };
+
+                // Try immediately
+                if (addBodyClass()) return;
+
+                // Observe until body exists
+                const mo = new MutationObserver(() => {
+                    if (addBodyClass()) mo.disconnect();
+                });
+                mo.observe(document.documentElement, { childList: true, subtree: true });
+            })();
+        })();
+    </script>
+    
+    <!-- preconnect -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+
+    
+    <!--- Seo Part-->
+    
+    <link rel="canonical" href="https://charles2530.github.io/2026/05/11/ai-files-quantization-fp8-and-mixed-precision-serving/"/>
+    <meta name="robots" content="index,follow">
+    <meta name="googlebot" content="index,follow">
+    <meta name="revisit-after" content="1 days">
+    
+    
+        
+        <meta name="description" content="This is Charles&#39;s Castle.">
+<meta property="og:type" content="article">
+<meta property="og:title" content="FP8 与混合精度服务">
+<meta property="og:url" content="https://charles2530.github.io/2026/05/11/ai-files-quantization-fp8-and-mixed-precision-serving/index.html">
+<meta property="og:site_name" content="Charles&#39;s Castle">
+<meta property="og:description" content="This is Charles&#39;s Castle.">
+<meta property="og:locale" content="en_US">
+<meta property="og:image" content="https://charles2530.github.io/image/background/logo.jpg">
+<meta property="article:published_time" content="2026-05-11T02:49:00.000Z">
+<meta property="article:modified_time" content="2026-05-11T02:49:00.000Z">
+<meta property="article:author" content="Du Jinyang">
+<meta property="article:tag" content="AI">
+<meta property="article:tag" content="GPU Systems">
+<meta property="article:tag" content="Inference">
+<meta property="article:tag" content="Quantization">
+<meta name="twitter:card" content="summary">
+<meta name="twitter:image" content="https://charles2530.github.io/image/background/logo.jpg">
+    
+    
+    <!--- Icon Part-->
+    <link rel="icon" type="image/png" href="https://charles2530.github.io/image/background/favicon.png" sizes="192x192">
+    <link rel="apple-touch-icon" sizes="180x180" href="https://charles2530.github.io/image/background/favicon.png">
+    <meta name="theme-color" content="#A31F34">
+    <link rel="shortcut icon" href="https://charles2530.github.io/image/background/favicon.png">
+    <!--- Page Info-->
+    
+    <title>
+        
+            FP8 与混合精度服务 | Charles&#39;s Castle
+        
+    </title>
+
+    
+<link rel="stylesheet" href="/fonts/Chillax/chillax.css">
+
+
+    <!--- Inject Part-->
+    
+        
+            
+    
+            
+    
+            
+                
+                    <script data-swup-reload-script> var _hmt = _hmt || []; (function() { var hm = document.createElement("script"); hm.src = "https://hm.baidu.com/hm.js?8e0e5f382d14d87cbeadc33a36e71e86"; var s = document.getElementsByTagName("script")[0]; s.parentNode.insertBefore(hm, s); })(); </script>
+                
+    
+
+    
+<link rel="stylesheet" href="/css/style.css">
+
+
+    
+        
+<link rel="stylesheet" href="/css/build/tailwind.css">
+
+    
+
+    
+<link rel="stylesheet" href="/fonts/GeistMono/geist-mono.css">
+
+    
+<link rel="stylesheet" href="/fonts/Geist/geist.css">
+
+    <!--- Font Part-->
+    
+    
+    
+    
+    
+    
+        
+<script src="/js/build/libs/anime.min.js"></script>
+
+    
+
+    <script id="hexo-configurations">
+    window.config = {"hostname":"charles2530.github.io","root":"/","language":"en","path":"search.xml"};
+    window.theme = {"articles":{"style":{"font_size":"16px","line_height":1.5,"image_border_radius":"14px","image_alignment":"center","image_caption":false,"link_icon":true,"delete_mask":false,"title_alignment":"left","headings_top_spacing":{"h1":"5rem","h2":"4rem","h3":"2.8rem","h4":"2.5rem","h5":"2.2rem","h6":"2rem"}},"word_count":{"enable":true,"count":true,"min2read":true},"author_label":{"enable":true,"auto":true,"list":["lol","Neo","God"]},"code_block":{"copy":true,"style":"mac","highlight_theme":{"light":"github","dark":"vs2015"},"font":{"enable":false,"family":null,"url":null}},"toc":{"enable":true,"max_depth":6,"number":false,"expand":true,"init_open":true},"copyright":{"enable":true,"default":"cc_by_nc_sa"},"lazyload":true,"pangu_js":false,"recommendation":{"enable":false,"title":"recommend_articles","limit":3,"mobile_limit":2,"placeholder":"https://charles2530.github.io/image/background/p3.jfif","skip_dirs":[]}},"colors":{"primary":"#A31F34","secondary":"#1890ff","default_mode":"light"},"global":{"fonts":{"chinese":{"enable":false,"family":null,"url":null},"english":{"enable":false,"family":null,"url":null},"title":{"enable":false,"family":null,"url":null}},"content_max_width":"1000px","sidebar_width":"210px","hover":{"shadow":true,"scale":true},"scroll_progress":{"bar":true,"percentage":true},"website_counter":{"url":"https://cn.vercount.one/js","enable":true,"site_pv":true,"site_uv":true,"post_pv":true},"single_page":true,"preloader":{"enable":true,"custom_message":null},"side_tools":{"gear_rotation":true,"auto_expand":false},"open_graph":{"enable":true,"image":"https://charles2530.github.io/image/background/logo.jpg","description":"This is Charles's Castle."},"google_analytics":{"enable":false,"id":null}},"home_banner":{"enable":true,"style":"fixed","image":{"light":"https://charles2530.github.io/image/background/background-light1.jpg","dark":"https://charles2530.github.io/image/background/background-dark1.jpg"},"title":"Charles's Castle","subtitle":{"text":["Happiness is best!","Never give up!","Everyday is a gift!"],"hitokoto":{"enable":false,"show_author":false,"api":"https://v1.hitokoto.cn"},"typing_speed":100,"backing_speed":80,"starting_delay":500,"backing_delay":1500,"loop":true,"smart_backspace":true},"text_color":{"light":"#000000","dark":"#d1d1b6"},"text_style":{"title_size":"3.2rem","subtitle_size":"1.5rem","line_height":1.2},"custom_font":{"enable":false,"family":null,"url":null},"social_links":{"enable":true,"style":"center","links":[{"icon":"fa-brands fa-github","url":"https://github.com/Charles2530/"},{"icon":"fa-brands fa-zhihu","url":"https://www.zhihu.com/people/yang-guang-xiao-zi-55-55"},{"icon":"fa-solid fa-at","url":"mailto:charles2530@163.com"},{"icon":"fa-brands fa-telegram","url":null},{"icon":"/images/custom-icon.svg","url":null}],"qrs":[{"icon":"fa-brands fa-weixin","qr":"https://charles2530.github.io/image/background/Wechat_icon.png"},{"icon":"/images/custom-icon.svg","qr":null}]}},"plugins":{"feed":{"enable":true},"aplayer":{"enable":false,"type":"fixed","audios":[{"name":null,"artist":null,"url":null,"cover":null,"lrc":null}]},"mermaid":{"enable":true,"version":"11.4.1","theme":{"light":"default","dark":"dark"}}},"version":"2.9.0","navbar":{"auto_hide":true,"color":{"left":"#f78736","right":"#367df7","transparency":35},"width":{"home":"1200px","pages":"1000px"},"links":{"Home":{"path":"/","icon":"fa-regular fa-house"},"Categories":{"path":"/categories","icon":"fas fa-bookmark"},"Tags":{"path":"/tags","icon":"fas fa-tags"},"About":{"icon":"fa-regular fa-user","submenus":{"Me":"/about","Github":"https://github.com/Charles2530/","Blog":"https://charles2530.github.io","Statistics":"https://tongji.baidu.com/"}}},"search":{"enable":true,"preload":true}},"page_templates":{"friends_column":2,"tags_style":"blur","masonry":{"batch_size":12,"initial_batch_size":24}},"home":{"sidebar":{"enable":true,"position":"left","first_item":"menu","announcement":"This is Charles's Castle","show_on_mobile":true,"links":{"Archives":{"path":"/archives","icon":"fa-regular fa-archive"},"Photos":{"icon":"fa-solid fa-image","path":"/masonry/"},"Essays":{"icon":"fa-solid fa-message-lines","path":"/essay/"},"Friends":{"icon":"fa-solid fa-user-group","path":"/friends/"}}},"article_date_format":"auto","excerpt_length":200,"categories":{"enable":true,"limit":3},"tags":{"enable":true,"limit":3}},"footer":{"runtime":true,"icon":"<i class=\"fa-solid fa-heart fa-beat\" style=\"--fa-animation-duration: 0.5s; color: #f54545\"></i>","start":"2022/12/27 00:00:00","statistics":true,"customize":null,"icp":{"enable":false,"number":null,"url":null}},"footerStart":"2022/12/27 00:00:00","mermaid":{"style":{"light":"default","dark":"dark"}}};
+    window.lang_ago = {"second":"%s seconds ago","minute":"%s minutes ago","hour":"%s hours ago","day":"%s days ago","week":"%s weeks ago","month":"%s months ago","year":"%s years ago"};
+    window.i18n = {"search":"Search...","toc":"On this page","prev":"Prev","next":"Next","prev_posts":"Prev posts","next_posts":"Next posts","page":"Page %d","recent_posts":"Recent Posts","share":"Share","powered_by":"POWERED BY %s","theme":"THEME","rss_feed":"RSS Feed","category":"Category","categories":"Categories","tag":"Tag","tags":"Tags","post":"Post","posts":"Posts","tagcloud":"Tag Cloud","comment":"Comment","comments":"Comments","home":"Home","archive":"Archive","archives":"Archives","top":"TOP","sticky":"Sticky","go-back-home":"Go Back Home","masonry_loading":"Loading photos...","image_viewer":"Image viewer","close":"Close","exif":{"title":"EXIF","cards":{"camera":"Camera","lens":"Lens","exposure":"Exposure","other":"Other"},"fields":{"make":"Brand","model":"Model","date_taken":"Date taken","lens_model":"Lens","focal_length":"Focal length","focus_mode":"Focus mode","shutter":"Shutter","aperture":"Aperture","iso":"ISO","exposure_program":"Exposure program","exposure_compensation":"Exposure compensation","metering_mode":"Metering mode","flash":"Flash","white_balance":"White balance","latitude":"Latitude","longitude":"Longitude","altitude":"Altitude"},"status":{"loading":"Loading...","no_exif":"No EXIF available","library_missing":"EXIF library not loaded","image_source_missing":"Image source unavailable","unavailable":"EXIF unavailable (blocked by CORS or missing metadata)","flag_unavailable":"EXIF unavailable"}},"about":"About","changelog":"Changelog","links":"Links","link":"Link","friends":"Friends","friend":"Friend","timeline":"Timeline","shuoshuo":"Shuoshuo","bookmarks":"Bookmarks","site_uv":"VISITOR COUNT","site_pv":"TOTAL PAGE VIEWS","read_more":"Read more","wordcount":"Words","min2read":"Mins","status":"Status","runtime":"Blog up for","days":"days","hours":"hrs","minutes":"Min","seconds":"Sec","optimized_by":"and Optimized by Evan","rights":"All Rights Reserved","site_posts":"%s posts in total","site_wordcount":"%s words in total","copyright":{"author":"Author","title":"Title","link":"Link","create_time":"Created at","update_time":"Updated at","license_title":"License","license_content":"This work is licensed under %s.","all_rights_reserved":"All Rights Reserved &#169; %s","public_domain":"This work is in the public domain."},"ago":{"second":"%s seconds ago","minute":"%s minutes ago","hour":"%s hours ago","day":"%s days ago","week":"%s weeks ago","month":"%s months ago","year":"%s years ago"},"create_time":"Created","update_time":"Updated","expired":"This post is written %s days ago, and the content may not be up to date."};
+    window.data = {"masonry":true};
+  </script>
+    
+    <!--- Fontawesome Part-->
+    
+<link rel="stylesheet" href="/fontawesome/fontawesome.min.css">
+
+    
+<link rel="stylesheet" href="/fontawesome/brands.min.css">
+
+    
+<link rel="stylesheet" href="/fontawesome/solid.min.css">
+
+    
+<link rel="stylesheet" href="/fontawesome/regular.min.css">
+
+    
+    
+    
+    
+<meta name="generator" content="Hexo 6.3.0"><link rel="alternate" href="/atom.xml" title="Charles's Castle" type="application/atom+xml">
+<link rel="stylesheet" href="/css/prism-tomorrow.css" type="text/css"></head>
+
+
+<body>
+	<div class="progress-bar-container">
+	
+	<span class="scroll-progress-bar"></span>
+	
+
+	
+	<span class="pjax-progress-bar"></span>
+	<!--        <span class="swup-progress-icon">-->
+	<!--            <i class="fa-solid fa-circle-notch fa-spin"></i>-->
+	<!--        </span>-->
+	
+</div>
+
+<style>
+    :root {
+        --preloader-background-color: #fff;
+        --preloader-text-color: #000;
+    }
+
+    @media (prefers-color-scheme: dark) {
+        :root {
+            --preloader-background-color: #202124;
+            --preloader-text-color: #fff;
+        }
+    }
+
+    @media (prefers-color-scheme: light) {
+        :root {
+            --preloader-background-color: #fff;
+            --preloader-text-color: #000;
+        }
+    }
+
+    @media (max-width: 600px) {
+        .ml13 {
+            font-size: 2.6rem !important; /* Adjust this value as needed */
+        }
+    }
+
+    .preloader {
+        display: flex;
+        flex-direction: column;
+        gap: 1rem; /* Tailwind 'gap-4' is 1rem */
+        align-items: center;
+        justify-content: center;
+        position: fixed;
+        padding: 12px;
+        top: 0;
+        right: 0;
+        bottom: 0;
+        left: 0;
+        width: 100vw;
+        height: 100vh; /* 'h-screen' is 100% of the viewport height */
+        background-color: var(--preloader-background-color);
+        z-index: 1100; /* 'z-[1100]' sets the z-index */
+        transition: opacity 0.2s ease-in-out;
+    }
+
+    .ml13 {
+        font-size: 3.2rem;
+        /* text-transform: uppercase; */
+        color: var(--preloader-text-color);
+        letter-spacing: -1px;
+        font-weight: 500;
+        font-family: 'Chillax-Variable', sans-serif;
+        text-align: center;
+    }
+
+    .ml13 .word {
+        display: inline-flex;
+        flex-wrap: wrap;
+        white-space: nowrap;
+    }
+
+    .ml13 .letter {
+        display: inline-block;
+        line-height: 1em;
+    }
+</style>
+
+<div class="preloader">
+    <h2 class="ml13">
+        Charles&#39;s Castle
+    </h2>
+    <script>
+        var textWrapper = document.querySelector('.ml13');
+        // Split text into words
+        var words = textWrapper.textContent.trim().split(' ');
+
+        // Clear the existing content
+        textWrapper.innerHTML = '';
+
+        // Wrap each word and its letters in spans
+        words.forEach(function(word) {
+            var wordSpan = document.createElement('span');
+            wordSpan.classList.add('word');
+            wordSpan.innerHTML = word.replace(/\S/g, "<span class='letter'>$&</span>");
+            textWrapper.appendChild(wordSpan);
+            textWrapper.appendChild(document.createTextNode(' ')); // Add space between words
+        });
+
+        var animation = anime.timeline({ loop: true })
+            .add({
+                targets: '.ml13 .letter',
+                translateY: [20, 0],
+                translateZ: 0,
+                opacity: [0, 1],
+                filter: ['blur(5px)', 'blur(0px)'],
+                easing: "easeOutExpo",
+                duration: 1200,
+                delay: (el, i) => 300 + 20 * i,
+            })
+            .add({
+                targets: '.ml13 .letter',
+                translateY: [0, -20],
+                opacity: [1, 0],
+                filter: ['blur(0px)', 'blur(5px)'],
+                easing: "easeInExpo",
+                duration: 1000,
+                delay: (el, i) => 15 * i,
+                complete: function() {
+                    hidePreloader();
+                }
+            }, '-=700');
+
+
+        let themeStatus = JSON.parse(localStorage.getItem('REDEFINE-THEME-STATUS'))?.isDark;
+
+        // If the theme status is not found in local storage, check the preferred color scheme
+        if (themeStatus === undefined || themeStatus === null) {
+            if (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) {
+                themeStatus = 'dark';
+            } else {
+                themeStatus = 'light';
+            }
+        }
+
+        // Now you can use the themeStatus variable in your code
+        if (themeStatus) {
+            document.documentElement.style.setProperty('--preloader-background-color', '#202124');
+            document.documentElement.style.setProperty('--preloader-text-color', '#fff');
+        } else {
+            document.documentElement.style.setProperty('--preloader-background-color', '#fff');
+            document.documentElement.style.setProperty('--preloader-text-color', '#000');
+        }
+
+        window.addEventListener('load', function () {
+            setTimeout(hidePreloader, 5000); // Call hidePreloader after 5000 milliseconds if not already called by animation
+        });
+
+        function hidePreloader() {
+            var preloader = document.querySelector('.preloader');
+            preloader.style.opacity = '0';
+            setTimeout(function () {
+                preloader.style.display = 'none';
+            }, 200);
+        }
+    </script>
+</div>
+
+<main class="page-container" id="swup">
+
+	
+
+	<div class="main-content-container flex flex-col justify-between min-h-dvh">
+		<div class="main-content-header">
+			<header class="navbar-container px-6 md:px-12">
+    <div class="navbar-content transition-navbar ">
+        <div class="left">
+            
+                <a class="logo-image h-8 w-8 sm:w-10 sm:h-10 mr-3" href="/">
+                    <img src="https://charles2530.github.io/image/background/logo.jpg" class="w-full h-full rounded-xs">
+                </a>
+            
+            <a class="logo-title" href="/">
+                
+                Charles&#39;s Castle
+                
+            </a>
+        </div>
+
+        <div class="right">
+            <!-- PC -->
+            <div class="desktop">
+                <ul class="navbar-list">
+                    
+                        
+                            
+
+                            <li class="navbar-item">
+                                <!-- Menu -->
+                                <a class=""
+                                   href="/"
+                                        >
+                                    <i class="fa-regular fa-house fa-fw"></i>
+                                    HOME
+                                    
+                                </a>
+
+                                <!-- Submenu -->
+                                
+                            </li>
+                    
+                        
+                            
+
+                            <li class="navbar-item">
+                                <!-- Menu -->
+                                <a class=""
+                                   href="/categories"
+                                        >
+                                    <i class="fas fa-bookmark fa-fw"></i>
+                                    CATEGORIES
+                                    
+                                </a>
+
+                                <!-- Submenu -->
+                                
+                            </li>
+                    
+                        
+                            
+
+                            <li class="navbar-item">
+                                <!-- Menu -->
+                                <a class=""
+                                   href="/tags"
+                                        >
+                                    <i class="fas fa-tags fa-fw"></i>
+                                    TAGS
+                                    
+                                </a>
+
+                                <!-- Submenu -->
+                                
+                            </li>
+                    
+                        
+                            
+
+                            <li class="navbar-item">
+                                <!-- Menu -->
+                                <a class="has-dropdown"
+                                   href="#"
+                                        onClick=&#34;return false;&#34;>
+                                    <i class="fa-regular fa-user fa-fw"></i>
+                                    ABOUT
+                                    <i class="fa-solid fa-chevron-down fa-fw"></i>
+                                </a>
+
+                                <!-- Submenu -->
+                                
+                                    <ul class="sub-menu">
+                                        
+                                            <li>
+                                                <a href="/about">
+                                                    ME
+                                                </a>
+                                            </li>
+                                        
+                                            <li>
+                                                <a target="_blank" rel="noopener" href="https://github.com/Charles2530/">
+                                                    GITHUB
+                                                </a>
+                                            </li>
+                                        
+                                            <li>
+                                                <a href="https://charles2530.github.io">
+                                                    BLOG
+                                                </a>
+                                            </li>
+                                        
+                                            <li>
+                                                <a target="_blank" rel="noopener" href="https://tongji.baidu.com/">
+                                                    STATISTICS
+                                                </a>
+                                            </li>
+                                        
+                                    </ul>
+                                
+                            </li>
+                    
+                    
+                        <li class="navbar-item search search-popup-trigger">
+                            <i class="fa-solid fa-magnifying-glass"></i>
+                        </li>
+                    
+                </ul>
+            </div>
+            <!-- Mobile -->
+            <div class="mobile">
+                
+                    <div class="icon-item search search-popup-trigger"><i class="fa-solid fa-magnifying-glass"></i>
+                    </div>
+                
+                <div class="icon-item navbar-bar">
+                    <div class="navbar-bar-middle"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Mobile sheet -->
+    <div class="navbar-drawer h-dvh w-full absolute top-0 left-0 bg-background-color flex flex-col justify-between">
+        <ul class="drawer-navbar-list flex flex-col px-4 justify-center items-start">
+            
+                
+                    
+
+                    <li class="drawer-navbar-item text-base my-1.5 flex flex-col w-full">
+                        
+                        <a class="py-1.5 px-2 flex flex-row items-center justify-between gap-1 hover:!text-primary active:!text-primary text-2xl font-semibold group border-b border-border-color hover:border-primary w-full "
+                           href="/"
+                        >
+                            <span>
+                                HOME
+                            </span>
+                            
+                                <i class="fa-regular fa-house fa-sm fa-fw"></i>
+                            
+                        </a>
+                        
+
+                        
+                    </li>
+            
+                
+                    
+
+                    <li class="drawer-navbar-item text-base my-1.5 flex flex-col w-full">
+                        
+                        <a class="py-1.5 px-2 flex flex-row items-center justify-between gap-1 hover:!text-primary active:!text-primary text-2xl font-semibold group border-b border-border-color hover:border-primary w-full "
+                           href="/categories"
+                        >
+                            <span>
+                                CATEGORIES
+                            </span>
+                            
+                                <i class="fas fa-bookmark fa-sm fa-fw"></i>
+                            
+                        </a>
+                        
+
+                        
+                    </li>
+            
+                
+                    
+
+                    <li class="drawer-navbar-item text-base my-1.5 flex flex-col w-full">
+                        
+                        <a class="py-1.5 px-2 flex flex-row items-center justify-between gap-1 hover:!text-primary active:!text-primary text-2xl font-semibold group border-b border-border-color hover:border-primary w-full "
+                           href="/tags"
+                        >
+                            <span>
+                                TAGS
+                            </span>
+                            
+                                <i class="fas fa-tags fa-sm fa-fw"></i>
+                            
+                        </a>
+                        
+
+                        
+                    </li>
+            
+                
+                    
+
+                    <li class="drawer-navbar-item-sub text-base my-1.5 flex flex-col w-full">
+                        
+                        <div class="py-1.5 px-2 flex flex-row items-center justify-between gap-1 hover:!text-primary active:!text-primary cursor-pointer text-2xl font-semibold group border-b border-border-color hover:border-primary w-full "
+                             navbar-data-toggle="submenu-About"
+                        >
+                            <span>
+                                ABOUT
+                            </span>
+                            
+                                <i class="fa-solid fa-chevron-right fa-sm fa-fw transition-all"></i>
+                            
+                        </div>
+                        
+
+                        
+                            <div class="flex-col items-start px-2 py-2 hidden" data-target="submenu-About">
+                                
+                                    <div class="drawer-navbar-item text-base flex flex-col justify-center items-start hover:underline active:underline hover:underline-offset-1 rounded-3xl">
+                                        <a class=" text-third-text-color text-xl"
+                                           href="/about">ME</a>
+                                    </div>
+                                
+                                    <div class="drawer-navbar-item text-base flex flex-col justify-center items-start hover:underline active:underline hover:underline-offset-1 rounded-3xl">
+                                        <a class=" text-third-text-color text-xl"
+                                           target="_blank" rel="noopener" href="https://github.com/Charles2530/">GITHUB</a>
+                                    </div>
+                                
+                                    <div class="drawer-navbar-item text-base flex flex-col justify-center items-start hover:underline active:underline hover:underline-offset-1 rounded-3xl">
+                                        <a class=" text-third-text-color text-xl"
+                                           href="https://charles2530.github.io">BLOG</a>
+                                    </div>
+                                
+                                    <div class="drawer-navbar-item text-base flex flex-col justify-center items-start hover:underline active:underline hover:underline-offset-1 rounded-3xl">
+                                        <a class=" text-third-text-color text-xl"
+                                           target="_blank" rel="noopener" href="https://tongji.baidu.com/">STATISTICS</a>
+                                    </div>
+                                
+                            </div>
+                        
+                    </li>
+            
+
+            
+            
+                
+                    
+                    <li class="drawer-navbar-item text-base my-1.5 flex flex-col w-full">
+                        <a class="py-1.5 px-2 flex flex-row items-center justify-between gap-1 hover:!text-primary active:!text-primary text-2xl font-semibold group border-b border-border-color hover:border-primary w-full active"
+                           href="/archives"
+                        >
+                            <span>Archives</span>
+                            <i class="fa-regular fa-archive fa-sm fa-fw"></i>
+                        </a>
+                    </li>
+                
+                    
+                    <li class="drawer-navbar-item text-base my-1.5 flex flex-col w-full">
+                        <a class="py-1.5 px-2 flex flex-row items-center justify-between gap-1 hover:!text-primary active:!text-primary text-2xl font-semibold group border-b border-border-color hover:border-primary w-full active"
+                           href="/masonry/"
+                        >
+                            <span>Photos</span>
+                            <i class="fa-solid fa-image fa-sm fa-fw"></i>
+                        </a>
+                    </li>
+                
+                    
+                    <li class="drawer-navbar-item text-base my-1.5 flex flex-col w-full">
+                        <a class="py-1.5 px-2 flex flex-row items-center justify-between gap-1 hover:!text-primary active:!text-primary text-2xl font-semibold group border-b border-border-color hover:border-primary w-full active"
+                           href="/essay/"
+                        >
+                            <span>Essays</span>
+                            <i class="fa-solid fa-message-lines fa-sm fa-fw"></i>
+                        </a>
+                    </li>
+                
+                    
+                    <li class="drawer-navbar-item text-base my-1.5 flex flex-col w-full">
+                        <a class="py-1.5 px-2 flex flex-row items-center justify-between gap-1 hover:!text-primary active:!text-primary text-2xl font-semibold group border-b border-border-color hover:border-primary w-full active"
+                           href="/friends/"
+                        >
+                            <span>Friends</span>
+                            <i class="fa-solid fa-user-group fa-sm fa-fw"></i>
+                        </a>
+                    </li>
+                
+            
+        </ul>
+
+        <div class="statistics flex justify-around my-2.5">
+    <a class="item tag-count-item flex flex-col justify-center items-center w-20" href="/tags">
+        <div class="number text-2xl sm:text-xl text-second-text-color font-semibold">45</div>
+        <div class="label text-third-text-color text-sm">Tags</div>
+    </a>
+    <a class="item tag-count-item flex flex-col justify-center items-center w-20" href="/categories">
+        <div class="number text-2xl sm:text-xl text-second-text-color font-semibold">97</div>
+        <div class="label text-third-text-color text-sm">Categories</div>
+    </a>
+    <a class="item tag-count-item flex flex-col justify-center items-center w-20" href="/archives">
+        <div class="number text-2xl sm:text-xl text-second-text-color font-semibold">479</div>
+        <div class="label text-third-text-color text-sm">Posts</div>
+    </a>
+</div>
+    </div>
+
+    <div class="window-mask"></div>
+
+</header>
+
+
+		</div>
+
+		<div class="main-content-body transition-fade-up">
+			
+
+			<div class="main-content">
+				<div class="post-page-container flex relative justify-between box-border w-full h-full">
+	<div class="article-content-container">
+
+		<div class="article-title relative w-full">
+			
+			<div class="w-full flex items-center pt-6 justify-start">
+				<h1 class="article-title-regular text-second-text-color tracking-tight text-4xl md:text-6xl font-semibold px-2 sm:px-6 md:px-8 py-3">FP8 与混合精度服务</h1>
+			</div>
+			
+		</div>
+
+		
+		<div class="article-header flex flex-row gap-2 items-center px-2 sm:px-6 md:px-8">
+			<div class="avatar w-[46px] h-[46px] shrink-0 rounded-medium border border-border-color p-px">
+				<img src="https://charles2530.github.io/image/background/logo2.jpg">
+			</div>
+			<div class="info flex flex-col justify-between">
+				<div class="author flex items-center">
+					<span class="name text-default-text-color text-lg font-semibold">Charles</span>
+					
+					<span class="author-label ml-1.5 text-xs px-2 py-0.5 rounded-small text-third-text-color border border-shadow-color-1">Lv7</span>
+					
+				</div>
+				<div class="meta-info">
+					<div class="article-meta-info">
+    <span class="article-date article-meta-item">
+        <i class="fa-regular fa-pen-fancy"></i>&nbsp;
+        <span class="desktop">2026-05-11 10:49</span>
+        <span class="mobile">2026-05-11 10:49</span>
+        <span class="hover-info">Created</span>
+    </span>
+    
+        <span class="article-date article-meta-item">
+            <i class="fa-regular fa-wrench"></i>&nbsp;
+            <span class="desktop">2026-05-11 10:49</span>
+            <span class="mobile">2026-05-11 10:49</span>
+            <span class="hover-info">Updated</span>
+        </span>
+    
+
+    
+        <span class="article-categories article-meta-item">
+            <i class="fa-regular fa-folders"></i>&nbsp;
+            <ul>
+                
+                
+                    
+                        
+                        <li>
+                            <a href="/categories/AI/">AI</a>&nbsp;
+                        </li>
+                    
+                    
+                
+                    
+                        
+                            <li>></li>
+                        
+                        <li>
+                            <a href="/categories/AI/Quantization/">Quantization</a>&nbsp;
+                        </li>
+                    
+                    
+                
+            </ul>
+        </span>
+    
+    
+        <span class="article-tags article-meta-item">
+            <i class="fa-regular fa-tags"></i>&nbsp;
+            <ul>
+                
+                    <li>
+                        <a href="/tags/AI/">AI</a>&nbsp;
+                    </li>
+                
+                    <li>
+                        | <a href="/tags/GPU-Systems/">GPU Systems</a>&nbsp;
+                    </li>
+                
+                    <li>
+                        | <a href="/tags/Inference/">Inference</a>&nbsp;
+                    </li>
+                
+                    <li>
+                        | <a href="/tags/Quantization/">Quantization</a>&nbsp;
+                    </li>
+                
+            </ul>
+        </span>
+    
+
+    
+    
+        <span class="article-wordcount article-meta-item">
+            <i class="fa-regular fa-typewriter"></i>&nbsp;<span>3.9k Words</span>
+        </span>
+    
+    
+        <span class="article-min2read article-meta-item">
+            <i class="fa-regular fa-clock"></i>&nbsp;<span>13 Mins</span>
+        </span>
+    
+    
+        <span class="article-pv article-meta-item">
+            <i class="fa-regular fa-eye"></i>&nbsp;<span id="busuanzi_value_page_pv"></span>
+        </span>
+    
+</div>
+
+				</div>
+			</div>
+		</div>
+		
+
+		
+
+
+		<div class="article-content markdown-body px-2 sm:px-6 md:px-8 pb-8">
+			<p>在量化讨论里，<code>INT8</code>、<code>INT4</code> 很吸引眼球，但在很多工业服务栈中，真正迅速落地的是 <code>FP8</code> 和各种混合精度路径。<br />
+<strong>原因很简单</strong>：它们在硬件支持、数值稳定和 kernel 实现之间往往处在一个更实际的平衡点。尤其是大模型服务、训练后部署和多模态系统中，FP8 往往不是最激进的选择，却可能是最先产生稳定价值的选择。</p>
+<p><strong>这页重点回答四个问题</strong>：</p>
+<ol>
+<li>为什么 FP8 在很多系统里比 INT4 更容易先落地？</li>
+<li>为什么真实部署几乎从来不是“全模型统一一种精度”？</li>
+<li>FP8 的收益究竟来自显存、吞吐，还是系统兼容性？</li>
+<li>在服务系统里，哪些层值得保高精度，哪些层更适合压低精度？</li>
+</ol>
+<div class="callout callout--titled info mb-4 rounded-small shadow-redefine-flat bg-(--callout-bg-color) p-3 pl-1 relative flex flex-row gap-2"><div role="none" class="rounded-full self-stretch w-0.5 bg-(--callout-primary-color) shrink-0 opacity-60"></div><div class="flex flex-col gap-2"><div class="callout__title flex items-center gap-2 font-semibold tracking-tight">初学者先抓住</div><div class="callout__content markdown-body flex-1 min-w-0"><p>FP8 不是“越低越好”的竞赛，而是一个更容易在硬件、kernel 和数值稳定之间兑现收益的折中。真实系统往往是混合精度：敏感层保守，热路径降精度。</p></div></div></div>
+<div class="callout callout--titled default mb-4 rounded-small shadow-redefine-flat bg-(--callout-bg-color) p-3 pl-1 relative flex flex-row gap-2"><div role="none" class="rounded-full self-stretch w-0.5 bg-(--callout-primary-color) shrink-0 opacity-60"></div><div class="flex flex-col gap-2"><div class="callout__title flex items-center gap-2 font-semibold tracking-tight">有趣例子：不同路段限速</div><div class="callout__content markdown-body flex-1 min-w-0"><p>高速公路可以开快，学校门口必须慢。混合精度也是这样：GEMM 热路径可以尝试 FP8，某些 norm、输出头、风险相关模块可能要保留更高精度。</p></div></div></div>
+<h2 id="1-fp8-在解决什么问题"><a class="markdownIt-Anchor" href="#1-fp8-在解决什么问题"></a> 1. FP8 在解决什么问题</h2>
+<p>与 <code>BF16/FP16</code> 相比，FP8 主要希望：</p>
+<ol>
+<li>降低显存占用；</li>
+<li>降低带宽压力；</li>
+<li>利用新硬件上的专门张量核心；</li>
+<li>保留比纯整数格式更自然的动态范围表示。</li>
+</ol>
+<p>因此 FP8 常被视为一种“较温和的低精度路径”。</p>
+<p>如果把单个张量元素存储位数从 16 bit 降到 8 bit，理论上存储和带宽需求都能大幅下降。<br />
+但 FP8 的真正意义不只是“省一半空间”，而是：</p>
+<ul>
+<li>仍保留浮点格式的指数和尾数结构；</li>
+<li>对动态范围更友好；</li>
+<li>与现有浮点训练和推理栈更容易衔接。</li>
+</ul>
+<h2 id="2-为什么-fp8-比-int4-更容易先进入生产"><a class="markdownIt-Anchor" href="#2-为什么-fp8-比-int4-更容易先进入生产"></a> 2. 为什么 FP8 比 INT4 更容易先进入生产</h2>
+<h3 id="21-浮点格式对动态范围更宽容"><a class="markdownIt-Anchor" href="#21-浮点格式对动态范围更宽容"></a> 2.1 浮点格式对动态范围更宽容</h3>
+<p>整数格式往往要求你非常谨慎地选 scale。<br />
+而 FP8 由于保留指数位，面对范围跨度很大的张量时更自然。</p>
+<p>很多激活张量会表现出这样的特性：</p>
+<p>[<br />
+\max |x| \gg \mathrm{median}(|x|).<br />
+]</p>
+<p>这意味着张量里同时存在大量中小值和少量极端值。<br />
+如果用低比特整数硬压，往往要么：</p>
+<ul>
+<li>小值被量化成 0；</li>
+<li>要么大值被截断。</li>
+</ul>
+<p>FP8 在这里更有缓冲空间。</p>
+<h3 id="22-硬件和编译链支持更成熟"><a class="markdownIt-Anchor" href="#22-硬件和编译链支持更成熟"></a> 2.2 硬件和编译链支持更成熟</h3>
+<p>很多现代加速卡和编译栈已经逐步把 FP8 作为一类原生优化目标。<br />
+<strong>这意味着</strong>：</p>
+<ul>
+<li>kernel 更成熟；</li>
+<li>张量核心更容易利用；</li>
+<li>编译器更愿意做自动图优化；</li>
+<li>服务框架更容易接入。</li>
+</ul>
+<p>而非常激进的低比特整数方案，虽然理论压缩率更高，但往往受限于：</p>
+<ul>
+<li>特殊 kernel 支持不足；</li>
+<li>模型结构不兼容；</li>
+<li>某些操作必须回退高精度。</li>
+</ul>
+<h3 id="23-混搭成本更低"><a class="markdownIt-Anchor" href="#23-混搭成本更低"></a> 2.3 混搭成本更低</h3>
+<p>很多团队已有大规模 <code>BF16/FP16</code> 训练和推理栈。<br />
+FP8 进入系统时更像在原有浮点链上降一级，而不是彻底换世界观。</p>
+<p><strong>这意味着</strong>：</p>
+<ul>
+<li>调试成本更低；</li>
+<li>数值异常更容易定位；</li>
+<li>和现有模块混用更自然。</li>
+</ul>
+<h2 id="3-先建立一个概念混合精度不是妥协而是资源分配"><a class="markdownIt-Anchor" href="#3-先建立一个概念混合精度不是妥协而是资源分配"></a> 3. 先建立一个概念：混合精度不是妥协，而是资源分配</h2>
+<p>在线服务里最常见的并不是“全模型 FP8”，而是：</p>
+<ol>
+<li>权重某些层 FP8；</li>
+<li>激活保留 BF16；</li>
+<li>softmax、norm、输出头保留高精度；</li>
+<li>某些跨模态投影或动作头单独保护。</li>
+</ol>
+<p><strong>本质上这是在做精度预算分配</strong>：把高精度留给最敏感的环节。</p>
+<p>更准确地说，混合精度是在回答下面这个问题：</p>
+<p>[<br />
+\text{在给定误差预算下，哪些张量最值得保高精度？}<br />
+]</p>
+<p><strong>这和资金预算分配很像</strong>：</p>
+<ul>
+<li>不是所有层都同样重要；</li>
+<li>不是所有操作对数值误差都一样敏感；</li>
+<li>合理分配精度，往往比追求“全局最低 bit”更稳。</li>
+</ul>
+<h2 id="4-fp8-的数值直觉"><a class="markdownIt-Anchor" href="#4-fp8-的数值直觉"></a> 4. FP8 的数值直觉</h2>
+<p>若张量 (x) 映射到 FP8，实际关注的是动态范围和舍入误差。<br />
+与整数不同，FP8 可以在指数位上保留更大的范围变化，因此对范围跨度大的场景通常更稳。<br />
+<strong>但它仍然会在以下位置遇到问题</strong>：</p>
+<ul>
+<li>极小值累积</li>
+<li>归一化</li>
+<li>残差叠加</li>
+<li>长序列激活</li>
+<li>极端 outlier</li>
+</ul>
+<h3 id="41-误差粗略写法"><a class="markdownIt-Anchor" href="#41-误差粗略写法"></a> 4.1 误差粗略写法</h3>
+<p>若量化映射为 (\hat{x} = Q_{\text{FP8}}(x))，则误差可写成：</p>
+<p>[<br />
+e = x - \hat{x}.<br />
+]</p>
+<p>在矩阵乘法 (y = Wx) 中，权重和激活误差共同传播：</p>
+<p>[<br />
+\hat{y} = (\hat{W})(\hat{x}) = (W + \delta_W)(x + \delta_x).<br />
+]</p>
+<p><strong>展开可得</strong>：</p>
+<h1 id="haty-y"><a class="markdownIt-Anchor" href="#haty-y"></a> [<br />
+\hat{y} - y</h1>
+<p>W\delta_x + \delta_W x + \delta_W \delta_x.<br />
+]</p>
+<p>这说明数值退化不是单点发生，而是权重误差和激活误差一起作用。</p>
+<h3 id="42-为什么某些操作常常要保高精度"><a class="markdownIt-Anchor" href="#42-为什么某些操作常常要保高精度"></a> 4.2 为什么某些操作常常要保高精度</h3>
+<p>例如：</p>
+<ul>
+<li><code>LayerNorm</code></li>
+<li><code>Softmax</code></li>
+<li>输出 logits</li>
+<li>某些 attention score 计算</li>
+</ul>
+<p><strong>这些操作对</strong>：</p>
+<ul>
+<li>小量差异</li>
+<li>指数放大</li>
+<li>归一化稳定性</li>
+</ul>
+<p>非常敏感。<br />
+因此真实系统里，哪怕大部分 matmul 都压到 FP8，上述环节也经常保留更高精度。</p>
+<h2 id="5-一个直观例子为什么多模态系统更偏爱稳妥的混合精度"><a class="markdownIt-Anchor" href="#5-一个直观例子为什么多模态系统更偏爱稳妥的混合精度"></a> 5. 一个直观例子：为什么多模态系统更偏爱稳妥的混合精度</h2>
+<p>设想一个文档 VLM 系统，要同时处理：</p>
+<ul>
+<li>OCR 小字</li>
+<li>布局坐标</li>
+<li>图像 patch</li>
+<li>长文本上下文</li>
+</ul>
+<p>这类系统往往比纯文本 LLM 更容易受到数值精度变化影响。<br />
+<strong>原因在于</strong>：</p>
+<ul>
+<li>不同模态张量的尺度差异更大；</li>
+<li>视觉投影层和文本层的数值分布不同；</li>
+<li>局部视觉细节对小数值误差更敏感。</li>
+</ul>
+<p>如果直接上激进的低比特整数方案，可能会出现：</p>
+<ul>
+<li>OCR 细节丢失</li>
+<li>表格边界理解退化</li>
+<li>grounding 精度下降</li>
+</ul>
+<p>这时 FP8 或 FP8 + BF16 混合精度就成为更现实的折中。</p>
+<h2 id="6-服务时应如何看-fp8-价值"><a class="markdownIt-Anchor" href="#6-服务时应如何看-fp8-价值"></a> 6. 服务时应如何看 FP8 价值</h2>
+<p>真正要看的不是“文件小了多少”，而是：</p>
+<ol>
+<li><code>TTFT</code> 是否下降；</li>
+<li><code>TPOT</code> 是否下降；</li>
+<li>显存释放后并发是否增加；</li>
+<li>长上下文下是否仍稳；</li>
+<li>多模态或长尾任务是否有不可接受退化；</li>
+<li>工程链是否更稳定。</li>
+</ol>
+<p>很多时候，FP8 最大收益是让系统更容易塞进目标硬件，而不一定是理论吞吐数字最亮眼。</p>
+<h3 id="61-一个更实用的判断式"><a class="markdownIt-Anchor" href="#61-一个更实用的判断式"></a> 6.1 一个更实用的判断式</h3>
+<p><strong>可以把上线价值粗略看成</strong>：</p>
+<h1 id="textvalue_textfp8"><a class="markdownIt-Anchor" href="#textvalue_textfp8"></a> [<br />
+\text{Value}_{\text{FP8}}</h1>
+<p>\Delta \text{capacity}</p>
+<ul>
+<li>\Delta \text{throughput}</li>
+</ul>
+<ul>
+<li>\Delta \text{quality risk}</li>
+<li>\Delta \text{engineering complexity}.<br />
+]</li>
+</ul>
+<p><strong>这提醒我们</strong>：</p>
+<ul>
+<li>性能提升要看端到端；</li>
+<li>风险和复杂度也必须算进去。</li>
+</ul>
+<h2 id="7-哪些层适合优先尝试-fp8"><a class="markdownIt-Anchor" href="#7-哪些层适合优先尝试-fp8"></a> 7. 哪些层适合优先尝试 FP8</h2>
+<p>虽然不同模型差异很大，但经验上更适合优先尝试 FP8 的常见位置包括：</p>
+<ul>
+<li>大型线性层权重</li>
+<li>attention / MLP 的主要 matmul</li>
+<li>某些激活张量</li>
+</ul>
+<p><strong>而更常需要保高精度的部分包括</strong>：</p>
+<ul>
+<li>embedding / 输出头</li>
+<li>norm 相关计算</li>
+<li>softmax / logit 相关部分</li>
+<li>某些视觉投影或多模态融合层</li>
+</ul>
+<h2 id="8-三种典型部署场景"><a class="markdownIt-Anchor" href="#8-三种典型部署场景"></a> 8. 三种典型部署场景</h2>
+<h3 id="场景-a70b-级文本模型服务"><a class="markdownIt-Anchor" href="#场景-a70b-级文本模型服务"></a> 场景 A：70B 级文本模型服务</h3>
+<p><strong>需求</strong>：</p>
+<ul>
+<li>模型装进有限 GPU</li>
+<li>延迟可控</li>
+<li>不希望质量掉太多</li>
+</ul>
+<p>这时 FP8 常常是一个好起点，因为：</p>
+<ul>
+<li>比 BF16 更省资源；</li>
+<li>比 INT4 风险更低；</li>
+<li>和成熟服务栈更容易兼容。</li>
+</ul>
+<h3 id="场景-b企业文档-vlm"><a class="markdownIt-Anchor" href="#场景-b企业文档-vlm"></a> 场景 B：企业文档 VLM</h3>
+<p><strong>需求</strong>：</p>
+<ul>
+<li>文本和图像都要保住细节</li>
+<li>OCR 错误容忍度低</li>
+<li>需要稳定上线</li>
+</ul>
+<p><strong>这里更常见的路线是</strong>：</p>
+<ul>
+<li>主干大部分 matmul 尝试 FP8</li>
+<li>OCR 或关键结构层保 BF16</li>
+<li>输出侧和规则判定部分保高精度</li>
+</ul>
+<h3 id="场景-c持续演化中的线上系统"><a class="markdownIt-Anchor" href="#场景-c持续演化中的线上系统"></a> 场景 C：持续演化中的线上系统</h3>
+<p>如果团队仍在频繁更换模型版本、prompt 模板和工具链，那么采用一种过于激进的量化方案会显著加大回归成本。<br />
+<strong>FP8 的优势在于</strong>：</p>
+<ul>
+<li>过渡平滑</li>
+<li>异常更容易定位</li>
+<li>便于逐步扩展到更复杂混合精度设计</li>
+</ul>
+<h2 id="9-fp8-也有明确短板"><a class="markdownIt-Anchor" href="#9-fp8-也有明确短板"></a> 9. FP8 也有明确短板</h2>
+<h3 id="91-它不是最极致的压缩路线"><a class="markdownIt-Anchor" href="#91-它不是最极致的压缩路线"></a> 9.1 它不是最极致的压缩路线</h3>
+<p><strong>若你目标是</strong>：</p>
+<ul>
+<li>单卡塞超大模型</li>
+<li>极限压缩</li>
+<li>边缘设备部署</li>
+</ul>
+<p>那么 FP8 往往不如 <code>INT4/W4A8</code> 这类方案激进。</p>
+<h3 id="92-不是所有收益都会自动兑现"><a class="markdownIt-Anchor" href="#92-不是所有收益都会自动兑现"></a> 9.2 不是所有收益都会自动兑现</h3>
+<p>如果 kernel、框架或算子路径不成熟，理论上的 FP8 优势可能无法变成端到端收益。<br />
+例如：</p>
+<ul>
+<li>某些算子回退高精度；</li>
+<li>频繁数据格式转换；</li>
+<li>跨设备通信仍是瓶颈。</li>
+</ul>
+<h3 id="93-层选择不当仍会伤质量"><a class="markdownIt-Anchor" href="#93-层选择不当仍会伤质量"></a> 9.3 层选择不当仍会伤质量</h3>
+<p>“FP8 比 INT4 稳”不代表“随便压都没事”。<br />
+<strong>尤其在</strong>：</p>
+<ul>
+<li>长上下文</li>
+<li>复杂推理</li>
+<li>文档细粒度理解</li>
+<li>agent 多工具任务</li>
+</ul>
+<p>中，局部敏感层被压坏后，问题依然明显。</p>
+<h2 id="10-一份实践化落地顺序"><a class="markdownIt-Anchor" href="#10-一份实践化落地顺序"></a> 10. 一份实践化落地顺序</h2>
+<p>若你准备把 FP8 引入服务系统，可按下面顺序推进：</p>
+<ol>
+<li>先做端到端 profile，确认瓶颈确实受带宽和显存影响。</li>
+<li>先从权重侧或主干 matmul 开始尝试，不要一次性压全部。</li>
+<li>关键模块保留 BF16，例如 norm、softmax、输出头。</li>
+<li>对长上下文、多模态和长尾样本单独做回归。</li>
+<li>统计实际 <code>TTFT</code>、<code>TPOT</code>、显存和并发收益。</li>
+<li>在收益真实可见后，再考虑是否继续向更低比特推进。</li>
+</ol>
+<h2 id="11-小结"><a class="markdownIt-Anchor" href="#11-小结"></a> 11. 小结</h2>
+<p>FP8 与混合精度服务的价值，在于它提供了一条更稳的压缩与加速路径。<br />
+对很多真实系统来说，它不是“最极致”的方案，却是最容易从实验室走向生产的方案。</p>
+<p>更准确地说，它的核心价值不只是“8 bit”，而是：</p>
+<ul>
+<li>保留浮点动态范围；</li>
+<li>便于与现有栈混合；</li>
+<li>把低精度部署从一次性赌博变成可分阶段推进的工程设计。</li>
+</ul>
+<h2 id="快速代码示例"><a class="markdownIt-Anchor" href="#快速代码示例"></a> 快速代码示例</h2>
+<div class="code-container" data-rel="Python"><figure class="iseeu highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">import</span> transformer_engine.pytorch <span class="keyword">as</span> te</span><br><span class="line"></span><br><span class="line"><span class="keyword">def</span> <span class="title function_">forward_step</span>(<span class="params">model, x</span>):</span><br><span class="line">    <span class="keyword">with</span> te.fp8_autocast(enabled=<span class="literal">True</span>):</span><br><span class="line">        h = model.backbone(x)   <span class="comment"># 主干矩阵计算走 FP8</span></span><br><span class="line">    logits = model.lm_head(h.<span class="built_in">float</span>())  <span class="comment"># 输出头保留更高精度</span></span><br><span class="line">    <span class="keyword">return</span> logits</span><br></pre></td></tr></table></figure></div>
+<p>这段代码演示了一个常见混合精度策略：主干高算量模块用 FP8 提升吞吐，敏感输出头保留更高精度以稳住质量。实际部署时还会配合分桶回归，确认长上下文和长尾任务不退化。</p>
+<h2 id="实践补充与检查"><a class="markdownIt-Anchor" href="#实践补充与检查"></a> 实践补充与检查</h2>
+<h3 id="把-fp8-与混合精度服务-写成一套系统取舍"><a class="markdownIt-Anchor" href="#把-fp8-与混合精度服务-写成一套系统取舍"></a> 把 <strong>FP8 与混合精度服务</strong> 写成一套系统取舍</h3>
+<p>量化主题最容易被误写成“精度换速度”的线性故事，但真正进入训练和服务系统后，事情远比这复杂。围绕 <strong>FP8 与混合精度服务</strong>，更扎实的写法应该明确指出：量化从来不是单独的数学压缩问题，而是同时涉及 <strong>权重布局、激活分布、校准制度、kernel 支持、缓存路径、部署链路和回退治理</strong> 的系统设计问题。</p>
+<p>从这个角度看，围绕精度、显存、kernel 支持、scale 管理和端到端收益讨论 FP8。也就是说，量化收益从来不是白来的。你在一处省下来的显存和带宽，往往会在另一处以更复杂的 scale 管理、更多的运行时判断、更多的回归验证或更窄的适用边界重新付出去。页面如果不把这些代价写透，读者很容易高估某条量化路线的泛化能力。</p>
+<h3 id="量化决策真正要回答的四个问题"><a class="markdownIt-Anchor" href="#量化决策真正要回答的四个问题"></a> 量化决策真正要回答的四个问题</h3>
+<p>围绕 <strong>FP8 与混合精度服务</strong>，一个更稳妥的决策框架通常是：</p>
+<ol>
+<li><strong>量化对象是什么</strong>：仅权重，还是权重加激活，还是连 KV cache、优化器状态、LoRA 适配器也一起纳入；</li>
+<li><strong>服务目标是什么</strong>：单机吞吐、在线时延、长上下文成本、多模型混部，还是端侧/边缘部署；</li>
+<li><strong>硬件路径是什么</strong>：不同 GPU、不同 runtime、不同 kernel 栈对量化格式的支持差异非常大；</li>
+<li><strong>回退与验证如何做</strong>：没有全精度对照、没有回滚门槛、没有尾部任务桶评测，量化方案就很难称为可上线方案。</li>
+</ol>
+<p>只要这四个问题被提前写清楚，很多常见争论会自然化解。因为多数争论并不是“方法谁更先进”，而是“目标场景到底是不是同一个”。</p>
+<h3 id="最容易被平均值掩盖的风险"><a class="markdownIt-Anchor" href="#最容易被平均值掩盖的风险"></a> 最容易被平均值掩盖的风险</h3>
+<p>量化路线最危险的地方，往往不在平均基准，而在尾部。比如长上下文、少数高价值任务、复杂多模态输入、工具调用路径、动作头、控制头或世界模型里的风险预测头，这些位置常常对精度更敏感，却最容易被总体平均值稀释。再比如 calibration 集过于干净、只覆盖短文本或静态图像，也会让量化方案在真实流量里突然失真。</p>
+<p>因此，更扎实的页面内容必须明确指出：<strong>量化不是只要“整体差不多”就够了</strong>。真正成熟的量化验收，要能说清哪些层最敏感、哪些任务桶最脆弱、哪些硬件路径收益能兑现、哪些场景应直接保留高精度回退。</p>
+<h3 id="更像部署文档的验收清单"><a class="markdownIt-Anchor" href="#更像部署文档的验收清单"></a> 更像部署文档的验收清单</h3>
+<p>对 <strong>FP8 与混合精度服务</strong>，建议至少把以下几类验证写进页面：</p>
+<ol>
+<li><strong>数值验证</strong>：和高精度参考路径逐层或逐任务桶对照；</li>
+<li><strong>系统验证</strong>：不仅看显存，还看 TTFT、TPOT、cache 占用、编译和启动成本；</li>
+<li><strong>场景验证</strong>：长文本、多模态、agent、动作控制等高风险路径要单独建桶；</li>
+<li><strong>运维验证</strong>：明确什么时候回退、如何 shadow、新旧版本如何并行观察。</li>
+</ol>
+<p>只有当页面把这些内容写扎实，<strong>FP8 与混合精度服务</strong> 才不会停留在“量化方法列表”，而会真正成为能指导选型与上线的系统知识。</p>
+<h3 id="和相邻页面的接口要怎么看"><a class="markdownIt-Anchor" href="#和相邻页面的接口要怎么看"></a> 和相邻页面的接口要怎么看</h3>
+<p>围绕 <strong>FP8 与混合精度服务</strong>，页面真正该帮读者建立的判断，不是“它是不是一种量化方法”，而是 精度管理、kernel 路径、cache 成本和回退策略的接口。只有把接口讲清楚，读者才能知道为什么同一条量化路线在训练、推理、KV cache、多模态或不同硬件上表现会差这么多。</p>
+<h3 id="一条更实用的落地顺序"><a class="markdownIt-Anchor" href="#一条更实用的落地顺序"></a> 一条更实用的落地顺序</h3>
+<p>更稳的量化推进顺序通常是：先确定目标场景和硬件边界，再选量化对象，再做校准与 kernel 路径验证，最后再看是否值得把它推到主线。顺序如果反过来，团队很容易先得到一个好看的压缩率，再花很久解释为什么端到端收益并没有兑现。</p>
+<h3 id="还值得继续深挖的问题"><a class="markdownIt-Anchor" href="#还值得继续深挖的问题"></a> 还值得继续深挖的问题</h3>
+<p>围绕 <strong>FP8 与混合精度服务</strong>，后续最值得加厚的内容通常包括：不同任务桶上的量化敏感性；校准集构造和激活尾部分布；多机服务与多模型混部时的真实收益；以及一旦线上出现局部退化，应该如何快速回到更高精度路径。把这些写透，量化页才真正具备上线指导价值。</p>
+
+		</div>
+
+		
+		<div class="post-copyright-info w-full my-8 px-2 sm:px-6 md:px-8">
+			<div class="article-copyright-info-container">
+    <ul>
+        <li><strong>Title:</strong> FP8 与混合精度服务</li>
+        <li><strong>Author:</strong> Charles</li>
+        <li><strong>Created at
+                :</strong> 2026-05-11 10:49:00</li>
+        
+            <li>
+                <strong>Updated at
+                    :</strong> 2026-05-11 10:49:00
+            </li>
+        
+        <li>
+            <strong>Link:</strong> https://charles2530.github.io/2026/05/11/ai-files-quantization-fp8-and-mixed-precision-serving/
+        </li>
+        <li>
+            <strong>
+                License:
+            </strong>
+            
+
+            
+                This work is licensed under <a class="license" target="_blank" rel="noopener" href="https://creativecommons.org/licenses/by-nc-sa/4.0">CC BY-NC-SA 4.0</a>.
+            
+        </li>
+    </ul>
+</div>
+
+		</div>
+		
+
+		
+		<ul class="post-tags-box text-lg mt-1.5 flex-wrap justify-center flex md:hidden">
+			
+			<li class="tag-item mx-0.5">
+				<a href="/tags/AI/">#AI</a>&nbsp;
+			</li>
+			
+			<li class="tag-item mx-0.5">
+				<a href="/tags/GPU-Systems/">#GPU Systems</a>&nbsp;
+			</li>
+			
+			<li class="tag-item mx-0.5">
+				<a href="/tags/Inference/">#Inference</a>&nbsp;
+			</li>
+			
+			<li class="tag-item mx-0.5">
+				<a href="/tags/Quantization/">#Quantization</a>&nbsp;
+			</li>
+			
+		</ul>
+		
+
+		
+
+		
+		<div class="article-nav my-8 flex justify-between items-center px-2 sm:px-6 md:px-8">
+			
+			<div class="article-prev border-border-color shadow-redefine-flat shadow-shadow-color-2 rounded-medium px-4 py-2 hover:shadow-redefine-flat-hover hover:shadow-shadow-color-2">
+				<a class="prev" rel="prev" href="/2026/05/11/ai-files-quantization-index/">
+					<span class="left arrow-icon flex justify-center items-center">
+						<i class="fa-solid fa-chevron-left"></i>
+					</span>
+					<span class="title flex justify-center items-center">
+						<span class="post-nav-title-item truncate max-w-48">量化总览</span>
+						<span class="post-nav-item">Prev posts</span>
+					</span>
+				</a>
+			</div>
+			
+			
+			<div class="article-next border-border-color shadow-redefine-flat shadow-shadow-color-2 rounded-medium px-4 py-2 hover:shadow-redefine-flat-hover hover:shadow-shadow-color-2">
+				<a class="next" rel="next" href="/2026/05/11/ai-files-quantization-evaluation-and-deployment-checklist/">
+					<span class="title flex justify-center items-center">
+						<span class="post-nav-title-item truncate max-w-48">量化评测与部署清单</span>
+						<span class="post-nav-item">Next posts</span>
+					</span>
+					<span class="right arrow-icon flex justify-center items-center">
+						<i class="fa-solid fa-chevron-right"></i>
+					</span>
+				</a>
+			</div>
+			
+		</div>
+		
+
+
+		
+		<div class="comment-container px-2 sm:px-6 md:px-8 pb-8">
+			<div class="comments-container mt-10 w-full ">
+    <div id="comment-anchor" class="w-full h-2.5"></div>
+    <div class="comment-area-title w-full my-1.5 md:my-2.5 text-xl md:text-3xl font-bold">
+        Comments
+    </div>
+    
+
+        
+            
+    <div id="gitalk-container"></div>
+    <script data-swup-reload-script
+            src="https://cdnjs.cloudflare.com/ajax/libs/gitalk/1.8.0/gitalk.min.js"></script>
+    <script data-swup-reload-script>
+        (function() {
+            const startPath = location.pathname;
+            const startTime = Date.now();
+            const retryDelay = 200;
+            const retryLimit = 5000;
+
+            const runGitalk = () => {
+                if (location.pathname !== startPath) {
+                    return;
+                }
+
+                const container = document.getElementById('gitalk-container');
+                if (!container || typeof Gitalk === 'undefined') {
+                    if (Date.now() - startTime < retryLimit) {
+                        setTimeout(runGitalk, retryDelay);
+                    }
+                    return;
+                }
+
+                container.innerHTML = '';
+
+                let pageKey = decodeURI(location.pathname);
+                const maxLength = 50;
+                if (pageKey.length > maxLength) {
+                    pageKey = pageKey.substring(0, maxLength - 3) + '...';
+                }
+
+                try {
+                    new Gitalk({
+                        clientID: '8083299a8ee2aaf23879',
+                        clientSecret: 'a8161e81d4872181e884fdb69f7be24916b6a9d0',
+                        repo: 'charles2530_issues',
+                        owner: 'Charles2530',
+                        admin: ['Charles2530'],
+                        id: pageKey,
+                        language: 'en',
+                        proxy: 'https://github.com/login/oauth/access_token'
+                    }).render(container);
+                } catch (e) {
+                    window.Gitalk = null;
+                }
+            };
+
+            runGitalk();
+        })();
+    </script>
+
+
+
+        
+    
+</div>
+
+		</div>
+		
+	</div>
+
+	
+	<div class="toc-content-container">
+		<div class="post-toc-wrap">
+	<div class="post-toc">
+		<div class="toc-title">On this page</div>
+		<div class="page-title">FP8 与混合精度服务</div>
+		<ol class="nav"><li class="nav-item nav-level-2"><a class="nav-link" href="#1-fp8-%E5%9C%A8%E8%A7%A3%E5%86%B3%E4%BB%80%E4%B9%88%E9%97%AE%E9%A2%98"><span class="nav-text"> 1. FP8 在解决什么问题</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#2-%E4%B8%BA%E4%BB%80%E4%B9%88-fp8-%E6%AF%94-int4-%E6%9B%B4%E5%AE%B9%E6%98%93%E5%85%88%E8%BF%9B%E5%85%A5%E7%94%9F%E4%BA%A7"><span class="nav-text"> 2. 为什么 FP8 比 INT4 更容易先进入生产</span></a><ol class="nav-child"><li class="nav-item nav-level-3"><a class="nav-link" href="#21-%E6%B5%AE%E7%82%B9%E6%A0%BC%E5%BC%8F%E5%AF%B9%E5%8A%A8%E6%80%81%E8%8C%83%E5%9B%B4%E6%9B%B4%E5%AE%BD%E5%AE%B9"><span class="nav-text"> 2.1 浮点格式对动态范围更宽容</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#22-%E7%A1%AC%E4%BB%B6%E5%92%8C%E7%BC%96%E8%AF%91%E9%93%BE%E6%94%AF%E6%8C%81%E6%9B%B4%E6%88%90%E7%86%9F"><span class="nav-text"> 2.2 硬件和编译链支持更成熟</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#23-%E6%B7%B7%E6%90%AD%E6%88%90%E6%9C%AC%E6%9B%B4%E4%BD%8E"><span class="nav-text"> 2.3 混搭成本更低</span></a></li></ol></li><li class="nav-item nav-level-2"><a class="nav-link" href="#3-%E5%85%88%E5%BB%BA%E7%AB%8B%E4%B8%80%E4%B8%AA%E6%A6%82%E5%BF%B5%E6%B7%B7%E5%90%88%E7%B2%BE%E5%BA%A6%E4%B8%8D%E6%98%AF%E5%A6%A5%E5%8D%8F%E8%80%8C%E6%98%AF%E8%B5%84%E6%BA%90%E5%88%86%E9%85%8D"><span class="nav-text"> 3. 先建立一个概念：混合精度不是妥协，而是资源分配</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#4-fp8-%E7%9A%84%E6%95%B0%E5%80%BC%E7%9B%B4%E8%A7%89"><span class="nav-text"> 4. FP8 的数值直觉</span></a><ol class="nav-child"><li class="nav-item nav-level-3"><a class="nav-link" href="#41-%E8%AF%AF%E5%B7%AE%E7%B2%97%E7%95%A5%E5%86%99%E6%B3%95"><span class="nav-text"> 4.1 误差粗略写法</span></a></li></ol></li></ol></li><li class="nav-item nav-level-1"><a class="nav-link" href="#haty-y"><span class="nav-text"> [
+\hat{y} - y</span></a><ol class="nav-child"><li class="nav-item nav-level-3"><a class="nav-link" href="#42-%E4%B8%BA%E4%BB%80%E4%B9%88%E6%9F%90%E4%BA%9B%E6%93%8D%E4%BD%9C%E5%B8%B8%E5%B8%B8%E8%A6%81%E4%BF%9D%E9%AB%98%E7%B2%BE%E5%BA%A6"><span class="nav-text"> 4.2 为什么某些操作常常要保高精度</span></a></li></ol></li><li class="nav-item nav-level-2"><a class="nav-link" href="#5-%E4%B8%80%E4%B8%AA%E7%9B%B4%E8%A7%82%E4%BE%8B%E5%AD%90%E4%B8%BA%E4%BB%80%E4%B9%88%E5%A4%9A%E6%A8%A1%E6%80%81%E7%B3%BB%E7%BB%9F%E6%9B%B4%E5%81%8F%E7%88%B1%E7%A8%B3%E5%A6%A5%E7%9A%84%E6%B7%B7%E5%90%88%E7%B2%BE%E5%BA%A6"><span class="nav-text"> 5. 一个直观例子：为什么多模态系统更偏爱稳妥的混合精度</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#6-%E6%9C%8D%E5%8A%A1%E6%97%B6%E5%BA%94%E5%A6%82%E4%BD%95%E7%9C%8B-fp8-%E4%BB%B7%E5%80%BC"><span class="nav-text"> 6. 服务时应如何看 FP8 价值</span></a><ol class="nav-child"><li class="nav-item nav-level-3"><a class="nav-link" href="#61-%E4%B8%80%E4%B8%AA%E6%9B%B4%E5%AE%9E%E7%94%A8%E7%9A%84%E5%88%A4%E6%96%AD%E5%BC%8F"><span class="nav-text"> 6.1 一个更实用的判断式</span></a></li></ol></li></ol></li><li class="nav-item nav-level-1"><a class="nav-link" href="#textvalue_textfp8"><span class="nav-text"> [
+\text{Value}_{\text{FP8}}</span></a><ol class="nav-child"><li class="nav-item nav-level-2"><a class="nav-link" href="#7-%E5%93%AA%E4%BA%9B%E5%B1%82%E9%80%82%E5%90%88%E4%BC%98%E5%85%88%E5%B0%9D%E8%AF%95-fp8"><span class="nav-text"> 7. 哪些层适合优先尝试 FP8</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#8-%E4%B8%89%E7%A7%8D%E5%85%B8%E5%9E%8B%E9%83%A8%E7%BD%B2%E5%9C%BA%E6%99%AF"><span class="nav-text"> 8. 三种典型部署场景</span></a><ol class="nav-child"><li class="nav-item nav-level-3"><a class="nav-link" href="#%E5%9C%BA%E6%99%AF-a70b-%E7%BA%A7%E6%96%87%E6%9C%AC%E6%A8%A1%E5%9E%8B%E6%9C%8D%E5%8A%A1"><span class="nav-text"> 场景 A：70B 级文本模型服务</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#%E5%9C%BA%E6%99%AF-b%E4%BC%81%E4%B8%9A%E6%96%87%E6%A1%A3-vlm"><span class="nav-text"> 场景 B：企业文档 VLM</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#%E5%9C%BA%E6%99%AF-c%E6%8C%81%E7%BB%AD%E6%BC%94%E5%8C%96%E4%B8%AD%E7%9A%84%E7%BA%BF%E4%B8%8A%E7%B3%BB%E7%BB%9F"><span class="nav-text"> 场景 C：持续演化中的线上系统</span></a></li></ol></li><li class="nav-item nav-level-2"><a class="nav-link" href="#9-fp8-%E4%B9%9F%E6%9C%89%E6%98%8E%E7%A1%AE%E7%9F%AD%E6%9D%BF"><span class="nav-text"> 9. FP8 也有明确短板</span></a><ol class="nav-child"><li class="nav-item nav-level-3"><a class="nav-link" href="#91-%E5%AE%83%E4%B8%8D%E6%98%AF%E6%9C%80%E6%9E%81%E8%87%B4%E7%9A%84%E5%8E%8B%E7%BC%A9%E8%B7%AF%E7%BA%BF"><span class="nav-text"> 9.1 它不是最极致的压缩路线</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#92-%E4%B8%8D%E6%98%AF%E6%89%80%E6%9C%89%E6%94%B6%E7%9B%8A%E9%83%BD%E4%BC%9A%E8%87%AA%E5%8A%A8%E5%85%91%E7%8E%B0"><span class="nav-text"> 9.2 不是所有收益都会自动兑现</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#93-%E5%B1%82%E9%80%89%E6%8B%A9%E4%B8%8D%E5%BD%93%E4%BB%8D%E4%BC%9A%E4%BC%A4%E8%B4%A8%E9%87%8F"><span class="nav-text"> 9.3 层选择不当仍会伤质量</span></a></li></ol></li><li class="nav-item nav-level-2"><a class="nav-link" href="#10-%E4%B8%80%E4%BB%BD%E5%AE%9E%E8%B7%B5%E5%8C%96%E8%90%BD%E5%9C%B0%E9%A1%BA%E5%BA%8F"><span class="nav-text"> 10. 一份实践化落地顺序</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#11-%E5%B0%8F%E7%BB%93"><span class="nav-text"> 11. 小结</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#%E5%BF%AB%E9%80%9F%E4%BB%A3%E7%A0%81%E7%A4%BA%E4%BE%8B"><span class="nav-text"> 快速代码示例</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#%E5%AE%9E%E8%B7%B5%E8%A1%A5%E5%85%85%E4%B8%8E%E6%A3%80%E6%9F%A5"><span class="nav-text"> 实践补充与检查</span></a><ol class="nav-child"><li class="nav-item nav-level-3"><a class="nav-link" href="#%E6%8A%8A-fp8-%E4%B8%8E%E6%B7%B7%E5%90%88%E7%B2%BE%E5%BA%A6%E6%9C%8D%E5%8A%A1-%E5%86%99%E6%88%90%E4%B8%80%E5%A5%97%E7%B3%BB%E7%BB%9F%E5%8F%96%E8%88%8D"><span class="nav-text"> 把 FP8 与混合精度服务 写成一套系统取舍</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#%E9%87%8F%E5%8C%96%E5%86%B3%E7%AD%96%E7%9C%9F%E6%AD%A3%E8%A6%81%E5%9B%9E%E7%AD%94%E7%9A%84%E5%9B%9B%E4%B8%AA%E9%97%AE%E9%A2%98"><span class="nav-text"> 量化决策真正要回答的四个问题</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#%E6%9C%80%E5%AE%B9%E6%98%93%E8%A2%AB%E5%B9%B3%E5%9D%87%E5%80%BC%E6%8E%A9%E7%9B%96%E7%9A%84%E9%A3%8E%E9%99%A9"><span class="nav-text"> 最容易被平均值掩盖的风险</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#%E6%9B%B4%E5%83%8F%E9%83%A8%E7%BD%B2%E6%96%87%E6%A1%A3%E7%9A%84%E9%AA%8C%E6%94%B6%E6%B8%85%E5%8D%95"><span class="nav-text"> 更像部署文档的验收清单</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#%E5%92%8C%E7%9B%B8%E9%82%BB%E9%A1%B5%E9%9D%A2%E7%9A%84%E6%8E%A5%E5%8F%A3%E8%A6%81%E6%80%8E%E4%B9%88%E7%9C%8B"><span class="nav-text"> 和相邻页面的接口要怎么看</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#%E4%B8%80%E6%9D%A1%E6%9B%B4%E5%AE%9E%E7%94%A8%E7%9A%84%E8%90%BD%E5%9C%B0%E9%A1%BA%E5%BA%8F"><span class="nav-text"> 一条更实用的落地顺序</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#%E8%BF%98%E5%80%BC%E5%BE%97%E7%BB%A7%E7%BB%AD%E6%B7%B1%E6%8C%96%E7%9A%84%E9%97%AE%E9%A2%98"><span class="nav-text"> 还值得继续深挖的问题</span></a></li></ol></li></ol>
+
+	</div>
+</div>
+	</div>
+	
+</div>
+
+			</div>
+
+			
+		</div>
+
+		<div class="main-content-footer">
+			<footer class="footer mt-5 py-5 h-auto text-base text-third-text-color relative border-t-2 border-t-border-color">
+    <div class="info-container py-3 text-center">
+        
+        <div class="text-center">
+            &copy;
+            
+              <span>2022</span>
+              -
+            
+            2026&nbsp;&nbsp;<i class="fa-solid fa-heart fa-beat" style="--fa-animation-duration: 0.5s; color: #f54545"></i>&nbsp;&nbsp;<a href="/">Charles</a>
+            
+                
+                <p class="post-count space-x-0.5">
+                    <span>
+                        479 posts in total
+                    </span>
+                    
+                        <span>
+                            1896.8k words in total
+                        </span>
+                    
+                </p>
+            
+        </div>
+        
+            <script data-swup-reload-script src="https://cn.vercount.one/js"></script>
+            <div class="relative text-center lg:absolute lg:right-[20px] lg:top-1/2 lg:-translate-y-1/2 lg:text-right">
+                
+                    <span id="busuanzi_container_site_uv" class="lg:!block">
+                        <span class="text-sm">VISITOR COUNT</span>
+                        <span id="busuanzi_value_site_uv"></span>
+                    </span>
+                
+                
+                    <span id="busuanzi_container_site_pv" class="lg:!block">
+                        <span class="text-sm">TOTAL PAGE VIEWS</span>
+                        <span id="busuanzi_value_site_pv"></span>
+                    </span>
+                
+            </div>
+        
+        <div class="relative text-center lg:absolute lg:left-[20px] lg:top-1/2 lg:-translate-y-1/2 lg:text-left">
+            <span class="lg:block text-sm">POWERED BY <?xml version="1.0" encoding="utf-8"?><!DOCTYPE svg PUBLIC "-//W3C//DTD SVG 1.1//EN" "http://www.w3.org/Graphics/SVG/1.1/DTD/svg11.dtd"><svg class="relative top-[2px] inline-block align-baseline" version="1.1" id="圖層_1" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" x="0px" y="0px" width="1rem" height="1rem" viewBox="0 0 512 512" enable-background="new 0 0 512 512" xml:space="preserve"><path fill="#0E83CD" d="M256.4,25.8l-200,115.5L56,371.5l199.6,114.7l200-115.5l0.4-230.2L256.4,25.8z M349,354.6l-18.4,10.7l-18.6-11V275H200v79.6l-18.4,10.7l-18.6-11v-197l18.5-10.6l18.5,10.8V237h112v-79.6l18.5-10.6l18.5,10.8V354.6z"/></svg><a target="_blank" class="text-base" href="https://hexo.io">Hexo</a></span>
+            <span class="text-sm lg:block">THEME&nbsp;<a class="text-base" target="_blank" href="https://github.com/EvanNotFound/hexo-theme-redefine">Redefine v2.9.0</a></span>
+        </div>
+        
+        
+            <div>
+                Blog up for <span class="odometer" id="runtime_days" ></span> days <span class="odometer" id="runtime_hours"></span> hrs <span class="odometer" id="runtime_minutes"></span> Min <span class="odometer" id="runtime_seconds"></span> Sec
+            </div>
+        
+        
+            <script data-swup-reload-script>
+                try {
+                    function odometer_init() {
+                    const elements = document.querySelectorAll('.odometer');
+                    elements.forEach(el => {
+                        new Odometer({
+                            el,
+                            format: '( ddd).dd',
+                            duration: 200
+                        });
+                    });
+                    }
+                    odometer_init();
+                } catch (error) {}
+            </script>
+        
+        
+            
+                
+        
+                
+        
+                
+
+                    
+                        <script data-swup-reload-script type="text/javascript" src="/js/love.js"></script>
+                    
+        
+        
+    </div>  
+</footer>
+		</div>
+	</div>
+
+	
+	<div class="post-tools">
+		<div class="post-tools-container">
+	<ul class="article-tools-list">
+		<!-- TOC aside toggle -->
+		
+		<li class="right-bottom-tools page-aside-toggle">
+			<i class="fa-regular fa-outdent"></i>
+		</li>
+		
+
+		<!-- go comment -->
+		
+		<li class="go-comment">
+			<i class="fa-regular fa-comments"></i>
+		</li>
+		
+	</ul>
+</div>
+	</div>
+	
+
+	<div class="right-side-tools-container">
+		<div class="side-tools-container">
+	<ul class="hidden-tools-list">
+		<li class="right-bottom-tools tool-font-adjust-plus flex justify-center items-center">
+			<i class="fa-regular fa-magnifying-glass-plus"></i>
+		</li>
+
+		<li class="right-bottom-tools tool-font-adjust-minus flex justify-center items-center">
+			<i class="fa-regular fa-magnifying-glass-minus"></i>
+		</li>
+
+		<li class="right-bottom-tools tool-dark-light-toggle flex justify-center items-center">
+			<i class="fa-regular fa-moon"></i>
+		</li>
+
+		<!-- rss -->
+		
+		<li class="right-bottom-tools rss flex justify-center items-center">
+			<a class="flex justify-center items-center" href="/atom.xml" target="_blank">
+				<i class="fa-regular fa-rss"></i>
+			</a>
+		</li>
+		
+
+		
+
+		<li class="right-bottom-tools tool-scroll-to-bottom flex justify-center items-center">
+			<i class="fa-regular fa-arrow-down"></i>
+		</li>
+	</ul>
+
+	<ul class="visible-tools-list">
+		<li class="right-bottom-tools toggle-tools-list flex justify-center items-center">
+			<i class="fa-regular fa-cog fa-spin"></i>
+		</li>
+		
+		<li class="right-bottom-tools tool-scroll-to-top flex justify-center items-center">
+			<i class="arrow-up fas fa-arrow-up"></i>
+			<span class="percent"></span>
+		</li>
+		
+		
+	</ul>
+</div>
+	</div>
+
+	<div class="image-viewer-container" role="dialog" aria-modal="true" aria-label="Image viewer">
+	<button class="image-viewer-close" type="button" aria-label="Close">
+		<i class="fa-solid fa-xmark"></i>
+	</button>
+	<button class="image-viewer-prev" type="button" aria-label="Prev">
+		<i class="fa-solid fa-chevron-left"></i>
+	</button>
+	<div class="image-viewer-frame">
+		<img src="" alt="">
+	</div>
+	<div class="image-viewer-exif-panel hidden absolute left-1/2 bottom-20 -translate-x-1/2 w-[min(92vw,420px)] max-h-[60vh] overflow-hidden rounded-2xl bg-background-color-transparent-80 p-4 text-left shadow-redefine-flat backdrop-blur-md" role="dialog" aria-label="EXIF" aria-hidden="true">
+		<div class="flex items-center justify-between mb-3">
+			<span class="text-sm font-semibold text-first-text-color">EXIF</span>
+			<button class="image-viewer-exif-close flex h-8 w-8 items-center justify-center rounded-full bg-background-color-transparent-80 text-first-text-color transition hover:bg-background-color-transparent-40" type="button" aria-label="Close">
+				<i class="fa-solid fa-xmark text-[0.65rem]"></i>
+			</button>
+		</div>
+		<div class="image-viewer-exif-cards grid grid-cols-1 sm:grid-cols-2 gap-3 max-h-[50vh] overflow-y-auto pr-1 scrollbar-hide"></div>
+		<template class="image-viewer-exif-card-template">
+			<div class="rounded-lg bg-background-color-transparent-40 px-3 py-2">
+				<div class="image-viewer-exif-card-header flex items-center gap-2 mb-1">
+					<i class="image-viewer-exif-card-icon fa-solid fa-circle-info text-xs text-third-text-color"></i>
+					<div class="image-viewer-exif-card-title text-xs font-semibold text-first-text-color"></div>
+				</div>
+				<div class="image-viewer-exif-card-items flex flex-col gap-1"></div>
+			</div>
+		</template>
+	</div>
+	<button class="image-viewer-exif-toggle flex items-center gap-2 hidden absolute left-1/2 bottom-6 -translate-x-1/2 rounded-full border border-border-color bg-background-color-transparent-80 px-4 py-2 text-first-text-color backdrop-blur-md transition hover:bg-background-color-transparent-40" type="button" aria-label="EXIF" aria-expanded="false">
+		<i class="fa-solid fa-circle-info text-xs"></i>
+		<span class="text-xs font-semibold uppercase tracking-wider">EXIF</span>
+	</button>
+	<button class="image-viewer-next" type="button" aria-label="Next">
+		<i class="fa-solid fa-chevron-right"></i>
+	</button>
+</div>
+
+
+	
+	<div class="search-pop-overlay">
+	<div class="popup search-popup">
+		<div class="search-header">
+			<span class="search-input-field-pre">
+				<i class="fa-solid fa-keyboard"></i>
+			</span>
+			<div class="search-input-container">
+				<input autocomplete="off" autocorrect="off" autocapitalize="off" placeholder="Search..." spellcheck="false" type="search" class="search-input">
+			</div>
+			<span class="popup-btn-close">
+				<i class="fa-solid fa-times"></i>
+			</span>
+		</div>
+		<div id="search-result">
+			<div id="no-result">
+				<i class="fa-solid fa-spinner fa-spin-pulse fa-5x fa-fw"></i>
+			</div>
+		</div>
+	</div>
+</div>
+	
+
+</main>
+
+
+
+<script src="/js/build/libs/Swup.min.js"></script>
+
+<script src="/js/build/libs/SwupSlideTheme.min.js"></script>
+
+<script src="/js/build/libs/SwupScriptsPlugin.min.js"></script>
+
+<script src="/js/build/libs/SwupProgressPlugin.min.js"></script>
+
+<script src="/js/build/libs/SwupScrollPlugin.min.js"></script>
+
+<script src="/js/build/libs/SwupPreloadPlugin.min.js"></script>
+
+<script>
+    window.swup = new Swup({
+        plugins: [
+            new SwupScriptsPlugin({
+                optin: true,
+            }),
+            new SwupProgressPlugin(),
+            new SwupScrollPlugin({
+                offset: 80,
+            }),
+            new SwupSlideTheme({
+                mainElement: ".main-content-body",
+            }),
+            new SwupPreloadPlugin(),
+        ],
+        containers: ["#swup"],
+    });
+
+    window.dispatchEvent(
+        new CustomEvent("redefine:swup:ready", {
+            detail: {
+                swup: window.swup,
+            },
+        }),
+    );
+</script>
+
+
+
+
+	
+<script src="/js/build/main.js" type="module"></script>
+
+
+
+    
+<script src="/js/build/libs/odometer.min.js"></script>
+
+    
+<link rel="stylesheet" href="/assets/odometer-theme-minimal.css">
+
+
+
+
+
+
+
+  
+<script src="/js/build/libs/Typed.min.js"></script>
+
+
+
+
+    
+        
+<script src="/js/build/libs/mermaid.min.js"></script>
+
+    
+
+
+
+
+
+    
+<script src="/js/build/libs/minimasonry.min.js" data-swup-reload-script=""></script>
+
+
+
+
+<script src="/js/build/libs/moment-with-locales.min.js" data-swup-reload-script=""></script>
+
+
+
+	
+<script type="text/x-mathjax-config">
+  MathJax.Hub.Config({
+        tex2jax: {
+            inlineMath: [ ["$","$"], ["\\(","\\)"] ],
+            skipTags: ['script', 'noscript', 'style', 'textarea', 'pre', 'code'],
+            processEscapes: true
+        }
+    });
+    MathJax.Hub.Queue(function() {
+        var all = MathJax.Hub.getAllJax();
+        for (var i = 0; i < all.length; ++i)
+            all[i].SourceElement().parentNode.className += ' has-jax';
+    });
+</script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/mathjax/2.7.1/MathJax.js?config=TeX-MML-AM_CHTML"></script>
+</body>
+
+</html>

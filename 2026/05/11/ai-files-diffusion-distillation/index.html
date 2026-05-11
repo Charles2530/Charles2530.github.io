@@ -1,0 +1,1587 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="keywords" content="Charles">
+    
+    
+    <meta name="author" content="Charles">
+    
+    <!-- Completely eliminate flash of wrong theme -->
+    <script>
+        (function() {
+            const THEME_KEY = "REDEFINE-THEME-STATUS";
+            const DARK = "dark", LIGHT = "light";
+            
+            // Get preferred theme
+            function getTheme() {
+                try {
+                    const saved = localStorage.getItem(THEME_KEY);
+                    if (saved) {
+                        const { isDark } = JSON.parse(saved);
+                        return isDark ? DARK : LIGHT;
+                    }
+                } catch (e) {}
+                
+                return matchMedia("(prefers-color-scheme: dark)").matches ? DARK : LIGHT;
+            }
+            
+            // Apply theme to document
+            function applyTheme(theme) {
+                const isDark = theme === DARK;
+                const root = document.documentElement;
+                
+                // Set classes for compatibility
+                root.classList.add(theme);
+                root.classList.remove(isDark ? LIGHT : DARK);
+                root.style.colorScheme = theme;
+            }
+            
+            // Initial application
+            const theme = getTheme();
+            applyTheme(theme);
+            
+            // Listen for system preference changes
+            matchMedia("(prefers-color-scheme: dark)").addEventListener("change", ({ matches }) => {
+                // Only update if using system preference (no localStorage entry)
+                if (!localStorage.getItem(THEME_KEY)) {
+                    applyTheme(matches ? DARK : LIGHT);
+                }
+            });
+            
+            // Set body classes ASAP (before DOMContentLoaded)
+            (function() {
+                const addBodyClass = () => {
+                    const b = document.body;
+                    if (!b) return false;
+                    b.classList.add(theme + "-mode");
+                    return true;
+                };
+
+                // Try immediately
+                if (addBodyClass()) return;
+
+                // Observe until body exists
+                const mo = new MutationObserver(() => {
+                    if (addBodyClass()) mo.disconnect();
+                });
+                mo.observe(document.documentElement, { childList: true, subtree: true });
+            })();
+        })();
+    </script>
+    
+    <!-- preconnect -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+
+    
+    <!--- Seo Part-->
+    
+    <link rel="canonical" href="https://charles2530.github.io/2026/05/11/ai-files-diffusion-distillation/"/>
+    <meta name="robots" content="index,follow">
+    <meta name="googlebot" content="index,follow">
+    <meta name="revisit-after" content="1 days">
+    
+    
+        
+        <meta name="description" content="This is Charles&#39;s Castle.">
+<meta property="og:type" content="article">
+<meta property="og:title" content="扩散蒸馏、一步生成与整流路线">
+<meta property="og:url" content="https://charles2530.github.io/2026/05/11/ai-files-diffusion-distillation/index.html">
+<meta property="og:site_name" content="Charles&#39;s Castle">
+<meta property="og:description" content="This is Charles&#39;s Castle.">
+<meta property="og:locale" content="en_US">
+<meta property="og:image" content="https://charles2530.github.io/image/background/logo.jpg">
+<meta property="article:published_time" content="2026-05-11T01:03:00.000Z">
+<meta property="article:modified_time" content="2026-05-11T01:03:00.000Z">
+<meta property="article:author" content="Du Jinyang">
+<meta property="article:tag" content="AI">
+<meta property="article:tag" content="Diffusion Models">
+<meta property="article:tag" content="Diffusion">
+<meta name="twitter:card" content="summary">
+<meta name="twitter:image" content="https://charles2530.github.io/image/background/logo.jpg">
+    
+    
+    <!--- Icon Part-->
+    <link rel="icon" type="image/png" href="https://charles2530.github.io/image/background/favicon.png" sizes="192x192">
+    <link rel="apple-touch-icon" sizes="180x180" href="https://charles2530.github.io/image/background/favicon.png">
+    <meta name="theme-color" content="#A31F34">
+    <link rel="shortcut icon" href="https://charles2530.github.io/image/background/favicon.png">
+    <!--- Page Info-->
+    
+    <title>
+        
+            扩散蒸馏、一步生成与整流路线 | Charles&#39;s Castle
+        
+    </title>
+
+    
+<link rel="stylesheet" href="/fonts/Chillax/chillax.css">
+
+
+    <!--- Inject Part-->
+    
+        
+            
+    
+            
+    
+            
+                
+                    <script data-swup-reload-script> var _hmt = _hmt || []; (function() { var hm = document.createElement("script"); hm.src = "https://hm.baidu.com/hm.js?8e0e5f382d14d87cbeadc33a36e71e86"; var s = document.getElementsByTagName("script")[0]; s.parentNode.insertBefore(hm, s); })(); </script>
+                
+    
+
+    
+<link rel="stylesheet" href="/css/style.css">
+
+
+    
+        
+<link rel="stylesheet" href="/css/build/tailwind.css">
+
+    
+
+    
+<link rel="stylesheet" href="/fonts/GeistMono/geist-mono.css">
+
+    
+<link rel="stylesheet" href="/fonts/Geist/geist.css">
+
+    <!--- Font Part-->
+    
+    
+    
+    
+    
+    
+        
+<script src="/js/build/libs/anime.min.js"></script>
+
+    
+
+    <script id="hexo-configurations">
+    window.config = {"hostname":"charles2530.github.io","root":"/","language":"en","path":"search.xml"};
+    window.theme = {"articles":{"style":{"font_size":"16px","line_height":1.5,"image_border_radius":"14px","image_alignment":"center","image_caption":false,"link_icon":true,"delete_mask":false,"title_alignment":"left","headings_top_spacing":{"h1":"5rem","h2":"4rem","h3":"2.8rem","h4":"2.5rem","h5":"2.2rem","h6":"2rem"}},"word_count":{"enable":true,"count":true,"min2read":true},"author_label":{"enable":true,"auto":true,"list":["lol","Neo","God"]},"code_block":{"copy":true,"style":"mac","highlight_theme":{"light":"github","dark":"vs2015"},"font":{"enable":false,"family":null,"url":null}},"toc":{"enable":true,"max_depth":6,"number":false,"expand":true,"init_open":true},"copyright":{"enable":true,"default":"cc_by_nc_sa"},"lazyload":true,"pangu_js":false,"recommendation":{"enable":false,"title":"recommend_articles","limit":3,"mobile_limit":2,"placeholder":"https://charles2530.github.io/image/background/p3.jfif","skip_dirs":[]}},"colors":{"primary":"#A31F34","secondary":"#1890ff","default_mode":"light"},"global":{"fonts":{"chinese":{"enable":false,"family":null,"url":null},"english":{"enable":false,"family":null,"url":null},"title":{"enable":false,"family":null,"url":null}},"content_max_width":"1000px","sidebar_width":"210px","hover":{"shadow":true,"scale":true},"scroll_progress":{"bar":true,"percentage":true},"website_counter":{"url":"https://cn.vercount.one/js","enable":true,"site_pv":true,"site_uv":true,"post_pv":true},"single_page":true,"preloader":{"enable":true,"custom_message":null},"side_tools":{"gear_rotation":true,"auto_expand":false},"open_graph":{"enable":true,"image":"https://charles2530.github.io/image/background/logo.jpg","description":"This is Charles's Castle."},"google_analytics":{"enable":false,"id":null}},"home_banner":{"enable":true,"style":"fixed","image":{"light":"https://charles2530.github.io/image/background/background-light1.jpg","dark":"https://charles2530.github.io/image/background/background-dark1.jpg"},"title":"Charles's Castle","subtitle":{"text":["Happiness is best!","Never give up!","Everyday is a gift!"],"hitokoto":{"enable":false,"show_author":false,"api":"https://v1.hitokoto.cn"},"typing_speed":100,"backing_speed":80,"starting_delay":500,"backing_delay":1500,"loop":true,"smart_backspace":true},"text_color":{"light":"#000000","dark":"#d1d1b6"},"text_style":{"title_size":"3.2rem","subtitle_size":"1.5rem","line_height":1.2},"custom_font":{"enable":false,"family":null,"url":null},"social_links":{"enable":true,"style":"center","links":[{"icon":"fa-brands fa-github","url":"https://github.com/Charles2530/"},{"icon":"fa-brands fa-zhihu","url":"https://www.zhihu.com/people/yang-guang-xiao-zi-55-55"},{"icon":"fa-solid fa-at","url":"mailto:charles2530@163.com"},{"icon":"fa-brands fa-telegram","url":null},{"icon":"/images/custom-icon.svg","url":null}],"qrs":[{"icon":"fa-brands fa-weixin","qr":"https://charles2530.github.io/image/background/Wechat_icon.png"},{"icon":"/images/custom-icon.svg","qr":null}]}},"plugins":{"feed":{"enable":true},"aplayer":{"enable":false,"type":"fixed","audios":[{"name":null,"artist":null,"url":null,"cover":null,"lrc":null}]},"mermaid":{"enable":true,"version":"11.4.1","theme":{"light":"default","dark":"dark"}}},"version":"2.9.0","navbar":{"auto_hide":true,"color":{"left":"#f78736","right":"#367df7","transparency":35},"width":{"home":"1200px","pages":"1000px"},"links":{"Home":{"path":"/","icon":"fa-regular fa-house"},"Categories":{"path":"/categories","icon":"fas fa-bookmark"},"Tags":{"path":"/tags","icon":"fas fa-tags"},"About":{"icon":"fa-regular fa-user","submenus":{"Me":"/about","Github":"https://github.com/Charles2530/","Blog":"https://charles2530.github.io","Statistics":"https://tongji.baidu.com/"}}},"search":{"enable":true,"preload":true}},"page_templates":{"friends_column":2,"tags_style":"blur","masonry":{"batch_size":12,"initial_batch_size":24}},"home":{"sidebar":{"enable":true,"position":"left","first_item":"menu","announcement":"This is Charles's Castle","show_on_mobile":true,"links":{"Archives":{"path":"/archives","icon":"fa-regular fa-archive"},"Photos":{"icon":"fa-solid fa-image","path":"/masonry/"},"Essays":{"icon":"fa-solid fa-message-lines","path":"/essay/"},"Friends":{"icon":"fa-solid fa-user-group","path":"/friends/"}}},"article_date_format":"auto","excerpt_length":200,"categories":{"enable":true,"limit":3},"tags":{"enable":true,"limit":3}},"footer":{"runtime":true,"icon":"<i class=\"fa-solid fa-heart fa-beat\" style=\"--fa-animation-duration: 0.5s; color: #f54545\"></i>","start":"2022/12/27 00:00:00","statistics":true,"customize":null,"icp":{"enable":false,"number":null,"url":null}},"footerStart":"2022/12/27 00:00:00","mermaid":{"style":{"light":"default","dark":"dark"}}};
+    window.lang_ago = {"second":"%s seconds ago","minute":"%s minutes ago","hour":"%s hours ago","day":"%s days ago","week":"%s weeks ago","month":"%s months ago","year":"%s years ago"};
+    window.i18n = {"search":"Search...","toc":"On this page","prev":"Prev","next":"Next","prev_posts":"Prev posts","next_posts":"Next posts","page":"Page %d","recent_posts":"Recent Posts","share":"Share","powered_by":"POWERED BY %s","theme":"THEME","rss_feed":"RSS Feed","category":"Category","categories":"Categories","tag":"Tag","tags":"Tags","post":"Post","posts":"Posts","tagcloud":"Tag Cloud","comment":"Comment","comments":"Comments","home":"Home","archive":"Archive","archives":"Archives","top":"TOP","sticky":"Sticky","go-back-home":"Go Back Home","masonry_loading":"Loading photos...","image_viewer":"Image viewer","close":"Close","exif":{"title":"EXIF","cards":{"camera":"Camera","lens":"Lens","exposure":"Exposure","other":"Other"},"fields":{"make":"Brand","model":"Model","date_taken":"Date taken","lens_model":"Lens","focal_length":"Focal length","focus_mode":"Focus mode","shutter":"Shutter","aperture":"Aperture","iso":"ISO","exposure_program":"Exposure program","exposure_compensation":"Exposure compensation","metering_mode":"Metering mode","flash":"Flash","white_balance":"White balance","latitude":"Latitude","longitude":"Longitude","altitude":"Altitude"},"status":{"loading":"Loading...","no_exif":"No EXIF available","library_missing":"EXIF library not loaded","image_source_missing":"Image source unavailable","unavailable":"EXIF unavailable (blocked by CORS or missing metadata)","flag_unavailable":"EXIF unavailable"}},"about":"About","changelog":"Changelog","links":"Links","link":"Link","friends":"Friends","friend":"Friend","timeline":"Timeline","shuoshuo":"Shuoshuo","bookmarks":"Bookmarks","site_uv":"VISITOR COUNT","site_pv":"TOTAL PAGE VIEWS","read_more":"Read more","wordcount":"Words","min2read":"Mins","status":"Status","runtime":"Blog up for","days":"days","hours":"hrs","minutes":"Min","seconds":"Sec","optimized_by":"and Optimized by Evan","rights":"All Rights Reserved","site_posts":"%s posts in total","site_wordcount":"%s words in total","copyright":{"author":"Author","title":"Title","link":"Link","create_time":"Created at","update_time":"Updated at","license_title":"License","license_content":"This work is licensed under %s.","all_rights_reserved":"All Rights Reserved &#169; %s","public_domain":"This work is in the public domain."},"ago":{"second":"%s seconds ago","minute":"%s minutes ago","hour":"%s hours ago","day":"%s days ago","week":"%s weeks ago","month":"%s months ago","year":"%s years ago"},"create_time":"Created","update_time":"Updated","expired":"This post is written %s days ago, and the content may not be up to date."};
+    window.data = {"masonry":true};
+  </script>
+    
+    <!--- Fontawesome Part-->
+    
+<link rel="stylesheet" href="/fontawesome/fontawesome.min.css">
+
+    
+<link rel="stylesheet" href="/fontawesome/brands.min.css">
+
+    
+<link rel="stylesheet" href="/fontawesome/solid.min.css">
+
+    
+<link rel="stylesheet" href="/fontawesome/regular.min.css">
+
+    
+    
+    
+    
+<meta name="generator" content="Hexo 6.3.0"><link rel="alternate" href="/atom.xml" title="Charles's Castle" type="application/atom+xml">
+<link rel="stylesheet" href="/css/prism-tomorrow.css" type="text/css"></head>
+
+
+<body>
+	<div class="progress-bar-container">
+	
+	<span class="scroll-progress-bar"></span>
+	
+
+	
+	<span class="pjax-progress-bar"></span>
+	<!--        <span class="swup-progress-icon">-->
+	<!--            <i class="fa-solid fa-circle-notch fa-spin"></i>-->
+	<!--        </span>-->
+	
+</div>
+
+<style>
+    :root {
+        --preloader-background-color: #fff;
+        --preloader-text-color: #000;
+    }
+
+    @media (prefers-color-scheme: dark) {
+        :root {
+            --preloader-background-color: #202124;
+            --preloader-text-color: #fff;
+        }
+    }
+
+    @media (prefers-color-scheme: light) {
+        :root {
+            --preloader-background-color: #fff;
+            --preloader-text-color: #000;
+        }
+    }
+
+    @media (max-width: 600px) {
+        .ml13 {
+            font-size: 2.6rem !important; /* Adjust this value as needed */
+        }
+    }
+
+    .preloader {
+        display: flex;
+        flex-direction: column;
+        gap: 1rem; /* Tailwind 'gap-4' is 1rem */
+        align-items: center;
+        justify-content: center;
+        position: fixed;
+        padding: 12px;
+        top: 0;
+        right: 0;
+        bottom: 0;
+        left: 0;
+        width: 100vw;
+        height: 100vh; /* 'h-screen' is 100% of the viewport height */
+        background-color: var(--preloader-background-color);
+        z-index: 1100; /* 'z-[1100]' sets the z-index */
+        transition: opacity 0.2s ease-in-out;
+    }
+
+    .ml13 {
+        font-size: 3.2rem;
+        /* text-transform: uppercase; */
+        color: var(--preloader-text-color);
+        letter-spacing: -1px;
+        font-weight: 500;
+        font-family: 'Chillax-Variable', sans-serif;
+        text-align: center;
+    }
+
+    .ml13 .word {
+        display: inline-flex;
+        flex-wrap: wrap;
+        white-space: nowrap;
+    }
+
+    .ml13 .letter {
+        display: inline-block;
+        line-height: 1em;
+    }
+</style>
+
+<div class="preloader">
+    <h2 class="ml13">
+        Charles&#39;s Castle
+    </h2>
+    <script>
+        var textWrapper = document.querySelector('.ml13');
+        // Split text into words
+        var words = textWrapper.textContent.trim().split(' ');
+
+        // Clear the existing content
+        textWrapper.innerHTML = '';
+
+        // Wrap each word and its letters in spans
+        words.forEach(function(word) {
+            var wordSpan = document.createElement('span');
+            wordSpan.classList.add('word');
+            wordSpan.innerHTML = word.replace(/\S/g, "<span class='letter'>$&</span>");
+            textWrapper.appendChild(wordSpan);
+            textWrapper.appendChild(document.createTextNode(' ')); // Add space between words
+        });
+
+        var animation = anime.timeline({ loop: true })
+            .add({
+                targets: '.ml13 .letter',
+                translateY: [20, 0],
+                translateZ: 0,
+                opacity: [0, 1],
+                filter: ['blur(5px)', 'blur(0px)'],
+                easing: "easeOutExpo",
+                duration: 1200,
+                delay: (el, i) => 300 + 20 * i,
+            })
+            .add({
+                targets: '.ml13 .letter',
+                translateY: [0, -20],
+                opacity: [1, 0],
+                filter: ['blur(0px)', 'blur(5px)'],
+                easing: "easeInExpo",
+                duration: 1000,
+                delay: (el, i) => 15 * i,
+                complete: function() {
+                    hidePreloader();
+                }
+            }, '-=700');
+
+
+        let themeStatus = JSON.parse(localStorage.getItem('REDEFINE-THEME-STATUS'))?.isDark;
+
+        // If the theme status is not found in local storage, check the preferred color scheme
+        if (themeStatus === undefined || themeStatus === null) {
+            if (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) {
+                themeStatus = 'dark';
+            } else {
+                themeStatus = 'light';
+            }
+        }
+
+        // Now you can use the themeStatus variable in your code
+        if (themeStatus) {
+            document.documentElement.style.setProperty('--preloader-background-color', '#202124');
+            document.documentElement.style.setProperty('--preloader-text-color', '#fff');
+        } else {
+            document.documentElement.style.setProperty('--preloader-background-color', '#fff');
+            document.documentElement.style.setProperty('--preloader-text-color', '#000');
+        }
+
+        window.addEventListener('load', function () {
+            setTimeout(hidePreloader, 5000); // Call hidePreloader after 5000 milliseconds if not already called by animation
+        });
+
+        function hidePreloader() {
+            var preloader = document.querySelector('.preloader');
+            preloader.style.opacity = '0';
+            setTimeout(function () {
+                preloader.style.display = 'none';
+            }, 200);
+        }
+    </script>
+</div>
+
+<main class="page-container" id="swup">
+
+	
+
+	<div class="main-content-container flex flex-col justify-between min-h-dvh">
+		<div class="main-content-header">
+			<header class="navbar-container px-6 md:px-12">
+    <div class="navbar-content transition-navbar ">
+        <div class="left">
+            
+                <a class="logo-image h-8 w-8 sm:w-10 sm:h-10 mr-3" href="/">
+                    <img src="https://charles2530.github.io/image/background/logo.jpg" class="w-full h-full rounded-xs">
+                </a>
+            
+            <a class="logo-title" href="/">
+                
+                Charles&#39;s Castle
+                
+            </a>
+        </div>
+
+        <div class="right">
+            <!-- PC -->
+            <div class="desktop">
+                <ul class="navbar-list">
+                    
+                        
+                            
+
+                            <li class="navbar-item">
+                                <!-- Menu -->
+                                <a class=""
+                                   href="/"
+                                        >
+                                    <i class="fa-regular fa-house fa-fw"></i>
+                                    HOME
+                                    
+                                </a>
+
+                                <!-- Submenu -->
+                                
+                            </li>
+                    
+                        
+                            
+
+                            <li class="navbar-item">
+                                <!-- Menu -->
+                                <a class=""
+                                   href="/categories"
+                                        >
+                                    <i class="fas fa-bookmark fa-fw"></i>
+                                    CATEGORIES
+                                    
+                                </a>
+
+                                <!-- Submenu -->
+                                
+                            </li>
+                    
+                        
+                            
+
+                            <li class="navbar-item">
+                                <!-- Menu -->
+                                <a class=""
+                                   href="/tags"
+                                        >
+                                    <i class="fas fa-tags fa-fw"></i>
+                                    TAGS
+                                    
+                                </a>
+
+                                <!-- Submenu -->
+                                
+                            </li>
+                    
+                        
+                            
+
+                            <li class="navbar-item">
+                                <!-- Menu -->
+                                <a class="has-dropdown"
+                                   href="#"
+                                        onClick=&#34;return false;&#34;>
+                                    <i class="fa-regular fa-user fa-fw"></i>
+                                    ABOUT
+                                    <i class="fa-solid fa-chevron-down fa-fw"></i>
+                                </a>
+
+                                <!-- Submenu -->
+                                
+                                    <ul class="sub-menu">
+                                        
+                                            <li>
+                                                <a href="/about">
+                                                    ME
+                                                </a>
+                                            </li>
+                                        
+                                            <li>
+                                                <a target="_blank" rel="noopener" href="https://github.com/Charles2530/">
+                                                    GITHUB
+                                                </a>
+                                            </li>
+                                        
+                                            <li>
+                                                <a href="https://charles2530.github.io">
+                                                    BLOG
+                                                </a>
+                                            </li>
+                                        
+                                            <li>
+                                                <a target="_blank" rel="noopener" href="https://tongji.baidu.com/">
+                                                    STATISTICS
+                                                </a>
+                                            </li>
+                                        
+                                    </ul>
+                                
+                            </li>
+                    
+                    
+                        <li class="navbar-item search search-popup-trigger">
+                            <i class="fa-solid fa-magnifying-glass"></i>
+                        </li>
+                    
+                </ul>
+            </div>
+            <!-- Mobile -->
+            <div class="mobile">
+                
+                    <div class="icon-item search search-popup-trigger"><i class="fa-solid fa-magnifying-glass"></i>
+                    </div>
+                
+                <div class="icon-item navbar-bar">
+                    <div class="navbar-bar-middle"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Mobile sheet -->
+    <div class="navbar-drawer h-dvh w-full absolute top-0 left-0 bg-background-color flex flex-col justify-between">
+        <ul class="drawer-navbar-list flex flex-col px-4 justify-center items-start">
+            
+                
+                    
+
+                    <li class="drawer-navbar-item text-base my-1.5 flex flex-col w-full">
+                        
+                        <a class="py-1.5 px-2 flex flex-row items-center justify-between gap-1 hover:!text-primary active:!text-primary text-2xl font-semibold group border-b border-border-color hover:border-primary w-full "
+                           href="/"
+                        >
+                            <span>
+                                HOME
+                            </span>
+                            
+                                <i class="fa-regular fa-house fa-sm fa-fw"></i>
+                            
+                        </a>
+                        
+
+                        
+                    </li>
+            
+                
+                    
+
+                    <li class="drawer-navbar-item text-base my-1.5 flex flex-col w-full">
+                        
+                        <a class="py-1.5 px-2 flex flex-row items-center justify-between gap-1 hover:!text-primary active:!text-primary text-2xl font-semibold group border-b border-border-color hover:border-primary w-full "
+                           href="/categories"
+                        >
+                            <span>
+                                CATEGORIES
+                            </span>
+                            
+                                <i class="fas fa-bookmark fa-sm fa-fw"></i>
+                            
+                        </a>
+                        
+
+                        
+                    </li>
+            
+                
+                    
+
+                    <li class="drawer-navbar-item text-base my-1.5 flex flex-col w-full">
+                        
+                        <a class="py-1.5 px-2 flex flex-row items-center justify-between gap-1 hover:!text-primary active:!text-primary text-2xl font-semibold group border-b border-border-color hover:border-primary w-full "
+                           href="/tags"
+                        >
+                            <span>
+                                TAGS
+                            </span>
+                            
+                                <i class="fas fa-tags fa-sm fa-fw"></i>
+                            
+                        </a>
+                        
+
+                        
+                    </li>
+            
+                
+                    
+
+                    <li class="drawer-navbar-item-sub text-base my-1.5 flex flex-col w-full">
+                        
+                        <div class="py-1.5 px-2 flex flex-row items-center justify-between gap-1 hover:!text-primary active:!text-primary cursor-pointer text-2xl font-semibold group border-b border-border-color hover:border-primary w-full "
+                             navbar-data-toggle="submenu-About"
+                        >
+                            <span>
+                                ABOUT
+                            </span>
+                            
+                                <i class="fa-solid fa-chevron-right fa-sm fa-fw transition-all"></i>
+                            
+                        </div>
+                        
+
+                        
+                            <div class="flex-col items-start px-2 py-2 hidden" data-target="submenu-About">
+                                
+                                    <div class="drawer-navbar-item text-base flex flex-col justify-center items-start hover:underline active:underline hover:underline-offset-1 rounded-3xl">
+                                        <a class=" text-third-text-color text-xl"
+                                           href="/about">ME</a>
+                                    </div>
+                                
+                                    <div class="drawer-navbar-item text-base flex flex-col justify-center items-start hover:underline active:underline hover:underline-offset-1 rounded-3xl">
+                                        <a class=" text-third-text-color text-xl"
+                                           target="_blank" rel="noopener" href="https://github.com/Charles2530/">GITHUB</a>
+                                    </div>
+                                
+                                    <div class="drawer-navbar-item text-base flex flex-col justify-center items-start hover:underline active:underline hover:underline-offset-1 rounded-3xl">
+                                        <a class=" text-third-text-color text-xl"
+                                           href="https://charles2530.github.io">BLOG</a>
+                                    </div>
+                                
+                                    <div class="drawer-navbar-item text-base flex flex-col justify-center items-start hover:underline active:underline hover:underline-offset-1 rounded-3xl">
+                                        <a class=" text-third-text-color text-xl"
+                                           target="_blank" rel="noopener" href="https://tongji.baidu.com/">STATISTICS</a>
+                                    </div>
+                                
+                            </div>
+                        
+                    </li>
+            
+
+            
+            
+                
+                    
+                    <li class="drawer-navbar-item text-base my-1.5 flex flex-col w-full">
+                        <a class="py-1.5 px-2 flex flex-row items-center justify-between gap-1 hover:!text-primary active:!text-primary text-2xl font-semibold group border-b border-border-color hover:border-primary w-full active"
+                           href="/archives"
+                        >
+                            <span>Archives</span>
+                            <i class="fa-regular fa-archive fa-sm fa-fw"></i>
+                        </a>
+                    </li>
+                
+                    
+                    <li class="drawer-navbar-item text-base my-1.5 flex flex-col w-full">
+                        <a class="py-1.5 px-2 flex flex-row items-center justify-between gap-1 hover:!text-primary active:!text-primary text-2xl font-semibold group border-b border-border-color hover:border-primary w-full active"
+                           href="/masonry/"
+                        >
+                            <span>Photos</span>
+                            <i class="fa-solid fa-image fa-sm fa-fw"></i>
+                        </a>
+                    </li>
+                
+                    
+                    <li class="drawer-navbar-item text-base my-1.5 flex flex-col w-full">
+                        <a class="py-1.5 px-2 flex flex-row items-center justify-between gap-1 hover:!text-primary active:!text-primary text-2xl font-semibold group border-b border-border-color hover:border-primary w-full active"
+                           href="/essay/"
+                        >
+                            <span>Essays</span>
+                            <i class="fa-solid fa-message-lines fa-sm fa-fw"></i>
+                        </a>
+                    </li>
+                
+                    
+                    <li class="drawer-navbar-item text-base my-1.5 flex flex-col w-full">
+                        <a class="py-1.5 px-2 flex flex-row items-center justify-between gap-1 hover:!text-primary active:!text-primary text-2xl font-semibold group border-b border-border-color hover:border-primary w-full active"
+                           href="/friends/"
+                        >
+                            <span>Friends</span>
+                            <i class="fa-solid fa-user-group fa-sm fa-fw"></i>
+                        </a>
+                    </li>
+                
+            
+        </ul>
+
+        <div class="statistics flex justify-around my-2.5">
+    <a class="item tag-count-item flex flex-col justify-center items-center w-20" href="/tags">
+        <div class="number text-2xl sm:text-xl text-second-text-color font-semibold">45</div>
+        <div class="label text-third-text-color text-sm">Tags</div>
+    </a>
+    <a class="item tag-count-item flex flex-col justify-center items-center w-20" href="/categories">
+        <div class="number text-2xl sm:text-xl text-second-text-color font-semibold">97</div>
+        <div class="label text-third-text-color text-sm">Categories</div>
+    </a>
+    <a class="item tag-count-item flex flex-col justify-center items-center w-20" href="/archives">
+        <div class="number text-2xl sm:text-xl text-second-text-color font-semibold">479</div>
+        <div class="label text-third-text-color text-sm">Posts</div>
+    </a>
+</div>
+    </div>
+
+    <div class="window-mask"></div>
+
+</header>
+
+
+		</div>
+
+		<div class="main-content-body transition-fade-up">
+			
+
+			<div class="main-content">
+				<div class="post-page-container flex relative justify-between box-border w-full h-full">
+	<div class="article-content-container">
+
+		<div class="article-title relative w-full">
+			
+			<div class="w-full flex items-center pt-6 justify-start">
+				<h1 class="article-title-regular text-second-text-color tracking-tight text-4xl md:text-6xl font-semibold px-2 sm:px-6 md:px-8 py-3">扩散蒸馏、一步生成与整流路线</h1>
+			</div>
+			
+		</div>
+
+		
+		<div class="article-header flex flex-row gap-2 items-center px-2 sm:px-6 md:px-8">
+			<div class="avatar w-[46px] h-[46px] shrink-0 rounded-medium border border-border-color p-px">
+				<img src="https://charles2530.github.io/image/background/logo2.jpg">
+			</div>
+			<div class="info flex flex-col justify-between">
+				<div class="author flex items-center">
+					<span class="name text-default-text-color text-lg font-semibold">Charles</span>
+					
+					<span class="author-label ml-1.5 text-xs px-2 py-0.5 rounded-small text-third-text-color border border-shadow-color-1">Lv7</span>
+					
+				</div>
+				<div class="meta-info">
+					<div class="article-meta-info">
+    <span class="article-date article-meta-item">
+        <i class="fa-regular fa-pen-fancy"></i>&nbsp;
+        <span class="desktop">2026-05-11 09:03</span>
+        <span class="mobile">2026-05-11 09:03</span>
+        <span class="hover-info">Created</span>
+    </span>
+    
+        <span class="article-date article-meta-item">
+            <i class="fa-regular fa-wrench"></i>&nbsp;
+            <span class="desktop">2026-05-11 09:03</span>
+            <span class="mobile">2026-05-11 09:03</span>
+            <span class="hover-info">Updated</span>
+        </span>
+    
+
+    
+        <span class="article-categories article-meta-item">
+            <i class="fa-regular fa-folders"></i>&nbsp;
+            <ul>
+                
+                
+                    
+                        
+                        <li>
+                            <a href="/categories/AI/">AI</a>&nbsp;
+                        </li>
+                    
+                    
+                
+                    
+                        
+                            <li>></li>
+                        
+                        <li>
+                            <a href="/categories/AI/Diffusion/">Diffusion</a>&nbsp;
+                        </li>
+                    
+                    
+                
+            </ul>
+        </span>
+    
+    
+        <span class="article-tags article-meta-item">
+            <i class="fa-regular fa-tags"></i>&nbsp;
+            <ul>
+                
+                    <li>
+                        <a href="/tags/AI/">AI</a>&nbsp;
+                    </li>
+                
+                    <li>
+                        | <a href="/tags/Diffusion-Models/">Diffusion Models</a>&nbsp;
+                    </li>
+                
+                    <li>
+                        | <a href="/tags/Diffusion/">Diffusion</a>&nbsp;
+                    </li>
+                
+            </ul>
+        </span>
+    
+
+    
+    
+        <span class="article-wordcount article-meta-item">
+            <i class="fa-regular fa-typewriter"></i>&nbsp;<span>5.8k Words</span>
+        </span>
+    
+    
+        <span class="article-min2read article-meta-item">
+            <i class="fa-regular fa-clock"></i>&nbsp;<span>21 Mins</span>
+        </span>
+    
+    
+        <span class="article-pv article-meta-item">
+            <i class="fa-regular fa-eye"></i>&nbsp;<span id="busuanzi_value_page_pv"></span>
+        </span>
+    
+</div>
+
+				</div>
+			</div>
+		</div>
+		
+
+		
+
+
+		<div class="article-content markdown-body px-2 sm:px-6 md:px-8 pb-8">
+			<p>当 <code>DDIM</code>、<code>Euler</code>、<code>DPM-Solver</code> 已经把推理压到几十步后，下一步问题就变成了：能不能直接把几十步教师，压缩成几步甚至一步学生。</p>
+<p>DMD 原论文的核心图很适合说明“少步/一步生成”为什么不能只靠删采样步：student generator 需要同时接受回归信号和分布匹配信号，目标不是机械复刻 teacher 的每个中间状态，而是让最终生成分布靠近 teacher / data 分布。</p>
+<p><img  
+                     lazyload
+                     src="/images/loading.svg"
+                     data-src="/image/ai-notes/images/paper-deep-dives/diffusion/dmd/overview.png"
+                      alt="DMD overview 原论文图" 
+                ></p>
+<p><small>图源：<a class="link"   target="_blank" rel="noopener" href="https://arxiv.org/abs/2311.18828" >One-step Diffusion with Distribution Matching Distillation<i class="fa-solid fa-arrow-up-right ml-[0.2em] font-light align-text-top text-[0.7em] link-icon"></i></a>，Figure 2。原论文图意：一步生成器 (G_\theta) 从噪声生成 fake image；一条支路用预计算 noise-image pairs 做 regression loss，另一条支路通过 real / fake score 差异形成 distribution matching gradient。</small></p>
+<div class="callout callout--titled info mb-4 rounded-small shadow-redefine-flat bg-(--callout-bg-color) p-3 pl-1 relative flex flex-row gap-2"><div role="none" class="rounded-full self-stretch w-0.5 bg-(--callout-primary-color) shrink-0 opacity-60"></div><div class="flex flex-col gap-2"><div class="callout__title flex items-center gap-2 font-semibold tracking-tight">图解：DMD 方法图里的两条训练信号</div><div class="callout__content markdown-body flex-1 min-w-0"><p>图中 (G_\theta) 是一步 generator，它直接把噪声映射成 fake image。上方 regression branch 用预计算的 teacher pairs 稳住单样本对应关系，避免学生完全偏离教师轨迹；下方 distribution matching branch 把 fake image 加噪后交给 real / fake score models，用两者差异给 generator 一个“整体分布应该往哪里移动”的梯度。少步生成不是单纯把采样步数删掉；越接近一步生成，越需要重新验证文本对齐、细节锐度、模式覆盖和长尾稳定性。</p></div></div></div>
+<div class="callout callout--titled default mb-4 rounded-small shadow-redefine-flat bg-(--callout-bg-color) p-3 pl-1 relative flex flex-row gap-2"><div role="none" class="rounded-full self-stretch w-0.5 bg-(--callout-primary-color) shrink-0 opacity-60"></div><div class="flex flex-col gap-2"><div class="callout__title flex items-center gap-2 font-semibold tracking-tight">有趣例子：把慢教程压成速成课</div><div class="callout__content markdown-body flex-1 min-w-0"><p>Teacher 像一门 50 节课的绘画教程，每节只教一点构图、线条、明暗和细节。Student 若只上 4 节课，就不能简单删掉 46 节，而要把关键步骤重新编排成更大的学习跳跃。少步扩散蒸馏也是在重新组织这条学习路径。</p></div></div></div>
+<h2 id="少步蒸馏从多步教师到-1-8-步学生-few-step-distillation"><a class="markdownIt-Anchor" href="#少步蒸馏从多步教师到-1-8-步学生-few-step-distillation"></a> 少步蒸馏：从多步教师到 1-8 步学生 { #few-step-distillation }</h2>
+<p>少步蒸馏要解决的问题很具体：已经有一个质量可靠但很慢的 teacher diffusion model，它可能需要 20、30、50 步甚至更多步才能生成一张图；现在希望训练一个 student，让它只用 1、2、4 或 8 步就达到接近教师的结果。</p>
+<p>这件事不能理解成“把采样循环里的步数删掉”。如果原模型是在 30 步里逐渐修正构图、纹理、边缘、文字和条件对齐，那么删到 4 步后，每一步都必须承担原来好几步的信息量。少步蒸馏的核心，就是重新定义训练信号，让学生学会这种“粗粒度跳跃”。</p>
+<p><img  
+                     lazyload
+                     src="/images/loading.svg"
+                     data-src="/image/ai-notes/images/paper-deep-dives/diffusion/dmd2/method.png"
+                      alt="DMD2 method 原论文图" 
+                ></p>
+<p><small>图源：<a class="link"   target="_blank" rel="noopener" href="https://arxiv.org/abs/2405.14867" >Improved Distribution Matching Distillation for Fast Image Synthesis<i class="fa-solid fa-arrow-up-right ml-[0.2em] font-light align-text-top text-[0.7em] link-icon"></i></a>，Figure 3。原论文图意：DMD2 交替训练 generator、fake score function 和 GAN discriminator；generator 同时接收 distribution matching gradient 与 GAN loss。</small></p>
+<div class="callout callout--titled info mb-4 rounded-small shadow-redefine-flat bg-(--callout-bg-color) p-3 pl-1 relative flex flex-row gap-2"><div role="none" class="rounded-full self-stretch w-0.5 bg-(--callout-primary-color) shrink-0 opacity-60"></div><div class="flex flex-col gap-2"><div class="callout__title flex items-center gap-2 font-semibold tracking-tight">图解：DMD2 为什么多了 fake score 和 GAN 分支</div><div class="callout__content markdown-body flex-1 min-w-0"><p>DMD2 图里有三组角色：generator 负责产生少步样本，fake score function 追踪当前 generator 的 fake distribution，GAN discriminator 额外约束视觉真实感。这样做的原因是 teacher 的轨迹细、慢、稳定，而 student 的轨迹粗、快、风险更高；只把 teacher 输出当标签会过于僵硬，只做分布匹配又容易不稳。fake score、real score 和 discriminator 合在一起，是在同时管训练信号稳定、分布覆盖和视觉锐度。</p></div></div></div>
+<h3 id="1-为什么少步蒸馏和普通-teacher-student-不一样"><a class="markdownIt-Anchor" href="#1-为什么少步蒸馏和普通-teacher-student-不一样"></a> 1. 为什么少步蒸馏和普通 teacher-student 不一样</h3>
+<p>普通分类蒸馏里，teacher 给一个 soft label，student 学这个 label 就可以。扩散少步蒸馏更麻烦，因为 teacher 的输出不是一个静态答案，而是一条从噪声到图像的轨迹：</p>
+<p>[<br />
+x_T \rightarrow x_{t_1} \rightarrow x_{t_2} \rightarrow \cdots \rightarrow x_0.<br />
+]</p>
+<p>如果 student 只有 (K) 步，就要学习一个更大的跳跃：</p>
+<p>[<br />
+x_T \rightarrow x_{\tau_1} \rightarrow \cdots \rightarrow x_0,\qquad K \ll T.<br />
+]</p>
+<p>这意味着 student 不只是在模仿 teacher 的单步预测，而是在学习 teacher 多步复合后的结果。直觉上，teacher 每一步像“慢慢擦掉噪声”，student 每一步像“直接跨过一大片噪声区间”。跨度越大，训练目标越难，越需要额外的稳定手段。</p>
+<h3 id="2-三类常见蒸馏信号"><a class="markdownIt-Anchor" href="#2-三类常见蒸馏信号"></a> 2. 三类常见蒸馏信号</h3>
+<table>
+<thead>
+<tr>
+<th>蒸馏信号</th>
+<th>学什么</th>
+<th>代表路线</th>
+<th>优点</th>
+<th>风险</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>轨迹压缩</td>
+<td>学 teacher 两步或多步采样后的状态</td>
+<td>Progressive Distillation</td>
+<td>直觉清楚，适合逐级从 32 到 16、8、4 步</td>
+<td>步数越低，误差累积越明显</td>
+</tr>
+<tr>
+<td>终点一致性</td>
+<td>同一 PF-ODE 轨迹上的不同噪声点映射到一致结果</td>
+<td>Consistency Models、LCM</td>
+<td>适合 1-4 步快速生成，和 latent diffusion 结合自然</td>
+<td>容易牺牲细节或强条件控制</td>
+</tr>
+<tr>
+<td>分布匹配</td>
+<td>不要求逐点模仿 teacher，只要求 student 生成分布接近目标</td>
+<td>DMD、DMD2、Phased DMD</td>
+<td>更适合一步生成和极低步数</td>
+<td>训练稳定性、模式覆盖和锐度都更难管</td>
+</tr>
+</tbody>
+</table>
+<p>工程上可以先这样判断：如果目标是 4-8 步，轨迹压缩和一致性路线通常更稳；如果目标是一两步，并且能接受更复杂训练和更严格回归，再看 DMD/DMD2 这类分布匹配路线。</p>
+<h3 id="3-一个简化的少步蒸馏训练流程"><a class="markdownIt-Anchor" href="#3-一个简化的少步蒸馏训练流程"></a> 3. 一个简化的少步蒸馏训练流程</h3>
+<p>下面的伪代码不是照搬某一篇论文，而是把少步蒸馏的共同骨架抽出来：</p>
+<div class="code-container" data-rel="Text"><figure class="iseeu highlight text"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br></pre></td><td class="code"><pre><span class="line">Algorithm: Few-Step Diffusion Distillation</span><br><span class="line"></span><br><span class="line">Input:</span><br><span class="line">  teacher T                 # 多步扩散模型或高精度采样器</span><br><span class="line">  student S                 # 目标少步模型</span><br><span class="line">  step budget K             # 例如 1, 2, 4, 8</span><br><span class="line">  prompts / conditions c</span><br><span class="line"></span><br><span class="line">repeat:</span><br><span class="line">  1. 采样噪声 x_T 和条件 c</span><br><span class="line">  2. 用 teacher 从 x_T 生成高质量轨迹:</span><br><span class="line">       x_T -&gt; ... -&gt; x_0^teacher</span><br><span class="line">  3. 选择 student 的粗时间点:</span><br><span class="line">       tau_K &gt; ... &gt; tau_1 &gt; 0</span><br><span class="line">  4. 构造训练目标:</span><br><span class="line">       path target: teacher 多步结果</span><br><span class="line">       consistency target: 同轨迹终点</span><br><span class="line">       distribution target: teacher/真实分布的 score 差</span><br><span class="line">  5. 更新 student:</span><br><span class="line">       L = L_path + lambda_c L_consistency + lambda_d L_distribution</span><br><span class="line">  6. 用 K 步真实推理回放验证:</span><br><span class="line">       quality, prompt fidelity, control, latency</span><br><span class="line"></span><br><span class="line">until validation passes</span><br></pre></td></tr></table></figure></div>
+<p>真正做实验时，第 6 步非常关键。少步模型训练 loss 看起来下降，并不代表真实 4 步或 1 步推理就稳。因为训练时看到的 (x_t) 分布和 student 自己推理时产生的中间状态可能不一样，这就是很多少步路线会遇到的 train-inference mismatch。</p>
+<h3 id="4-一个例子把-50-步文生图压到-4-步"><a class="markdownIt-Anchor" href="#4-一个例子把-50-步文生图压到-4-步"></a> 4. 一个例子：把 50 步文生图压到 4 步</h3>
+<p>假设 teacher 是一个 50 步 latent diffusion 文生图模型。原流程大致是：</p>
+<ol>
+<li>前 10 步确定整体构图和主体位置；</li>
+<li>中间 20 步逐渐补物体关系、材质和局部结构；</li>
+<li>最后 20 步修边缘、纹理、文字和高频细节。</li>
+</ol>
+<p>如果 student 只有 4 步，就不能指望它按原来的细节节奏慢慢修。更现实的分工是：</p>
+<ol>
+<li>第 1 步先把大构图和主要对象拉出来；</li>
+<li>第 2 步把对象关系、颜色和光照压稳；</li>
+<li>第 3 步补关键细节和条件对齐；</li>
+<li>第 4 步做局部锐化和伪影修复。</li>
+</ol>
+<p>这就是少步蒸馏最难的地方：student 的每一步不再是“微小去噪”，而是带有阶段性规划意义的大跳跃。步数越少，它越像一个非自回归生成器，而不是传统意义上的逐步扩散采样器。</p>
+<h3 id="5-少步蒸馏最该验什么"><a class="markdownIt-Anchor" href="#5-少步蒸馏最该验什么"></a> 5. 少步蒸馏最该验什么</h3>
+<p>只比较“生成速度快了多少”是不够的。少步蒸馏至少要固定下面几类对照：</p>
+<ol>
+<li><strong>teacher-student 同 seed 对照</strong>：同一个 prompt、seed、guidance 下看退化来自哪里；</li>
+<li><strong>步数桶对照</strong>：1、2、4、8 步分别测，不要只展示最好看的那一档；</li>
+<li><strong>强条件对照</strong>：文本、ControlNet、参考图、局部编辑、风格约束要分开测；</li>
+<li><strong>长尾 prompt 对照</strong>：多对象、计数、空间关系、文字、复杂材质最容易暴露问题；</li>
+<li><strong>真实延迟对照</strong>：报告端到端时延，而不只是 UNet 前向次数。</li>
+</ol>
+<p>如果一个少步学生在平均视觉指标上接近 teacher，但在复杂 prompt 里丢对象、文字糊、结构控制漂移，那么它还不能算真正可替代 teacher，只能算快速预览或低风险场景的候选。</p>
+<h3 id="6-相关论文入口"><a class="markdownIt-Anchor" href="#6-相关论文入口"></a> 6. 相关论文入口</h3>
+<ol>
+<li>Progressive Distillation: <a class="link"   target="_blank" rel="noopener" href="https://arxiv.org/abs/2202.00512" >Progressive Distillation for Fast Sampling of Diffusion Models<i class="fa-solid fa-arrow-up-right ml-[0.2em] font-light align-text-top text-[0.7em] link-icon"></i></a></li>
+<li>Consistency Models: <a class="link"   target="_blank" rel="noopener" href="https://arxiv.org/abs/2303.01469" >Consistency Models<i class="fa-solid fa-arrow-up-right ml-[0.2em] font-light align-text-top text-[0.7em] link-icon"></i></a> / <a class="link"   target="_blank" rel="noopener" href="https://github.com/openai/consistency_models" >官方 GitHub<i class="fa-solid fa-arrow-up-right ml-[0.2em] font-light align-text-top text-[0.7em] link-icon"></i></a></li>
+<li>LCM: <a class="link"   target="_blank" rel="noopener" href="https://arxiv.org/abs/2310.04378" >Latent Consistency Models<i class="fa-solid fa-arrow-up-right ml-[0.2em] font-light align-text-top text-[0.7em] link-icon"></i></a></li>
+<li>DMD: <a class="link"   target="_blank" rel="noopener" href="https://arxiv.org/abs/2311.18828" >One-step Diffusion with Distribution Matching Distillation<i class="fa-solid fa-arrow-up-right ml-[0.2em] font-light align-text-top text-[0.7em] link-icon"></i></a></li>
+<li>DMD2: <a class="link"   target="_blank" rel="noopener" href="https://arxiv.org/abs/2405.14867" >Improved Distribution Matching Distillation for Fast Image Synthesis<i class="fa-solid fa-arrow-up-right ml-[0.2em] font-light align-text-top text-[0.7em] link-icon"></i></a></li>
+</ol>
+<h2 id="1-progressive-distillation"><a class="markdownIt-Anchor" href="#1-progressive-distillation"></a> 1. Progressive Distillation</h2>
+<p><strong>它的思想可以写成</strong>：</p>
+<p>[<br />
+\text{student}(x_t, t) \approx \text{teacher}^{(2)}(x_t, t)<br />
+]</p>
+<p>也就是让学生学会“教师两步完成的事”。不断重复后，步数可以从 (N) 压到 (N/2)、(N/4) 甚至更低。</p>
+<p>这条路线的价值，在于它尽量保留了原始扩散教师的行为方式。学生不是从零发明一条新路径，而是在教师已经验证过的多步轨迹上逐级压缩。这样做的优点是直觉清楚、过渡自然，也更容易和原有训练框架兼容。</p>
+<p>但它的局限也很明确。因为学生始终在模仿教师的压缩版本，所以一旦目标步数压得非常低，误差会层层累积。换句话说，它非常适合把 32 步压到 16、8、4 这种区间，却不一定天然擅长“高质量一步生成”。</p>
+<h3 id="例子学徒画师"><a class="markdownIt-Anchor" href="#例子学徒画师"></a> 例子：学徒画师</h3>
+<p>老师原本需要 16 笔画完一张苹果静物，学徒先学“两笔合成一笔”，再学“四笔合成一笔”，最后压缩成 4 笔或 2 笔完成。</p>
+<h2 id="2-consistency-lcm"><a class="markdownIt-Anchor" href="#2-consistency-lcm"></a> 2. Consistency / LCM</h2>
+<p><strong>一致性路线希望直接学会</strong>：</p>
+<p>[<br />
+f_\theta(x_t, t) \approx f_\theta(x_s, s), \qquad \text{当 } x_t, x_s \text{ 属于同一数据轨迹}<br />
+]</p>
+<p>直觉上，不同噪声层级的点，只要它们对应同一个真实样本，就应该被映射到接近的干净结果。</p>
+<p><strong>这类方法适合</strong>：</p>
+<ul>
+<li>一步或少步采样</li>
+<li>保留与大教师模型的一致性</li>
+<li>与 latent diffusion 结合</li>
+</ul>
+<p>一致性路线真正吸引人的地方，是它不再执着于“严格走完整条教师轨迹”，而是希望不同噪声层级上的点能被直接收束到相近的干净结果。这样一来，模型在推理时就不必重演那么多中间步骤，而可以更像一个“跨层级纠偏器”。</p>
+<p>这类方法因此特别适合交互式预览、少步 latent diffusion 和需要快速试错的产品场景。风险则在于，一旦一致性目标定义得不够稳，学生很容易在高难 prompt、强 guidance 或长尾视觉模式上丢掉细节和条件敏感性。</p>
+<h2 id="3-dmd从轨迹模仿转向分布匹配"><a class="markdownIt-Anchor" href="#3-dmd从轨迹模仿转向分布匹配"></a> 3. DMD：从轨迹模仿转向分布匹配</h2>
+<p><code>DMD</code> 的关键不是“模仿教师每一步动作”，而是直接优化学生分布与目标分布的差异。</p>
+<p><strong>可以把它粗略理解为最小化</strong>：</p>
+<p>[<br />
+D\left(p_{\text{student}}(x), p_{\text{target}}(x)\right)<br />
+]</p>
+<p>论文中利用真实分布侧和生成分布侧的 score 差来构造训练信号。直觉上：</p>
+<ul>
+<li>如果学生样本分布偏离真实数据，两个 score 会给出方向差。</li>
+<li>这个差可以推动一步生成器朝正确分布移动。</li>
+</ul>
+<p><code>DMD</code> 的关键突破，不是简单让学生“少走几步”，而是把问题改写成“学生最终落到的分布对不对”。这会带来一种完全不同的蒸馏哲学：不再要求学生逐帧模仿老师，而是允许它用自己的方式，只要最终分布足够接近目标。</p>
+<p>这也正是一步生成难度陡增的地方。因为你抛开了轨迹监督之后，学生获得了更大自由度，但训练稳定性、模式覆盖和锐度也更容易一起失控。</p>
+<h3 id="例子做面包而不是背配方"><a class="markdownIt-Anchor" href="#例子做面包而不是背配方"></a> 例子：做面包而不是背配方</h3>
+<p>传统轨迹蒸馏像让学徒严格模仿师傅每一步揉面、发酵、烘烤。</p>
+<p><code>DMD</code> 更像只看最终面包是否外形、口感和香气都接近目标产品，然后用“结果差异”反推哪里需要改。</p>
+<h2 id="4-dmd2解决模糊与训练不稳"><a class="markdownIt-Anchor" href="#4-dmd2解决模糊与训练不稳"></a> 4. DMD2：解决模糊与训练不稳</h2>
+<p><code>DMD2</code> 延续分布匹配思路，但更强调稳定性。可以用一个近似的总目标来理解：</p>
+<p>[<br />
+\mathcal{L} = \mathcal{L}<em>{\text{dist-match}} + \lambda</em>{\text{gan}}\mathcal{L}_{\text{gan}}<br />
+]</p>
+<p><strong>这里的直觉是</strong>：</p>
+<ul>
+<li>分布匹配负责把总体分布拉对。</li>
+<li>对抗损失负责提升清晰度和锐度。</li>
+</ul>
+<p><strong>这很像图像生成里常见的分工</strong>：一个目标保“方向对”，另一个目标保“画面利”。</p>
+<p><code>DMD2</code> 更像是在承认一个现实：只靠分布级别的方向信号，往往还不足以把视觉清晰度和细节锐度也一起拉起来。于是它通过更稳定的训练耦合和更清楚的损失分工，把“分布对齐”和“视觉可用”重新接到一起。</p>
+<p>从方法演化上看，<code>DMD2</code> 说明一步生成真正困难的，不是目标本身够不够激进，而是训练信号是否既能管大方向，又能管高频细节。只要这两者失衡，结果不是糊，就是不稳。</p>
+<h2 id="5-phased-dmd把一步难题拆成多个阶段"><a class="markdownIt-Anchor" href="#5-phased-dmd把一步难题拆成多个阶段"></a> 5. Phased DMD：把一步难题拆成多个阶段</h2>
+<p><code>Phased DMD</code> 把噪声空间按 phase 划开，每个 phase 内再做局部分布匹配。可以写成：</p>
+<p>[<br />
+\mathcal{L}<em>{\text{total}} = \sum</em>{k=1}^{K} \left(\lambda_k \mathcal{L}<em>{\text{dm}}^{(k)} + \gamma_k \mathcal{L}</em>{\text{score}}^{(k)}\right)<br />
+]</p>
+<p>这里 (k) 表示不同阶段。这样做的好处是：</p>
+<ul>
+<li>早期 phase 先学大结构。</li>
+<li>中期 phase 学物体关系和构图。</li>
+<li>后期 phase 再盯住纹理与细节。</li>
+</ul>
+<h3 id="例子画一辆赛车"><a class="markdownIt-Anchor" href="#例子画一辆赛车"></a> 例子：画一辆赛车</h3>
+<p>如果要求学生一步完成，很可能只画出“像车”的轮廓，赞助商贴纸、轮胎纹理、反光材质会丢失。</p>
+<p><strong>如果分阶段学</strong>：</p>
+<ol>
+<li>第一阶段先把赛车姿态、车头、轮胎位置定住。</li>
+<li>第二阶段学习车壳分色和赛道背景。</li>
+<li>第三阶段再补 logo、反射和运动模糊。</li>
+</ol>
+<p>这比硬做一步往往稳得多。</p>
+<h3 id="51-从-phased-dmd-图里理解少步不等于一步"><a class="markdownIt-Anchor" href="#51-从-phased-dmd-图里理解少步不等于一步"></a> 5.1 从 Phased DMD 图里理解“少步不等于一步”</h3>
+<p>少步蒸馏最容易被误解成“把采样步数砍掉”。Phased DMD 的图正好能纠正这个误解：4 步生成仍然可以有阶段分工，高噪声阶段负责大结构和运动，低噪声阶段负责纹理和细节。真正要防止的是训练过程把每一步都逼成“一步解决全部问题”的学生。</p>
+<p><img  
+                     lazyload
+                     src="/images/loading.svg"
+                     data-src="/image/ai-notes/images/paper-deep-dives/diffusion/phased-dmd/phased-diagram.png"
+                      alt="Phased DMD schematic" 
+                ></p>
+<p><small>图源：<a class="link"   target="_blank" rel="noopener" href="https://arxiv.org/abs/2510.27684" >Phased DMD: Few-step Distribution Matching Distillation via Score Matching within Subintervals<i class="fa-solid fa-arrow-up-right ml-[0.2em] font-light align-text-top text-[0.7em] link-icon"></i></a>，Figure 1。原论文图意：对比 vanilla few-step DMD、DMD2/SGTS、4-phase Phased DMD 和结合 SGTS 的 2-phase Phased DMD；红色表示记录梯度的 generator step，蓝色表示不记录梯度的 forward step。</small></p>
+<div class="callout callout--titled info mb-4 rounded-small shadow-redefine-flat bg-(--callout-bg-color) p-3 pl-1 relative flex flex-row gap-2"><div role="none" class="rounded-full self-stretch w-0.5 bg-(--callout-primary-color) shrink-0 opacity-60"></div><div class="flex flex-col gap-2"><div class="callout__title flex items-center gap-2 font-semibold tracking-tight">这张图帮你补哪块基础</div><div class="callout__content markdown-body flex-1 min-w-0"><p>红色 step 表示训练信号真正反传到哪里，蓝色 step 表示只是向前跑出中间状态。DMD2 / SGTS 通过只记录最后一步梯度来省显存，但随机截断有时会让训练样本退化成近似 one-step distillation。Phased DMD 的补丁是把 SNR 路径切成 phase，让每个 expert 只负责一个子区间。这样少步模型仍保留“先定大局、再修细节”的分工。</p></div></div></div>
+<p>这件事和 Wan2.2 的 high-noise / low-noise MoE 设计也能连起来理解。视频里的大运动、镜头变化、主体位置，往往在高噪声 / 低 SNR 阶段先被决定；低噪声 / 高 SNR 阶段再补纹理和局部细节。如果少步蒸馏总把训练压成一跳，模型就可能先保画面稳定，却牺牲运动幅度和多样性。</p>
+<p>因此，少步蒸馏的验收不能只看“几步出图”和平均画质，还要看：</p>
+<ol>
+<li>视频 motion intensity 有没有被压慢；</li>
+<li>不同 seed 的多样性有没有塌缩；</li>
+<li>复杂镜头和动作 prompt 是否还可控；</li>
+<li>文字、logo、边缘和高频细节是否被低步数牺牲；</li>
+<li>每个 phase 的训练目标是否真的对应正确的噪声子区间。</li>
+</ol>
+<h2 id="6-rectified-flow-rectified-diffusion"><a class="markdownIt-Anchor" href="#6-rectified-flow-rectified-diffusion"></a> 6. Rectified Flow / Rectified Diffusion</h2>
+<p>这条路线并不是主要做“教师蒸馏”，而是重新设计从噪声到数据的生成路径，让它更适合少步离散。</p>
+<p><strong>可以把目标想成</strong>：学习一条更平直、更容易数值积分的轨迹</p>
+<p>[<br />
+\frac{dx}{dt} = v_\theta(x,t)<br />
+]</p>
+<p>若轨迹足够规则，一步或少步 Euler 就可能已经足够。</p>
+<p><code>Rectified Diffusion</code> 进一步说明：真正关键的不一定是几何意义上的“绝对直”，而是轨迹和配对方式是否适合粗离散。</p>
+<p>这条路线值得单独看，是因为它把重点从“如何蒸馏教师”转成了“如何让路径本身更适合少步求解”。也就是说，它不是首先回答“老师怎么教学生”，而是先回答“从噪声走到数据，什么样的路更适合用很少步数走完”。</p>
+<p>因此 rectified 路线和 DMD 路线虽然都在追求极少步，但关注点并不一样。前者更像重画道路，后者更像在结果空间里直接纠偏。</p>
+<h2 id="7-什么时候选哪条路线"><a class="markdownIt-Anchor" href="#7-什么时候选哪条路线"></a> 7. 什么时候选哪条路线</h2>
+<h3 id="你不想重训"><a class="markdownIt-Anchor" href="#你不想重训"></a> 你不想重训</h3>
+<p>看求解器，不看蒸馏。</p>
+<p>这种场景最常见于：模型已经训完、部署链路已经跑通、团队只想在当前权重上把推理速度再压一点。此时蒸馏和整流的训练成本通常不划算，因为它们会把问题从“推理调优”升级成“重新训练并重新验收”。所以更稳妥的路径仍然是先换 solver，再看是否真的有必要进入学生模型路线。</p>
+<h3 id="你要-4-到-8-步"><a class="markdownIt-Anchor" href="#你要-4-到-8-步"></a> 你要 4 到 8 步</h3>
+<p><strong>优先看</strong>：</p>
+<ul>
+<li>Progressive Distillation</li>
+<li>Consistency / LCM</li>
+<li>Rectified 路线</li>
+</ul>
+<p>这一档通常是工程上最有现实吸引力的区间。因为 4 到 8 步已经足够明显地降低时延和成本，但又没有一步生成那么极端，因此更容易兼顾质量、控制性和稳定性。很多真实产品若不是强追求一步，往往会在这个区间找到更好的性价比。</p>
+<h3 id="你要-1-步并且追求很高质量"><a class="markdownIt-Anchor" href="#你要-1-步并且追求很高质量"></a> 你要 1 步并且追求很高质量</h3>
+<p><strong>重点看</strong>：</p>
+<ul>
+<li>DMD</li>
+<li>DMD2</li>
+<li>Phased DMD</li>
+</ul>
+<p>这类目标往往只在两种情况下值得认真投入：一是交互预算极紧，二是推理成本极敏感。因为一步生成不是“更快一点”，而是会显著改变训练、评测和回退设计。只要你决定走这条路，就等于接受了更复杂的训练流程和更严格的长尾验收要求。</p>
+<h2 id="8-一个总判断"><a class="markdownIt-Anchor" href="#8-一个总判断"></a> 8. 一个总判断</h2>
+<p>一步生成的难点，不是“把 20 步删成 1 步”，而是：</p>
+<ul>
+<li>如何保住分布正确性</li>
+<li>如何保住高频细节</li>
+<li>如何避免模式塌缩</li>
+<li>如何仍然满足文本条件</li>
+</ul>
+<p>所以 <code>DMD2</code>、<code>Phased DMD</code>、<code>Rectified Diffusion</code> 本质上都在回答同一个问题：<strong>极少步下，怎样既快又不崩。</strong></p>
+<h2 id="快速代码示例"><a class="markdownIt-Anchor" href="#快速代码示例"></a> 快速代码示例</h2>
+<div class="code-container" data-rel="Python"><figure class="iseeu highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">import</span> torch</span><br><span class="line"><span class="keyword">import</span> torch.nn.functional <span class="keyword">as</span> F</span><br><span class="line"></span><br><span class="line"><span class="keyword">def</span> <span class="title function_">distill_step</span>(<span class="params">student, teacher, x_t, t, cond</span>):</span><br><span class="line">    <span class="keyword">with</span> torch.no_grad():</span><br><span class="line">        target = teacher(x_t, t, cond=cond).sample</span><br><span class="line">    pred = student(x_t, t, cond=cond).sample</span><br><span class="line">    <span class="keyword">return</span> F.mse_loss(pred, target)</span><br></pre></td></tr></table></figure></div>
+<p>这段代码给出最小 teacher-student 蒸馏步：用 teacher 生成目标噪声（或速度）预测，student 直接回归。一步或少步扩散蒸馏通常都以这类“轨迹/分布对齐”损失为核心，再叠加对抗或感知约束稳住细节。</p>
+<h2 id="实践补充与检查"><a class="markdownIt-Anchor" href="#实践补充与检查"></a> 实践补充与检查</h2>
+<h3 id="把-扩散蒸馏-一步生成与整流路线-从方法名写成设计空间"><a class="markdownIt-Anchor" href="#把-扩散蒸馏-一步生成与整流路线-从方法名写成设计空间"></a> 把 <strong>扩散蒸馏、一步生成与整流路线</strong> 从方法名写成设计空间</h3>
+<p>这一类页面如果只停留在“概念、公式、论文关系”，读者很容易知道名词却不知道何时该用、何时不该用。围绕 <strong>扩散蒸馏、一步生成与整流路线</strong>，更扎实的写法应当把它放回一个明确设计空间：</p>
+<ol>
+<li><strong>teacher-student 差距、步数压缩、模式覆盖、稳定性、部署收益</strong>。</li>
+</ol>
+<p>只有把这些坐标讲清楚，读者才能理解：某种方法为什么在论文里成立、落到工程里时最容易在哪些环节变形，以及它和相邻方法的真正边界在哪里。</p>
+<h3 id="更实用的分析顺序"><a class="markdownIt-Anchor" href="#更实用的分析顺序"></a> 更实用的分析顺序</h3>
+<p>围绕 <strong>扩散蒸馏、一步生成与整流路线</strong>，建议读者和实践者都先按下面顺序思考：</p>
+<ol>
+<li><strong>先问目标</strong>：你到底追求画质、控制性、速度、稳定性、还是部署成本；</li>
+<li><strong>再问数据制度</strong>：训练样本是什么形态、分布有没有长尾、标注或条件信号是否可靠；</li>
+<li><strong>再问系统边界</strong>：推理预算、显存预算、工具链与下游接口是否支持；</li>
+<li><strong>最后问方法细节</strong>：采样器、蒸馏、量化、损失函数、控制机制的具体选型。</li>
+</ol>
+<p>这比一上来就在方法之间横向比较更有帮助，因为很多“方法优劣”其实是由目标和系统边界决定的，而不是由方法名字决定的。</p>
+<h3 id="最容易被忽略的失败模式"><a class="markdownIt-Anchor" href="#最容易被忽略的失败模式"></a> 最容易被忽略的失败模式</h3>
+<p>围绕 <strong>扩散蒸馏、一步生成与整流路线</strong>，常见失败并不只是“指标低”，更常见的是：</p>
+<ol>
+<li><strong>蒸馏后快了但控制性变差</strong>。</li>
+<li><strong>只看单一视觉指标</strong>。</li>
+<li><strong>teacher 偏差继承到 student</strong>。</li>
+</ol>
+<p>这些问题说明，方法页若只讲主线和优点，会让读者得到一个过于平滑的印象。真正扎实的内容应当明确指出：哪些收益最容易被 benchmark 放大，哪些副作用最容易被平均值遮住，哪些结论只在某些数据制度或硬件路径上成立。</p>
+<p>再具体一点，少步学生最容易在三类地方露怯：</p>
+<ol>
+<li><strong>强条件控制</strong>：文本、结构或参考图要求一上来，学生容易更早失控；</li>
+<li><strong>高频细节</strong>：纹理、字体、logo、边缘锐度往往比大结构更容易掉；</li>
+<li><strong>长尾 prompt</strong>：平均样本看起来没问题，但复杂构图、多对象关系或极端风格会明显退化。</li>
+</ol>
+<p>如果只看平均 FID 或少量精选样图，这些问题几乎都会被遮住。</p>
+<h3 id="验收与实践清单"><a class="markdownIt-Anchor" href="#验收与实践清单"></a> 验收与实践清单</h3>
+<p>对 <strong>扩散蒸馏、一步生成与整流路线</strong>，更像工程文档的验收至少要覆盖：</p>
+<ol>
+<li><strong>同时看质量与 controllability</strong>。</li>
+<li><strong>保留 teacher 对照</strong>。</li>
+<li><strong>关注长尾 prompt 与极端场景</strong>。</li>
+</ol>
+<p>此外，建议把方法验收长期绑定三类材料：</p>
+<ol>
+<li><strong>热路径案例</strong>，证明它在主场景下确实有价值；</li>
+<li><strong>尾部案例</strong>，避免方法只在容易样本上好看；</li>
+<li><strong>回退与替代方案</strong>，明确什么时候应该切回更简单、更稳的方法。</li>
+</ol>
+<p>做到这一步后，<strong>扩散蒸馏、一步生成与整流路线</strong> 才会从“资料页”升级成“真正能指导设计决策的页面”。</p>
+<p>如果要再落细一点，至少建议固定四类对照：</p>
+<ol>
+<li><strong>teacher-student 对照</strong>：同一 prompt、同一 seed、同一 guidance，直接比较退化模式；</li>
+<li><strong>步数桶对照</strong>：1 步、2 步、4 步、8 步分别能换来什么质量；</li>
+<li><strong>控制桶对照</strong>：看 student 在文本、结构和图像条件下是否一起退化；</li>
+<li><strong>回退门槛</strong>：明确什么情况下必须切回教师或更保守路径。</li>
+</ol>
+<p>只有这些对照长期保留，极少步路线的收益才不会停留在演示层面。</p>
+
+		</div>
+
+		
+		<div class="post-copyright-info w-full my-8 px-2 sm:px-6 md:px-8">
+			<div class="article-copyright-info-container">
+    <ul>
+        <li><strong>Title:</strong> 扩散蒸馏、一步生成与整流路线</li>
+        <li><strong>Author:</strong> Charles</li>
+        <li><strong>Created at
+                :</strong> 2026-05-11 09:03:00</li>
+        
+            <li>
+                <strong>Updated at
+                    :</strong> 2026-05-11 09:03:00
+            </li>
+        
+        <li>
+            <strong>Link:</strong> https://charles2530.github.io/2026/05/11/ai-files-diffusion-distillation/
+        </li>
+        <li>
+            <strong>
+                License:
+            </strong>
+            
+
+            
+                This work is licensed under <a class="license" target="_blank" rel="noopener" href="https://creativecommons.org/licenses/by-nc-sa/4.0">CC BY-NC-SA 4.0</a>.
+            
+        </li>
+    </ul>
+</div>
+
+		</div>
+		
+
+		
+		<ul class="post-tags-box text-lg mt-1.5 flex-wrap justify-center flex md:hidden">
+			
+			<li class="tag-item mx-0.5">
+				<a href="/tags/AI/">#AI</a>&nbsp;
+			</li>
+			
+			<li class="tag-item mx-0.5">
+				<a href="/tags/Diffusion-Models/">#Diffusion Models</a>&nbsp;
+			</li>
+			
+			<li class="tag-item mx-0.5">
+				<a href="/tags/Diffusion/">#Diffusion</a>&nbsp;
+			</li>
+			
+		</ul>
+		
+
+		
+
+		
+		<div class="article-nav my-8 flex justify-between items-center px-2 sm:px-6 md:px-8">
+			
+			<div class="article-prev border-border-color shadow-redefine-flat shadow-shadow-color-2 rounded-medium px-4 py-2 hover:shadow-redefine-flat-hover hover:shadow-shadow-color-2">
+				<a class="prev" rel="prev" href="/2026/05/11/ai-files-diffusion-evolution/">
+					<span class="left arrow-icon flex justify-center items-center">
+						<i class="fa-solid fa-chevron-left"></i>
+					</span>
+					<span class="title flex justify-center items-center">
+						<span class="post-nav-title-item truncate max-w-48">扩散模型发展脉络</span>
+						<span class="post-nav-item">Prev posts</span>
+					</span>
+				</a>
+			</div>
+			
+			
+			<div class="article-next border-border-color shadow-redefine-flat shadow-shadow-color-2 rounded-medium px-4 py-2 hover:shadow-redefine-flat-hover hover:shadow-shadow-color-2">
+				<a class="next" rel="next" href="/2026/05/11/ai-files-diffusion-consistency-models-and-rectified-flow/">
+					<span class="title flex justify-center items-center">
+						<span class="post-nav-title-item truncate max-w-48">一致性模型与 Rectified Flow</span>
+						<span class="post-nav-item">Next posts</span>
+					</span>
+					<span class="right arrow-icon flex justify-center items-center">
+						<i class="fa-solid fa-chevron-right"></i>
+					</span>
+				</a>
+			</div>
+			
+		</div>
+		
+
+
+		
+		<div class="comment-container px-2 sm:px-6 md:px-8 pb-8">
+			<div class="comments-container mt-10 w-full ">
+    <div id="comment-anchor" class="w-full h-2.5"></div>
+    <div class="comment-area-title w-full my-1.5 md:my-2.5 text-xl md:text-3xl font-bold">
+        Comments
+    </div>
+    
+
+        
+            
+    <div id="gitalk-container"></div>
+    <script data-swup-reload-script
+            src="https://cdnjs.cloudflare.com/ajax/libs/gitalk/1.8.0/gitalk.min.js"></script>
+    <script data-swup-reload-script>
+        (function() {
+            const startPath = location.pathname;
+            const startTime = Date.now();
+            const retryDelay = 200;
+            const retryLimit = 5000;
+
+            const runGitalk = () => {
+                if (location.pathname !== startPath) {
+                    return;
+                }
+
+                const container = document.getElementById('gitalk-container');
+                if (!container || typeof Gitalk === 'undefined') {
+                    if (Date.now() - startTime < retryLimit) {
+                        setTimeout(runGitalk, retryDelay);
+                    }
+                    return;
+                }
+
+                container.innerHTML = '';
+
+                let pageKey = decodeURI(location.pathname);
+                const maxLength = 50;
+                if (pageKey.length > maxLength) {
+                    pageKey = pageKey.substring(0, maxLength - 3) + '...';
+                }
+
+                try {
+                    new Gitalk({
+                        clientID: '8083299a8ee2aaf23879',
+                        clientSecret: 'a8161e81d4872181e884fdb69f7be24916b6a9d0',
+                        repo: 'charles2530_issues',
+                        owner: 'Charles2530',
+                        admin: ['Charles2530'],
+                        id: pageKey,
+                        language: 'en',
+                        proxy: 'https://github.com/login/oauth/access_token'
+                    }).render(container);
+                } catch (e) {
+                    window.Gitalk = null;
+                }
+            };
+
+            runGitalk();
+        })();
+    </script>
+
+
+
+        
+    
+</div>
+
+		</div>
+		
+	</div>
+
+	
+	<div class="toc-content-container">
+		<div class="post-toc-wrap">
+	<div class="post-toc">
+		<div class="toc-title">On this page</div>
+		<div class="page-title">扩散蒸馏、一步生成与整流路线</div>
+		<ol class="nav"><li class="nav-item nav-level-2"><a class="nav-link" href="#%E5%B0%91%E6%AD%A5%E8%92%B8%E9%A6%8F%E4%BB%8E%E5%A4%9A%E6%AD%A5%E6%95%99%E5%B8%88%E5%88%B0-1-8-%E6%AD%A5%E5%AD%A6%E7%94%9F-few-step-distillation"><span class="nav-text"> 少步蒸馏：从多步教师到 1-8 步学生 { #few-step-distillation }</span></a><ol class="nav-child"><li class="nav-item nav-level-3"><a class="nav-link" href="#1-%E4%B8%BA%E4%BB%80%E4%B9%88%E5%B0%91%E6%AD%A5%E8%92%B8%E9%A6%8F%E5%92%8C%E6%99%AE%E9%80%9A-teacher-student-%E4%B8%8D%E4%B8%80%E6%A0%B7"><span class="nav-text"> 1. 为什么少步蒸馏和普通 teacher-student 不一样</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#2-%E4%B8%89%E7%B1%BB%E5%B8%B8%E8%A7%81%E8%92%B8%E9%A6%8F%E4%BF%A1%E5%8F%B7"><span class="nav-text"> 2. 三类常见蒸馏信号</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#3-%E4%B8%80%E4%B8%AA%E7%AE%80%E5%8C%96%E7%9A%84%E5%B0%91%E6%AD%A5%E8%92%B8%E9%A6%8F%E8%AE%AD%E7%BB%83%E6%B5%81%E7%A8%8B"><span class="nav-text"> 3. 一个简化的少步蒸馏训练流程</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#4-%E4%B8%80%E4%B8%AA%E4%BE%8B%E5%AD%90%E6%8A%8A-50-%E6%AD%A5%E6%96%87%E7%94%9F%E5%9B%BE%E5%8E%8B%E5%88%B0-4-%E6%AD%A5"><span class="nav-text"> 4. 一个例子：把 50 步文生图压到 4 步</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#5-%E5%B0%91%E6%AD%A5%E8%92%B8%E9%A6%8F%E6%9C%80%E8%AF%A5%E9%AA%8C%E4%BB%80%E4%B9%88"><span class="nav-text"> 5. 少步蒸馏最该验什么</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#6-%E7%9B%B8%E5%85%B3%E8%AE%BA%E6%96%87%E5%85%A5%E5%8F%A3"><span class="nav-text"> 6. 相关论文入口</span></a></li></ol></li><li class="nav-item nav-level-2"><a class="nav-link" href="#1-progressive-distillation"><span class="nav-text"> 1. Progressive Distillation</span></a><ol class="nav-child"><li class="nav-item nav-level-3"><a class="nav-link" href="#%E4%BE%8B%E5%AD%90%E5%AD%A6%E5%BE%92%E7%94%BB%E5%B8%88"><span class="nav-text"> 例子：学徒画师</span></a></li></ol></li><li class="nav-item nav-level-2"><a class="nav-link" href="#2-consistency-lcm"><span class="nav-text"> 2. Consistency &#x2F; LCM</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#3-dmd%E4%BB%8E%E8%BD%A8%E8%BF%B9%E6%A8%A1%E4%BB%BF%E8%BD%AC%E5%90%91%E5%88%86%E5%B8%83%E5%8C%B9%E9%85%8D"><span class="nav-text"> 3. DMD：从轨迹模仿转向分布匹配</span></a><ol class="nav-child"><li class="nav-item nav-level-3"><a class="nav-link" href="#%E4%BE%8B%E5%AD%90%E5%81%9A%E9%9D%A2%E5%8C%85%E8%80%8C%E4%B8%8D%E6%98%AF%E8%83%8C%E9%85%8D%E6%96%B9"><span class="nav-text"> 例子：做面包而不是背配方</span></a></li></ol></li><li class="nav-item nav-level-2"><a class="nav-link" href="#4-dmd2%E8%A7%A3%E5%86%B3%E6%A8%A1%E7%B3%8A%E4%B8%8E%E8%AE%AD%E7%BB%83%E4%B8%8D%E7%A8%B3"><span class="nav-text"> 4. DMD2：解决模糊与训练不稳</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#5-phased-dmd%E6%8A%8A%E4%B8%80%E6%AD%A5%E9%9A%BE%E9%A2%98%E6%8B%86%E6%88%90%E5%A4%9A%E4%B8%AA%E9%98%B6%E6%AE%B5"><span class="nav-text"> 5. Phased DMD：把一步难题拆成多个阶段</span></a><ol class="nav-child"><li class="nav-item nav-level-3"><a class="nav-link" href="#%E4%BE%8B%E5%AD%90%E7%94%BB%E4%B8%80%E8%BE%86%E8%B5%9B%E8%BD%A6"><span class="nav-text"> 例子：画一辆赛车</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#51-%E4%BB%8E-phased-dmd-%E5%9B%BE%E9%87%8C%E7%90%86%E8%A7%A3%E5%B0%91%E6%AD%A5%E4%B8%8D%E7%AD%89%E4%BA%8E%E4%B8%80%E6%AD%A5"><span class="nav-text"> 5.1 从 Phased DMD 图里理解“少步不等于一步”</span></a></li></ol></li><li class="nav-item nav-level-2"><a class="nav-link" href="#6-rectified-flow-rectified-diffusion"><span class="nav-text"> 6. Rectified Flow &#x2F; Rectified Diffusion</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#7-%E4%BB%80%E4%B9%88%E6%97%B6%E5%80%99%E9%80%89%E5%93%AA%E6%9D%A1%E8%B7%AF%E7%BA%BF"><span class="nav-text"> 7. 什么时候选哪条路线</span></a><ol class="nav-child"><li class="nav-item nav-level-3"><a class="nav-link" href="#%E4%BD%A0%E4%B8%8D%E6%83%B3%E9%87%8D%E8%AE%AD"><span class="nav-text"> 你不想重训</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#%E4%BD%A0%E8%A6%81-4-%E5%88%B0-8-%E6%AD%A5"><span class="nav-text"> 你要 4 到 8 步</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#%E4%BD%A0%E8%A6%81-1-%E6%AD%A5%E5%B9%B6%E4%B8%94%E8%BF%BD%E6%B1%82%E5%BE%88%E9%AB%98%E8%B4%A8%E9%87%8F"><span class="nav-text"> 你要 1 步并且追求很高质量</span></a></li></ol></li><li class="nav-item nav-level-2"><a class="nav-link" href="#8-%E4%B8%80%E4%B8%AA%E6%80%BB%E5%88%A4%E6%96%AD"><span class="nav-text"> 8. 一个总判断</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#%E5%BF%AB%E9%80%9F%E4%BB%A3%E7%A0%81%E7%A4%BA%E4%BE%8B"><span class="nav-text"> 快速代码示例</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#%E5%AE%9E%E8%B7%B5%E8%A1%A5%E5%85%85%E4%B8%8E%E6%A3%80%E6%9F%A5"><span class="nav-text"> 实践补充与检查</span></a><ol class="nav-child"><li class="nav-item nav-level-3"><a class="nav-link" href="#%E6%8A%8A-%E6%89%A9%E6%95%A3%E8%92%B8%E9%A6%8F-%E4%B8%80%E6%AD%A5%E7%94%9F%E6%88%90%E4%B8%8E%E6%95%B4%E6%B5%81%E8%B7%AF%E7%BA%BF-%E4%BB%8E%E6%96%B9%E6%B3%95%E5%90%8D%E5%86%99%E6%88%90%E8%AE%BE%E8%AE%A1%E7%A9%BA%E9%97%B4"><span class="nav-text"> 把 扩散蒸馏、一步生成与整流路线 从方法名写成设计空间</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#%E6%9B%B4%E5%AE%9E%E7%94%A8%E7%9A%84%E5%88%86%E6%9E%90%E9%A1%BA%E5%BA%8F"><span class="nav-text"> 更实用的分析顺序</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#%E6%9C%80%E5%AE%B9%E6%98%93%E8%A2%AB%E5%BF%BD%E7%95%A5%E7%9A%84%E5%A4%B1%E8%B4%A5%E6%A8%A1%E5%BC%8F"><span class="nav-text"> 最容易被忽略的失败模式</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#%E9%AA%8C%E6%94%B6%E4%B8%8E%E5%AE%9E%E8%B7%B5%E6%B8%85%E5%8D%95"><span class="nav-text"> 验收与实践清单</span></a></li></ol></li></ol>
+
+	</div>
+</div>
+	</div>
+	
+</div>
+
+			</div>
+
+			
+		</div>
+
+		<div class="main-content-footer">
+			<footer class="footer mt-5 py-5 h-auto text-base text-third-text-color relative border-t-2 border-t-border-color">
+    <div class="info-container py-3 text-center">
+        
+        <div class="text-center">
+            &copy;
+            
+              <span>2022</span>
+              -
+            
+            2026&nbsp;&nbsp;<i class="fa-solid fa-heart fa-beat" style="--fa-animation-duration: 0.5s; color: #f54545"></i>&nbsp;&nbsp;<a href="/">Charles</a>
+            
+                
+                <p class="post-count space-x-0.5">
+                    <span>
+                        479 posts in total
+                    </span>
+                    
+                        <span>
+                            1896.8k words in total
+                        </span>
+                    
+                </p>
+            
+        </div>
+        
+            <script data-swup-reload-script src="https://cn.vercount.one/js"></script>
+            <div class="relative text-center lg:absolute lg:right-[20px] lg:top-1/2 lg:-translate-y-1/2 lg:text-right">
+                
+                    <span id="busuanzi_container_site_uv" class="lg:!block">
+                        <span class="text-sm">VISITOR COUNT</span>
+                        <span id="busuanzi_value_site_uv"></span>
+                    </span>
+                
+                
+                    <span id="busuanzi_container_site_pv" class="lg:!block">
+                        <span class="text-sm">TOTAL PAGE VIEWS</span>
+                        <span id="busuanzi_value_site_pv"></span>
+                    </span>
+                
+            </div>
+        
+        <div class="relative text-center lg:absolute lg:left-[20px] lg:top-1/2 lg:-translate-y-1/2 lg:text-left">
+            <span class="lg:block text-sm">POWERED BY <?xml version="1.0" encoding="utf-8"?><!DOCTYPE svg PUBLIC "-//W3C//DTD SVG 1.1//EN" "http://www.w3.org/Graphics/SVG/1.1/DTD/svg11.dtd"><svg class="relative top-[2px] inline-block align-baseline" version="1.1" id="圖層_1" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" x="0px" y="0px" width="1rem" height="1rem" viewBox="0 0 512 512" enable-background="new 0 0 512 512" xml:space="preserve"><path fill="#0E83CD" d="M256.4,25.8l-200,115.5L56,371.5l199.6,114.7l200-115.5l0.4-230.2L256.4,25.8z M349,354.6l-18.4,10.7l-18.6-11V275H200v79.6l-18.4,10.7l-18.6-11v-197l18.5-10.6l18.5,10.8V237h112v-79.6l18.5-10.6l18.5,10.8V354.6z"/></svg><a target="_blank" class="text-base" href="https://hexo.io">Hexo</a></span>
+            <span class="text-sm lg:block">THEME&nbsp;<a class="text-base" target="_blank" href="https://github.com/EvanNotFound/hexo-theme-redefine">Redefine v2.9.0</a></span>
+        </div>
+        
+        
+            <div>
+                Blog up for <span class="odometer" id="runtime_days" ></span> days <span class="odometer" id="runtime_hours"></span> hrs <span class="odometer" id="runtime_minutes"></span> Min <span class="odometer" id="runtime_seconds"></span> Sec
+            </div>
+        
+        
+            <script data-swup-reload-script>
+                try {
+                    function odometer_init() {
+                    const elements = document.querySelectorAll('.odometer');
+                    elements.forEach(el => {
+                        new Odometer({
+                            el,
+                            format: '( ddd).dd',
+                            duration: 200
+                        });
+                    });
+                    }
+                    odometer_init();
+                } catch (error) {}
+            </script>
+        
+        
+            
+                
+        
+                
+        
+                
+
+                    
+                        <script data-swup-reload-script type="text/javascript" src="/js/love.js"></script>
+                    
+        
+        
+    </div>  
+</footer>
+		</div>
+	</div>
+
+	
+	<div class="post-tools">
+		<div class="post-tools-container">
+	<ul class="article-tools-list">
+		<!-- TOC aside toggle -->
+		
+		<li class="right-bottom-tools page-aside-toggle">
+			<i class="fa-regular fa-outdent"></i>
+		</li>
+		
+
+		<!-- go comment -->
+		
+		<li class="go-comment">
+			<i class="fa-regular fa-comments"></i>
+		</li>
+		
+	</ul>
+</div>
+	</div>
+	
+
+	<div class="right-side-tools-container">
+		<div class="side-tools-container">
+	<ul class="hidden-tools-list">
+		<li class="right-bottom-tools tool-font-adjust-plus flex justify-center items-center">
+			<i class="fa-regular fa-magnifying-glass-plus"></i>
+		</li>
+
+		<li class="right-bottom-tools tool-font-adjust-minus flex justify-center items-center">
+			<i class="fa-regular fa-magnifying-glass-minus"></i>
+		</li>
+
+		<li class="right-bottom-tools tool-dark-light-toggle flex justify-center items-center">
+			<i class="fa-regular fa-moon"></i>
+		</li>
+
+		<!-- rss -->
+		
+		<li class="right-bottom-tools rss flex justify-center items-center">
+			<a class="flex justify-center items-center" href="/atom.xml" target="_blank">
+				<i class="fa-regular fa-rss"></i>
+			</a>
+		</li>
+		
+
+		
+
+		<li class="right-bottom-tools tool-scroll-to-bottom flex justify-center items-center">
+			<i class="fa-regular fa-arrow-down"></i>
+		</li>
+	</ul>
+
+	<ul class="visible-tools-list">
+		<li class="right-bottom-tools toggle-tools-list flex justify-center items-center">
+			<i class="fa-regular fa-cog fa-spin"></i>
+		</li>
+		
+		<li class="right-bottom-tools tool-scroll-to-top flex justify-center items-center">
+			<i class="arrow-up fas fa-arrow-up"></i>
+			<span class="percent"></span>
+		</li>
+		
+		
+	</ul>
+</div>
+	</div>
+
+	<div class="image-viewer-container" role="dialog" aria-modal="true" aria-label="Image viewer">
+	<button class="image-viewer-close" type="button" aria-label="Close">
+		<i class="fa-solid fa-xmark"></i>
+	</button>
+	<button class="image-viewer-prev" type="button" aria-label="Prev">
+		<i class="fa-solid fa-chevron-left"></i>
+	</button>
+	<div class="image-viewer-frame">
+		<img src="" alt="">
+	</div>
+	<div class="image-viewer-exif-panel hidden absolute left-1/2 bottom-20 -translate-x-1/2 w-[min(92vw,420px)] max-h-[60vh] overflow-hidden rounded-2xl bg-background-color-transparent-80 p-4 text-left shadow-redefine-flat backdrop-blur-md" role="dialog" aria-label="EXIF" aria-hidden="true">
+		<div class="flex items-center justify-between mb-3">
+			<span class="text-sm font-semibold text-first-text-color">EXIF</span>
+			<button class="image-viewer-exif-close flex h-8 w-8 items-center justify-center rounded-full bg-background-color-transparent-80 text-first-text-color transition hover:bg-background-color-transparent-40" type="button" aria-label="Close">
+				<i class="fa-solid fa-xmark text-[0.65rem]"></i>
+			</button>
+		</div>
+		<div class="image-viewer-exif-cards grid grid-cols-1 sm:grid-cols-2 gap-3 max-h-[50vh] overflow-y-auto pr-1 scrollbar-hide"></div>
+		<template class="image-viewer-exif-card-template">
+			<div class="rounded-lg bg-background-color-transparent-40 px-3 py-2">
+				<div class="image-viewer-exif-card-header flex items-center gap-2 mb-1">
+					<i class="image-viewer-exif-card-icon fa-solid fa-circle-info text-xs text-third-text-color"></i>
+					<div class="image-viewer-exif-card-title text-xs font-semibold text-first-text-color"></div>
+				</div>
+				<div class="image-viewer-exif-card-items flex flex-col gap-1"></div>
+			</div>
+		</template>
+	</div>
+	<button class="image-viewer-exif-toggle flex items-center gap-2 hidden absolute left-1/2 bottom-6 -translate-x-1/2 rounded-full border border-border-color bg-background-color-transparent-80 px-4 py-2 text-first-text-color backdrop-blur-md transition hover:bg-background-color-transparent-40" type="button" aria-label="EXIF" aria-expanded="false">
+		<i class="fa-solid fa-circle-info text-xs"></i>
+		<span class="text-xs font-semibold uppercase tracking-wider">EXIF</span>
+	</button>
+	<button class="image-viewer-next" type="button" aria-label="Next">
+		<i class="fa-solid fa-chevron-right"></i>
+	</button>
+</div>
+
+
+	
+	<div class="search-pop-overlay">
+	<div class="popup search-popup">
+		<div class="search-header">
+			<span class="search-input-field-pre">
+				<i class="fa-solid fa-keyboard"></i>
+			</span>
+			<div class="search-input-container">
+				<input autocomplete="off" autocorrect="off" autocapitalize="off" placeholder="Search..." spellcheck="false" type="search" class="search-input">
+			</div>
+			<span class="popup-btn-close">
+				<i class="fa-solid fa-times"></i>
+			</span>
+		</div>
+		<div id="search-result">
+			<div id="no-result">
+				<i class="fa-solid fa-spinner fa-spin-pulse fa-5x fa-fw"></i>
+			</div>
+		</div>
+	</div>
+</div>
+	
+
+</main>
+
+
+
+<script src="/js/build/libs/Swup.min.js"></script>
+
+<script src="/js/build/libs/SwupSlideTheme.min.js"></script>
+
+<script src="/js/build/libs/SwupScriptsPlugin.min.js"></script>
+
+<script src="/js/build/libs/SwupProgressPlugin.min.js"></script>
+
+<script src="/js/build/libs/SwupScrollPlugin.min.js"></script>
+
+<script src="/js/build/libs/SwupPreloadPlugin.min.js"></script>
+
+<script>
+    window.swup = new Swup({
+        plugins: [
+            new SwupScriptsPlugin({
+                optin: true,
+            }),
+            new SwupProgressPlugin(),
+            new SwupScrollPlugin({
+                offset: 80,
+            }),
+            new SwupSlideTheme({
+                mainElement: ".main-content-body",
+            }),
+            new SwupPreloadPlugin(),
+        ],
+        containers: ["#swup"],
+    });
+
+    window.dispatchEvent(
+        new CustomEvent("redefine:swup:ready", {
+            detail: {
+                swup: window.swup,
+            },
+        }),
+    );
+</script>
+
+
+
+
+	
+<script src="/js/build/main.js" type="module"></script>
+
+
+
+    
+<script src="/js/build/libs/odometer.min.js"></script>
+
+    
+<link rel="stylesheet" href="/assets/odometer-theme-minimal.css">
+
+
+
+
+
+
+
+  
+<script src="/js/build/libs/Typed.min.js"></script>
+
+
+
+
+    
+        
+<script src="/js/build/libs/mermaid.min.js"></script>
+
+    
+
+
+
+
+
+    
+<script src="/js/build/libs/minimasonry.min.js" data-swup-reload-script=""></script>
+
+
+
+
+<script src="/js/build/libs/moment-with-locales.min.js" data-swup-reload-script=""></script>
+
+
+
+	
+<script type="text/x-mathjax-config">
+  MathJax.Hub.Config({
+        tex2jax: {
+            inlineMath: [ ["$","$"], ["\\(","\\)"] ],
+            skipTags: ['script', 'noscript', 'style', 'textarea', 'pre', 'code'],
+            processEscapes: true
+        }
+    });
+    MathJax.Hub.Queue(function() {
+        var all = MathJax.Hub.getAllJax();
+        for (var i = 0; i < all.length; ++i)
+            all[i].SourceElement().parentNode.className += ' has-jax';
+    });
+</script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/mathjax/2.7.1/MathJax.js?config=TeX-MML-AM_CHTML"></script>
+</body>
+
+</html>
