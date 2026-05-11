@@ -1,0 +1,1431 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="keywords" content="Charles">
+    
+    <meta name="author" content="Charles">
+    <!-- preconnect -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+
+    
+        
+        
+        
+    
+    <!--- Seo Part-->
+    
+    <link rel="canonical" href="https://charles2530.github.io/2026/05/11/ai-notes/files-diffusion-training/"/>
+    <meta name="robots" content="index,follow">
+    <meta name="googlebot" content="index,follow">
+    <meta name="revisit-after" content="1 days">
+    
+        <meta name="description" content="这一页回答三个问题 ： 1. 前向过程到底怎么定义。 2. 反向过程到底学什么。 3. 为什么“预测噪声”会变成一个有效训练目标。 DDPM 原论文的 graphical model 可以先帮你把训练问题定位清楚：训练不是直接从 x T 一口气生成 x 0 ，而是在很多时间步上学习局部反向转移。后续的噪声预测、 x 0">
+<meta property="og:type" content="article">
+<meta property="og:title" content="扩散模型的训练与表示">
+<meta property="og:url" content="https://charles2530.github.io/2026/05/11/ai-notes/files-diffusion-training/index.html">
+<meta property="og:site_name" content="Charles&#39;s Castle">
+<meta property="og:description" content="这一页回答三个问题 ： 1. 前向过程到底怎么定义。 2. 反向过程到底学什么。 3. 为什么“预测噪声”会变成一个有效训练目标。 DDPM 原论文的 graphical model 可以先帮你把训练问题定位清楚：训练不是直接从 x T 一口气生成 x 0 ，而是在很多时间步上学习局部反向转移。后续的噪声预测、 x 0">
+<meta property="og:locale" content="en_US">
+<meta property="og:image" content="https://charles2530.github.io/ai-notes-assets/images/paper-figures/diffusion/ddpm-figure-2-graphical-model.png">
+<meta property="article:published_time" content="2026-05-11T01:11:00.000Z">
+<meta property="article:modified_time" content="2026-05-11T01:11:00.000Z">
+<meta property="article:author" content="Du Jinyang">
+<meta property="article:tag" content="AI Notes">
+<meta property="article:tag" content="Diffusion">
+<meta property="article:tag" content="Diffusion Models">
+<meta property="article:tag" content="Training">
+<meta name="twitter:card" content="summary">
+<meta name="twitter:image" content="https://charles2530.github.io/ai-notes-assets/images/paper-figures/diffusion/ddpm-figure-2-graphical-model.png">
+    
+    
+    <!--- Icon Part-->
+    <link rel="icon" type="image/png" href="https://charles2530.github.io/image/background/favicon.png" sizes="192x192">
+    <link rel="apple-touch-icon" sizes="180x180" href="https://charles2530.github.io/image/background/favicon.png">
+    <meta name="theme-color" content="#A31F34">
+    <link rel="shortcut icon" href="https://charles2530.github.io/image/background/favicon.png">
+    <!--- Page Info-->
+    
+    <title>
+        
+            扩散模型的训练与表示 -
+        
+        Charles&#39;s Castle
+    </title>
+
+    <link rel="stylesheet" href="//evan.beee.top/projects/hexo-theme-redefine@2.6.1/source/fonts/Chillax/chillax.css">
+
+    <!--- Inject Part-->
+    
+        
+            
+                
+                    <script data-swup-reload-script> var _hmt = _hmt || []; (function() { var hm = document.createElement("script"); hm.src = "https://hm.baidu.com/hm.js?8e0e5f382d14d87cbeadc33a36e71e86"; var s = document.getElementsByTagName("script")[0]; s.parentNode.insertBefore(hm, s); })(); </script>
+                
+    
+            
+    
+
+    
+        <style>
+    :root {
+        --preloader-background-color: #fff;
+        --preloader-text-color: #000;
+    }
+
+    @media (prefers-color-scheme: dark) {
+        :root {
+            --preloader-background-color: #202124;
+            --preloader-text-color: #fff;
+        }
+    }
+
+    @media (prefers-color-scheme: light) {
+        :root {
+            --preloader-background-color: #fff;
+            --preloader-text-color: #000;
+        }
+    }
+
+    @media (max-width: 600px) {
+        .ml13 {
+            font-size: 2.6rem !important; /* Adjust this value as needed */
+        }
+    }
+
+    .preloader {
+        display: flex;
+        flex-direction: column;
+        gap: 1rem; /* Tailwind 'gap-4' is 1rem */
+        align-items: center;
+        justify-content: center;
+        position: fixed;
+        padding: 12px;
+        top: 0;
+        right: 0;
+        bottom: 0;
+        left: 0;
+        width: 100vw;
+        height: 100vh; /* 'h-screen' is 100% of the viewport height */
+        background-color: var(--preloader-background-color);
+        z-index: 1100; /* 'z-[1100]' sets the z-index */
+        transition: opacity 0.2s ease-in-out;
+    }
+
+    .ml13 {
+        font-size: 3.2rem;
+        /* text-transform: uppercase; */
+        color: var(--preloader-text-color);
+        letter-spacing: -1px;
+        font-weight: 500;
+        font-family: 'Chillax-Variable', sans-serif;
+        text-align: center;
+    }
+
+    .ml13 .word {
+        display: inline-flex;
+        flex-wrap: wrap;
+        white-space: nowrap;
+    }
+
+    .ml13 .letter {
+        display: inline-block;
+        line-height: 1em;
+    }
+</style>
+
+<div class="preloader">
+    <script src="https://evan.beee.top/projects/hexo-theme-redefine@2.6.1/source/js/libs/anime.min.js"></script>
+    <h1 class="ml13">
+        Charles&#39;s Castle
+    </h1>
+    <script>
+        var textWrapper = document.querySelector('.ml13');
+        // Split text into words
+        var words = textWrapper.textContent.trim().split(' ');
+
+        // Clear the existing content
+        textWrapper.innerHTML = '';
+
+        // Wrap each word and its letters in spans
+        words.forEach(function(word) {
+            var wordSpan = document.createElement('span');
+            wordSpan.classList.add('word');
+            wordSpan.innerHTML = word.replace(/\S/g, "<span class='letter'>$&</span>");
+            textWrapper.appendChild(wordSpan);
+            textWrapper.appendChild(document.createTextNode(' ')); // Add space between words
+        });
+
+
+        anime.timeline({loop: true})
+            .add({
+                targets: '.ml13 .letter',
+                translateY: [100,0],
+                translateZ: 0,
+                opacity: [0,1],
+                easing: "easeOutExpo",
+                duration: 1400,
+                delay: (el, i) => 300 + 30 * i
+            }).add({
+            targets: '.ml13 .letter',
+            translateY: [0,-100],
+            opacity: [1,0],
+            easing: "easeInExpo",
+            duration: 1200,
+            delay: (el, i) => 100 + 30 * i
+        });
+
+        let themeStatus = JSON.parse(localStorage.getItem('REDEFINE-THEME-STATUS'))?.isDark;
+
+        // If the theme status is not found in local storage, check the preferred color scheme
+        if (themeStatus === undefined || themeStatus === null) {
+            if (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) {
+                themeStatus = 'dark';
+            } else {
+                themeStatus = 'light';
+            }
+        }
+
+        // Now you can use the themeStatus variable in your code
+        if (themeStatus) {
+            document.documentElement.style.setProperty('--preloader-background-color', '#202124');
+            document.documentElement.style.setProperty('--preloader-text-color', '#fff');
+        } else {
+            document.documentElement.style.setProperty('--preloader-background-color', '#fff');
+            document.documentElement.style.setProperty('--preloader-text-color', '#000');
+        }
+
+        window.addEventListener('load', function () {
+            hidePreloaderAfterTimeout(1000); // Hide after 1000 milliseconds once the window has loaded
+        });
+
+        // Backup failsafe: Hide preloader after a maximum of 5000 milliseconds, regardless of the window load event
+        hidePreloaderAfterTimeout(5000);
+
+        function hidePreloaderAfterTimeout(delay) {
+            setTimeout(function () {
+                var preloader = document.querySelector('.preloader');
+                preloader.style.opacity = '0';
+                setTimeout(function () {
+                    preloader.style.display = 'none';
+                }, 200);
+            }, delay);
+        }
+    </script>
+</div>
+    
+
+    
+<link rel="stylesheet" href="/css/style.css">
+
+
+    
+        <link rel="stylesheet" href="//evan.beee.top/projects/hexo-theme-redefine@2.6.1/source/assets/build/styles.css">
+    
+
+    <link rel="stylesheet" href="//evan.beee.top/projects/hexo-theme-redefine@2.6.1/source/fonts/fonts.css">
+    <link rel="stylesheet" href="//evan.beee.top/projects/hexo-theme-redefine@2.6.1/source/fonts/Satoshi/satoshi.css">
+    <!--- Font Part-->
+    
+    
+    
+    
+
+
+    <script id="hexo-configurations">
+    window.config = {"hostname":"charles2530.github.io","root":"/","language":"en","path":"search.xml"};
+    window.theme = {"articles":{"style":{"font_size":"16px","line_height":1.5,"image_border_radius":"14px","image_alignment":"center","image_caption":false,"link_icon":true,"title_alignment":"left","headings_top_spacing":{"h1":"5rem","h2":"4rem","h3":"2.8rem","h4":"2.5rem","h5":"2.2rem","h6":"2rem"}},"word_count":{"enable":true,"count":true,"min2read":true},"author_label":{"enable":true,"auto":true,"list":["lol","Neo","God"]},"code_block":{"copy":true,"style":"mac","font":{"enable":false,"family":null,"url":null}},"toc":{"enable":true,"max_depth":6,"number":false,"expand":true,"init_open":true},"copyright":{"enable":true,"default":"cc_by_nc_sa"},"lazyload":true,"recommendation":{"enable":true,"title":"recommend_articles","limit":3,"mobile_limit":2,"placeholder":"https://charles2530.github.io/image/background/p3.jfif","skip_dirs":[]}},"colors":{"primary":"#A31F34","secondary":"#1890ff","default_mode":"light"},"global":{"fonts":{"chinese":{"enable":false,"family":null,"url":null},"english":{"enable":false,"family":null,"url":null}},"content_max_width":"1000px","sidebar_width":"210px","hover":{"shadow":true,"scale":true},"scroll_progress":{"bar":true,"percentage":true},"website_counter":{"url":"https://cn.vercount.one/js","enable":true,"site_pv":true,"site_uv":true,"post_pv":true},"single_page":true,"preloader":true,"open_graph":true,"google_analytics":{"enable":false,"id":null}},"home_banner":{"enable":true,"style":"fixed","image":{"light":"https://charles2530.github.io/image/background/background-light1.jpg","dark":"https://charles2530.github.io/image/background/background-dark1.jpg"},"title":"Charles's Castle","subtitle":{"text":["Happiness is best!","Never give up!","Everyday is a gift!"],"hitokoto":{"enable":false,"api":"https://v1.hitokoto.cn"},"typing_speed":100,"backing_speed":80,"starting_delay":500,"backing_delay":1500,"loop":true,"smart_backspace":true},"text_color":{"light":"#000000","dark":"#d1d1b6"},"text_style":{"title_size":"3.2rem","subtitle_size":"1.5rem","line_height":1.2},"custom_font":{"enable":false,"family":null,"url":null},"social_links":{"enable":true,"style":"center","links":{"github":"https://github.com/Charles2530/","zhihu":"https://www.zhihu.com/people/yang-guang-xiao-zi-55-55","email":"charles2530@163.com"},"qrs":{"weixin":"https://charles2530.github.io/image/background/Wechat_icon.png"}}},"plugins":{"feed":{"enable":true},"aplayer":{"enable":false,"type":"fixed","audios":[{"name":null,"artist":null,"url":null,"cover":null},{"name":null,"artist":null,"url":null,"cover":null}]},"mermaid":{"enable":true,"version":"9.3.0"}},"version":"2.6.1","navbar":{"auto_hide":true,"color":{"left":"#f78736","right":"#367df7","transparency":35},"width":{"home":"1200px","pages":"1000px"},"links":{"Home":{"path":"/","icon":"fa-regular fa-house"},"Categories":{"path":"/categories","icon":"fas fa-bookmark"},"Tags":{"path":"/tags","icon":"fas fa-tags"},"About":{"icon":"fa-regular fa-user","submenus":{"Me":"/about","Github":"https://github.com/Charles2530/","Blog":"https://charles2530.github.io","Statistics":"https://tongji.baidu.com/"}},"AI Notes":{"path":"/ai-notes","icon":"fas fa-brain"}},"search":{"enable":true,"preload":true}},"page_templates":{"friends_column":2,"tags_style":"blur"},"home":{"sidebar":{"enable":true,"position":"left","first_item":"menu","announcement":"This is Charles's Castle","show_on_mobile":true,"links":{"Archives":{"path":"/archives","icon":"fa-regular fa-archive"},"Photos":{"icon":"fa-solid fa-image","path":"/masonry/"},"Essays":{"icon":"fa-solid fa-message-lines","path":"/essay/"},"Friends":{"icon":"fa-solid fa-user-group","path":"/friends/"}}},"article_date_format":"auto","categories":{"enable":true,"limit":3},"tags":{"enable":true,"limit":3}},"footerStart":"2022/12/27 00:00:00"};
+    window.lang_ago = {"second":"%s seconds ago","minute":"%s minutes ago","hour":"%s hours ago","day":"%s days ago","week":"%s weeks ago","month":"%s months ago","year":"%s years ago"};
+    window.data = {"masonry":true};
+  </script>
+    
+    <!--- Fontawesome Part-->
+    <link rel="stylesheet" href="//evan.beee.top/projects/hexo-theme-redefine@2.6.1/source/fontawesome/fontawesome.min.css">
+    <link rel="stylesheet" href="//evan.beee.top/projects/hexo-theme-redefine@2.6.1/source/fontawesome/brands.min.css">
+    <link rel="stylesheet" href="//evan.beee.top/projects/hexo-theme-redefine@2.6.1/source/fontawesome/solid.min.css">
+    <link rel="stylesheet" href="//evan.beee.top/projects/hexo-theme-redefine@2.6.1/source/fontawesome/regular.min.css">
+    
+    
+    
+    
+<meta name="generator" content="Hexo 6.3.0"><link rel="alternate" href="/atom.xml" title="Charles's Castle" type="application/atom+xml">
+<link rel="stylesheet" href="/css/prism-tomorrow.css" type="text/css"></head>
+
+
+<body>
+<div class="progress-bar-container">
+    
+        <span class="scroll-progress-bar"></span>
+    
+
+    
+        <span class="pjax-progress-bar"></span>
+<!--        <span class="swup-progress-icon">-->
+<!--            <i class="fa-solid fa-circle-notch fa-spin"></i>-->
+<!--        </span>-->
+    
+</div>
+
+
+<main class="page-container" id="swup">
+
+    
+
+    <div class="main-content-container">
+
+
+        <div class="main-content-header">
+            <header class="navbar-container px-6 md:px-12">
+
+    <div class="navbar-content ">
+        <div class="left">
+            
+                <a class="logo-image" href="/">
+                    <img src="https://charles2530.github.io/image/background/logo.jpg">
+                </a>
+            
+            <a class="logo-title" href="/">
+                
+                Charles&#39;s Castle
+                
+            </a>
+        </div>
+
+        <div class="right">
+            <!-- PC -->
+            <div class="desktop">
+                <ul class="navbar-list">
+                    
+                        
+                            
+
+                            <li class="navbar-item">
+                                <!-- Menu -->
+                                <a class=""
+                                   href="/"
+                                        >
+                                    <i class="fa-regular fa-house fa-fw"></i>
+                                    HOME
+                                    
+                                </a>
+
+                                <!-- Submenu -->
+                                
+                            </li>
+                    
+                        
+                            
+
+                            <li class="navbar-item">
+                                <!-- Menu -->
+                                <a class=""
+                                   href="/categories"
+                                        >
+                                    <i class="fas fa-bookmark fa-fw"></i>
+                                    CATEGORIES
+                                    
+                                </a>
+
+                                <!-- Submenu -->
+                                
+                            </li>
+                    
+                        
+                            
+
+                            <li class="navbar-item">
+                                <!-- Menu -->
+                                <a class=""
+                                   href="/tags"
+                                        >
+                                    <i class="fas fa-tags fa-fw"></i>
+                                    TAGS
+                                    
+                                </a>
+
+                                <!-- Submenu -->
+                                
+                            </li>
+                    
+                        
+                            
+
+                            <li class="navbar-item">
+                                <!-- Menu -->
+                                <a class="has-dropdown"
+                                   href="#"
+                                        onClick=&#34;return false;&#34;>
+                                    <i class="fa-regular fa-user fa-fw"></i>
+                                    ABOUT
+                                    <i class="fa-solid fa-chevron-down fa-fw"></i>
+                                </a>
+
+                                <!-- Submenu -->
+                                
+                                    <ul class="sub-menu">
+                                        
+                                            <li>
+                                                <a href="/about">
+                                                    ME
+                                                </a>
+                                            </li>
+                                        
+                                            <li>
+                                                <a target="_blank" rel="noopener" href="https://github.com/Charles2530/">
+                                                    GITHUB
+                                                </a>
+                                            </li>
+                                        
+                                            <li>
+                                                <a href="https://charles2530.github.io">
+                                                    BLOG
+                                                </a>
+                                            </li>
+                                        
+                                            <li>
+                                                <a target="_blank" rel="noopener" href="https://tongji.baidu.com/">
+                                                    STATISTICS
+                                                </a>
+                                            </li>
+                                        
+                                    </ul>
+                                
+                            </li>
+                    
+                        
+                            
+
+                            <li class="navbar-item">
+                                <!-- Menu -->
+                                <a class=""
+                                   href="/ai-notes"
+                                        >
+                                    <i class="fas fa-brain fa-fw"></i>
+                                    AI NOTES
+                                    
+                                </a>
+
+                                <!-- Submenu -->
+                                
+                            </li>
+                    
+                    
+                        <li class="navbar-item search search-popup-trigger">
+                            <i class="fa-solid fa-magnifying-glass"></i>
+                        </li>
+                    
+                </ul>
+            </div>
+            <!-- Mobile -->
+            <div class="mobile">
+                
+                    <div class="icon-item search search-popup-trigger"><i class="fa-solid fa-magnifying-glass"></i>
+                    </div>
+                
+                <div class="icon-item navbar-bar">
+                    <div class="navbar-bar-middle"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Mobile sheet -->
+    <div class="navbar-drawer h-screen w-full absolute top-0 left-0 bg-background-color flex flex-col justify-between">
+        <ul class="drawer-navbar-list flex flex-col px-4 justify-center items-start">
+            
+                
+                    
+
+                    <li class="drawer-navbar-item text-base my-1.5 flex flex-col w-full">
+                        
+                        <a class="py-1.5 px-2 flex flex-row items-center justify-between gap-1 hover:!text-primary active:!text-primary text-2xl font-semibold group border-b border-border-color hover:border-primary w-full "
+                           href="/"
+                        >
+                            <span>
+                                HOME
+                            </span>
+                            
+                                <i class="fa-regular fa-house fa-sm fa-fw"></i>
+                            
+                        </a>
+                        
+
+                        
+                    </li>
+            
+                
+                    
+
+                    <li class="drawer-navbar-item text-base my-1.5 flex flex-col w-full">
+                        
+                        <a class="py-1.5 px-2 flex flex-row items-center justify-between gap-1 hover:!text-primary active:!text-primary text-2xl font-semibold group border-b border-border-color hover:border-primary w-full "
+                           href="/categories"
+                        >
+                            <span>
+                                CATEGORIES
+                            </span>
+                            
+                                <i class="fas fa-bookmark fa-sm fa-fw"></i>
+                            
+                        </a>
+                        
+
+                        
+                    </li>
+            
+                
+                    
+
+                    <li class="drawer-navbar-item text-base my-1.5 flex flex-col w-full">
+                        
+                        <a class="py-1.5 px-2 flex flex-row items-center justify-between gap-1 hover:!text-primary active:!text-primary text-2xl font-semibold group border-b border-border-color hover:border-primary w-full "
+                           href="/tags"
+                        >
+                            <span>
+                                TAGS
+                            </span>
+                            
+                                <i class="fas fa-tags fa-sm fa-fw"></i>
+                            
+                        </a>
+                        
+
+                        
+                    </li>
+            
+                
+                    
+
+                    <li class="drawer-navbar-item-sub text-base my-1.5 flex flex-col w-full">
+                        
+                        <div class="py-1.5 px-2 flex flex-row items-center justify-between gap-1 hover:!text-primary active:!text-primary cursor-pointer text-2xl font-semibold group border-b border-border-color hover:border-primary w-full "
+                             navbar-data-toggle="submenu-About"
+                        >
+                            <span>
+                                ABOUT
+                            </span>
+                            
+                                <i class="fa-solid fa-chevron-right fa-sm fa-fw transition-all"></i>
+                            
+                        </div>
+                        
+
+                        
+                            <div class="flex-col items-start px-2 py-2 hidden" data-target="submenu-About">
+                                
+                                    <div class="drawer-navbar-item text-base flex flex-col justify-center items-start hover:underline active:underline hover:underline-offset-1 rounded-3xl">
+                                        <a class=" text-third-text-color text-xl"
+                                           href="/about">ME</a>
+                                    </div>
+                                
+                                    <div class="drawer-navbar-item text-base flex flex-col justify-center items-start hover:underline active:underline hover:underline-offset-1 rounded-3xl">
+                                        <a class=" text-third-text-color text-xl"
+                                           target="_blank" rel="noopener" href="https://github.com/Charles2530/">GITHUB</a>
+                                    </div>
+                                
+                                    <div class="drawer-navbar-item text-base flex flex-col justify-center items-start hover:underline active:underline hover:underline-offset-1 rounded-3xl">
+                                        <a class=" text-third-text-color text-xl"
+                                           href="https://charles2530.github.io">BLOG</a>
+                                    </div>
+                                
+                                    <div class="drawer-navbar-item text-base flex flex-col justify-center items-start hover:underline active:underline hover:underline-offset-1 rounded-3xl">
+                                        <a class=" text-third-text-color text-xl"
+                                           target="_blank" rel="noopener" href="https://tongji.baidu.com/">STATISTICS</a>
+                                    </div>
+                                
+                            </div>
+                        
+                    </li>
+            
+                
+                    
+
+                    <li class="drawer-navbar-item text-base my-1.5 flex flex-col w-full">
+                        
+                        <a class="py-1.5 px-2 flex flex-row items-center justify-between gap-1 hover:!text-primary active:!text-primary text-2xl font-semibold group border-b border-border-color hover:border-primary w-full "
+                           href="/ai-notes"
+                        >
+                            <span>
+                                AI NOTES
+                            </span>
+                            
+                                <i class="fas fa-brain fa-sm fa-fw"></i>
+                            
+                        </a>
+                        
+
+                        
+                    </li>
+            
+
+            
+            
+                
+                    
+                    <li class="drawer-navbar-item text-base my-1.5 flex flex-col w-full">
+                        <a class="py-1.5 px-2 flex flex-row items-center justify-between gap-1 hover:!text-primary active:!text-primary text-2xl font-semibold group border-b border-border-color hover:border-primary w-full active"
+                           href="/archives"
+                        >
+                            <span>Archives</span>
+                            <i class="fa-regular fa-archive fa-sm fa-fw"></i>
+                        </a>
+                    </li>
+                
+                    
+                    <li class="drawer-navbar-item text-base my-1.5 flex flex-col w-full">
+                        <a class="py-1.5 px-2 flex flex-row items-center justify-between gap-1 hover:!text-primary active:!text-primary text-2xl font-semibold group border-b border-border-color hover:border-primary w-full active"
+                           href="/masonry/"
+                        >
+                            <span>Photos</span>
+                            <i class="fa-solid fa-image fa-sm fa-fw"></i>
+                        </a>
+                    </li>
+                
+                    
+                    <li class="drawer-navbar-item text-base my-1.5 flex flex-col w-full">
+                        <a class="py-1.5 px-2 flex flex-row items-center justify-between gap-1 hover:!text-primary active:!text-primary text-2xl font-semibold group border-b border-border-color hover:border-primary w-full active"
+                           href="/essay/"
+                        >
+                            <span>Essays</span>
+                            <i class="fa-solid fa-message-lines fa-sm fa-fw"></i>
+                        </a>
+                    </li>
+                
+                    
+                    <li class="drawer-navbar-item text-base my-1.5 flex flex-col w-full">
+                        <a class="py-1.5 px-2 flex flex-row items-center justify-between gap-1 hover:!text-primary active:!text-primary text-2xl font-semibold group border-b border-border-color hover:border-primary w-full active"
+                           href="/friends/"
+                        >
+                            <span>Friends</span>
+                            <i class="fa-solid fa-user-group fa-sm fa-fw"></i>
+                        </a>
+                    </li>
+                
+            
+        </ul>
+
+        <div class="statistics flex justify-around my-2.5">
+    <a class="item tag-count-item flex flex-col justify-center items-center w-20" href="/tags">
+        <div class="number text-2xl sm:text-xl text-second-text-color font-semibold">44</div>
+        <div class="label text-third-text-color text-sm">Tags</div>
+    </a>
+    <a class="item tag-count-item flex flex-col justify-center items-center w-20" href="/categories">
+        <div class="number text-2xl sm:text-xl text-second-text-color font-semibold">96</div>
+        <div class="label text-third-text-color text-sm">Categories</div>
+    </a>
+    <a class="item tag-count-item flex flex-col justify-center items-center w-20" href="/archives">
+        <div class="number text-2xl sm:text-xl text-second-text-color font-semibold">479</div>
+        <div class="label text-third-text-color text-sm">Posts</div>
+    </a>
+</div>
+    </div>
+
+    <div class="window-mask"></div>
+
+</header>
+
+
+        </div>
+
+        <div class="main-content-body">
+
+            
+
+            <div class="main-content">
+
+                
+                    <div class="post-page-container flex relative justify-between box-border w-full h-full">
+    <div class="article-content-container">
+
+        <div class="article-title relative w-full">
+            
+                <div class="w-full flex items-center pt-6 justify-start">
+                    <h1 class="article-title-regular text-second-text-color text-4xl md:text-6xl font-bold px-2 sm:px-6 md:px-8 py-3">扩散模型的训练与表示</h1>
+                </div>
+            
+            </div>
+
+        
+            <div class="article-header flex flex-row gap-2 items-center px-2 sm:px-6 md:px-8">
+                <div class="avatar w-[46px] h-[46px] flex-shrink-0 rounded-medium border border-border-color p-[1px]">
+                    <img src="https://charles2530.github.io/image/background/logo2.jpg">
+                </div>
+                <div class="info flex flex-col justify-between">
+                    <div class="author flex items-center">
+                        <span class="name text-default-text-color text-lg font-semibold">Charles</span>
+                        
+                            <span class="author-label ml-1.5 text-xs px-2 py-0.5 rounded-small text-third-text-color border border-shadow-color-1">Lv7</span>
+                        
+                    </div>
+                    <div class="meta-info">
+                        <div class="article-meta-info">
+    <span class="article-date article-meta-item">
+        <i class="fa-regular fa-pen-fancy"></i>&nbsp;
+        <span class="desktop">2026-05-11 09:11</span>
+        <span class="mobile">2026-05-11 09:11</span>
+        <span class="hover-info">Created</span>
+    </span>
+    
+        <span class="article-date article-meta-item">
+            <i class="fa-regular fa-wrench"></i>&nbsp;
+            <span class="desktop">2026-05-11 09:11</span>
+            <span class="mobile">2026-05-11 09:11</span>
+            <span class="hover-info">Updated</span>
+        </span>
+    
+
+    
+        <span class="article-categories article-meta-item">
+            <i class="fa-regular fa-folders"></i>&nbsp;
+            <ul>
+                
+                
+                    
+                        
+                        <li>
+                            <a href="/categories/AI-Notes/">AI Notes</a>&nbsp;
+                        </li>
+                    
+                    
+                
+                    
+                        
+                            <li>></li>
+                        
+                        <li>
+                            <a href="/categories/AI-Notes/Diffusion/">Diffusion</a>&nbsp;
+                        </li>
+                    
+                    
+                
+            </ul>
+        </span>
+    
+    
+        <span class="article-tags article-meta-item">
+            <i class="fa-regular fa-tags"></i>&nbsp;
+            <ul>
+                
+                    <li>
+                        <a href="/tags/AI-Notes/">AI Notes</a>&nbsp;
+                    </li>
+                
+                    <li>
+                        | <a href="/tags/Diffusion/">Diffusion</a>&nbsp;
+                    </li>
+                
+                    <li>
+                        | <a href="/tags/Diffusion-Models/">Diffusion Models</a>&nbsp;
+                    </li>
+                
+                    <li>
+                        | <a href="/tags/Training/">Training</a>&nbsp;
+                    </li>
+                
+            </ul>
+        </span>
+    
+
+    
+    
+        <span class="article-wordcount article-meta-item">
+            <i class="fa-regular fa-typewriter"></i>&nbsp;<span>3.2k Words</span>
+        </span>
+    
+    
+        <span class="article-min2read article-meta-item">
+            <i class="fa-regular fa-clock"></i>&nbsp;<span>11 Mins</span>
+        </span>
+    
+    
+        <span class="article-pv article-meta-item">
+            <i class="fa-regular fa-eye"></i>&nbsp;<span id="busuanzi_value_page_pv"></span>
+        </span>
+    
+</div>
+
+                    </div>
+                </div>
+            </div>
+        
+
+        
+
+
+        <div class="article-content markdown-body px-2 sm:px-6 md:px-8 pb-8">
+            <p><strong>这一页回答三个问题</strong>：</p>
+<ol>
+<li>前向过程到底怎么定义。</li>
+<li>反向过程到底学什么。</li>
+<li>为什么“预测噪声”会变成一个有效训练目标。</li>
+</ol>
+<p>DDPM 原论文的 graphical model 可以先帮你把训练问题定位清楚：训练不是直接从 (x_T) 一口气生成 (x_0)，而是在很多时间步上学习局部反向转移。后续的噪声预测、(x_0) 预测和 v-prediction，都是在这个骨架上选择不同参数化。</p>
+<p><img  
+                     lazyload
+                     src="/images/loading.svg"
+                     data-src="/ai-notes-assets/images/paper-figures/diffusion/ddpm-figure-2-graphical-model.png"
+                      alt="DDPM graphical model 原论文图" 
+                ></p>
+<p><small>图源：<a class="link"   target="_blank" rel="noopener" href="https://arxiv.org/abs/2006.11239" >Denoising Diffusion Probabilistic Models <i class="fa-regular fa-arrow-up-right-from-square fa-sm"></i></a>，Figure 2。原论文图意：DDPM 将数据逐步加噪形成 (x_1,\ldots,x_T)，再学习反向链 (p_\theta(x_{t-1}\mid x_t))。</small></p>
+
+  <div class="note p-4 mb-4 rounded-small info">
+    <p><strong>图解：训练页里的 DDPM 图要看局部反向转移</strong></p>
+<p>图里的每个 (p_\theta(x_{t-1}\mid x_t)) 都是在学习一个局部去噪转移，而不是一次从 (x_T) 直接跳到 (x_0)。训练时随机抽一个时间步 (t)，构造带噪样本 (x_t)，再让网络预测噪声、干净样本或 velocity。如果你只是入门，先把 <code>epsilon prediction</code> 当作默认坐标系；如果你在看 latent diffusion、少步采样或强 guidance，再重点理解 <code>v-prediction</code> 为什么常更稳。</p>
+
+  </div>
+
+  <div class="note p-4 mb-4 rounded-small info">
+    <p><strong>难点解释：为什么可以直接采样任意时刻</strong></p>
+<p>前向加噪虽然写成一步步马尔可夫链，但高斯噪声的叠加仍然是高斯。因此训练时不必真的从 (x_0) 加噪到 (x_t) 走 (t) 次，可以用闭式公式一次构造 (x_t)。这就是扩散训练能高效做随机时间步监督的关键。</p>
+
+  </div>
+
+  <div class="note p-4 mb-4 rounded-small default">
+    <p><strong>有趣例子：调一杯奶茶</strong></p>
+<p>(x_0) 像原味茶，(\epsilon) 像奶和冰。不同 (t) 只是不同配比：前期茶味浓，后期奶冰越来越多。模型训练就是随机拿一杯不同混合比例的奶茶，让它猜“里面加了多少噪声”。</p>
+
+  </div>
+<h2 id="1-前向过程把数据逐步推向高斯分布"><a class="markdownIt-Anchor" href="#1-前向过程把数据逐步推向高斯分布"></a> 1. 前向过程：把数据逐步推向高斯分布</h2>
+<p><strong>前向链定义为</strong>：</p>
+<p>[<br />
+q(x_{1:T} \mid x_0) = \prod_{t=1}^{T} q(x_t \mid x_{t-1}),\qquad q(x_t \mid x_{t-1}) = \mathcal{N}\left(x_t; \sqrt{1-\beta_t}x_{t-1}, \beta_t I\right)<br />
+]</p>
+<p>当 (T) 足够大时，(x_T) 会近似标准高斯。</p>
+<p><strong>更实用的是闭式重参数化</strong>：</p>
+<p>[<br />
+x_t = \sqrt{\bar{\alpha}_t}x_0 + \sqrt{1-\bar{\alpha}_t}\epsilon<br />
+]</p>
+<p>这样训练时无需真的迭代加噪 (t) 次。</p>
+<h3 id="例子给一张猫照片加噪"><a class="markdownIt-Anchor" href="#例子给一张猫照片加噪"></a> 例子：给一张猫照片加噪</h3>
+<p>若 (t) 很小，猫的轮廓仍清晰，只是有些颗粒。</p>
+<p>若 (t) 中等，能看出“这大概是一只猫”，但眼睛和毛发细节消失。</p>
+<p>若 (t) 接近 (T)，图像已经接近白噪声，肉眼几乎无法识别。</p>
+<h2 id="2-反向过程学习从噪声往回走"><a class="markdownIt-Anchor" href="#2-反向过程学习从噪声往回走"></a> 2. 反向过程：学习从噪声往回走</h2>
+<p><strong>理想的反向过程写作</strong>：</p>
+<p>[<br />
+p_\theta(x_{0:T}) = p(x_T)\prod_{t=1}^{T} p_\theta(x_{t-1}\mid x_t)<br />
+]</p>
+<p>其中：</p>
+<p>[<br />
+p_\theta(x_{t-1}\mid x_t)=\mathcal{N}(x_{t-1}; \mu_\theta(x_t,t), \Sigma_\theta(x_t,t))<br />
+]</p>
+<p>很多实现里固定协方差，只学习均值；而均值又可以通过噪声预测网络来表达。</p>
+<h2 id="3-从-elbo-到噪声预测"><a class="markdownIt-Anchor" href="#3-从-elbo-到噪声预测"></a> 3. 从 ELBO 到噪声预测</h2>
+<p><strong>标准训练目标来源于变分下界</strong>：</p>
+<p>[<br />
+\mathcal{L}<em>{\text{vlb}} = \mathbb{E}<em>q \left[-\log p</em>\theta(x_0 \mid x_1) + \sum</em>{t=2}^{T} D_{\text{KL}}\left(q(x_{t-1}\mid x_t, x_0),|,p_\theta(x_{t-1}\mid x_t)\right) + D_{\text{KL}}\left(q(x_T\mid x_0),|,p(x_T)\right)\right]<br />
+]</p>
+<p>在 Ho et al. 的参数化下，这个目标可简化为加权的噪声回归：</p>
+<p>[<br />
+\mathcal{L}<em>{\epsilon} = \mathbb{E}</em>{x_0,\epsilon,t}\left[\left|\epsilon - \epsilon_\theta(x_t,t)\right|_2^2\right]<br />
+]</p>
+<p><strong>这里的直觉是</strong>：</p>
+<ul>
+<li>(x_t) 已知。</li>
+<li>生成它时注入的噪声 (\epsilon) 也已知。</li>
+<li>那么网络只要学会“这张带噪图里混入了多少噪声”，就能反推出更干净的样本。</li>
+</ul>
+<h2 id="4-三种常见参数化"><a class="markdownIt-Anchor" href="#4-三种常见参数化"></a> 4. 三种常见参数化</h2>
+<h3 id="噪声预测"><a class="markdownIt-Anchor" href="#噪声预测"></a> 噪声预测</h3>
+<p>[<br />
+\hat{\epsilon} = \epsilon_\theta(x_t,t)<br />
+]</p>
+<p>优点是实现简单、训练稳定。</p>
+<p>噪声预测之所以长期成为主流，不只是因为它最早出现，而是因为它把训练目标写成了非常统一的监督形式。网络不必直接恢复完整图像，只需要回答“这张带噪图里混进来了什么噪声”。这种目标在实现、调参和稳定性上都相对友好。</p>
+<h3 id="原图预测"><a class="markdownIt-Anchor" href="#原图预测"></a> 原图预测</h3>
+<p>[<br />
+\hat{x}<em>0 = x</em>{0,\theta}(x_t,t)<br />
+]</p>
+<p>对图像恢复直觉更强，但不同噪声区间的尺度差异更敏感。</p>
+<p><code>x_0</code> 预测看上去更接近最终任务，因为网络直接去猜干净样本本身。但也正因为如此，它会在高噪声区间承受更大的回归压力。离真实图像越远的样本，直接回归原图越容易受到尺度和细节缺失影响。</p>
+<h3 id="速度预测"><a class="markdownIt-Anchor" href="#速度预测"></a> 速度预测</h3>
+<p><strong>定义</strong>：</p>
+<p>[<br />
+v = \alpha_t \epsilon - \sigma_t x_0<br />
+]</p>
+<p>网络预测 (v_\theta(x_t,t))。这类参数化在 latent diffusion 和少步采样场景里常更稳。</p>
+<p><code>v</code> 参数化更像是在学习“当前状态该往哪个混合方向移动”。它同时吸收了信号项和噪声项的信息，因此在不少 latent diffusion、少步采样和 guidance 路线里会显得更平衡。也正因为如此，近年的很多工程实现更愿意把它当成默认更舒服的训练坐标系。</p>
+<h2 id="5-从噪声预测恢复-x_0"><a class="markdownIt-Anchor" href="#5-从噪声预测恢复-x_0"></a> 5. 从噪声预测恢复 (x_0)</h2>
+<p>如果模型预测了 (\hat{\epsilon})，那么：</p>
+<p>[<br />
+\hat{x}_0 = \frac{x_t - \sqrt{1-\bar{\alpha}_t}\hat{\epsilon}}{\sqrt{\bar{\alpha}_t}}<br />
+]</p>
+<p>这个式子很像“信号减去估计噪声，再按信噪比做重标定”。</p>
+<h3 id="例子老照片修复"><a class="markdownIt-Anchor" href="#例子老照片修复"></a> 例子：老照片修复</h3>
+<p>想象 (x_t) 是一张很脏的老照片：</p>
+<ul>
+<li>左边人物脸部还在，但有雪花噪点。</li>
+<li>背景窗框模糊，颜色发灰。</li>
+</ul>
+<p>如果网络能正确估计噪声，就等价于判断“哪些像素波动是噪声，哪些才是真实轮廓”。于是恢复后的 (\hat{x}_0) 会先出现脸部轮廓，再补窗框纹理，最后补肤色和光照。</p>
+<h2 id="6-条件生成与-classifier-free-guidance"><a class="markdownIt-Anchor" href="#6-条件生成与-classifier-free-guidance"></a> 6. 条件生成与 classifier-free guidance</h2>
+<p><strong>条件扩散通常学习</strong>：</p>
+<p>[<br />
+\epsilon_\theta(x_t, t, c)<br />
+]</p>
+<p>其中 (c) 可以是文本、类别或图像条件。<code>classifier-free guidance</code> 的常见写法为：</p>
+<p>[<br />
+\hat{\epsilon}<em>{\text{cfg}} = \epsilon</em>\theta(x_t,t,\varnothing) + s\left(\epsilon_\theta(x_t,t,c)-\epsilon_\theta(x_t,t,\varnothing)\right)<br />
+]</p>
+<p>这里 (s) 是 guidance scale。</p>
+<p><strong>直觉上</strong>：</p>
+<ul>
+<li>无条件分支负责“生成一张合理图像”。</li>
+<li>条件分支负责“朝着提示词方向偏移”。</li>
+<li>两者差值越大，说明条件带来的方向越明确。</li>
+</ul>
+<p>这段公式的真正工程意义在于：训练阶段模型已经同时见过“有条件”和“无条件”两种世界，因此推理阶段才能用两者差异来人为放大条件作用。换句话说，<code>CFG</code> 虽然在推理时起作用，但它的前提其实是在训练里就把这两个分支准备好了。</p>
+<h3 id="例子提示词雨夜中的霓虹便利店"><a class="markdownIt-Anchor" href="#例子提示词雨夜中的霓虹便利店"></a> 例子：提示词“雨夜中的霓虹便利店”</h3>
+<p>若 (s) 太小，图像可能只是普通街景。</p>
+<p>若 (s) 合理，画面会更聚焦于“便利店、霓虹、雨夜反光”。</p>
+<p>若 (s) 过大，可能出现颜色过饱和、结构变形、局部过度锐化。</p>
+<h2 id="7-训练时真正难的不是公式而是分布覆盖"><a class="markdownIt-Anchor" href="#7-训练时真正难的不是公式而是分布覆盖"></a> 7. 训练时真正难的不是公式，而是分布覆盖</h2>
+<p>工程上，扩散模型训练的核心难点通常不在于公式本身，而在于：</p>
+<ul>
+<li>数据质量是否足够高。</li>
+<li>文本标注是否覆盖语义细节。</li>
+<li>时间采样策略是否均衡。</li>
+<li>网络容量与噪声日程是否匹配。</li>
+</ul>
+<p>因此，好的扩散训练往往是“目标函数 + 数据系统 + 训练稳定性”一起作用的结果。</p>
+<p>更直白地说，扩散训练里真正贵的错误通常不是“公式写错了”，而是<strong>模型见到的世界不够对</strong>。caption 太粗、结构标注太稀、长尾风格太少、多对象关系覆盖不够、分辨率分布失衡，都会在采样结果里以一种“模型似乎差一点”的方式出现。实际上问题并不一定在模型，而在训练分布本身。</p>
+<p>这也是为什么成熟的扩散训练往往离不开数据清洗、条件质量检查、噪声时间采样设计和专门的长尾回流。目标函数只定义了方向，真正决定模型学到多少内容的，仍然是数据和覆盖。</p>
+<h2 id="快速代码示例"><a class="markdownIt-Anchor" href="#快速代码示例"></a> 快速代码示例</h2>
+<div class="highlight-container" data-rel="Python"><figure class="iseeu highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">import</span> torch</span><br><span class="line"><span class="keyword">import</span> torch.nn.functional <span class="keyword">as</span> F</span><br><span class="line"></span><br><span class="line"><span class="keyword">def</span> <span class="title function_">train_step</span>(<span class="params">unet, scheduler, x0, text_embed</span>):</span><br><span class="line">    bsz = x0.size(<span class="number">0</span>)</span><br><span class="line">    t = torch.randint(<span class="number">0</span>, scheduler.config.num_train_timesteps, (bsz,), device=x0.device)</span><br><span class="line">    noise = torch.randn_like(x0)</span><br><span class="line">    x_t = scheduler.add_noise(x0, noise, t)</span><br><span class="line"></span><br><span class="line">    noise_pred = unet(x_t, t, encoder_hidden_states=text_embed).sample</span><br><span class="line">    loss = F.mse_loss(noise_pred, noise)  <span class="comment"># epsilon-prediction</span></span><br><span class="line">    <span class="keyword">return</span> loss</span><br></pre></td></tr></table></figure></div>
+<p>这段代码对应标准的扩散训练单步：随机采样时间步 <code>t</code>，把干净样本加噪得到 <code>x_t</code>，再让网络回归真实噪声。它体现了最核心的 <strong>epsilon-prediction</strong> 训练目标，便于和 <code>v-pred</code>、<code>x0-pred</code> 做等价对比。</p>
+<h2 id="实践补充与检查"><a class="markdownIt-Anchor" href="#实践补充与检查"></a> 实践补充与检查</h2>
+<h3 id="把-扩散模型的训练与表示-从方法名写成设计空间"><a class="markdownIt-Anchor" href="#把-扩散模型的训练与表示-从方法名写成设计空间"></a> 把 <strong>扩散模型的训练与表示</strong> 从方法名写成设计空间</h3>
+<p>这一类页面如果只停留在“概念、公式、论文关系”，读者很容易知道名词却不知道何时该用、何时不该用。围绕 <strong>扩散模型的训练与表示</strong>，更扎实的写法应当把它放回一个明确设计空间：</p>
+<ol>
+<li><strong>噪声目标、数据分辨率、采样器耦合、条件控制、计算预算</strong>。</li>
+</ol>
+<p>只有把这些坐标讲清楚，读者才能理解：某种方法为什么在论文里成立、落到工程里时最容易在哪些环节变形，以及它和相邻方法的真正边界在哪里。</p>
+<h3 id="更实用的分析顺序"><a class="markdownIt-Anchor" href="#更实用的分析顺序"></a> 更实用的分析顺序</h3>
+<p>围绕 <strong>扩散模型的训练与表示</strong>，建议读者和实践者都先按下面顺序思考：</p>
+<ol>
+<li><strong>先问目标</strong>：你到底追求画质、控制性、速度、稳定性、还是部署成本；</li>
+<li><strong>再问数据制度</strong>：训练样本是什么形态、分布有没有长尾、标注或条件信号是否可靠；</li>
+<li><strong>再问系统边界</strong>：推理预算、显存预算、工具链与下游接口是否支持；</li>
+<li><strong>最后问方法细节</strong>：采样器、蒸馏、量化、损失函数、控制机制的具体选型。</li>
+</ol>
+<p>这比一上来就在方法之间横向比较更有帮助，因为很多“方法优劣”其实是由目标和系统边界决定的，而不是由方法名字决定的。</p>
+<h3 id="最容易被忽略的失败模式"><a class="markdownIt-Anchor" href="#最容易被忽略的失败模式"></a> 最容易被忽略的失败模式</h3>
+<p>围绕 <strong>扩散模型的训练与表示</strong>，常见失败并不只是“指标低”，更常见的是：</p>
+<ol>
+<li><strong>只抄默认配方</strong>。</li>
+<li><strong>训练和推理目标割裂</strong>。</li>
+<li><strong>高分辨率代价被低估</strong>。</li>
+</ol>
+<p>这些问题说明，方法页若只讲主线和优点，会让读者得到一个过于平滑的印象。真正扎实的内容应当明确指出：哪些收益最容易被 benchmark 放大，哪些副作用最容易被平均值遮住，哪些结论只在某些数据制度或硬件路径上成立。</p>
+<p>再往下拆，这类失败常常有非常具体的表现：</p>
+<ol>
+<li><strong>默认配方迁到新数据集后失灵</strong>：因为条件分布、分辨率和长尾结构已经变了；</li>
+<li><strong>训练指标好看但推理不稳</strong>：因为训练参数化、日程和推理 solver/guidance 没一起设计；</li>
+<li><strong>高分辨率训练成本被低估</strong>：显存、全局 batch 和条件分支复杂度会一起上升。</li>
+</ol>
+<p>这些都不是单个超参能补回来的问题，而是设计层面的错位。</p>
+<h3 id="验收与实践清单"><a class="markdownIt-Anchor" href="#验收与实践清单"></a> 验收与实践清单</h3>
+<p>对 <strong>扩散模型的训练与表示</strong>，更像工程文档的验收至少要覆盖：</p>
+<ol>
+<li><strong>区分 base model 与 downstream control</strong>。</li>
+<li><strong>按分辨率建预算</strong>。</li>
+<li><strong>对条件信号做专项 ablation</strong>。</li>
+</ol>
+<p>此外，建议把方法验收长期绑定三类材料：</p>
+<ol>
+<li><strong>热路径案例</strong>，证明它在主场景下确实有价值；</li>
+<li><strong>尾部案例</strong>，避免方法只在容易样本上好看；</li>
+<li><strong>回退与替代方案</strong>，明确什么时候应该切回更简单、更稳的方法。</li>
+</ol>
+<p>做到这一步后，<strong>扩散模型的训练与表示</strong> 才会从“资料页”升级成“真正能指导设计决策的页面”。</p>
+<p>如果把验收再做实一点，至少建议固定四组对照：</p>
+<ol>
+<li><strong>参数化对照</strong>：(\epsilon)、(x_0)、(v) 在同一数据与同一 solver 下如何表现；</li>
+<li><strong>条件对照</strong>：文本、结构或图像条件是否都能稳定工作；</li>
+<li><strong>分辨率对照</strong>：同一训练配方在不同分辨率下是否仍成立；</li>
+<li><strong>训练-推理一致性对照</strong>：训练时的目标和推理时的 guidance/solver 是否真正兼容。</li>
+</ol>
+<p>只有这些证据补齐，训练页才不会停留在“公式正确”，而会真正进入“系统可用”。</p>
+
+        </div>
+
+        
+            <div class="post-copyright-info w-full my-8 px-2 sm:px-6 md:px-8">
+                <div class="article-copyright-info-container">
+    <ul>
+        <li><strong>Title:</strong> 扩散模型的训练与表示</li>
+        <li><strong>Author:</strong> Charles</li>
+        <li><strong>Created at
+                :</strong> 2026-05-11 09:11:00</li>
+        
+            <li>
+                <strong>Updated at
+                    :</strong> 2026-05-11 09:11:00
+            </li>
+        
+        <li>
+            <strong>Link:</strong> https://charles2530.github.io/2026/05/11/ai-notes/files-diffusion-training/
+        </li>
+        <li>
+            <strong>
+                License:
+            </strong>
+            
+
+            
+                This work is licensed under <a class="license" target="_blank" rel="noopener" href="https://creativecommons.org/licenses/by-nc-sa/4.0">CC BY-NC-SA 4.0</a>.
+            
+        </li>
+    </ul>
+</div>
+
+            </div>
+        
+
+        
+            <ul class="post-tags-box text-lg mt-1.5 flex-wrap justify-center flex md:hidden">
+                
+                    <li class="tag-item mx-0.5">
+                        <a href="/tags/AI-Notes/">#AI Notes</a>&nbsp;
+                    </li>
+                
+                    <li class="tag-item mx-0.5">
+                        <a href="/tags/Diffusion/">#Diffusion</a>&nbsp;
+                    </li>
+                
+                    <li class="tag-item mx-0.5">
+                        <a href="/tags/Diffusion-Models/">#Diffusion Models</a>&nbsp;
+                    </li>
+                
+                    <li class="tag-item mx-0.5">
+                        <a href="/tags/Training/">#Training</a>&nbsp;
+                    </li>
+                
+            </ul>
+        
+
+        
+  <div class="recommended-article px-2 sm:px-6 md:px-8">
+   <div class="recommended-desktop">
+    <div class="recommended-article-header text-xl md:text-3xl font-bold mt-10">
+     <i aria-hidden="true"></i><span>recommend_articles</span>
+    </div>
+    <div class="recommended-article-group"><a class="recommended-article-item" href="/2026/05/11/ai-notes/files-operators-deepgemm-fp8-gemm-and-mega-moe/" title="DeepGEMM 解读：FP8 GEMM、JIT 与 Mega MoE" rel="bookmark">
+  <img src="https://charles2530.github.io/image/background/p3.jfif" alt="DeepGEMM 解读：FP8 GEMM、JIT 与 Mega MoE" class="!max-w-none">
+  <span class="title">DeepGEMM 解读：FP8 GEMM、JIT 与 Mega MoE</span>
+</a><a class="recommended-article-item" href="/2023/12/08/algorithm-buaa-note/" title="algorithm-buaa-note" rel="bookmark">
+  <img src="https://charles2530.github.io/image/background/p9.jpg" alt="algorithm-buaa-note" class="!max-w-none">
+  <span class="title">algorithm-buaa-note</span>
+</a><a class="recommended-article-item" href="/2023/06/20/mysql-note-1/" title="MySQL_note_1" rel="bookmark">
+  <img src="https://charles2530.github.io/image/background/p2.png" alt="MySQL_note_1" class="!max-w-none">
+  <span class="title">MySQL_note_1</span>
+</a></div>
+   </div>
+   <div class="recommended-mobile">
+   <div class="recommended-article-header text-xl md:text-3xl font-bold mt-10">
+     <i aria-hidden="true"></i><span>recommend_articles</span>
+   </div>
+   <div class="recommended-article-group"><a class="recommended-article-item" href="/2026/05/11/ai-notes/files-operators-deepgemm-fp8-gemm-and-mega-moe/" title="DeepGEMM 解读：FP8 GEMM、JIT 与 Mega MoE" rel="bookmark">
+  <img src="https://charles2530.github.io/image/background/p3.jfif" alt="DeepGEMM 解读：FP8 GEMM、JIT 与 Mega MoE" class="!max-w-none">
+  <span class="title">DeepGEMM 解读：FP8 GEMM、JIT 与 Mega MoE</span>
+</a><a class="recommended-article-item" href="/2023/12/08/algorithm-buaa-note/" title="algorithm-buaa-note" rel="bookmark">
+  <img src="https://charles2530.github.io/image/background/p9.jpg" alt="algorithm-buaa-note" class="!max-w-none">
+  <span class="title">algorithm-buaa-note</span>
+</a></div>
+   </div>
+  </div>
+
+        
+            <div class="article-nav my-8 flex justify-between items-center px-2 sm:px-6 md:px-8">
+                
+                    <div class="article-prev border-border-color shadow-redefine-flat shadow-shadow-color-2 rounded-medium px-4 py-2 hover:shadow-redefine-flat-hover hover:shadow-shadow-color-2">
+                        <a class="prev"
+                        rel="prev"
+                        href="/2026/05/11/ai-notes/files-diffusion-video-and-multimodal-diffusion/"
+                        >
+                            <span class="left arrow-icon flex justify-center items-center">
+                                <i class="fa-solid fa-chevron-left"></i>
+                            </span>
+                            <span class="title flex justify-center items-center">
+                                <span class="post-nav-title-item">视频与多模态扩散</span>
+                                <span class="post-nav-item">Prev posts</span>
+                            </span>
+                        </a>
+                    </div>
+                
+                
+                    <div class="article-next border-border-color shadow-redefine-flat shadow-shadow-color-2 rounded-medium px-4 py-2 hover:shadow-redefine-flat-hover hover:shadow-shadow-color-2">
+                        <a class="next"
+                        rel="next"
+                        href="/2026/05/11/ai-notes/files-diffusion-score-matching-sde-and-probability-flow/"
+                        >
+                            <span class="title flex justify-center items-center">
+                                <span class="post-nav-title-item">Score Matching、SDE 与 Probability Flow</span>
+                                <span class="post-nav-item">Next posts</span>
+                            </span>
+                            <span class="right arrow-icon flex justify-center items-center">
+                                <i class="fa-solid fa-chevron-right"></i>
+                            </span>
+                        </a>
+                    </div>
+                
+            </div>
+        
+
+
+        
+            <div class="comment-container px-2 sm:px-6 md:px-8 pb-8">
+                <div class="comments-container mt-10 w-full ">
+    <div id="comment-anchor" class="w-full h-2.5"></div>
+    <div class="comment-area-title w-full my-1.5 md:my-2.5 text-xl md:text-3xl font-bold">
+        Comments
+    </div>
+    
+
+        <!-- 
+            
+    <div id="gitalk-container"></div>
+    <script data-swup-reload-script
+            src="//cdn.staticfile.org/gitalk/1.8.0/gitalk.min.js"></script>
+    <script data-swup-reload-script>
+
+        function loadGitalk() {
+            let __gitalk__pathname = decodeURI(location.pathname);
+            const __gitalk__pathnameLength = __gitalk__pathname.length;
+            const __gitalk__pathnameMaxLength = 50;
+            if (__gitalk__pathnameLength > __gitalk__pathnameMaxLength) {
+                __gitalk__pathname = __gitalk__pathname.substring(0, __gitalk__pathnameMaxLength - 3) + '...';
+            }
+
+            try {
+                Gitalk && new Gitalk({
+                    clientID: '8083299a8ee2aaf23879',
+                    clientSecret: 'a8161e81d4872181e884fdb69f7be24916b6a9d0',
+                    repo: 'charles2530_issues',
+                    owner: 'Charles2530',
+                    admin: ['Charles2530'],
+                    id: __gitalk__pathname,
+                    language: 'en',
+                    proxy: 'https://github.com/login/oauth/access_token'
+                }).render('gitalk-container');
+
+            } catch (e) {
+                window.Gitalk = null;
+            }
+        }
+
+        if ('true') {
+            const loadGitalkTimeout = setTimeout(() => {
+                loadGitalk();
+                clearTimeout(loadGitalkTimeout);
+            }, 1000);
+        } else {
+            window.addEventListener('DOMContentLoaded', loadGitalk);
+        }
+    </script>
+
+
+
+         -->
+        <script src="https://utteranc.es/client.js" repo="Charles2530/Charles2530.github.io" issue-term="pathname"
+            label="Comment" theme="preferred-color-scheme" crossorigin="anonymous" async>
+            </script>
+    
+</div>
+
+            </div>
+        
+    </div>
+
+    
+        <div class="toc-content-container">
+            <div class="post-toc-wrap">
+    <div class="post-toc">
+        <div class="toc-title">On this page</div>
+        <div class="page-title">扩散模型的训练与表示</div>
+        <ol class="nav"><li class="nav-item nav-level-2"><a class="nav-link" href="#1-%E5%89%8D%E5%90%91%E8%BF%87%E7%A8%8B%E6%8A%8A%E6%95%B0%E6%8D%AE%E9%80%90%E6%AD%A5%E6%8E%A8%E5%90%91%E9%AB%98%E6%96%AF%E5%88%86%E5%B8%83"><span class="nav-text"> 1. 前向过程：把数据逐步推向高斯分布</span></a><ol class="nav-child"><li class="nav-item nav-level-3"><a class="nav-link" href="#%E4%BE%8B%E5%AD%90%E7%BB%99%E4%B8%80%E5%BC%A0%E7%8C%AB%E7%85%A7%E7%89%87%E5%8A%A0%E5%99%AA"><span class="nav-text"> 例子：给一张猫照片加噪</span></a></li></ol></li><li class="nav-item nav-level-2"><a class="nav-link" href="#2-%E5%8F%8D%E5%90%91%E8%BF%87%E7%A8%8B%E5%AD%A6%E4%B9%A0%E4%BB%8E%E5%99%AA%E5%A3%B0%E5%BE%80%E5%9B%9E%E8%B5%B0"><span class="nav-text"> 2. 反向过程：学习从噪声往回走</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#3-%E4%BB%8E-elbo-%E5%88%B0%E5%99%AA%E5%A3%B0%E9%A2%84%E6%B5%8B"><span class="nav-text"> 3. 从 ELBO 到噪声预测</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#4-%E4%B8%89%E7%A7%8D%E5%B8%B8%E8%A7%81%E5%8F%82%E6%95%B0%E5%8C%96"><span class="nav-text"> 4. 三种常见参数化</span></a><ol class="nav-child"><li class="nav-item nav-level-3"><a class="nav-link" href="#%E5%99%AA%E5%A3%B0%E9%A2%84%E6%B5%8B"><span class="nav-text"> 噪声预测</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#%E5%8E%9F%E5%9B%BE%E9%A2%84%E6%B5%8B"><span class="nav-text"> 原图预测</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#%E9%80%9F%E5%BA%A6%E9%A2%84%E6%B5%8B"><span class="nav-text"> 速度预测</span></a></li></ol></li><li class="nav-item nav-level-2"><a class="nav-link" href="#5-%E4%BB%8E%E5%99%AA%E5%A3%B0%E9%A2%84%E6%B5%8B%E6%81%A2%E5%A4%8D-x_0"><span class="nav-text"> 5. 从噪声预测恢复 (x_0)</span></a><ol class="nav-child"><li class="nav-item nav-level-3"><a class="nav-link" href="#%E4%BE%8B%E5%AD%90%E8%80%81%E7%85%A7%E7%89%87%E4%BF%AE%E5%A4%8D"><span class="nav-text"> 例子：老照片修复</span></a></li></ol></li><li class="nav-item nav-level-2"><a class="nav-link" href="#6-%E6%9D%A1%E4%BB%B6%E7%94%9F%E6%88%90%E4%B8%8E-classifier-free-guidance"><span class="nav-text"> 6. 条件生成与 classifier-free guidance</span></a><ol class="nav-child"><li class="nav-item nav-level-3"><a class="nav-link" href="#%E4%BE%8B%E5%AD%90%E6%8F%90%E7%A4%BA%E8%AF%8D%E9%9B%A8%E5%A4%9C%E4%B8%AD%E7%9A%84%E9%9C%93%E8%99%B9%E4%BE%BF%E5%88%A9%E5%BA%97"><span class="nav-text"> 例子：提示词“雨夜中的霓虹便利店”</span></a></li></ol></li><li class="nav-item nav-level-2"><a class="nav-link" href="#7-%E8%AE%AD%E7%BB%83%E6%97%B6%E7%9C%9F%E6%AD%A3%E9%9A%BE%E7%9A%84%E4%B8%8D%E6%98%AF%E5%85%AC%E5%BC%8F%E8%80%8C%E6%98%AF%E5%88%86%E5%B8%83%E8%A6%86%E7%9B%96"><span class="nav-text"> 7. 训练时真正难的不是公式，而是分布覆盖</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#%E5%BF%AB%E9%80%9F%E4%BB%A3%E7%A0%81%E7%A4%BA%E4%BE%8B"><span class="nav-text"> 快速代码示例</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#%E5%AE%9E%E8%B7%B5%E8%A1%A5%E5%85%85%E4%B8%8E%E6%A3%80%E6%9F%A5"><span class="nav-text"> 实践补充与检查</span></a><ol class="nav-child"><li class="nav-item nav-level-3"><a class="nav-link" href="#%E6%8A%8A-%E6%89%A9%E6%95%A3%E6%A8%A1%E5%9E%8B%E7%9A%84%E8%AE%AD%E7%BB%83%E4%B8%8E%E8%A1%A8%E7%A4%BA-%E4%BB%8E%E6%96%B9%E6%B3%95%E5%90%8D%E5%86%99%E6%88%90%E8%AE%BE%E8%AE%A1%E7%A9%BA%E9%97%B4"><span class="nav-text"> 把 扩散模型的训练与表示 从方法名写成设计空间</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#%E6%9B%B4%E5%AE%9E%E7%94%A8%E7%9A%84%E5%88%86%E6%9E%90%E9%A1%BA%E5%BA%8F"><span class="nav-text"> 更实用的分析顺序</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#%E6%9C%80%E5%AE%B9%E6%98%93%E8%A2%AB%E5%BF%BD%E7%95%A5%E7%9A%84%E5%A4%B1%E8%B4%A5%E6%A8%A1%E5%BC%8F"><span class="nav-text"> 最容易被忽略的失败模式</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#%E9%AA%8C%E6%94%B6%E4%B8%8E%E5%AE%9E%E8%B7%B5%E6%B8%85%E5%8D%95"><span class="nav-text"> 验收与实践清单</span></a></li></ol></li></ol>
+
+    </div>
+</div>
+        </div>
+    
+</div>
+
+
+
+                
+
+            </div>
+
+            
+
+        </div>
+
+        <div class="main-content-footer">
+            <footer class="footer mt-5 py-5 h-auto text-base text-third-text-color relative border-t-2 border-t-border-color">
+    <div class="info-container py-3 text-center">
+        
+        <div class="text-center">
+            &copy;
+            
+              <span>2022</span>
+              -
+            
+            2026&nbsp;&nbsp;<i class="fa-solid fa-heart fa-beat" style="--fa-animation-duration: 0.5s; color: #f54545"></i>&nbsp;&nbsp;<a href="/">Charles</a>
+            
+                
+                <p class="post-count space-x-0.5">
+                    <span>
+                        479 posts in total
+                    </span>
+                    
+                        <span>
+                            1896.7k words in total
+                        </span>
+                    
+                </p>
+            
+        </div>
+        
+            <script data-swup-reload-script src="https://cn.vercount.one/js"></script>
+            <div class="relative text-center lg:absolute lg:right-[20px] lg:top-1/2 lg:-translate-y-1/2 lg:text-right">
+                
+                    <span id="busuanzi_container_site_uv" class="lg:!block">
+                        <span class="text-sm">Visitor Count</span>
+                        <span id="busuanzi_value_site_uv"></span>
+                    </span>
+                
+                
+                    <span id="busuanzi_container_site_pv" class="lg:!block">
+                        <span class="text-sm">Total Page Views</span>
+                        <span id="busuanzi_value_site_pv"></span>
+                    </span>
+                
+            </div>
+        
+        <div class="relative text-center lg:absolute lg:left-[20px] lg:top-1/2 lg:-translate-y-1/2 lg:text-left">
+            <span class="lg:block text-sm">Powered by Charles</span>
+            <span class="text-sm lg:block">Theme&nbsp;<a class="text-base" target="_blank" href="https://github.com/EvanNotFound/hexo-theme-redefine">Redefine v2.6.1</a></span>
+        </div>
+        
+        
+            <div>
+                Blog up for <span class="odometer" id="runtime_days" ></span> days <span class="odometer" id="runtime_hours"></span> hrs <span class="odometer" id="runtime_minutes"></span> Min <span class="odometer" id="runtime_seconds"></span> Sec
+            </div>
+        
+        
+            <script data-swup-reload-script>
+                try {
+                    function odometer_init() {
+                    const elements = document.querySelectorAll('.odometer');
+                    elements.forEach(el => {
+                        new Odometer({
+                            el,
+                            format: '( ddd).dd',
+                            duration: 200
+                        });
+                    });
+                    }
+                    odometer_init();
+                } catch (error) {}
+            </script>
+        
+        
+            
+                
+        
+                
+        
+        
+    </div>  
+</footer>
+        </div>
+    </div>
+
+    
+        <div class="post-tools">
+            <div class="post-tools-container">
+    <ul class="article-tools-list">
+        <!-- TOC aside toggle -->
+        
+            <li class="right-bottom-tools page-aside-toggle">
+                <i class="fa-regular fa-outdent"></i>
+            </li>
+        
+
+        <!-- go comment -->
+        
+            <li class="go-comment">
+                <i class="fa-regular fa-comments"></i>
+            </li>
+        
+    </ul>
+</div>
+
+        </div>
+    
+
+    <div class="right-side-tools-container">
+        <div class="side-tools-container">
+    <ul class="hidden-tools-list">
+        <li class="right-bottom-tools tool-font-adjust-plus flex justify-center items-center">
+            <i class="fa-regular fa-magnifying-glass-plus"></i>
+        </li>
+
+        <li class="right-bottom-tools tool-font-adjust-minus flex justify-center items-center">
+            <i class="fa-regular fa-magnifying-glass-minus"></i>
+        </li>
+
+        <li class="right-bottom-tools tool-dark-light-toggle flex justify-center items-center">
+            <i class="fa-regular fa-moon"></i>
+        </li>
+
+        <!-- rss -->
+        
+            <li class="right-bottom-tools rss flex justify-center items-center">
+                <a class="flex justify-center items-center"
+                   href="/atom.xml"
+                   target="_blank"
+                >
+                <i class="fa-regular fa-rss"></i>
+                </a>
+            </li>
+        
+
+        
+
+        <li class="right-bottom-tools tool-scroll-to-bottom flex justify-center items-center">
+            <i class="fa-regular fa-arrow-down"></i>
+        </li>
+    </ul>
+
+    <ul class="visible-tools-list">
+        <li class="right-bottom-tools toggle-tools-list flex justify-center items-center">
+            <i class="fa-regular fa-cog fa-spin"></i>
+        </li>
+        
+            <li class="right-bottom-tools tool-scroll-to-top flex justify-center items-center">
+                <i class="arrow-up fas fa-arrow-up"></i>
+                <span class="percent"></span>
+            </li>
+        
+        
+    </ul>
+</div>
+
+    </div>
+
+    <div class="image-viewer-container">
+    <img src="">
+</div>
+
+
+    
+        <div class="search-pop-overlay">
+    <div class="popup search-popup">
+        <div class="search-header">
+          <span class="search-input-field-pre">
+            <i class="fa-solid fa-keyboard"></i>
+          </span>
+            <div class="search-input-container">
+                <input autocomplete="off"
+                       autocorrect="off"
+                       autocapitalize="off"
+                       placeholder="Search..."
+                       spellcheck="false"
+                       type="search"
+                       class="search-input"
+                >
+            </div>
+            <span class="popup-btn-close">
+                <i class="fa-solid fa-times"></i>
+            </span>
+        </div>
+        <div id="search-result">
+            <div id="no-result">
+                <i class="fa-solid fa-spinner fa-spin-pulse fa-5x fa-fw"></i>
+            </div>
+        </div>
+    </div>
+</div>
+
+    
+
+</main>
+
+
+    <script src="https://evan.beee.top/projects/hexo-theme-redefine@2.6.1/source/js/libs/Swup.min.js"></script><script src="https://evan.beee.top/projects/hexo-theme-redefine@2.6.1/source/js/libs/SwupSlideTheme.min.js"></script><script src="https://evan.beee.top/projects/hexo-theme-redefine@2.6.1/source/js/libs/SwupScriptsPlugin.min.js"></script><script src="https://evan.beee.top/projects/hexo-theme-redefine@2.6.1/source/js/libs/SwupProgressPlugin.min.js"></script><script src="https://evan.beee.top/projects/hexo-theme-redefine@2.6.1/source/js/libs/SwupScrollPlugin.min.js"></script><script src="https://evan.beee.top/projects/hexo-theme-redefine@2.6.1/source/js/libs/SwupPreloadPlugin.min.js"></script>
+<script>
+    const swup = new Swup({
+        plugins: [
+            new SwupScriptsPlugin({
+                optin: true,
+            }),
+            new SwupProgressPlugin(),
+            new SwupScrollPlugin({
+                offset: 80,
+            }),
+            new SwupSlideTheme({
+                mainElement: ".main-content-body",
+            }),
+            new SwupPreloadPlugin(),
+        ],
+        containers: ["#swup"],
+    });
+</script>
+
+
+
+
+
+
+<script type="module" src="https://evan.beee.top/projects/hexo-theme-redefine@2.6.1/source/js/tools/imageViewer.js"></script><script type="module" src="https://evan.beee.top/projects/hexo-theme-redefine@2.6.1/source/js/utils.js"></script><script type="module" src="https://evan.beee.top/projects/hexo-theme-redefine@2.6.1/source/js/main.js"></script><script type="module" src="https://evan.beee.top/projects/hexo-theme-redefine@2.6.1/source/js/layouts/navbarShrink.js"></script><script type="module" src="https://evan.beee.top/projects/hexo-theme-redefine@2.6.1/source/js/tools/scrollTopBottom.js"></script><script type="module" src="https://evan.beee.top/projects/hexo-theme-redefine@2.6.1/source/js/tools/lightDarkSwitch.js"></script><script type="module" src="https://evan.beee.top/projects/hexo-theme-redefine@2.6.1/source/js/layouts/categoryList.js"></script>
+
+
+    <script type="module" src="https://evan.beee.top/projects/hexo-theme-redefine@2.6.1/source/js/tools/localSearch.js"></script>
+
+
+
+    <script type="module" src="https://evan.beee.top/projects/hexo-theme-redefine@2.6.1/source/js/tools/codeBlock.js"></script>
+
+
+
+    <script type="module" src="https://evan.beee.top/projects/hexo-theme-redefine@2.6.1/source/js/layouts/lazyload.js"></script>
+
+
+
+    <script src="https://evan.beee.top/projects/hexo-theme-redefine@2.6.1/source/js/tools/runtime.js"></script>
+    <script src="https://evan.beee.top/projects/hexo-theme-redefine@2.6.1/source/js/libs/odometer.min.js"></script>
+    <link rel="stylesheet" href="//evan.beee.top/projects/hexo-theme-redefine@2.6.1/source/assets/odometer-theme-minimal.css">
+
+
+
+  <script src="https://evan.beee.top/projects/hexo-theme-redefine@2.6.1/source/js/libs/Typed.min.js"></script>
+  <script type="module" src="https://evan.beee.top/projects/hexo-theme-redefine@2.6.1/source/js/plugins/typed.js"></script>
+
+
+
+    <script src="https://evan.beee.top/projects/hexo-theme-redefine@2.6.1/source/js/libs/mermaid.min.js"></script>
+    <script src="https://evan.beee.top/projects/hexo-theme-redefine@2.6.1/source/js/plugins/mermaid.js"></script>
+
+
+
+    <script src="https://evan.beee.top/projects/hexo-theme-redefine@2.6.1/source/js/libs/minimasonry.min.js"></script>
+    <script type="module" src="https://evan.beee.top/projects/hexo-theme-redefine@2.6.1/source/js/plugins/masonry.js"></script>
+
+
+
+
+<div class="post-scripts" data-swup-reload-script>
+    
+        <script type="module" src="https://evan.beee.top/projects/hexo-theme-redefine@2.6.1/source/js/tools/tocToggle.js"></script><script type="module" src="https://evan.beee.top/projects/hexo-theme-redefine@2.6.1/source/js/layouts/toc.js"></script><script type="module" src="https://evan.beee.top/projects/hexo-theme-redefine@2.6.1/source/js/plugins/tabs.js"></script>
+    
+</div>
+
+
+</body>
+</html>
+<!-- 页面点击小红心 -->
+<script type="text/javascript" src="/js/love.js"></script>

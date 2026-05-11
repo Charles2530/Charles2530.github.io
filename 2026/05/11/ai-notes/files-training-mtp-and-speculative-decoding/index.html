@@ -1,0 +1,1482 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="keywords" content="Charles">
+    
+    <meta name="author" content="Charles">
+    <!-- preconnect -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+
+    
+        
+        
+        
+    
+    <!--- Seo Part-->
+    
+    <link rel="canonical" href="https://charles2530.github.io/2026/05/11/ai-notes/files-training-mtp-and-speculative-decoding/"/>
+    <meta name="robots" content="index,follow">
+    <meta name="googlebot" content="index,follow">
+    <meta name="revisit-after" content="1 days">
+    
+        <meta name="description" content="MTP （Multi-Token Prediction）和 speculative decoding 经常一起出现，但它们不是同一件事。 - MTP 首先是 训练目标 &#x2F; 模型结构设计 ：让模型在一个位置上学习多个未来 token； - 投机解码 首先是 推理加速算法 ：用便宜路径草拟，再用目标模型并行验证； - Se">
+<meta property="og:type" content="article">
+<meta property="og:title" content="MTP 与投机解码">
+<meta property="og:url" content="https://charles2530.github.io/2026/05/11/ai-notes/files-training-mtp-and-speculative-decoding/index.html">
+<meta property="og:site_name" content="Charles&#39;s Castle">
+<meta property="og:description" content="MTP （Multi-Token Prediction）和 speculative decoding 经常一起出现，但它们不是同一件事。 - MTP 首先是 训练目标 &#x2F; 模型结构设计 ：让模型在一个位置上学习多个未来 token； - 投机解码 首先是 推理加速算法 ：用便宜路径草拟，再用目标模型并行验证； - Se">
+<meta property="og:locale" content="en_US">
+<meta property="article:published_time" content="2026-05-11T03:19:00.000Z">
+<meta property="article:modified_time" content="2026-05-11T03:19:00.000Z">
+<meta property="article:author" content="Du Jinyang">
+<meta property="article:tag" content="AI Notes">
+<meta property="article:tag" content="Training">
+<meta property="article:tag" content="Inference">
+<meta name="twitter:card" content="summary">
+    
+    
+    <!--- Icon Part-->
+    <link rel="icon" type="image/png" href="https://charles2530.github.io/image/background/favicon.png" sizes="192x192">
+    <link rel="apple-touch-icon" sizes="180x180" href="https://charles2530.github.io/image/background/favicon.png">
+    <meta name="theme-color" content="#A31F34">
+    <link rel="shortcut icon" href="https://charles2530.github.io/image/background/favicon.png">
+    <!--- Page Info-->
+    
+    <title>
+        
+            MTP 与投机解码 -
+        
+        Charles&#39;s Castle
+    </title>
+
+    <link rel="stylesheet" href="//evan.beee.top/projects/hexo-theme-redefine@2.6.1/source/fonts/Chillax/chillax.css">
+
+    <!--- Inject Part-->
+    
+        
+            
+                
+                    <script data-swup-reload-script> var _hmt = _hmt || []; (function() { var hm = document.createElement("script"); hm.src = "https://hm.baidu.com/hm.js?8e0e5f382d14d87cbeadc33a36e71e86"; var s = document.getElementsByTagName("script")[0]; s.parentNode.insertBefore(hm, s); })(); </script>
+                
+    
+            
+    
+
+    
+        <style>
+    :root {
+        --preloader-background-color: #fff;
+        --preloader-text-color: #000;
+    }
+
+    @media (prefers-color-scheme: dark) {
+        :root {
+            --preloader-background-color: #202124;
+            --preloader-text-color: #fff;
+        }
+    }
+
+    @media (prefers-color-scheme: light) {
+        :root {
+            --preloader-background-color: #fff;
+            --preloader-text-color: #000;
+        }
+    }
+
+    @media (max-width: 600px) {
+        .ml13 {
+            font-size: 2.6rem !important; /* Adjust this value as needed */
+        }
+    }
+
+    .preloader {
+        display: flex;
+        flex-direction: column;
+        gap: 1rem; /* Tailwind 'gap-4' is 1rem */
+        align-items: center;
+        justify-content: center;
+        position: fixed;
+        padding: 12px;
+        top: 0;
+        right: 0;
+        bottom: 0;
+        left: 0;
+        width: 100vw;
+        height: 100vh; /* 'h-screen' is 100% of the viewport height */
+        background-color: var(--preloader-background-color);
+        z-index: 1100; /* 'z-[1100]' sets the z-index */
+        transition: opacity 0.2s ease-in-out;
+    }
+
+    .ml13 {
+        font-size: 3.2rem;
+        /* text-transform: uppercase; */
+        color: var(--preloader-text-color);
+        letter-spacing: -1px;
+        font-weight: 500;
+        font-family: 'Chillax-Variable', sans-serif;
+        text-align: center;
+    }
+
+    .ml13 .word {
+        display: inline-flex;
+        flex-wrap: wrap;
+        white-space: nowrap;
+    }
+
+    .ml13 .letter {
+        display: inline-block;
+        line-height: 1em;
+    }
+</style>
+
+<div class="preloader">
+    <script src="https://evan.beee.top/projects/hexo-theme-redefine@2.6.1/source/js/libs/anime.min.js"></script>
+    <h1 class="ml13">
+        Charles&#39;s Castle
+    </h1>
+    <script>
+        var textWrapper = document.querySelector('.ml13');
+        // Split text into words
+        var words = textWrapper.textContent.trim().split(' ');
+
+        // Clear the existing content
+        textWrapper.innerHTML = '';
+
+        // Wrap each word and its letters in spans
+        words.forEach(function(word) {
+            var wordSpan = document.createElement('span');
+            wordSpan.classList.add('word');
+            wordSpan.innerHTML = word.replace(/\S/g, "<span class='letter'>$&</span>");
+            textWrapper.appendChild(wordSpan);
+            textWrapper.appendChild(document.createTextNode(' ')); // Add space between words
+        });
+
+
+        anime.timeline({loop: true})
+            .add({
+                targets: '.ml13 .letter',
+                translateY: [100,0],
+                translateZ: 0,
+                opacity: [0,1],
+                easing: "easeOutExpo",
+                duration: 1400,
+                delay: (el, i) => 300 + 30 * i
+            }).add({
+            targets: '.ml13 .letter',
+            translateY: [0,-100],
+            opacity: [1,0],
+            easing: "easeInExpo",
+            duration: 1200,
+            delay: (el, i) => 100 + 30 * i
+        });
+
+        let themeStatus = JSON.parse(localStorage.getItem('REDEFINE-THEME-STATUS'))?.isDark;
+
+        // If the theme status is not found in local storage, check the preferred color scheme
+        if (themeStatus === undefined || themeStatus === null) {
+            if (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) {
+                themeStatus = 'dark';
+            } else {
+                themeStatus = 'light';
+            }
+        }
+
+        // Now you can use the themeStatus variable in your code
+        if (themeStatus) {
+            document.documentElement.style.setProperty('--preloader-background-color', '#202124');
+            document.documentElement.style.setProperty('--preloader-text-color', '#fff');
+        } else {
+            document.documentElement.style.setProperty('--preloader-background-color', '#fff');
+            document.documentElement.style.setProperty('--preloader-text-color', '#000');
+        }
+
+        window.addEventListener('load', function () {
+            hidePreloaderAfterTimeout(1000); // Hide after 1000 milliseconds once the window has loaded
+        });
+
+        // Backup failsafe: Hide preloader after a maximum of 5000 milliseconds, regardless of the window load event
+        hidePreloaderAfterTimeout(5000);
+
+        function hidePreloaderAfterTimeout(delay) {
+            setTimeout(function () {
+                var preloader = document.querySelector('.preloader');
+                preloader.style.opacity = '0';
+                setTimeout(function () {
+                    preloader.style.display = 'none';
+                }, 200);
+            }, delay);
+        }
+    </script>
+</div>
+    
+
+    
+<link rel="stylesheet" href="/css/style.css">
+
+
+    
+        <link rel="stylesheet" href="//evan.beee.top/projects/hexo-theme-redefine@2.6.1/source/assets/build/styles.css">
+    
+
+    <link rel="stylesheet" href="//evan.beee.top/projects/hexo-theme-redefine@2.6.1/source/fonts/fonts.css">
+    <link rel="stylesheet" href="//evan.beee.top/projects/hexo-theme-redefine@2.6.1/source/fonts/Satoshi/satoshi.css">
+    <!--- Font Part-->
+    
+    
+    
+    
+
+
+    <script id="hexo-configurations">
+    window.config = {"hostname":"charles2530.github.io","root":"/","language":"en","path":"search.xml"};
+    window.theme = {"articles":{"style":{"font_size":"16px","line_height":1.5,"image_border_radius":"14px","image_alignment":"center","image_caption":false,"link_icon":true,"title_alignment":"left","headings_top_spacing":{"h1":"5rem","h2":"4rem","h3":"2.8rem","h4":"2.5rem","h5":"2.2rem","h6":"2rem"}},"word_count":{"enable":true,"count":true,"min2read":true},"author_label":{"enable":true,"auto":true,"list":["lol","Neo","God"]},"code_block":{"copy":true,"style":"mac","font":{"enable":false,"family":null,"url":null}},"toc":{"enable":true,"max_depth":6,"number":false,"expand":true,"init_open":true},"copyright":{"enable":true,"default":"cc_by_nc_sa"},"lazyload":true,"recommendation":{"enable":true,"title":"recommend_articles","limit":3,"mobile_limit":2,"placeholder":"https://charles2530.github.io/image/background/p3.jfif","skip_dirs":[]}},"colors":{"primary":"#A31F34","secondary":"#1890ff","default_mode":"light"},"global":{"fonts":{"chinese":{"enable":false,"family":null,"url":null},"english":{"enable":false,"family":null,"url":null}},"content_max_width":"1000px","sidebar_width":"210px","hover":{"shadow":true,"scale":true},"scroll_progress":{"bar":true,"percentage":true},"website_counter":{"url":"https://cn.vercount.one/js","enable":true,"site_pv":true,"site_uv":true,"post_pv":true},"single_page":true,"preloader":true,"open_graph":true,"google_analytics":{"enable":false,"id":null}},"home_banner":{"enable":true,"style":"fixed","image":{"light":"https://charles2530.github.io/image/background/background-light1.jpg","dark":"https://charles2530.github.io/image/background/background-dark1.jpg"},"title":"Charles's Castle","subtitle":{"text":["Happiness is best!","Never give up!","Everyday is a gift!"],"hitokoto":{"enable":false,"api":"https://v1.hitokoto.cn"},"typing_speed":100,"backing_speed":80,"starting_delay":500,"backing_delay":1500,"loop":true,"smart_backspace":true},"text_color":{"light":"#000000","dark":"#d1d1b6"},"text_style":{"title_size":"3.2rem","subtitle_size":"1.5rem","line_height":1.2},"custom_font":{"enable":false,"family":null,"url":null},"social_links":{"enable":true,"style":"center","links":{"github":"https://github.com/Charles2530/","zhihu":"https://www.zhihu.com/people/yang-guang-xiao-zi-55-55","email":"charles2530@163.com"},"qrs":{"weixin":"https://charles2530.github.io/image/background/Wechat_icon.png"}}},"plugins":{"feed":{"enable":true},"aplayer":{"enable":false,"type":"fixed","audios":[{"name":null,"artist":null,"url":null,"cover":null},{"name":null,"artist":null,"url":null,"cover":null}]},"mermaid":{"enable":true,"version":"9.3.0"}},"version":"2.6.1","navbar":{"auto_hide":true,"color":{"left":"#f78736","right":"#367df7","transparency":35},"width":{"home":"1200px","pages":"1000px"},"links":{"Home":{"path":"/","icon":"fa-regular fa-house"},"Categories":{"path":"/categories","icon":"fas fa-bookmark"},"Tags":{"path":"/tags","icon":"fas fa-tags"},"About":{"icon":"fa-regular fa-user","submenus":{"Me":"/about","Github":"https://github.com/Charles2530/","Blog":"https://charles2530.github.io","Statistics":"https://tongji.baidu.com/"}},"AI Notes":{"path":"/ai-notes","icon":"fas fa-brain"}},"search":{"enable":true,"preload":true}},"page_templates":{"friends_column":2,"tags_style":"blur"},"home":{"sidebar":{"enable":true,"position":"left","first_item":"menu","announcement":"This is Charles's Castle","show_on_mobile":true,"links":{"Archives":{"path":"/archives","icon":"fa-regular fa-archive"},"Photos":{"icon":"fa-solid fa-image","path":"/masonry/"},"Essays":{"icon":"fa-solid fa-message-lines","path":"/essay/"},"Friends":{"icon":"fa-solid fa-user-group","path":"/friends/"}}},"article_date_format":"auto","categories":{"enable":true,"limit":3},"tags":{"enable":true,"limit":3}},"footerStart":"2022/12/27 00:00:00"};
+    window.lang_ago = {"second":"%s seconds ago","minute":"%s minutes ago","hour":"%s hours ago","day":"%s days ago","week":"%s weeks ago","month":"%s months ago","year":"%s years ago"};
+    window.data = {"masonry":true};
+  </script>
+    
+    <!--- Fontawesome Part-->
+    <link rel="stylesheet" href="//evan.beee.top/projects/hexo-theme-redefine@2.6.1/source/fontawesome/fontawesome.min.css">
+    <link rel="stylesheet" href="//evan.beee.top/projects/hexo-theme-redefine@2.6.1/source/fontawesome/brands.min.css">
+    <link rel="stylesheet" href="//evan.beee.top/projects/hexo-theme-redefine@2.6.1/source/fontawesome/solid.min.css">
+    <link rel="stylesheet" href="//evan.beee.top/projects/hexo-theme-redefine@2.6.1/source/fontawesome/regular.min.css">
+    
+    
+    
+    
+<meta name="generator" content="Hexo 6.3.0"><link rel="alternate" href="/atom.xml" title="Charles's Castle" type="application/atom+xml">
+<link rel="stylesheet" href="/css/prism-tomorrow.css" type="text/css"></head>
+
+
+<body>
+<div class="progress-bar-container">
+    
+        <span class="scroll-progress-bar"></span>
+    
+
+    
+        <span class="pjax-progress-bar"></span>
+<!--        <span class="swup-progress-icon">-->
+<!--            <i class="fa-solid fa-circle-notch fa-spin"></i>-->
+<!--        </span>-->
+    
+</div>
+
+
+<main class="page-container" id="swup">
+
+    
+
+    <div class="main-content-container">
+
+
+        <div class="main-content-header">
+            <header class="navbar-container px-6 md:px-12">
+
+    <div class="navbar-content ">
+        <div class="left">
+            
+                <a class="logo-image" href="/">
+                    <img src="https://charles2530.github.io/image/background/logo.jpg">
+                </a>
+            
+            <a class="logo-title" href="/">
+                
+                Charles&#39;s Castle
+                
+            </a>
+        </div>
+
+        <div class="right">
+            <!-- PC -->
+            <div class="desktop">
+                <ul class="navbar-list">
+                    
+                        
+                            
+
+                            <li class="navbar-item">
+                                <!-- Menu -->
+                                <a class=""
+                                   href="/"
+                                        >
+                                    <i class="fa-regular fa-house fa-fw"></i>
+                                    HOME
+                                    
+                                </a>
+
+                                <!-- Submenu -->
+                                
+                            </li>
+                    
+                        
+                            
+
+                            <li class="navbar-item">
+                                <!-- Menu -->
+                                <a class=""
+                                   href="/categories"
+                                        >
+                                    <i class="fas fa-bookmark fa-fw"></i>
+                                    CATEGORIES
+                                    
+                                </a>
+
+                                <!-- Submenu -->
+                                
+                            </li>
+                    
+                        
+                            
+
+                            <li class="navbar-item">
+                                <!-- Menu -->
+                                <a class=""
+                                   href="/tags"
+                                        >
+                                    <i class="fas fa-tags fa-fw"></i>
+                                    TAGS
+                                    
+                                </a>
+
+                                <!-- Submenu -->
+                                
+                            </li>
+                    
+                        
+                            
+
+                            <li class="navbar-item">
+                                <!-- Menu -->
+                                <a class="has-dropdown"
+                                   href="#"
+                                        onClick=&#34;return false;&#34;>
+                                    <i class="fa-regular fa-user fa-fw"></i>
+                                    ABOUT
+                                    <i class="fa-solid fa-chevron-down fa-fw"></i>
+                                </a>
+
+                                <!-- Submenu -->
+                                
+                                    <ul class="sub-menu">
+                                        
+                                            <li>
+                                                <a href="/about">
+                                                    ME
+                                                </a>
+                                            </li>
+                                        
+                                            <li>
+                                                <a target="_blank" rel="noopener" href="https://github.com/Charles2530/">
+                                                    GITHUB
+                                                </a>
+                                            </li>
+                                        
+                                            <li>
+                                                <a href="https://charles2530.github.io">
+                                                    BLOG
+                                                </a>
+                                            </li>
+                                        
+                                            <li>
+                                                <a target="_blank" rel="noopener" href="https://tongji.baidu.com/">
+                                                    STATISTICS
+                                                </a>
+                                            </li>
+                                        
+                                    </ul>
+                                
+                            </li>
+                    
+                        
+                            
+
+                            <li class="navbar-item">
+                                <!-- Menu -->
+                                <a class=""
+                                   href="/ai-notes"
+                                        >
+                                    <i class="fas fa-brain fa-fw"></i>
+                                    AI NOTES
+                                    
+                                </a>
+
+                                <!-- Submenu -->
+                                
+                            </li>
+                    
+                    
+                        <li class="navbar-item search search-popup-trigger">
+                            <i class="fa-solid fa-magnifying-glass"></i>
+                        </li>
+                    
+                </ul>
+            </div>
+            <!-- Mobile -->
+            <div class="mobile">
+                
+                    <div class="icon-item search search-popup-trigger"><i class="fa-solid fa-magnifying-glass"></i>
+                    </div>
+                
+                <div class="icon-item navbar-bar">
+                    <div class="navbar-bar-middle"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Mobile sheet -->
+    <div class="navbar-drawer h-screen w-full absolute top-0 left-0 bg-background-color flex flex-col justify-between">
+        <ul class="drawer-navbar-list flex flex-col px-4 justify-center items-start">
+            
+                
+                    
+
+                    <li class="drawer-navbar-item text-base my-1.5 flex flex-col w-full">
+                        
+                        <a class="py-1.5 px-2 flex flex-row items-center justify-between gap-1 hover:!text-primary active:!text-primary text-2xl font-semibold group border-b border-border-color hover:border-primary w-full "
+                           href="/"
+                        >
+                            <span>
+                                HOME
+                            </span>
+                            
+                                <i class="fa-regular fa-house fa-sm fa-fw"></i>
+                            
+                        </a>
+                        
+
+                        
+                    </li>
+            
+                
+                    
+
+                    <li class="drawer-navbar-item text-base my-1.5 flex flex-col w-full">
+                        
+                        <a class="py-1.5 px-2 flex flex-row items-center justify-between gap-1 hover:!text-primary active:!text-primary text-2xl font-semibold group border-b border-border-color hover:border-primary w-full "
+                           href="/categories"
+                        >
+                            <span>
+                                CATEGORIES
+                            </span>
+                            
+                                <i class="fas fa-bookmark fa-sm fa-fw"></i>
+                            
+                        </a>
+                        
+
+                        
+                    </li>
+            
+                
+                    
+
+                    <li class="drawer-navbar-item text-base my-1.5 flex flex-col w-full">
+                        
+                        <a class="py-1.5 px-2 flex flex-row items-center justify-between gap-1 hover:!text-primary active:!text-primary text-2xl font-semibold group border-b border-border-color hover:border-primary w-full "
+                           href="/tags"
+                        >
+                            <span>
+                                TAGS
+                            </span>
+                            
+                                <i class="fas fa-tags fa-sm fa-fw"></i>
+                            
+                        </a>
+                        
+
+                        
+                    </li>
+            
+                
+                    
+
+                    <li class="drawer-navbar-item-sub text-base my-1.5 flex flex-col w-full">
+                        
+                        <div class="py-1.5 px-2 flex flex-row items-center justify-between gap-1 hover:!text-primary active:!text-primary cursor-pointer text-2xl font-semibold group border-b border-border-color hover:border-primary w-full "
+                             navbar-data-toggle="submenu-About"
+                        >
+                            <span>
+                                ABOUT
+                            </span>
+                            
+                                <i class="fa-solid fa-chevron-right fa-sm fa-fw transition-all"></i>
+                            
+                        </div>
+                        
+
+                        
+                            <div class="flex-col items-start px-2 py-2 hidden" data-target="submenu-About">
+                                
+                                    <div class="drawer-navbar-item text-base flex flex-col justify-center items-start hover:underline active:underline hover:underline-offset-1 rounded-3xl">
+                                        <a class=" text-third-text-color text-xl"
+                                           href="/about">ME</a>
+                                    </div>
+                                
+                                    <div class="drawer-navbar-item text-base flex flex-col justify-center items-start hover:underline active:underline hover:underline-offset-1 rounded-3xl">
+                                        <a class=" text-third-text-color text-xl"
+                                           target="_blank" rel="noopener" href="https://github.com/Charles2530/">GITHUB</a>
+                                    </div>
+                                
+                                    <div class="drawer-navbar-item text-base flex flex-col justify-center items-start hover:underline active:underline hover:underline-offset-1 rounded-3xl">
+                                        <a class=" text-third-text-color text-xl"
+                                           href="https://charles2530.github.io">BLOG</a>
+                                    </div>
+                                
+                                    <div class="drawer-navbar-item text-base flex flex-col justify-center items-start hover:underline active:underline hover:underline-offset-1 rounded-3xl">
+                                        <a class=" text-third-text-color text-xl"
+                                           target="_blank" rel="noopener" href="https://tongji.baidu.com/">STATISTICS</a>
+                                    </div>
+                                
+                            </div>
+                        
+                    </li>
+            
+                
+                    
+
+                    <li class="drawer-navbar-item text-base my-1.5 flex flex-col w-full">
+                        
+                        <a class="py-1.5 px-2 flex flex-row items-center justify-between gap-1 hover:!text-primary active:!text-primary text-2xl font-semibold group border-b border-border-color hover:border-primary w-full "
+                           href="/ai-notes"
+                        >
+                            <span>
+                                AI NOTES
+                            </span>
+                            
+                                <i class="fas fa-brain fa-sm fa-fw"></i>
+                            
+                        </a>
+                        
+
+                        
+                    </li>
+            
+
+            
+            
+                
+                    
+                    <li class="drawer-navbar-item text-base my-1.5 flex flex-col w-full">
+                        <a class="py-1.5 px-2 flex flex-row items-center justify-between gap-1 hover:!text-primary active:!text-primary text-2xl font-semibold group border-b border-border-color hover:border-primary w-full active"
+                           href="/archives"
+                        >
+                            <span>Archives</span>
+                            <i class="fa-regular fa-archive fa-sm fa-fw"></i>
+                        </a>
+                    </li>
+                
+                    
+                    <li class="drawer-navbar-item text-base my-1.5 flex flex-col w-full">
+                        <a class="py-1.5 px-2 flex flex-row items-center justify-between gap-1 hover:!text-primary active:!text-primary text-2xl font-semibold group border-b border-border-color hover:border-primary w-full active"
+                           href="/masonry/"
+                        >
+                            <span>Photos</span>
+                            <i class="fa-solid fa-image fa-sm fa-fw"></i>
+                        </a>
+                    </li>
+                
+                    
+                    <li class="drawer-navbar-item text-base my-1.5 flex flex-col w-full">
+                        <a class="py-1.5 px-2 flex flex-row items-center justify-between gap-1 hover:!text-primary active:!text-primary text-2xl font-semibold group border-b border-border-color hover:border-primary w-full active"
+                           href="/essay/"
+                        >
+                            <span>Essays</span>
+                            <i class="fa-solid fa-message-lines fa-sm fa-fw"></i>
+                        </a>
+                    </li>
+                
+                    
+                    <li class="drawer-navbar-item text-base my-1.5 flex flex-col w-full">
+                        <a class="py-1.5 px-2 flex flex-row items-center justify-between gap-1 hover:!text-primary active:!text-primary text-2xl font-semibold group border-b border-border-color hover:border-primary w-full active"
+                           href="/friends/"
+                        >
+                            <span>Friends</span>
+                            <i class="fa-solid fa-user-group fa-sm fa-fw"></i>
+                        </a>
+                    </li>
+                
+            
+        </ul>
+
+        <div class="statistics flex justify-around my-2.5">
+    <a class="item tag-count-item flex flex-col justify-center items-center w-20" href="/tags">
+        <div class="number text-2xl sm:text-xl text-second-text-color font-semibold">44</div>
+        <div class="label text-third-text-color text-sm">Tags</div>
+    </a>
+    <a class="item tag-count-item flex flex-col justify-center items-center w-20" href="/categories">
+        <div class="number text-2xl sm:text-xl text-second-text-color font-semibold">96</div>
+        <div class="label text-third-text-color text-sm">Categories</div>
+    </a>
+    <a class="item tag-count-item flex flex-col justify-center items-center w-20" href="/archives">
+        <div class="number text-2xl sm:text-xl text-second-text-color font-semibold">479</div>
+        <div class="label text-third-text-color text-sm">Posts</div>
+    </a>
+</div>
+    </div>
+
+    <div class="window-mask"></div>
+
+</header>
+
+
+        </div>
+
+        <div class="main-content-body">
+
+            
+
+            <div class="main-content">
+
+                
+                    <div class="post-page-container flex relative justify-between box-border w-full h-full">
+    <div class="article-content-container">
+
+        <div class="article-title relative w-full">
+            
+                <div class="w-full flex items-center pt-6 justify-start">
+                    <h1 class="article-title-regular text-second-text-color text-4xl md:text-6xl font-bold px-2 sm:px-6 md:px-8 py-3">MTP 与投机解码</h1>
+                </div>
+            
+            </div>
+
+        
+            <div class="article-header flex flex-row gap-2 items-center px-2 sm:px-6 md:px-8">
+                <div class="avatar w-[46px] h-[46px] flex-shrink-0 rounded-medium border border-border-color p-[1px]">
+                    <img src="https://charles2530.github.io/image/background/logo2.jpg">
+                </div>
+                <div class="info flex flex-col justify-between">
+                    <div class="author flex items-center">
+                        <span class="name text-default-text-color text-lg font-semibold">Charles</span>
+                        
+                            <span class="author-label ml-1.5 text-xs px-2 py-0.5 rounded-small text-third-text-color border border-shadow-color-1">Lv7</span>
+                        
+                    </div>
+                    <div class="meta-info">
+                        <div class="article-meta-info">
+    <span class="article-date article-meta-item">
+        <i class="fa-regular fa-pen-fancy"></i>&nbsp;
+        <span class="desktop">2026-05-11 11:19</span>
+        <span class="mobile">2026-05-11 11:19</span>
+        <span class="hover-info">Created</span>
+    </span>
+    
+        <span class="article-date article-meta-item">
+            <i class="fa-regular fa-wrench"></i>&nbsp;
+            <span class="desktop">2026-05-11 11:19</span>
+            <span class="mobile">2026-05-11 11:19</span>
+            <span class="hover-info">Updated</span>
+        </span>
+    
+
+    
+        <span class="article-categories article-meta-item">
+            <i class="fa-regular fa-folders"></i>&nbsp;
+            <ul>
+                
+                
+                    
+                        
+                        <li>
+                            <a href="/categories/AI-Notes/">AI Notes</a>&nbsp;
+                        </li>
+                    
+                    
+                
+                    
+                        
+                            <li>></li>
+                        
+                        <li>
+                            <a href="/categories/AI-Notes/Training/">Training</a>&nbsp;
+                        </li>
+                    
+                    
+                
+            </ul>
+        </span>
+    
+    
+        <span class="article-tags article-meta-item">
+            <i class="fa-regular fa-tags"></i>&nbsp;
+            <ul>
+                
+                    <li>
+                        <a href="/tags/AI-Notes/">AI Notes</a>&nbsp;
+                    </li>
+                
+                    <li>
+                        | <a href="/tags/Training/">Training</a>&nbsp;
+                    </li>
+                
+                    <li>
+                        | <a href="/tags/Inference/">Inference</a>&nbsp;
+                    </li>
+                
+            </ul>
+        </span>
+    
+
+    
+    
+        <span class="article-wordcount article-meta-item">
+            <i class="fa-regular fa-typewriter"></i>&nbsp;<span>2.9k Words</span>
+        </span>
+    
+    
+        <span class="article-min2read article-meta-item">
+            <i class="fa-regular fa-clock"></i>&nbsp;<span>10 Mins</span>
+        </span>
+    
+    
+        <span class="article-pv article-meta-item">
+            <i class="fa-regular fa-eye"></i>&nbsp;<span id="busuanzi_value_page_pv"></span>
+        </span>
+    
+</div>
+
+                    </div>
+                </div>
+            </div>
+        
+
+        
+
+
+        <div class="article-content markdown-body px-2 sm:px-6 md:px-8 pb-8">
+            <p><code>MTP</code>（Multi-Token Prediction）和 <code>speculative decoding</code> 经常一起出现，但它们不是同一件事。</p>
+<ul>
+<li><code>MTP</code> 首先是<strong>训练目标 / 模型结构设计</strong>：让模型在一个位置上学习多个未来 token；</li>
+<li><code>投机解码</code> 首先是<strong>推理加速算法</strong>：用便宜路径草拟，再用目标模型并行验证；</li>
+<li><code>Self-speculative decoding</code> 是二者交汇的一类系统：草稿路径来自模型自身的中间层、辅助头或 MTP 模块。</li>
+</ul>
+<p>这页放在训练专题里，是因为一旦决定训练 <code>MTP</code>，改变的不只是 serving 策略，还包括 loss、checkpoint 结构、评测口径和未来推理接口。推理侧实现细节可继续看 <a href="/2026/05/11/ai-notes/files-inference-caching-routing-and-speculative/">缓存、路由与投机执行</a>。</p>
+
+  <div class="note p-4 mb-4 rounded-small info">
+    <p><strong>初学者先抓住</strong></p>
+<p><code>MTP</code> 是让模型训练时多看几步未来，<code>speculative decoding</code> 是让推理时先用便宜路径草拟、再用主模型验证。前者不自动等于加速，只有当训练出的草稿路径能被 runtime 高效验证和接受时，系统收益才会出现。</p>
+
+  </div>
+
+  <div class="note p-4 mb-4 rounded-small default">
+    <p><strong>有趣例子：打字预测</strong></p>
+<p>手机输入法先猜出后面几个词，用户如果连续接受，就省很多时间；如果每次都猜错，还要删除重打，反而更慢。投机解码也是这样：关键不是草稿能不能生成，而是主模型能接受多少 token，以及验证开销有多低。</p>
+
+  </div>
+<h2 id="概念拆分"><a class="markdownIt-Anchor" href="#概念拆分"></a> 概念拆分</h2>
+<p>标准自回归语言模型通常只学习 next-token prediction：</p>
+<h1 id="mathcall_textntp"><a class="markdownIt-Anchor" href="#mathcall_textntp"></a> [<br />
+\mathcal{L}_{\text{NTP}}</h1>
+<ul>
+<li>\sum_t \log p_\theta(x_{t+1}\mid x_{\le t})<br />
+]</li>
+</ul>
+<p><code>MTP</code> 的核心变化是让同一个位置同时监督多个未来 token：</p>
+<h1 id="mathcall_textmtp"><a class="markdownIt-Anchor" href="#mathcall_textmtp"></a> [<br />
+\mathcal{L}_{\text{MTP}}</h1>
+<p>\sum_t \sum_{k=1}^{K}<br />
+\lambda_k<br />
+\Big(</p>
+<ul>
+<li>\log p_\theta^{(k)}(x_{t+k}\mid x_{\le t})<br />
+\Big)<br />
+]</li>
+</ul>
+<p>其中 (K) 是预测深度，(p_\theta^{(k)}) 是第 (k) 个未来位置的预测头或预测模块，(\lambda_k) 是损失权重。</p>
+<p>投机解码回答的是另一个问题：如何减少逐 token 串行解码的主模型调用次数。它通常包含三步：</p>
+<ol>
+<li><strong>Draft</strong>：便宜路径先生成若干候选 token；</li>
+<li><strong>Verify</strong>：目标模型一次性并行验证这些候选；</li>
+<li><strong>Accept / Reject</strong>：接受与目标模型一致的最长前缀，错误位置由目标模型修正。</li>
+</ol>
+<p>因此两者的关系是：<code>MTP</code> 可以提供内建 draft 能力，但 speculative decoding 不一定需要 MTP；反过来，模型训练了 MTP，也不代表线上一定能提速。</p>
+<h2 id="从-ntp-到-mtp"><a class="markdownIt-Anchor" href="#从-ntp-到-mtp"></a> 从 NTP 到 MTP</h2>
+<p>MTP 的训练价值不只是“多预测几个 token”。它改变了 hidden state 必须承载的信息：模型不只要为 (t+1) 做准备，还要为更远的未来保留可解码结构。</p>
+<p>这会带来两类潜在收益：</p>
+<ol>
+<li><strong>训练收益</strong>：更密集的监督信号、更强的前瞻性表示、更好的长程依赖建模；</li>
+<li><strong>推理收益</strong>：额外头或模块可以在 serving 侧成为 draft 路径，用于自投机解码。</li>
+</ol>
+<p>但 MTP 也会引入额外风险：</p>
+<ol>
+<li>未来越远，监督越噪，过高权重可能拉坏 next-token 主质量；</li>
+<li>多头/多模块会增加 checkpoint、加载和兼容成本；</li>
+<li>训练时看到真实前缀，推理时 draft 会消费模型自己的前缀，训练-推理分布不一致会降低 acceptance；</li>
+<li>如果 runtime 不支持 draft/verify，MTP 参数只能作为训练辅助，不能自动兑现推理收益。</li>
+</ol>
+<p>一个实用判断是：如果团队只能改训练或只能改 serving，而不能把两边接口一起设计，MTP 的投入产出通常会变差。</p>
+<h2 id="架构路线"><a class="markdownIt-Anchor" href="#架构路线"></a> 架构路线</h2>
+<p>外部都叫 MTP，工程实现至少有三类。</p>
+<table>
+<thead>
+<tr>
+<th>路线</th>
+<th>做法</th>
+<th>优点</th>
+<th>主要风险</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>并行多头</td>
+<td>共享主干，多个 head 分别预测 (t+1,t+2,\dots,t+K)</td>
+<td>结构直观，实现简单</td>
+<td>远距 head 更难学，和推理递归不完全一致</td>
+</tr>
+<tr>
+<td>串行 MTP 模块</td>
+<td>每个预测深度依赖前一深度表示，形成微型因果链</td>
+<td>更接近自回归过程，未来 token 之间更连贯</td>
+<td>模块、KV、runtime 接口更复杂</td>
+</tr>
+<tr>
+<td>中间层/早退草稿</td>
+<td>用浅层或中间层输出作为 draft，再由完整模型验证</td>
+<td>不一定增加独立小模型，KV 可能复用</td>
+<td>需要训练提升中间层可解码性</td>
+</tr>
+</tbody>
+</table>
+<p>Meta 的 <code>Better &amp; Faster Large Language Models via Multi-token Prediction</code> 更接近“共享 trunk + 多个预测头”的并行路线。DeepSeek-V3 的 MTP 更强调串行模块：第 (k) 个 MTP 模块会融合前一深度表示和目标 token embedding，再通过模块产生下一深度预测，从而保留更完整的因果链。</p>
+<p>这也是 DeepSeek 路线和简单多头路线的关键差别：它不是只在最后挂几个独立分类头，而是把多 token 预测变成单次前向里的小型自回归过程。</p>
+<h2 id="投机解码的核心机制"><a class="markdownIt-Anchor" href="#投机解码的核心机制"></a> 投机解码的核心机制</h2>
+<p>传统解码生成 (N) 个 token 通常需要主模型串行运行 (N) 次。投机解码利用 Transformer 可并行评分候选序列的特点，把一部分串行生成改成“草拟 + 批量验证”。</p>
+<p>一个够用的速度模型是：</p>
+<p>[<br />
+\text{TPS}<em>{\text{spec}}<br />
+\approx<br />
+\frac{\mathbb{E}[A]}{C</em>{\text{draft}} + C_{\text{verify}} + C_{\text{overhead}}}<br />
+]</p>
+<p>[<br />
+\text{Speedup}<br />
+\approx<br />
+\frac{\mathbb{E}[A] \cdot C_{\text{decode}}}<br />
+{C_{\text{draft}} + C_{\text{verify}} + C_{\text{overhead}}}<br />
+]</p>
+<p>其中 (\mathbb{E}[A]) 是每轮平均接受 token 数，(C_{\text{draft}}) 是草稿路径开销，(C_{\text{verify}}) 是目标模型验证开销，(C_{\text{overhead}}) 包括 KV 管理、调度、fallback 和 batch 组织成本。</p>
+<p>这个公式的价值在于提醒两件事：</p>
+<ol>
+<li>接受 token 少，分子上不去；</li>
+<li>draft、verify 或调度太贵，分母降不下来。</li>
+</ol>
+<p>经典 speculative decoding 可以通过拒绝采样保持输出分布与目标模型一致，因此是无损加速算法。但工程实现里还存在近似验证、tree draft、relaxed acceptance 等变体，是否无损要看具体接受规则。</p>
+<h2 id="自投机与-logit-lens"><a class="markdownIt-Anchor" href="#自投机与-logit-lens"></a> 自投机与 Logit Lens</h2>
+<p><code>Self-speculative decoding</code> 的目标是避免长期维护一个独立小草稿模型。草稿路径可以来自：</p>
+<ol>
+<li>模型自己的浅层或中间层；</li>
+<li>early-exit head；</li>
+<li>MTP head / MTP module；</li>
+<li>特征级 draft 模块，如 EAGLE 一类方法。</li>
+</ol>
+<p>这条路线背后的一个观察来自 <code>Logit Lens</code>：很多 Transformer 中间层已经能通过最终 LM head 投射出接近最终 token 的分布。后续深层计算在不少位置并不是完全改变 token，而是在降低熵、提高置信度、修正困难位置。</p>
+<p>因此，中间层或辅助头可以作为“便宜草稿”，完整模型作为“昂贵验证器”。这类方法的关键不是中间层是否偶尔猜对，而是：</p>
+<ol>
+<li>猜对的 token 是否形成足够长的可接受前缀；</li>
+<li>draft 阶段的 KV / hidden state 是否能复用；</li>
+<li>早退或辅助头是否会影响主模型质量；</li>
+<li>真实 batch 和动态流量下是否仍有端到端收益。</li>
+</ol>
+<p><code>LayerSkip</code> 和 <code>Draft &amp; Verify</code> 都属于这条思路：通过训练或解码设计，让模型自己的早期计算承担 draft 角色，再由完整模型验证。</p>
+<h2 id="deepseek-v3-的位置"><a class="markdownIt-Anchor" href="#deepseek-v3-的位置"></a> DeepSeek-V3 的位置</h2>
+<p>DeepSeek-V3 把 MTP 放在训练设计里，目标首先是提升训练信号密度和模型对未来 token 的建模能力。推理时有两种部署方式：</p>
+<ol>
+<li><strong>丢弃 MTP 模块</strong>：只保留 main model，像普通 next-token 模型一样部署；</li>
+<li><strong>保留 MTP 模块</strong>：把它作为自投机 draft 路径，用 target model 并行验证。</li>
+</ol>
+<p>这解释了一个容易混淆的点：DeepSeek-V3 的 MTP 不等于线上必然启用 MTP。很多 serving 框架需要处理 dynamic batching、KV cache、prefix sharing、异构请求长度和调度开销；如果 draft/verify 路径没有和 runtime 深度集成，MTP 的理论收益可能被系统开销吃掉。</p>
+<p>DeepSeek MTP 的工程启发是：</p>
+<ol>
+<li>MTP 可以先作为训练目标提升数据利用率；</li>
+<li>如果推理栈成熟，再把 MTP 模块接入 self-speculative decoding；</li>
+<li>如果推理栈不支持，仍可把 MTP 模块裁掉，保留主模型部署灵活性。</li>
+</ol>
+<p>这类“训练资产可选服务化”的设计，比把 MTP 直接当作单一推理加速技巧更稳。</p>
+<h2 id="评测与上线口径"><a class="markdownIt-Anchor" href="#评测与上线口径"></a> 评测与上线口径</h2>
+<p>MTP 和 speculative 的评测不能只看 perplexity 或平均 speedup。建议按三层闸门推进。</p>
+<table>
+<thead>
+<tr>
+<th>阶段</th>
+<th>目标</th>
+<th>必看指标</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>离线训练</td>
+<td>主质量不退化，draft 信号可用</td>
+<td>perplexity、任务分数、future-token accuracy、模拟 acceptance</td>
+</tr>
+<tr>
+<td>回放验证</td>
+<td>真实请求分桶下收益可重复</td>
+<td>p50/p95/p99、tokens/s、acceptance 分布、fallback 率</td>
+</tr>
+<tr>
+<td>小流量灰度</td>
+<td>系统可运营，尾部不恶化</td>
+<td>峰值流量收益、p99 波动、熔断触发、回退后等价性</td>
+</tr>
+</tbody>
+</table>
+<p>分桶比均值更重要。至少按下面维度切：</p>
+<ol>
+<li>输出长度：短输出、中输出、长输出；</li>
+<li>任务类型：代码、问答、结构化生成、工具调用；</li>
+<li>解码配置：温度、top-p、重复惩罚；</li>
+<li>系统状态：batch size、队列压力、KV 命中和 prefix 复用。</li>
+</ol>
+<p>上线前还要写清接口契约：</p>
+<ol>
+<li>checkpoint 里 MTP head/module 的命名和版本；</li>
+<li>draft 输出格式、verify 输入格式、回退点定义；</li>
+<li>acceptance、吞吐和延迟统计口径；</li>
+<li>speculative 关闭时是否严格退化为 baseline；</li>
+<li>模型版本、runtime、kernel 和配置是否绑定发布。</li>
+</ol>
+<p>一个保守起步配置通常是：(K=2) 或 (3)，(\lambda_k) 随 (k) 递减，先在低温长输出任务桶验证收益，再按请求特征分层开启 speculative。</p>
+<h2 id="论文脉络"><a class="markdownIt-Anchor" href="#论文脉络"></a> 论文脉络</h2>
+<p>MTP 不是大模型时代才出现的新概念，它可以追溯到早期的 blockwise parallel decoding 和未来 n-gram 预测。近年的变化在于：模型足够大、推理足够贵、训练和 serving 系统足够复杂，使得“训练期未来预测 + 推理期草稿验证”重新变得有工程价值。</p>
+<table>
+<thead>
+<tr>
+<th>方向</th>
+<th>代表工作</th>
+<th>核心贡献</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>分块并行解码</td>
+<td>Blockwise Parallel Decoding, NeurIPS 2018</td>
+<td>训练多个辅助预测头，提出候选块并由基础模型验证</td>
+</tr>
+<tr>
+<td>未来 n-gram 预测</td>
+<td>ProphetNet, ACL 2020</td>
+<td>Seq2Seq 预训练中同时预测未来多个 token，提高全局规划能力</td>
+</tr>
+<tr>
+<td>经典投机解码</td>
+<td>Fast Inference from Transformers via Speculative Decoding, ICML 2023</td>
+<td>小 draft model + 大 target model，无损拒绝采样验证</td>
+</tr>
+<tr>
+<td>自投机解码</td>
+<td>LayerSkip, Draft &amp; Verify, ACL 2024</td>
+<td>用中间层/早退路径作为草稿，减少独立 draft model 依赖</td>
+</tr>
+<tr>
+<td>MTP 训练目标</td>
+<td>Better &amp; Faster LLMs via Multi-token Prediction, ICML 2024</td>
+<td>共享主干 + 多未来头，提升训练效率并支持自投机</td>
+</tr>
+<tr>
+<td>DeepSeek MTP</td>
+<td>DeepSeek-V3 Technical Report, 2024</td>
+<td>串行 MTP 模块，训练增强与可选 self-speculative deployment</td>
+</tr>
+<tr>
+<td>特征级草稿</td>
+<td>EAGLE / EAGLE-2 / EAGLE-3</td>
+<td>在 feature space 预测草稿，构造动态 draft tree</td>
+</tr>
+<tr>
+<td>新型 MTP 变体</td>
+<td>MuToR、L-MTP</td>
+<td>用 register token 或 leap prediction 改善多 token 监督</td>
+</tr>
+</tbody>
+</table>
+<p>如果把这些工作放在一起看，可以得到一个清晰判断：MTP 的长期价值不在“多几个预测头”，而在于它是否能把训练目标、模型结构、推理 runtime 和线上观测体系连成一条闭环。</p>
+<h2 id="收口结论"><a class="markdownIt-Anchor" href="#收口结论"></a> 收口结论</h2>
+<p><code>MTP</code> 值不值得做，不取决于它是否“先进”，而取决于三件事是否同时成立：</p>
+<ol>
+<li>训练侧能稳定产出不伤主质量的未来预测能力；</li>
+<li>推理侧能把 acceptance 转成真实吞吐，而不是只赢理论步数；</li>
+<li>系统侧能在动态 batch、长尾请求和高峰流量下维持收益并可靠回退。</li>
+</ol>
+<p>只成立其中一两项时，MTP 更像阶段性实验技巧；三者都成立时，它才是可维护的训练-推理一体化架构收益。</p>
+
+        </div>
+
+        
+            <div class="post-copyright-info w-full my-8 px-2 sm:px-6 md:px-8">
+                <div class="article-copyright-info-container">
+    <ul>
+        <li><strong>Title:</strong> MTP 与投机解码</li>
+        <li><strong>Author:</strong> Charles</li>
+        <li><strong>Created at
+                :</strong> 2026-05-11 11:19:00</li>
+        
+            <li>
+                <strong>Updated at
+                    :</strong> 2026-05-11 11:19:00
+            </li>
+        
+        <li>
+            <strong>Link:</strong> https://charles2530.github.io/2026/05/11/ai-notes/files-training-mtp-and-speculative-decoding/
+        </li>
+        <li>
+            <strong>
+                License:
+            </strong>
+            
+
+            
+                This work is licensed under <a class="license" target="_blank" rel="noopener" href="https://creativecommons.org/licenses/by-nc-sa/4.0">CC BY-NC-SA 4.0</a>.
+            
+        </li>
+    </ul>
+</div>
+
+            </div>
+        
+
+        
+            <ul class="post-tags-box text-lg mt-1.5 flex-wrap justify-center flex md:hidden">
+                
+                    <li class="tag-item mx-0.5">
+                        <a href="/tags/AI-Notes/">#AI Notes</a>&nbsp;
+                    </li>
+                
+                    <li class="tag-item mx-0.5">
+                        <a href="/tags/Training/">#Training</a>&nbsp;
+                    </li>
+                
+                    <li class="tag-item mx-0.5">
+                        <a href="/tags/Inference/">#Inference</a>&nbsp;
+                    </li>
+                
+            </ul>
+        
+
+        
+  <div class="recommended-article px-2 sm:px-6 md:px-8">
+   <div class="recommended-desktop">
+    <div class="recommended-article-header text-xl md:text-3xl font-bold mt-10">
+     <i aria-hidden="true"></i><span>recommend_articles</span>
+    </div>
+    <div class="recommended-article-group"><a class="recommended-article-item" href="/2023/02/02/javascript-note-6/" title="JavaScript_note_6" rel="bookmark">
+  <img src="https://charles2530.github.io/image/background/p5.jfif" alt="JavaScript_note_6" class="!max-w-none">
+  <span class="title">JavaScript_note_6</span>
+</a><a class="recommended-article-item" href="/2022/12/28/cpp-part7/" title="Cpp_part7" rel="bookmark">
+  <img src="https://charles2530.github.io/image/background/p2.jpg" alt="Cpp_part7" class="!max-w-none">
+  <span class="title">Cpp_part7</span>
+</a><a class="recommended-article-item" href="/2023/07/29/ajax-note-1/" title="Ajax-note-1" rel="bookmark">
+  <img src="https://charles2530.github.io/image/background/p7.jpg" alt="Ajax-note-1" class="!max-w-none">
+  <span class="title">Ajax-note-1</span>
+</a></div>
+   </div>
+   <div class="recommended-mobile">
+   <div class="recommended-article-header text-xl md:text-3xl font-bold mt-10">
+     <i aria-hidden="true"></i><span>recommend_articles</span>
+   </div>
+   <div class="recommended-article-group"><a class="recommended-article-item" href="/2023/02/02/javascript-note-6/" title="JavaScript_note_6" rel="bookmark">
+  <img src="https://charles2530.github.io/image/background/p5.jfif" alt="JavaScript_note_6" class="!max-w-none">
+  <span class="title">JavaScript_note_6</span>
+</a><a class="recommended-article-item" href="/2022/12/28/cpp-part7/" title="Cpp_part7" rel="bookmark">
+  <img src="https://charles2530.github.io/image/background/p2.jpg" alt="Cpp_part7" class="!max-w-none">
+  <span class="title">Cpp_part7</span>
+</a></div>
+   </div>
+  </div>
+
+        
+            <div class="article-nav my-8 flex justify-between items-center px-2 sm:px-6 md:px-8">
+                
+                    <div class="article-prev border-border-color shadow-redefine-flat shadow-shadow-color-2 rounded-medium px-4 py-2 hover:shadow-redefine-flat-hover hover:shadow-shadow-color-2">
+                        <a class="prev"
+                        rel="prev"
+                        href="/2026/05/11/ai-notes/files-training-objectives-optimizers-and-schedules/"
+                        >
+                            <span class="left arrow-icon flex justify-center items-center">
+                                <i class="fa-solid fa-chevron-left"></i>
+                            </span>
+                            <span class="title flex justify-center items-center">
+                                <span class="post-nav-title-item">目标函数、优化器与学习率日程</span>
+                                <span class="post-nav-item">Prev posts</span>
+                            </span>
+                        </a>
+                    </div>
+                
+                
+                    <div class="article-next border-border-color shadow-redefine-flat shadow-shadow-color-2 rounded-medium px-4 py-2 hover:shadow-redefine-flat-hover hover:shadow-shadow-color-2">
+                        <a class="next"
+                        rel="next"
+                        href="/2026/05/11/ai-notes/files-training-megatron-lm-deepspeed-and-open-training-stacks/"
+                        >
+                            <span class="title flex justify-center items-center">
+                                <span class="post-nav-title-item">Megatron-LM、DeepSpeed 与开放训练系统栈</span>
+                                <span class="post-nav-item">Next posts</span>
+                            </span>
+                            <span class="right arrow-icon flex justify-center items-center">
+                                <i class="fa-solid fa-chevron-right"></i>
+                            </span>
+                        </a>
+                    </div>
+                
+            </div>
+        
+
+
+        
+            <div class="comment-container px-2 sm:px-6 md:px-8 pb-8">
+                <div class="comments-container mt-10 w-full ">
+    <div id="comment-anchor" class="w-full h-2.5"></div>
+    <div class="comment-area-title w-full my-1.5 md:my-2.5 text-xl md:text-3xl font-bold">
+        Comments
+    </div>
+    
+
+        <!-- 
+            
+    <div id="gitalk-container"></div>
+    <script data-swup-reload-script
+            src="//cdn.staticfile.org/gitalk/1.8.0/gitalk.min.js"></script>
+    <script data-swup-reload-script>
+
+        function loadGitalk() {
+            let __gitalk__pathname = decodeURI(location.pathname);
+            const __gitalk__pathnameLength = __gitalk__pathname.length;
+            const __gitalk__pathnameMaxLength = 50;
+            if (__gitalk__pathnameLength > __gitalk__pathnameMaxLength) {
+                __gitalk__pathname = __gitalk__pathname.substring(0, __gitalk__pathnameMaxLength - 3) + '...';
+            }
+
+            try {
+                Gitalk && new Gitalk({
+                    clientID: '8083299a8ee2aaf23879',
+                    clientSecret: 'a8161e81d4872181e884fdb69f7be24916b6a9d0',
+                    repo: 'charles2530_issues',
+                    owner: 'Charles2530',
+                    admin: ['Charles2530'],
+                    id: __gitalk__pathname,
+                    language: 'en',
+                    proxy: 'https://github.com/login/oauth/access_token'
+                }).render('gitalk-container');
+
+            } catch (e) {
+                window.Gitalk = null;
+            }
+        }
+
+        if ('true') {
+            const loadGitalkTimeout = setTimeout(() => {
+                loadGitalk();
+                clearTimeout(loadGitalkTimeout);
+            }, 1000);
+        } else {
+            window.addEventListener('DOMContentLoaded', loadGitalk);
+        }
+    </script>
+
+
+
+         -->
+        <script src="https://utteranc.es/client.js" repo="Charles2530/Charles2530.github.io" issue-term="pathname"
+            label="Comment" theme="preferred-color-scheme" crossorigin="anonymous" async>
+            </script>
+    
+</div>
+
+            </div>
+        
+    </div>
+
+    
+        <div class="toc-content-container">
+            <div class="post-toc-wrap">
+    <div class="post-toc">
+        <div class="toc-title">On this page</div>
+        <div class="page-title">MTP 与投机解码</div>
+        <ol class="nav"><li class="nav-item nav-level-2"><a class="nav-link" href="#%E6%A6%82%E5%BF%B5%E6%8B%86%E5%88%86"><span class="nav-text"> 概念拆分</span></a></li></ol></li><li class="nav-item nav-level-1"><a class="nav-link" href="#mathcall_textntp"><span class="nav-text"> [
+\mathcal{L}_{\text{NTP}}</span></a></li><li class="nav-item nav-level-1"><a class="nav-link" href="#mathcall_textmtp"><span class="nav-text"> [
+\mathcal{L}_{\text{MTP}}</span></a><ol class="nav-child"><li class="nav-item nav-level-2"><a class="nav-link" href="#%E4%BB%8E-ntp-%E5%88%B0-mtp"><span class="nav-text"> 从 NTP 到 MTP</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#%E6%9E%B6%E6%9E%84%E8%B7%AF%E7%BA%BF"><span class="nav-text"> 架构路线</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#%E6%8A%95%E6%9C%BA%E8%A7%A3%E7%A0%81%E7%9A%84%E6%A0%B8%E5%BF%83%E6%9C%BA%E5%88%B6"><span class="nav-text"> 投机解码的核心机制</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#%E8%87%AA%E6%8A%95%E6%9C%BA%E4%B8%8E-logit-lens"><span class="nav-text"> 自投机与 Logit Lens</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#deepseek-v3-%E7%9A%84%E4%BD%8D%E7%BD%AE"><span class="nav-text"> DeepSeek-V3 的位置</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#%E8%AF%84%E6%B5%8B%E4%B8%8E%E4%B8%8A%E7%BA%BF%E5%8F%A3%E5%BE%84"><span class="nav-text"> 评测与上线口径</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#%E8%AE%BA%E6%96%87%E8%84%89%E7%BB%9C"><span class="nav-text"> 论文脉络</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#%E6%94%B6%E5%8F%A3%E7%BB%93%E8%AE%BA"><span class="nav-text"> 收口结论</span></a></li></ol>
+
+    </div>
+</div>
+        </div>
+    
+</div>
+
+
+
+                
+
+            </div>
+
+            
+
+        </div>
+
+        <div class="main-content-footer">
+            <footer class="footer mt-5 py-5 h-auto text-base text-third-text-color relative border-t-2 border-t-border-color">
+    <div class="info-container py-3 text-center">
+        
+        <div class="text-center">
+            &copy;
+            
+              <span>2022</span>
+              -
+            
+            2026&nbsp;&nbsp;<i class="fa-solid fa-heart fa-beat" style="--fa-animation-duration: 0.5s; color: #f54545"></i>&nbsp;&nbsp;<a href="/">Charles</a>
+            
+                
+                <p class="post-count space-x-0.5">
+                    <span>
+                        479 posts in total
+                    </span>
+                    
+                        <span>
+                            1896.7k words in total
+                        </span>
+                    
+                </p>
+            
+        </div>
+        
+            <script data-swup-reload-script src="https://cn.vercount.one/js"></script>
+            <div class="relative text-center lg:absolute lg:right-[20px] lg:top-1/2 lg:-translate-y-1/2 lg:text-right">
+                
+                    <span id="busuanzi_container_site_uv" class="lg:!block">
+                        <span class="text-sm">Visitor Count</span>
+                        <span id="busuanzi_value_site_uv"></span>
+                    </span>
+                
+                
+                    <span id="busuanzi_container_site_pv" class="lg:!block">
+                        <span class="text-sm">Total Page Views</span>
+                        <span id="busuanzi_value_site_pv"></span>
+                    </span>
+                
+            </div>
+        
+        <div class="relative text-center lg:absolute lg:left-[20px] lg:top-1/2 lg:-translate-y-1/2 lg:text-left">
+            <span class="lg:block text-sm">Powered by Charles</span>
+            <span class="text-sm lg:block">Theme&nbsp;<a class="text-base" target="_blank" href="https://github.com/EvanNotFound/hexo-theme-redefine">Redefine v2.6.1</a></span>
+        </div>
+        
+        
+            <div>
+                Blog up for <span class="odometer" id="runtime_days" ></span> days <span class="odometer" id="runtime_hours"></span> hrs <span class="odometer" id="runtime_minutes"></span> Min <span class="odometer" id="runtime_seconds"></span> Sec
+            </div>
+        
+        
+            <script data-swup-reload-script>
+                try {
+                    function odometer_init() {
+                    const elements = document.querySelectorAll('.odometer');
+                    elements.forEach(el => {
+                        new Odometer({
+                            el,
+                            format: '( ddd).dd',
+                            duration: 200
+                        });
+                    });
+                    }
+                    odometer_init();
+                } catch (error) {}
+            </script>
+        
+        
+            
+                
+        
+                
+        
+        
+    </div>  
+</footer>
+        </div>
+    </div>
+
+    
+        <div class="post-tools">
+            <div class="post-tools-container">
+    <ul class="article-tools-list">
+        <!-- TOC aside toggle -->
+        
+            <li class="right-bottom-tools page-aside-toggle">
+                <i class="fa-regular fa-outdent"></i>
+            </li>
+        
+
+        <!-- go comment -->
+        
+            <li class="go-comment">
+                <i class="fa-regular fa-comments"></i>
+            </li>
+        
+    </ul>
+</div>
+
+        </div>
+    
+
+    <div class="right-side-tools-container">
+        <div class="side-tools-container">
+    <ul class="hidden-tools-list">
+        <li class="right-bottom-tools tool-font-adjust-plus flex justify-center items-center">
+            <i class="fa-regular fa-magnifying-glass-plus"></i>
+        </li>
+
+        <li class="right-bottom-tools tool-font-adjust-minus flex justify-center items-center">
+            <i class="fa-regular fa-magnifying-glass-minus"></i>
+        </li>
+
+        <li class="right-bottom-tools tool-dark-light-toggle flex justify-center items-center">
+            <i class="fa-regular fa-moon"></i>
+        </li>
+
+        <!-- rss -->
+        
+            <li class="right-bottom-tools rss flex justify-center items-center">
+                <a class="flex justify-center items-center"
+                   href="/atom.xml"
+                   target="_blank"
+                >
+                <i class="fa-regular fa-rss"></i>
+                </a>
+            </li>
+        
+
+        
+
+        <li class="right-bottom-tools tool-scroll-to-bottom flex justify-center items-center">
+            <i class="fa-regular fa-arrow-down"></i>
+        </li>
+    </ul>
+
+    <ul class="visible-tools-list">
+        <li class="right-bottom-tools toggle-tools-list flex justify-center items-center">
+            <i class="fa-regular fa-cog fa-spin"></i>
+        </li>
+        
+            <li class="right-bottom-tools tool-scroll-to-top flex justify-center items-center">
+                <i class="arrow-up fas fa-arrow-up"></i>
+                <span class="percent"></span>
+            </li>
+        
+        
+    </ul>
+</div>
+
+    </div>
+
+    <div class="image-viewer-container">
+    <img src="">
+</div>
+
+
+    
+        <div class="search-pop-overlay">
+    <div class="popup search-popup">
+        <div class="search-header">
+          <span class="search-input-field-pre">
+            <i class="fa-solid fa-keyboard"></i>
+          </span>
+            <div class="search-input-container">
+                <input autocomplete="off"
+                       autocorrect="off"
+                       autocapitalize="off"
+                       placeholder="Search..."
+                       spellcheck="false"
+                       type="search"
+                       class="search-input"
+                >
+            </div>
+            <span class="popup-btn-close">
+                <i class="fa-solid fa-times"></i>
+            </span>
+        </div>
+        <div id="search-result">
+            <div id="no-result">
+                <i class="fa-solid fa-spinner fa-spin-pulse fa-5x fa-fw"></i>
+            </div>
+        </div>
+    </div>
+</div>
+
+    
+
+</main>
+
+
+    <script src="https://evan.beee.top/projects/hexo-theme-redefine@2.6.1/source/js/libs/Swup.min.js"></script><script src="https://evan.beee.top/projects/hexo-theme-redefine@2.6.1/source/js/libs/SwupSlideTheme.min.js"></script><script src="https://evan.beee.top/projects/hexo-theme-redefine@2.6.1/source/js/libs/SwupScriptsPlugin.min.js"></script><script src="https://evan.beee.top/projects/hexo-theme-redefine@2.6.1/source/js/libs/SwupProgressPlugin.min.js"></script><script src="https://evan.beee.top/projects/hexo-theme-redefine@2.6.1/source/js/libs/SwupScrollPlugin.min.js"></script><script src="https://evan.beee.top/projects/hexo-theme-redefine@2.6.1/source/js/libs/SwupPreloadPlugin.min.js"></script>
+<script>
+    const swup = new Swup({
+        plugins: [
+            new SwupScriptsPlugin({
+                optin: true,
+            }),
+            new SwupProgressPlugin(),
+            new SwupScrollPlugin({
+                offset: 80,
+            }),
+            new SwupSlideTheme({
+                mainElement: ".main-content-body",
+            }),
+            new SwupPreloadPlugin(),
+        ],
+        containers: ["#swup"],
+    });
+</script>
+
+
+
+
+
+
+<script type="module" src="https://evan.beee.top/projects/hexo-theme-redefine@2.6.1/source/js/tools/imageViewer.js"></script><script type="module" src="https://evan.beee.top/projects/hexo-theme-redefine@2.6.1/source/js/utils.js"></script><script type="module" src="https://evan.beee.top/projects/hexo-theme-redefine@2.6.1/source/js/main.js"></script><script type="module" src="https://evan.beee.top/projects/hexo-theme-redefine@2.6.1/source/js/layouts/navbarShrink.js"></script><script type="module" src="https://evan.beee.top/projects/hexo-theme-redefine@2.6.1/source/js/tools/scrollTopBottom.js"></script><script type="module" src="https://evan.beee.top/projects/hexo-theme-redefine@2.6.1/source/js/tools/lightDarkSwitch.js"></script><script type="module" src="https://evan.beee.top/projects/hexo-theme-redefine@2.6.1/source/js/layouts/categoryList.js"></script>
+
+
+    <script type="module" src="https://evan.beee.top/projects/hexo-theme-redefine@2.6.1/source/js/tools/localSearch.js"></script>
+
+
+
+    <script type="module" src="https://evan.beee.top/projects/hexo-theme-redefine@2.6.1/source/js/tools/codeBlock.js"></script>
+
+
+
+    <script type="module" src="https://evan.beee.top/projects/hexo-theme-redefine@2.6.1/source/js/layouts/lazyload.js"></script>
+
+
+
+    <script src="https://evan.beee.top/projects/hexo-theme-redefine@2.6.1/source/js/tools/runtime.js"></script>
+    <script src="https://evan.beee.top/projects/hexo-theme-redefine@2.6.1/source/js/libs/odometer.min.js"></script>
+    <link rel="stylesheet" href="//evan.beee.top/projects/hexo-theme-redefine@2.6.1/source/assets/odometer-theme-minimal.css">
+
+
+
+  <script src="https://evan.beee.top/projects/hexo-theme-redefine@2.6.1/source/js/libs/Typed.min.js"></script>
+  <script type="module" src="https://evan.beee.top/projects/hexo-theme-redefine@2.6.1/source/js/plugins/typed.js"></script>
+
+
+
+    <script src="https://evan.beee.top/projects/hexo-theme-redefine@2.6.1/source/js/libs/mermaid.min.js"></script>
+    <script src="https://evan.beee.top/projects/hexo-theme-redefine@2.6.1/source/js/plugins/mermaid.js"></script>
+
+
+
+    <script src="https://evan.beee.top/projects/hexo-theme-redefine@2.6.1/source/js/libs/minimasonry.min.js"></script>
+    <script type="module" src="https://evan.beee.top/projects/hexo-theme-redefine@2.6.1/source/js/plugins/masonry.js"></script>
+
+
+
+
+<div class="post-scripts" data-swup-reload-script>
+    
+        <script type="module" src="https://evan.beee.top/projects/hexo-theme-redefine@2.6.1/source/js/tools/tocToggle.js"></script><script type="module" src="https://evan.beee.top/projects/hexo-theme-redefine@2.6.1/source/js/layouts/toc.js"></script><script type="module" src="https://evan.beee.top/projects/hexo-theme-redefine@2.6.1/source/js/plugins/tabs.js"></script>
+    
+</div>
+
+
+</body>
+</html>
+<!-- 页面点击小红心 -->
+<script type="text/javascript" src="/js/love.js"></script>

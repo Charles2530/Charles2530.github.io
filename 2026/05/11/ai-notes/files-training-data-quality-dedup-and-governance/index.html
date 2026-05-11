@@ -1,0 +1,1446 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="keywords" content="Charles">
+    
+    <meta name="author" content="Charles">
+    <!-- preconnect -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+
+    
+        
+        
+        
+    
+    <!--- Seo Part-->
+    
+    <link rel="canonical" href="https://charles2530.github.io/2026/05/11/ai-notes/files-training-data-quality-dedup-and-governance/"/>
+    <meta name="robots" content="index,follow">
+    <meta name="googlebot" content="index,follow">
+    <meta name="revisit-after" content="1 days">
+    
+        <meta name="description" content="大模型训练里最贵的资源往往不是显卡，而是高质量数据。训练数据不是“越多越好”的简单堆积；重复、污染、版权风险、低信息密度、标签漂移和分布失衡，都会让看似庞大的语料库变成效率低下甚至带偏模型的负担。数据质量、去重与治理，是现代训练系统中最容易被低估、但对最终能力和合规性影响极大的部分。 初学者先抓住 数据治理不是训练前的">
+<meta property="og:type" content="article">
+<meta property="og:title" content="数据质量、去重与治理">
+<meta property="og:url" content="https://charles2530.github.io/2026/05/11/ai-notes/files-training-data-quality-dedup-and-governance/index.html">
+<meta property="og:site_name" content="Charles&#39;s Castle">
+<meta property="og:description" content="大模型训练里最贵的资源往往不是显卡，而是高质量数据。训练数据不是“越多越好”的简单堆积；重复、污染、版权风险、低信息密度、标签漂移和分布失衡，都会让看似庞大的语料库变成效率低下甚至带偏模型的负担。数据质量、去重与治理，是现代训练系统中最容易被低估、但对最终能力和合规性影响极大的部分。 初学者先抓住 数据治理不是训练前的">
+<meta property="og:locale" content="en_US">
+<meta property="article:published_time" content="2026-05-11T03:10:00.000Z">
+<meta property="article:modified_time" content="2026-05-11T03:10:00.000Z">
+<meta property="article:author" content="Du Jinyang">
+<meta property="article:tag" content="AI Notes">
+<meta property="article:tag" content="Training">
+<meta property="article:tag" content="Multimodal AI">
+<meta name="twitter:card" content="summary">
+    
+    
+    <!--- Icon Part-->
+    <link rel="icon" type="image/png" href="https://charles2530.github.io/image/background/favicon.png" sizes="192x192">
+    <link rel="apple-touch-icon" sizes="180x180" href="https://charles2530.github.io/image/background/favicon.png">
+    <meta name="theme-color" content="#A31F34">
+    <link rel="shortcut icon" href="https://charles2530.github.io/image/background/favicon.png">
+    <!--- Page Info-->
+    
+    <title>
+        
+            数据质量、去重与治理 -
+        
+        Charles&#39;s Castle
+    </title>
+
+    <link rel="stylesheet" href="//evan.beee.top/projects/hexo-theme-redefine@2.6.1/source/fonts/Chillax/chillax.css">
+
+    <!--- Inject Part-->
+    
+        
+            
+                
+                    <script data-swup-reload-script> var _hmt = _hmt || []; (function() { var hm = document.createElement("script"); hm.src = "https://hm.baidu.com/hm.js?8e0e5f382d14d87cbeadc33a36e71e86"; var s = document.getElementsByTagName("script")[0]; s.parentNode.insertBefore(hm, s); })(); </script>
+                
+    
+            
+    
+
+    
+        <style>
+    :root {
+        --preloader-background-color: #fff;
+        --preloader-text-color: #000;
+    }
+
+    @media (prefers-color-scheme: dark) {
+        :root {
+            --preloader-background-color: #202124;
+            --preloader-text-color: #fff;
+        }
+    }
+
+    @media (prefers-color-scheme: light) {
+        :root {
+            --preloader-background-color: #fff;
+            --preloader-text-color: #000;
+        }
+    }
+
+    @media (max-width: 600px) {
+        .ml13 {
+            font-size: 2.6rem !important; /* Adjust this value as needed */
+        }
+    }
+
+    .preloader {
+        display: flex;
+        flex-direction: column;
+        gap: 1rem; /* Tailwind 'gap-4' is 1rem */
+        align-items: center;
+        justify-content: center;
+        position: fixed;
+        padding: 12px;
+        top: 0;
+        right: 0;
+        bottom: 0;
+        left: 0;
+        width: 100vw;
+        height: 100vh; /* 'h-screen' is 100% of the viewport height */
+        background-color: var(--preloader-background-color);
+        z-index: 1100; /* 'z-[1100]' sets the z-index */
+        transition: opacity 0.2s ease-in-out;
+    }
+
+    .ml13 {
+        font-size: 3.2rem;
+        /* text-transform: uppercase; */
+        color: var(--preloader-text-color);
+        letter-spacing: -1px;
+        font-weight: 500;
+        font-family: 'Chillax-Variable', sans-serif;
+        text-align: center;
+    }
+
+    .ml13 .word {
+        display: inline-flex;
+        flex-wrap: wrap;
+        white-space: nowrap;
+    }
+
+    .ml13 .letter {
+        display: inline-block;
+        line-height: 1em;
+    }
+</style>
+
+<div class="preloader">
+    <script src="https://evan.beee.top/projects/hexo-theme-redefine@2.6.1/source/js/libs/anime.min.js"></script>
+    <h1 class="ml13">
+        Charles&#39;s Castle
+    </h1>
+    <script>
+        var textWrapper = document.querySelector('.ml13');
+        // Split text into words
+        var words = textWrapper.textContent.trim().split(' ');
+
+        // Clear the existing content
+        textWrapper.innerHTML = '';
+
+        // Wrap each word and its letters in spans
+        words.forEach(function(word) {
+            var wordSpan = document.createElement('span');
+            wordSpan.classList.add('word');
+            wordSpan.innerHTML = word.replace(/\S/g, "<span class='letter'>$&</span>");
+            textWrapper.appendChild(wordSpan);
+            textWrapper.appendChild(document.createTextNode(' ')); // Add space between words
+        });
+
+
+        anime.timeline({loop: true})
+            .add({
+                targets: '.ml13 .letter',
+                translateY: [100,0],
+                translateZ: 0,
+                opacity: [0,1],
+                easing: "easeOutExpo",
+                duration: 1400,
+                delay: (el, i) => 300 + 30 * i
+            }).add({
+            targets: '.ml13 .letter',
+            translateY: [0,-100],
+            opacity: [1,0],
+            easing: "easeInExpo",
+            duration: 1200,
+            delay: (el, i) => 100 + 30 * i
+        });
+
+        let themeStatus = JSON.parse(localStorage.getItem('REDEFINE-THEME-STATUS'))?.isDark;
+
+        // If the theme status is not found in local storage, check the preferred color scheme
+        if (themeStatus === undefined || themeStatus === null) {
+            if (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) {
+                themeStatus = 'dark';
+            } else {
+                themeStatus = 'light';
+            }
+        }
+
+        // Now you can use the themeStatus variable in your code
+        if (themeStatus) {
+            document.documentElement.style.setProperty('--preloader-background-color', '#202124');
+            document.documentElement.style.setProperty('--preloader-text-color', '#fff');
+        } else {
+            document.documentElement.style.setProperty('--preloader-background-color', '#fff');
+            document.documentElement.style.setProperty('--preloader-text-color', '#000');
+        }
+
+        window.addEventListener('load', function () {
+            hidePreloaderAfterTimeout(1000); // Hide after 1000 milliseconds once the window has loaded
+        });
+
+        // Backup failsafe: Hide preloader after a maximum of 5000 milliseconds, regardless of the window load event
+        hidePreloaderAfterTimeout(5000);
+
+        function hidePreloaderAfterTimeout(delay) {
+            setTimeout(function () {
+                var preloader = document.querySelector('.preloader');
+                preloader.style.opacity = '0';
+                setTimeout(function () {
+                    preloader.style.display = 'none';
+                }, 200);
+            }, delay);
+        }
+    </script>
+</div>
+    
+
+    
+<link rel="stylesheet" href="/css/style.css">
+
+
+    
+        <link rel="stylesheet" href="//evan.beee.top/projects/hexo-theme-redefine@2.6.1/source/assets/build/styles.css">
+    
+
+    <link rel="stylesheet" href="//evan.beee.top/projects/hexo-theme-redefine@2.6.1/source/fonts/fonts.css">
+    <link rel="stylesheet" href="//evan.beee.top/projects/hexo-theme-redefine@2.6.1/source/fonts/Satoshi/satoshi.css">
+    <!--- Font Part-->
+    
+    
+    
+    
+
+
+    <script id="hexo-configurations">
+    window.config = {"hostname":"charles2530.github.io","root":"/","language":"en","path":"search.xml"};
+    window.theme = {"articles":{"style":{"font_size":"16px","line_height":1.5,"image_border_radius":"14px","image_alignment":"center","image_caption":false,"link_icon":true,"title_alignment":"left","headings_top_spacing":{"h1":"5rem","h2":"4rem","h3":"2.8rem","h4":"2.5rem","h5":"2.2rem","h6":"2rem"}},"word_count":{"enable":true,"count":true,"min2read":true},"author_label":{"enable":true,"auto":true,"list":["lol","Neo","God"]},"code_block":{"copy":true,"style":"mac","font":{"enable":false,"family":null,"url":null}},"toc":{"enable":true,"max_depth":6,"number":false,"expand":true,"init_open":true},"copyright":{"enable":true,"default":"cc_by_nc_sa"},"lazyload":true,"recommendation":{"enable":true,"title":"recommend_articles","limit":3,"mobile_limit":2,"placeholder":"https://charles2530.github.io/image/background/p3.jfif","skip_dirs":[]}},"colors":{"primary":"#A31F34","secondary":"#1890ff","default_mode":"light"},"global":{"fonts":{"chinese":{"enable":false,"family":null,"url":null},"english":{"enable":false,"family":null,"url":null}},"content_max_width":"1000px","sidebar_width":"210px","hover":{"shadow":true,"scale":true},"scroll_progress":{"bar":true,"percentage":true},"website_counter":{"url":"https://cn.vercount.one/js","enable":true,"site_pv":true,"site_uv":true,"post_pv":true},"single_page":true,"preloader":true,"open_graph":true,"google_analytics":{"enable":false,"id":null}},"home_banner":{"enable":true,"style":"fixed","image":{"light":"https://charles2530.github.io/image/background/background-light1.jpg","dark":"https://charles2530.github.io/image/background/background-dark1.jpg"},"title":"Charles's Castle","subtitle":{"text":["Happiness is best!","Never give up!","Everyday is a gift!"],"hitokoto":{"enable":false,"api":"https://v1.hitokoto.cn"},"typing_speed":100,"backing_speed":80,"starting_delay":500,"backing_delay":1500,"loop":true,"smart_backspace":true},"text_color":{"light":"#000000","dark":"#d1d1b6"},"text_style":{"title_size":"3.2rem","subtitle_size":"1.5rem","line_height":1.2},"custom_font":{"enable":false,"family":null,"url":null},"social_links":{"enable":true,"style":"center","links":{"github":"https://github.com/Charles2530/","zhihu":"https://www.zhihu.com/people/yang-guang-xiao-zi-55-55","email":"charles2530@163.com"},"qrs":{"weixin":"https://charles2530.github.io/image/background/Wechat_icon.png"}}},"plugins":{"feed":{"enable":true},"aplayer":{"enable":false,"type":"fixed","audios":[{"name":null,"artist":null,"url":null,"cover":null},{"name":null,"artist":null,"url":null,"cover":null}]},"mermaid":{"enable":true,"version":"9.3.0"}},"version":"2.6.1","navbar":{"auto_hide":true,"color":{"left":"#f78736","right":"#367df7","transparency":35},"width":{"home":"1200px","pages":"1000px"},"links":{"Home":{"path":"/","icon":"fa-regular fa-house"},"Categories":{"path":"/categories","icon":"fas fa-bookmark"},"Tags":{"path":"/tags","icon":"fas fa-tags"},"About":{"icon":"fa-regular fa-user","submenus":{"Me":"/about","Github":"https://github.com/Charles2530/","Blog":"https://charles2530.github.io","Statistics":"https://tongji.baidu.com/"}},"AI Notes":{"path":"/ai-notes","icon":"fas fa-brain"}},"search":{"enable":true,"preload":true}},"page_templates":{"friends_column":2,"tags_style":"blur"},"home":{"sidebar":{"enable":true,"position":"left","first_item":"menu","announcement":"This is Charles's Castle","show_on_mobile":true,"links":{"Archives":{"path":"/archives","icon":"fa-regular fa-archive"},"Photos":{"icon":"fa-solid fa-image","path":"/masonry/"},"Essays":{"icon":"fa-solid fa-message-lines","path":"/essay/"},"Friends":{"icon":"fa-solid fa-user-group","path":"/friends/"}}},"article_date_format":"auto","categories":{"enable":true,"limit":3},"tags":{"enable":true,"limit":3}},"footerStart":"2022/12/27 00:00:00"};
+    window.lang_ago = {"second":"%s seconds ago","minute":"%s minutes ago","hour":"%s hours ago","day":"%s days ago","week":"%s weeks ago","month":"%s months ago","year":"%s years ago"};
+    window.data = {"masonry":true};
+  </script>
+    
+    <!--- Fontawesome Part-->
+    <link rel="stylesheet" href="//evan.beee.top/projects/hexo-theme-redefine@2.6.1/source/fontawesome/fontawesome.min.css">
+    <link rel="stylesheet" href="//evan.beee.top/projects/hexo-theme-redefine@2.6.1/source/fontawesome/brands.min.css">
+    <link rel="stylesheet" href="//evan.beee.top/projects/hexo-theme-redefine@2.6.1/source/fontawesome/solid.min.css">
+    <link rel="stylesheet" href="//evan.beee.top/projects/hexo-theme-redefine@2.6.1/source/fontawesome/regular.min.css">
+    
+    
+    
+    
+<meta name="generator" content="Hexo 6.3.0"><link rel="alternate" href="/atom.xml" title="Charles's Castle" type="application/atom+xml">
+<link rel="stylesheet" href="/css/prism-tomorrow.css" type="text/css"></head>
+
+
+<body>
+<div class="progress-bar-container">
+    
+        <span class="scroll-progress-bar"></span>
+    
+
+    
+        <span class="pjax-progress-bar"></span>
+<!--        <span class="swup-progress-icon">-->
+<!--            <i class="fa-solid fa-circle-notch fa-spin"></i>-->
+<!--        </span>-->
+    
+</div>
+
+
+<main class="page-container" id="swup">
+
+    
+
+    <div class="main-content-container">
+
+
+        <div class="main-content-header">
+            <header class="navbar-container px-6 md:px-12">
+
+    <div class="navbar-content ">
+        <div class="left">
+            
+                <a class="logo-image" href="/">
+                    <img src="https://charles2530.github.io/image/background/logo.jpg">
+                </a>
+            
+            <a class="logo-title" href="/">
+                
+                Charles&#39;s Castle
+                
+            </a>
+        </div>
+
+        <div class="right">
+            <!-- PC -->
+            <div class="desktop">
+                <ul class="navbar-list">
+                    
+                        
+                            
+
+                            <li class="navbar-item">
+                                <!-- Menu -->
+                                <a class=""
+                                   href="/"
+                                        >
+                                    <i class="fa-regular fa-house fa-fw"></i>
+                                    HOME
+                                    
+                                </a>
+
+                                <!-- Submenu -->
+                                
+                            </li>
+                    
+                        
+                            
+
+                            <li class="navbar-item">
+                                <!-- Menu -->
+                                <a class=""
+                                   href="/categories"
+                                        >
+                                    <i class="fas fa-bookmark fa-fw"></i>
+                                    CATEGORIES
+                                    
+                                </a>
+
+                                <!-- Submenu -->
+                                
+                            </li>
+                    
+                        
+                            
+
+                            <li class="navbar-item">
+                                <!-- Menu -->
+                                <a class=""
+                                   href="/tags"
+                                        >
+                                    <i class="fas fa-tags fa-fw"></i>
+                                    TAGS
+                                    
+                                </a>
+
+                                <!-- Submenu -->
+                                
+                            </li>
+                    
+                        
+                            
+
+                            <li class="navbar-item">
+                                <!-- Menu -->
+                                <a class="has-dropdown"
+                                   href="#"
+                                        onClick=&#34;return false;&#34;>
+                                    <i class="fa-regular fa-user fa-fw"></i>
+                                    ABOUT
+                                    <i class="fa-solid fa-chevron-down fa-fw"></i>
+                                </a>
+
+                                <!-- Submenu -->
+                                
+                                    <ul class="sub-menu">
+                                        
+                                            <li>
+                                                <a href="/about">
+                                                    ME
+                                                </a>
+                                            </li>
+                                        
+                                            <li>
+                                                <a target="_blank" rel="noopener" href="https://github.com/Charles2530/">
+                                                    GITHUB
+                                                </a>
+                                            </li>
+                                        
+                                            <li>
+                                                <a href="https://charles2530.github.io">
+                                                    BLOG
+                                                </a>
+                                            </li>
+                                        
+                                            <li>
+                                                <a target="_blank" rel="noopener" href="https://tongji.baidu.com/">
+                                                    STATISTICS
+                                                </a>
+                                            </li>
+                                        
+                                    </ul>
+                                
+                            </li>
+                    
+                        
+                            
+
+                            <li class="navbar-item">
+                                <!-- Menu -->
+                                <a class=""
+                                   href="/ai-notes"
+                                        >
+                                    <i class="fas fa-brain fa-fw"></i>
+                                    AI NOTES
+                                    
+                                </a>
+
+                                <!-- Submenu -->
+                                
+                            </li>
+                    
+                    
+                        <li class="navbar-item search search-popup-trigger">
+                            <i class="fa-solid fa-magnifying-glass"></i>
+                        </li>
+                    
+                </ul>
+            </div>
+            <!-- Mobile -->
+            <div class="mobile">
+                
+                    <div class="icon-item search search-popup-trigger"><i class="fa-solid fa-magnifying-glass"></i>
+                    </div>
+                
+                <div class="icon-item navbar-bar">
+                    <div class="navbar-bar-middle"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Mobile sheet -->
+    <div class="navbar-drawer h-screen w-full absolute top-0 left-0 bg-background-color flex flex-col justify-between">
+        <ul class="drawer-navbar-list flex flex-col px-4 justify-center items-start">
+            
+                
+                    
+
+                    <li class="drawer-navbar-item text-base my-1.5 flex flex-col w-full">
+                        
+                        <a class="py-1.5 px-2 flex flex-row items-center justify-between gap-1 hover:!text-primary active:!text-primary text-2xl font-semibold group border-b border-border-color hover:border-primary w-full "
+                           href="/"
+                        >
+                            <span>
+                                HOME
+                            </span>
+                            
+                                <i class="fa-regular fa-house fa-sm fa-fw"></i>
+                            
+                        </a>
+                        
+
+                        
+                    </li>
+            
+                
+                    
+
+                    <li class="drawer-navbar-item text-base my-1.5 flex flex-col w-full">
+                        
+                        <a class="py-1.5 px-2 flex flex-row items-center justify-between gap-1 hover:!text-primary active:!text-primary text-2xl font-semibold group border-b border-border-color hover:border-primary w-full "
+                           href="/categories"
+                        >
+                            <span>
+                                CATEGORIES
+                            </span>
+                            
+                                <i class="fas fa-bookmark fa-sm fa-fw"></i>
+                            
+                        </a>
+                        
+
+                        
+                    </li>
+            
+                
+                    
+
+                    <li class="drawer-navbar-item text-base my-1.5 flex flex-col w-full">
+                        
+                        <a class="py-1.5 px-2 flex flex-row items-center justify-between gap-1 hover:!text-primary active:!text-primary text-2xl font-semibold group border-b border-border-color hover:border-primary w-full "
+                           href="/tags"
+                        >
+                            <span>
+                                TAGS
+                            </span>
+                            
+                                <i class="fas fa-tags fa-sm fa-fw"></i>
+                            
+                        </a>
+                        
+
+                        
+                    </li>
+            
+                
+                    
+
+                    <li class="drawer-navbar-item-sub text-base my-1.5 flex flex-col w-full">
+                        
+                        <div class="py-1.5 px-2 flex flex-row items-center justify-between gap-1 hover:!text-primary active:!text-primary cursor-pointer text-2xl font-semibold group border-b border-border-color hover:border-primary w-full "
+                             navbar-data-toggle="submenu-About"
+                        >
+                            <span>
+                                ABOUT
+                            </span>
+                            
+                                <i class="fa-solid fa-chevron-right fa-sm fa-fw transition-all"></i>
+                            
+                        </div>
+                        
+
+                        
+                            <div class="flex-col items-start px-2 py-2 hidden" data-target="submenu-About">
+                                
+                                    <div class="drawer-navbar-item text-base flex flex-col justify-center items-start hover:underline active:underline hover:underline-offset-1 rounded-3xl">
+                                        <a class=" text-third-text-color text-xl"
+                                           href="/about">ME</a>
+                                    </div>
+                                
+                                    <div class="drawer-navbar-item text-base flex flex-col justify-center items-start hover:underline active:underline hover:underline-offset-1 rounded-3xl">
+                                        <a class=" text-third-text-color text-xl"
+                                           target="_blank" rel="noopener" href="https://github.com/Charles2530/">GITHUB</a>
+                                    </div>
+                                
+                                    <div class="drawer-navbar-item text-base flex flex-col justify-center items-start hover:underline active:underline hover:underline-offset-1 rounded-3xl">
+                                        <a class=" text-third-text-color text-xl"
+                                           href="https://charles2530.github.io">BLOG</a>
+                                    </div>
+                                
+                                    <div class="drawer-navbar-item text-base flex flex-col justify-center items-start hover:underline active:underline hover:underline-offset-1 rounded-3xl">
+                                        <a class=" text-third-text-color text-xl"
+                                           target="_blank" rel="noopener" href="https://tongji.baidu.com/">STATISTICS</a>
+                                    </div>
+                                
+                            </div>
+                        
+                    </li>
+            
+                
+                    
+
+                    <li class="drawer-navbar-item text-base my-1.5 flex flex-col w-full">
+                        
+                        <a class="py-1.5 px-2 flex flex-row items-center justify-between gap-1 hover:!text-primary active:!text-primary text-2xl font-semibold group border-b border-border-color hover:border-primary w-full "
+                           href="/ai-notes"
+                        >
+                            <span>
+                                AI NOTES
+                            </span>
+                            
+                                <i class="fas fa-brain fa-sm fa-fw"></i>
+                            
+                        </a>
+                        
+
+                        
+                    </li>
+            
+
+            
+            
+                
+                    
+                    <li class="drawer-navbar-item text-base my-1.5 flex flex-col w-full">
+                        <a class="py-1.5 px-2 flex flex-row items-center justify-between gap-1 hover:!text-primary active:!text-primary text-2xl font-semibold group border-b border-border-color hover:border-primary w-full active"
+                           href="/archives"
+                        >
+                            <span>Archives</span>
+                            <i class="fa-regular fa-archive fa-sm fa-fw"></i>
+                        </a>
+                    </li>
+                
+                    
+                    <li class="drawer-navbar-item text-base my-1.5 flex flex-col w-full">
+                        <a class="py-1.5 px-2 flex flex-row items-center justify-between gap-1 hover:!text-primary active:!text-primary text-2xl font-semibold group border-b border-border-color hover:border-primary w-full active"
+                           href="/masonry/"
+                        >
+                            <span>Photos</span>
+                            <i class="fa-solid fa-image fa-sm fa-fw"></i>
+                        </a>
+                    </li>
+                
+                    
+                    <li class="drawer-navbar-item text-base my-1.5 flex flex-col w-full">
+                        <a class="py-1.5 px-2 flex flex-row items-center justify-between gap-1 hover:!text-primary active:!text-primary text-2xl font-semibold group border-b border-border-color hover:border-primary w-full active"
+                           href="/essay/"
+                        >
+                            <span>Essays</span>
+                            <i class="fa-solid fa-message-lines fa-sm fa-fw"></i>
+                        </a>
+                    </li>
+                
+                    
+                    <li class="drawer-navbar-item text-base my-1.5 flex flex-col w-full">
+                        <a class="py-1.5 px-2 flex flex-row items-center justify-between gap-1 hover:!text-primary active:!text-primary text-2xl font-semibold group border-b border-border-color hover:border-primary w-full active"
+                           href="/friends/"
+                        >
+                            <span>Friends</span>
+                            <i class="fa-solid fa-user-group fa-sm fa-fw"></i>
+                        </a>
+                    </li>
+                
+            
+        </ul>
+
+        <div class="statistics flex justify-around my-2.5">
+    <a class="item tag-count-item flex flex-col justify-center items-center w-20" href="/tags">
+        <div class="number text-2xl sm:text-xl text-second-text-color font-semibold">44</div>
+        <div class="label text-third-text-color text-sm">Tags</div>
+    </a>
+    <a class="item tag-count-item flex flex-col justify-center items-center w-20" href="/categories">
+        <div class="number text-2xl sm:text-xl text-second-text-color font-semibold">96</div>
+        <div class="label text-third-text-color text-sm">Categories</div>
+    </a>
+    <a class="item tag-count-item flex flex-col justify-center items-center w-20" href="/archives">
+        <div class="number text-2xl sm:text-xl text-second-text-color font-semibold">479</div>
+        <div class="label text-third-text-color text-sm">Posts</div>
+    </a>
+</div>
+    </div>
+
+    <div class="window-mask"></div>
+
+</header>
+
+
+        </div>
+
+        <div class="main-content-body">
+
+            
+
+            <div class="main-content">
+
+                
+                    <div class="post-page-container flex relative justify-between box-border w-full h-full">
+    <div class="article-content-container">
+
+        <div class="article-title relative w-full">
+            
+                <div class="w-full flex items-center pt-6 justify-start">
+                    <h1 class="article-title-regular text-second-text-color text-4xl md:text-6xl font-bold px-2 sm:px-6 md:px-8 py-3">数据质量、去重与治理</h1>
+                </div>
+            
+            </div>
+
+        
+            <div class="article-header flex flex-row gap-2 items-center px-2 sm:px-6 md:px-8">
+                <div class="avatar w-[46px] h-[46px] flex-shrink-0 rounded-medium border border-border-color p-[1px]">
+                    <img src="https://charles2530.github.io/image/background/logo2.jpg">
+                </div>
+                <div class="info flex flex-col justify-between">
+                    <div class="author flex items-center">
+                        <span class="name text-default-text-color text-lg font-semibold">Charles</span>
+                        
+                            <span class="author-label ml-1.5 text-xs px-2 py-0.5 rounded-small text-third-text-color border border-shadow-color-1">Lv7</span>
+                        
+                    </div>
+                    <div class="meta-info">
+                        <div class="article-meta-info">
+    <span class="article-date article-meta-item">
+        <i class="fa-regular fa-pen-fancy"></i>&nbsp;
+        <span class="desktop">2026-05-11 11:10</span>
+        <span class="mobile">2026-05-11 11:10</span>
+        <span class="hover-info">Created</span>
+    </span>
+    
+        <span class="article-date article-meta-item">
+            <i class="fa-regular fa-wrench"></i>&nbsp;
+            <span class="desktop">2026-05-11 11:10</span>
+            <span class="mobile">2026-05-11 11:10</span>
+            <span class="hover-info">Updated</span>
+        </span>
+    
+
+    
+        <span class="article-categories article-meta-item">
+            <i class="fa-regular fa-folders"></i>&nbsp;
+            <ul>
+                
+                
+                    
+                        
+                        <li>
+                            <a href="/categories/AI-Notes/">AI Notes</a>&nbsp;
+                        </li>
+                    
+                    
+                
+                    
+                        
+                            <li>></li>
+                        
+                        <li>
+                            <a href="/categories/AI-Notes/Training/">Training</a>&nbsp;
+                        </li>
+                    
+                    
+                
+            </ul>
+        </span>
+    
+    
+        <span class="article-tags article-meta-item">
+            <i class="fa-regular fa-tags"></i>&nbsp;
+            <ul>
+                
+                    <li>
+                        <a href="/tags/AI-Notes/">AI Notes</a>&nbsp;
+                    </li>
+                
+                    <li>
+                        | <a href="/tags/Training/">Training</a>&nbsp;
+                    </li>
+                
+                    <li>
+                        | <a href="/tags/Multimodal-AI/">Multimodal AI</a>&nbsp;
+                    </li>
+                
+            </ul>
+        </span>
+    
+
+    
+    
+        <span class="article-wordcount article-meta-item">
+            <i class="fa-regular fa-typewriter"></i>&nbsp;<span>3.4k Words</span>
+        </span>
+    
+    
+        <span class="article-min2read article-meta-item">
+            <i class="fa-regular fa-clock"></i>&nbsp;<span>11 Mins</span>
+        </span>
+    
+    
+        <span class="article-pv article-meta-item">
+            <i class="fa-regular fa-eye"></i>&nbsp;<span id="busuanzi_value_page_pv"></span>
+        </span>
+    
+</div>
+
+                    </div>
+                </div>
+            </div>
+        
+
+        
+
+
+        <div class="article-content markdown-body px-2 sm:px-6 md:px-8 pb-8">
+            <p>大模型训练里最贵的资源往往不是显卡，而是高质量数据。训练数据不是“越多越好”的简单堆积；重复、污染、版权风险、低信息密度、标签漂移和分布失衡，都会让看似庞大的语料库变成效率低下甚至带偏模型的负担。数据质量、去重与治理，是现代训练系统中最容易被低估、但对最终能力和合规性影响极大的部分。</p>
+
+  <div class="note p-4 mb-4 rounded-small info">
+    <p><strong>初学者先抓住</strong></p>
+<p>数据治理不是训练前的清洁工作，而是在定义模型会长期模仿什么世界。脏数据像错误教材，重复数据像只刷同一道题，污染数据像考试前偷看答案；它们都会让 loss 看起来下降，却让真实能力变差。</p>
+
+  </div>
+
+  <div class="note p-4 mb-4 rounded-small default">
+    <p><strong>有趣例子：背单词卡片</strong></p>
+<p>如果一盒单词卡里有 40% 是同一个单词，孩子会很快“学会”这盒卡片，但词汇量并没有真的扩大。训练语料也是这样：表面 token 很多，不代表有效信息很多。</p>
+
+  </div>
+<h2 id="1-为什么数据治理是模型能力的一部分"><a class="markdownIt-Anchor" href="#1-为什么数据治理是模型能力的一部分"></a> 1. 为什么数据治理是模型能力的一部分</h2>
+<p>设训练目标近似为</p>
+<p>$$<br />
+\min_\theta ; \mathbb{E}<em>{x \sim p</em>{\text{train}}}[\mathcal{L}(x; \theta)].<br />
+$$</p>
+<p>模型最终学到的，本质上是训练分布 $p_{\text{train}}$ 的统计结构。如果这个分布被重复样本、低质样本或偏置样本扭曲，那么优化再漂亮，也只是在更认真地学习错误分布。</p>
+<p>从工程角度说，数据治理至少影响四件事：</p>
+<ol>
+<li><strong>样本效率</strong>：同样算力下，能学到多少真实信息。</li>
+<li><strong>泛化能力</strong>：模型是否过拟合常见模板和高频噪声。</li>
+<li><strong>评测可信度</strong>：训练集污染会导致虚高分数。</li>
+<li><strong>合规风险</strong>：版权、隐私和敏感信息问题。</li>
+</ol>
+<h2 id="2-数据质量的几个维度"><a class="markdownIt-Anchor" href="#2-数据质量的几个维度"></a> 2. 数据质量的几个维度</h2>
+<h3 id="21-正确性"><a class="markdownIt-Anchor" href="#21-正确性"></a> 2.1 正确性</h3>
+<p>样本内容是否事实正确、标注是否一致、字段是否错位。错误标签会直接把优化方向带偏。</p>
+<h3 id="22-信息密度"><a class="markdownIt-Anchor" href="#22-信息密度"></a> 2.2 信息密度</h3>
+<p>一段文本、一个图文对、一段轨迹是否包含足够学习价值。模板化、灌水、重复表述会降低单位 token 的信息密度。</p>
+<h3 id="23-多样性"><a class="markdownIt-Anchor" href="#23-多样性"></a> 2.3 多样性</h3>
+<p>数据是否覆盖不同主题、风格、设备、场景、语言和难度。过度集中会造成模型能力塌缩在少数常见模式上。</p>
+<h3 id="24-任务相关性"><a class="markdownIt-Anchor" href="#24-任务相关性"></a> 2.4 任务相关性</h3>
+<p>并非所有高质量数据都对某任务有用。训练一个文档理解 VLM，加入过多自然图像 caption 数据未必高效；训练仓库机器人，加入大量游戏场景轨迹帮助有限。</p>
+<h3 id="25-风险属性"><a class="markdownIt-Anchor" href="#25-风险属性"></a> 2.5 风险属性</h3>
+<p>包括隐私、版权、涉敏信息、有害内容和法律边界。治理不仅是提高效果，也是降低不可接受风险。</p>
+<h2 id="3-去重为什么关键"><a class="markdownIt-Anchor" href="#3-去重为什么关键"></a> 3. 去重为什么关键</h2>
+<p><strong>重复样本会带来至少三种问题</strong>：</p>
+<ol>
+<li><strong>降低信息效率</strong>：你花更多算力学习同样内容。</li>
+<li><strong>放大偏置</strong>：某些模板或风格因重复而被过度强调。</li>
+<li><strong>污染评测</strong>：训练与验证或 benchmark 重叠，导致虚高。</li>
+</ol>
+<p>一个简单近似是：若有效独立样本数为 $N_{\text{eff}}$，总样本数为 $N$，重复率为 $\rho$，则</p>
+<p>$$<br />
+N_{\text{eff}} \approx N(1-\rho),<br />
+$$</p>
+<p>虽然现实更复杂，但它足以说明重复率高时，表面数据量和真实信息量相差甚远。</p>
+<h2 id="4-文本去重方法"><a class="markdownIt-Anchor" href="#4-文本去重方法"></a> 4. 文本去重方法</h2>
+<h3 id="41-精确去重"><a class="markdownIt-Anchor" href="#41-精确去重"></a> 4.1 精确去重</h3>
+<p>最简单的是 hash 完整文档或规范化文本。对完全相同内容有效，但对轻微改写、换行差异、模板字段变化无能为力。</p>
+<h3 id="42-n-gram-shingle-去重"><a class="markdownIt-Anchor" href="#42-n-gram-shingle-去重"></a> 4.2 n-gram / shingle 去重</h3>
+<p>把文本切成 shingles，比较 Jaccard 相似度：</p>
+<p>$$<br />
+J(A, B) = \frac{|A \cap B|}{|A \cup B|}.<br />
+$$</p>
+<p>若 $J(A,B)$ 超过阈值，就可视为近重复。为提升效率，常用 MinHash 和 LSH 做近似近邻查找。</p>
+<h3 id="43-语义去重"><a class="markdownIt-Anchor" href="#43-语义去重"></a> 4.3 语义去重</h3>
+<p>对标题改写、段落重述、多语言翻译等近重复，词面相似度不够，需要 embedding 去重。可把文本编码成向量后，用 ANN 搜索相近样本，再结合规则或分类器判定是否冗余。</p>
+<p>语义去重更强，但也更危险：如果阈值设置过高，容易把“相关但不重复”的高价值样本误删，损害多样性。</p>
+<h2 id="5-图像与多模态去重"><a class="markdownIt-Anchor" href="#5-图像与多模态去重"></a> 5. 图像与多模态去重</h2>
+<p>图像去重可用感知哈希、局部特征和视觉 embedding。对多模态图文数据，还需考虑：</p>
+<ol>
+<li>图像重复但 caption 不同</li>
+<li>文本重复但图像不同</li>
+<li>图像略改裁剪、加水印、分辨率变化</li>
+</ol>
+<p>例如电商数据里，同一商品主图可能有不同背景、不同水印版本；如果都保留，模型会高估某些商品风格。</p>
+<h2 id="6-视频与机器人轨迹去重"><a class="markdownIt-Anchor" href="#6-视频与机器人轨迹去重"></a> 6. 视频与机器人轨迹去重</h2>
+<p>时序数据的去重更复杂。两段轨迹即使对象和任务相同，只要时间偏移、速度不同，也可能看似不同但信息冗余。常见方法包括：</p>
+<ol>
+<li>对关键帧或摘要状态做哈希 / embedding</li>
+<li>比较动作序列模式</li>
+<li>根据任务标签、对象 ID、环境 ID 聚类</li>
+</ol>
+<p>对机器人示范数据而言，十段几乎同样的“从固定位置抓杯子”轨迹，并不能带来十倍信息量。</p>
+<h2 id="7-去重阈值怎么定"><a class="markdownIt-Anchor" href="#7-去重阈值怎么定"></a> 7. 去重阈值怎么定</h2>
+<p>去重不是阈值越严越好。设样本对相似度为 $s(x_i, x_j)$，阈值为 $\gamma$，则保留规则可写为</p>
+<p>$$<br />
+\text{keep}(x_j)=<br />
+\mathbf{1}\left[\max_{i&lt;j}s(x_i, x_j) &lt; \gamma \right].<br />
+$$</p>
+<p>若 $\gamma$ 太低，数据多样性会被误伤；若太高，重复抑制不足。最佳阈值往往依赖任务。例如：</p>
+<ol>
+<li><strong>通用预训练</strong>：可适度保留相近语义的不同表述。</li>
+<li><strong>benchmark 污染防控</strong>：阈值要更保守。</li>
+<li><strong>企业知识库</strong>：同一政策文件不同版本可能必须保留。</li>
+</ol>
+<h2 id="8-数据质量评分"><a class="markdownIt-Anchor" href="#8-数据质量评分"></a> 8. 数据质量评分</h2>
+<p>成熟系统通常不会只做“删或不删”，而会为样本打分。设样本质量分为</p>
+<p>$$<br />
+q(x)=<br />
+\alpha_1 q_{\text{clean}}</p>
+<ul>
+<li>\alpha_2 q_{\text{info}}</li>
+<li>\alpha_3 q_{\text{task}}</li>
+</ul>
+<ul>
+<li>\alpha_4 q_{\text{risk}}.<br />
+$$</li>
+</ul>
+<p><strong>其中可以包含</strong>：</p>
+<ol>
+<li>清洗置信度</li>
+<li>信息密度</li>
+<li>与目标任务的相关性</li>
+<li>风险等级</li>
+</ol>
+<p>训练时可按 $q(x)$ 重采样，而不是简单过滤。</p>
+<h2 id="9-数据混合与配比"><a class="markdownIt-Anchor" href="#9-数据混合与配比"></a> 9. 数据混合与配比</h2>
+<p>即使每个来源都高质量，混合方式也会决定模型偏向。若来源集合为 ${D_k}$，采样权重为 $\pi_k$，则训练分布为</p>
+<p>$$<br />
+p_{\text{train}}(x)=\sum_k \pi_k p_k(x).<br />
+$$</p>
+<p>问题在于：$\pi_k$ 不是自然给定的，而是策略变量。对多模态模型尤其如此。文本、图像、视频、交互轨迹各占多少？通用数据和垂直数据如何混？高质量小数据是否需要过采样？这些都属于治理范畴。</p>
+<h2 id="10-数据污染问题"><a class="markdownIt-Anchor" href="#10-数据污染问题"></a> 10. 数据污染问题</h2>
+<p>数据污染通常指训练数据与评测数据存在显式或隐式重叠。它会让 benchmark 分数失真。污染类型包括：</p>
+<ol>
+<li>完全重复</li>
+<li>近重复改写</li>
+<li>同题不同解格式</li>
+<li>图像轻微编辑</li>
+<li>多语言翻译版本</li>
+</ol>
+<p>治理时要建立 benchmark 黑名单集，做专门的去重与近似匹配，而不是只在全量预训练数据里随便扫一遍。</p>
+<h2 id="11-数据治理的组织问题"><a class="markdownIt-Anchor" href="#11-数据治理的组织问题"></a> 11. 数据治理的组织问题</h2>
+<p>数据治理不是一次性脚本，而是持续流程。一个成熟团队通常需要：</p>
+<ol>
+<li>数据清单与版本化</li>
+<li>数据来源许可证记录</li>
+<li>采样和清洗策略留痕</li>
+<li>删除请求和追溯机制</li>
+<li>benchmark 隔离规则</li>
+</ol>
+<p>也就是说，治理既是技术问题，也是组织管理问题。</p>
+<h2 id="12-合规与隐私"><a class="markdownIt-Anchor" href="#12-合规与隐私"></a> 12. 合规与隐私</h2>
+<p>随着模型越来越强，训练数据中的个人信息、商业敏感信息和版权文本更容易在生成中被复现。治理至少要考虑：</p>
+<ol>
+<li>PII 检测与脱敏</li>
+<li>受限数据隔离</li>
+<li>来源协议记录</li>
+<li>删除后的再训练或增量修复策略</li>
+</ol>
+<p>如果训练数据管线无法回答“这条样本来自哪里、为什么保留、是否能删除”，那它在合规上通常是不成熟的。</p>
+<h2 id="13-质量治理的工程流水线"><a class="markdownIt-Anchor" href="#13-质量治理的工程流水线"></a> 13. 质量治理的工程流水线</h2>
+<p>一个现实可行的数据治理流水线常包含：</p>
+<ol>
+<li>采集与标准化</li>
+<li><strong>基础清洗</strong>：编码、损坏文件、字段缺失</li>
+<li><strong>去重</strong>：精确 + 近似 + 语义</li>
+<li><strong>风险扫描</strong>：PII、版权、涉敏</li>
+<li><strong>质量评分</strong>：信息密度、任务相关性、标注质量</li>
+<li><strong>采样混合</strong>：按目标能力配比</li>
+<li>版本冻结与留档</li>
+</ol>
+<p>每一步都应产出统计报表，否则后续很难解释模型为何变化。</p>
+<h2 id="14-两个生动例子"><a class="markdownIt-Anchor" href="#14-两个生动例子"></a> 14. 两个生动例子</h2>
+<h3 id="141-企业文档助手"><a class="markdownIt-Anchor" href="#141-企业文档助手"></a> 14.1 企业文档助手</h3>
+<p>某团队把历史内部文档、FAQ、会议纪要全部喂给模型，结果模型总是引用过期政策。排查后发现：</p>
+<ol>
+<li>老版本文档重复次数远多于新版本；</li>
+<li>去重只做了文件 hash，没有处理“改了日期但正文几乎一样”的版本；</li>
+<li>训练时按文件数采样，而不是按生效版本采样。</li>
+</ol>
+<p>问题不在模型架构，而在数据治理。</p>
+<h3 id="142-机器人抓取数据"><a class="markdownIt-Anchor" href="#142-机器人抓取数据"></a> 14.2 机器人抓取数据</h3>
+<p>另一团队收集了大量“成功抓取杯子”的示范数据，看起来量很大，但 70% 轨迹来自固定机位、固定桌布、固定杯子位置。模型上线后换一个台面颜色就退化明显。这里不是数据量不够，而是重复和分布窄共同放大了背景偏置。</p>
+<h2 id="15-治理中的常见误区"><a class="markdownIt-Anchor" href="#15-治理中的常见误区"></a> 15. 治理中的常见误区</h2>
+<h3 id="151-只追求更多不追求更干净"><a class="markdownIt-Anchor" href="#151-只追求更多不追求更干净"></a> 15.1 只追求更多，不追求更干净</h3>
+<p>当数据量已经很大时，再堆低质量重复样本的边际收益通常极低。</p>
+<h3 id="152-只做词面去重"><a class="markdownIt-Anchor" href="#152-只做词面去重"></a> 15.2 只做词面去重</h3>
+<p>对现代大模型来说，语义近重复和模板化变体同样会造成污染。</p>
+<h3 id="153-只删不打分"><a class="markdownIt-Anchor" href="#153-只删不打分"></a> 15.3 只删不打分</h3>
+<p>很多样本不是非黑即白，而是“低收益但不必完全删除”。打分和重采样往往比硬过滤更稳。</p>
+<h3 id="154-没有版本和审计"><a class="markdownIt-Anchor" href="#154-没有版本和审计"></a> 15.4 没有版本和审计</h3>
+<p>模型表现变了，却不知道哪批数据进来了、哪套规则改了，这会让问题排查非常困难。</p>
+<h2 id="16-小结"><a class="markdownIt-Anchor" href="#16-小结"></a> 16. 小结</h2>
+<p>数据质量、去重与治理并不是训练前的清洁工，而是塑造模型能力边界的核心过程。去重提升信息效率，质量评分提升样本利用率，治理流程保证可追溯与合规。模型规模越大，算力越贵，这些工作越不是“锦上添花”，而是决定结果是否可信、是否可持续的基础设施。</p>
+<h2 id="实践补充与检查"><a class="markdownIt-Anchor" href="#实践补充与检查"></a> 实践补充与检查</h2>
+<h3 id="把-数据质量-去重与治理-当成训练平台的一部分"><a class="markdownIt-Anchor" href="#把-数据质量-去重与治理-当成训练平台的一部分"></a> 把 <strong>数据质量、去重与治理</strong> 当成训练平台的一部分</h3>
+<p>训练页面很容易被写成方法综述，但真正把模型训起来时，<strong>数据质量、去重与治理</strong> 通常并不是一个孤立决策，而是和数据、并行、恢复、评测、成本一起联动的。更实用的读法是先把它放回训练平台语境中：</p>
+<ol>
+<li><strong>lineage、去重粒度、污染审计、许可风险、版本化</strong>。</li>
+</ol>
+<p>一旦缺少这种平台视角，团队就容易把很多跨层问题都简化成“改超参”“加数据”或者“再堆 compute”。这在小实验里也许还能蒙对，在大规模训练、长上下文、多模态和后训练阶段几乎一定会反复返工。</p>
+<h3 id="更稳妥的设计与试验顺序"><a class="markdownIt-Anchor" href="#更稳妥的设计与试验顺序"></a> 更稳妥的设计与试验顺序</h3>
+<p>围绕 <strong>数据质量、去重与治理</strong>，建议把设计过程拆成四步：</p>
+<ol>
+<li><strong>先明确能力目标</strong>。是为了基础建模、长上下文、对齐、还是某类专项能力；</li>
+<li><strong>再明确预算边界</strong>。包括 token 预算、GPU 小时、可接受的吞吐下降和恢复复杂度；</li>
+<li><strong>然后设计数据与状态接口</strong>。哪些样本进入、哪些状态要版本化、哪些评测桶负责判断收益；</li>
+<li><strong>最后才做参数微调</strong>。把超参调整放在系统设计之后，而不是之前。</li>
+</ol>
+<p>这套顺序能避免一种常见错误：先调出一个看起来不错的局部结果，再发现它和数据版本、恢复语义、评测口径或上线节奏根本对不齐。</p>
+<h3 id="高频失败模式"><a class="markdownIt-Anchor" href="#高频失败模式"></a> 高频失败模式</h3>
+<p>围绕 <strong>数据质量、去重与治理</strong>，最常见的失败并不一定是训练直接爆炸，而是更隐蔽的几类：</p>
+<ol>
+<li><strong>去重只看重复率</strong>。</li>
+<li><strong>质量分不可追溯</strong>。</li>
+<li><strong>评测和训练数据边界模糊</strong>。</li>
+</ol>
+<p>这些问题难查的原因在于，它们经常“功能上都对，曲线上也还能看”，但最终让整条训练资产不可比、不可迁移、不可复用。对成熟团队来说，真正要防的往往就是这种慢性失真，而不是只在乎会不会立刻 <code>nan</code>。</p>
+<h3 id="验收-回滚与资产化"><a class="markdownIt-Anchor" href="#验收-回滚与资产化"></a> 验收、回滚与资产化</h3>
+<p>更稳的 <strong>数据质量、去重与治理</strong> 实践，至少应当满足下面几条：</p>
+<ol>
+<li><strong>建立 lineage</strong>。</li>
+<li><strong>把污染审计常态化</strong>。</li>
+<li><strong>分开治理训练浪费与 benchmark 泄漏</strong>。</li>
+<li><strong>快照版本化</strong>。</li>
+</ol>
+<p>另外，建议把这类主题产生的关键决策都资产化：</p>
+<ol>
+<li><strong>版本化配置与数据快照</strong>；</li>
+<li><strong>短跑一致性测试</strong>；</li>
+<li><strong>失败案例与回滚条件</strong>；</li>
+<li><strong>对下游评测、后训练、量化与推理转换的接口说明</strong>。</li>
+</ol>
+<p>只有这样，<strong>数据质量、去重与治理</strong> 才会真正沉淀成组织能力，而不是停留在某次实验里的一段经验。</p>
+
+        </div>
+
+        
+            <div class="post-copyright-info w-full my-8 px-2 sm:px-6 md:px-8">
+                <div class="article-copyright-info-container">
+    <ul>
+        <li><strong>Title:</strong> 数据质量、去重与治理</li>
+        <li><strong>Author:</strong> Charles</li>
+        <li><strong>Created at
+                :</strong> 2026-05-11 11:10:00</li>
+        
+            <li>
+                <strong>Updated at
+                    :</strong> 2026-05-11 11:10:00
+            </li>
+        
+        <li>
+            <strong>Link:</strong> https://charles2530.github.io/2026/05/11/ai-notes/files-training-data-quality-dedup-and-governance/
+        </li>
+        <li>
+            <strong>
+                License:
+            </strong>
+            
+
+            
+                This work is licensed under <a class="license" target="_blank" rel="noopener" href="https://creativecommons.org/licenses/by-nc-sa/4.0">CC BY-NC-SA 4.0</a>.
+            
+        </li>
+    </ul>
+</div>
+
+            </div>
+        
+
+        
+            <ul class="post-tags-box text-lg mt-1.5 flex-wrap justify-center flex md:hidden">
+                
+                    <li class="tag-item mx-0.5">
+                        <a href="/tags/AI-Notes/">#AI Notes</a>&nbsp;
+                    </li>
+                
+                    <li class="tag-item mx-0.5">
+                        <a href="/tags/Training/">#Training</a>&nbsp;
+                    </li>
+                
+                    <li class="tag-item mx-0.5">
+                        <a href="/tags/Multimodal-AI/">#Multimodal AI</a>&nbsp;
+                    </li>
+                
+            </ul>
+        
+
+        
+  <div class="recommended-article px-2 sm:px-6 md:px-8">
+   <div class="recommended-desktop">
+    <div class="recommended-article-header text-xl md:text-3xl font-bold mt-10">
+     <i aria-hidden="true"></i><span>recommend_articles</span>
+    </div>
+    <div class="recommended-article-group"><a class="recommended-article-item" href="/2026/05/11/ai-notes/files-vlm-architecture-and-training/" title="视觉表征、连接器与时序状态" rel="bookmark">
+  <img src="https://charles2530.github.io/image/background/p3.jfif" alt="视觉表征、连接器与时序状态" class="!max-w-none">
+  <span class="title">视觉表征、连接器与时序状态</span>
+</a><a class="recommended-article-item" href="/2023/03/21/tensorflow-model-summary/" title="tensorflow-model-summary" rel="bookmark">
+  <img src="https://charles2530.github.io/image/background/p2.jpg" alt="tensorflow-model-summary" class="!max-w-none">
+  <span class="title">tensorflow-model-summary</span>
+</a><a class="recommended-article-item" href="/2026/05/11/ai-notes/files-inference-context-compression-kv-eviction-and-memory-hierarchies/" title="上下文压缩、KV 淘汰与内存分层" rel="bookmark">
+  <img src="https://charles2530.github.io/image/background/p3.jfif" alt="上下文压缩、KV 淘汰与内存分层" class="!max-w-none">
+  <span class="title">上下文压缩、KV 淘汰与内存分层</span>
+</a></div>
+   </div>
+   <div class="recommended-mobile">
+   <div class="recommended-article-header text-xl md:text-3xl font-bold mt-10">
+     <i aria-hidden="true"></i><span>recommend_articles</span>
+   </div>
+   <div class="recommended-article-group"><a class="recommended-article-item" href="/2026/05/11/ai-notes/files-vlm-architecture-and-training/" title="视觉表征、连接器与时序状态" rel="bookmark">
+  <img src="https://charles2530.github.io/image/background/p3.jfif" alt="视觉表征、连接器与时序状态" class="!max-w-none">
+  <span class="title">视觉表征、连接器与时序状态</span>
+</a><a class="recommended-article-item" href="/2023/03/21/tensorflow-model-summary/" title="tensorflow-model-summary" rel="bookmark">
+  <img src="https://charles2530.github.io/image/background/p2.jpg" alt="tensorflow-model-summary" class="!max-w-none">
+  <span class="title">tensorflow-model-summary</span>
+</a></div>
+   </div>
+  </div>
+
+        
+            <div class="article-nav my-8 flex justify-between items-center px-2 sm:px-6 md:px-8">
+                
+                    <div class="article-prev border-border-color shadow-redefine-flat shadow-shadow-color-2 rounded-medium px-4 py-2 hover:shadow-redefine-flat-hover hover:shadow-shadow-color-2">
+                        <a class="prev"
+                        rel="prev"
+                        href="/2026/05/11/ai-notes/files-training-data-systems-and-optimization/"
+                        >
+                            <span class="left arrow-icon flex justify-center items-center">
+                                <i class="fa-solid fa-chevron-left"></i>
+                            </span>
+                            <span class="title flex justify-center items-center">
+                                <span class="post-nav-title-item">数据系统与优化</span>
+                                <span class="post-nav-item">Prev posts</span>
+                            </span>
+                        </a>
+                    </div>
+                
+                
+                    <div class="article-next border-border-color shadow-redefine-flat shadow-shadow-color-2 rounded-medium px-4 py-2 hover:shadow-redefine-flat-hover hover:shadow-shadow-color-2">
+                        <a class="next"
+                        rel="next"
+                        href="/2026/05/11/ai-notes/files-training-cluster-operations-and-experiment-management/"
+                        >
+                            <span class="title flex justify-center items-center">
+                                <span class="post-nav-title-item">训练集群运维、实验管理与成本治理</span>
+                                <span class="post-nav-item">Next posts</span>
+                            </span>
+                            <span class="right arrow-icon flex justify-center items-center">
+                                <i class="fa-solid fa-chevron-right"></i>
+                            </span>
+                        </a>
+                    </div>
+                
+            </div>
+        
+
+
+        
+            <div class="comment-container px-2 sm:px-6 md:px-8 pb-8">
+                <div class="comments-container mt-10 w-full ">
+    <div id="comment-anchor" class="w-full h-2.5"></div>
+    <div class="comment-area-title w-full my-1.5 md:my-2.5 text-xl md:text-3xl font-bold">
+        Comments
+    </div>
+    
+
+        <!-- 
+            
+    <div id="gitalk-container"></div>
+    <script data-swup-reload-script
+            src="//cdn.staticfile.org/gitalk/1.8.0/gitalk.min.js"></script>
+    <script data-swup-reload-script>
+
+        function loadGitalk() {
+            let __gitalk__pathname = decodeURI(location.pathname);
+            const __gitalk__pathnameLength = __gitalk__pathname.length;
+            const __gitalk__pathnameMaxLength = 50;
+            if (__gitalk__pathnameLength > __gitalk__pathnameMaxLength) {
+                __gitalk__pathname = __gitalk__pathname.substring(0, __gitalk__pathnameMaxLength - 3) + '...';
+            }
+
+            try {
+                Gitalk && new Gitalk({
+                    clientID: '8083299a8ee2aaf23879',
+                    clientSecret: 'a8161e81d4872181e884fdb69f7be24916b6a9d0',
+                    repo: 'charles2530_issues',
+                    owner: 'Charles2530',
+                    admin: ['Charles2530'],
+                    id: __gitalk__pathname,
+                    language: 'en',
+                    proxy: 'https://github.com/login/oauth/access_token'
+                }).render('gitalk-container');
+
+            } catch (e) {
+                window.Gitalk = null;
+            }
+        }
+
+        if ('true') {
+            const loadGitalkTimeout = setTimeout(() => {
+                loadGitalk();
+                clearTimeout(loadGitalkTimeout);
+            }, 1000);
+        } else {
+            window.addEventListener('DOMContentLoaded', loadGitalk);
+        }
+    </script>
+
+
+
+         -->
+        <script src="https://utteranc.es/client.js" repo="Charles2530/Charles2530.github.io" issue-term="pathname"
+            label="Comment" theme="preferred-color-scheme" crossorigin="anonymous" async>
+            </script>
+    
+</div>
+
+            </div>
+        
+    </div>
+
+    
+        <div class="toc-content-container">
+            <div class="post-toc-wrap">
+    <div class="post-toc">
+        <div class="toc-title">On this page</div>
+        <div class="page-title">数据质量、去重与治理</div>
+        <ol class="nav"><li class="nav-item nav-level-2"><a class="nav-link" href="#1-%E4%B8%BA%E4%BB%80%E4%B9%88%E6%95%B0%E6%8D%AE%E6%B2%BB%E7%90%86%E6%98%AF%E6%A8%A1%E5%9E%8B%E8%83%BD%E5%8A%9B%E7%9A%84%E4%B8%80%E9%83%A8%E5%88%86"><span class="nav-text"> 1. 为什么数据治理是模型能力的一部分</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#2-%E6%95%B0%E6%8D%AE%E8%B4%A8%E9%87%8F%E7%9A%84%E5%87%A0%E4%B8%AA%E7%BB%B4%E5%BA%A6"><span class="nav-text"> 2. 数据质量的几个维度</span></a><ol class="nav-child"><li class="nav-item nav-level-3"><a class="nav-link" href="#21-%E6%AD%A3%E7%A1%AE%E6%80%A7"><span class="nav-text"> 2.1 正确性</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#22-%E4%BF%A1%E6%81%AF%E5%AF%86%E5%BA%A6"><span class="nav-text"> 2.2 信息密度</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#23-%E5%A4%9A%E6%A0%B7%E6%80%A7"><span class="nav-text"> 2.3 多样性</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#24-%E4%BB%BB%E5%8A%A1%E7%9B%B8%E5%85%B3%E6%80%A7"><span class="nav-text"> 2.4 任务相关性</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#25-%E9%A3%8E%E9%99%A9%E5%B1%9E%E6%80%A7"><span class="nav-text"> 2.5 风险属性</span></a></li></ol></li><li class="nav-item nav-level-2"><a class="nav-link" href="#3-%E5%8E%BB%E9%87%8D%E4%B8%BA%E4%BB%80%E4%B9%88%E5%85%B3%E9%94%AE"><span class="nav-text"> 3. 去重为什么关键</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#4-%E6%96%87%E6%9C%AC%E5%8E%BB%E9%87%8D%E6%96%B9%E6%B3%95"><span class="nav-text"> 4. 文本去重方法</span></a><ol class="nav-child"><li class="nav-item nav-level-3"><a class="nav-link" href="#41-%E7%B2%BE%E7%A1%AE%E5%8E%BB%E9%87%8D"><span class="nav-text"> 4.1 精确去重</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#42-n-gram-shingle-%E5%8E%BB%E9%87%8D"><span class="nav-text"> 4.2 n-gram &#x2F; shingle 去重</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#43-%E8%AF%AD%E4%B9%89%E5%8E%BB%E9%87%8D"><span class="nav-text"> 4.3 语义去重</span></a></li></ol></li><li class="nav-item nav-level-2"><a class="nav-link" href="#5-%E5%9B%BE%E5%83%8F%E4%B8%8E%E5%A4%9A%E6%A8%A1%E6%80%81%E5%8E%BB%E9%87%8D"><span class="nav-text"> 5. 图像与多模态去重</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#6-%E8%A7%86%E9%A2%91%E4%B8%8E%E6%9C%BA%E5%99%A8%E4%BA%BA%E8%BD%A8%E8%BF%B9%E5%8E%BB%E9%87%8D"><span class="nav-text"> 6. 视频与机器人轨迹去重</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#7-%E5%8E%BB%E9%87%8D%E9%98%88%E5%80%BC%E6%80%8E%E4%B9%88%E5%AE%9A"><span class="nav-text"> 7. 去重阈值怎么定</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#8-%E6%95%B0%E6%8D%AE%E8%B4%A8%E9%87%8F%E8%AF%84%E5%88%86"><span class="nav-text"> 8. 数据质量评分</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#9-%E6%95%B0%E6%8D%AE%E6%B7%B7%E5%90%88%E4%B8%8E%E9%85%8D%E6%AF%94"><span class="nav-text"> 9. 数据混合与配比</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#10-%E6%95%B0%E6%8D%AE%E6%B1%A1%E6%9F%93%E9%97%AE%E9%A2%98"><span class="nav-text"> 10. 数据污染问题</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#11-%E6%95%B0%E6%8D%AE%E6%B2%BB%E7%90%86%E7%9A%84%E7%BB%84%E7%BB%87%E9%97%AE%E9%A2%98"><span class="nav-text"> 11. 数据治理的组织问题</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#12-%E5%90%88%E8%A7%84%E4%B8%8E%E9%9A%90%E7%A7%81"><span class="nav-text"> 12. 合规与隐私</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#13-%E8%B4%A8%E9%87%8F%E6%B2%BB%E7%90%86%E7%9A%84%E5%B7%A5%E7%A8%8B%E6%B5%81%E6%B0%B4%E7%BA%BF"><span class="nav-text"> 13. 质量治理的工程流水线</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#14-%E4%B8%A4%E4%B8%AA%E7%94%9F%E5%8A%A8%E4%BE%8B%E5%AD%90"><span class="nav-text"> 14. 两个生动例子</span></a><ol class="nav-child"><li class="nav-item nav-level-3"><a class="nav-link" href="#141-%E4%BC%81%E4%B8%9A%E6%96%87%E6%A1%A3%E5%8A%A9%E6%89%8B"><span class="nav-text"> 14.1 企业文档助手</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#142-%E6%9C%BA%E5%99%A8%E4%BA%BA%E6%8A%93%E5%8F%96%E6%95%B0%E6%8D%AE"><span class="nav-text"> 14.2 机器人抓取数据</span></a></li></ol></li><li class="nav-item nav-level-2"><a class="nav-link" href="#15-%E6%B2%BB%E7%90%86%E4%B8%AD%E7%9A%84%E5%B8%B8%E8%A7%81%E8%AF%AF%E5%8C%BA"><span class="nav-text"> 15. 治理中的常见误区</span></a><ol class="nav-child"><li class="nav-item nav-level-3"><a class="nav-link" href="#151-%E5%8F%AA%E8%BF%BD%E6%B1%82%E6%9B%B4%E5%A4%9A%E4%B8%8D%E8%BF%BD%E6%B1%82%E6%9B%B4%E5%B9%B2%E5%87%80"><span class="nav-text"> 15.1 只追求更多，不追求更干净</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#152-%E5%8F%AA%E5%81%9A%E8%AF%8D%E9%9D%A2%E5%8E%BB%E9%87%8D"><span class="nav-text"> 15.2 只做词面去重</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#153-%E5%8F%AA%E5%88%A0%E4%B8%8D%E6%89%93%E5%88%86"><span class="nav-text"> 15.3 只删不打分</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#154-%E6%B2%A1%E6%9C%89%E7%89%88%E6%9C%AC%E5%92%8C%E5%AE%A1%E8%AE%A1"><span class="nav-text"> 15.4 没有版本和审计</span></a></li></ol></li><li class="nav-item nav-level-2"><a class="nav-link" href="#16-%E5%B0%8F%E7%BB%93"><span class="nav-text"> 16. 小结</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#%E5%AE%9E%E8%B7%B5%E8%A1%A5%E5%85%85%E4%B8%8E%E6%A3%80%E6%9F%A5"><span class="nav-text"> 实践补充与检查</span></a><ol class="nav-child"><li class="nav-item nav-level-3"><a class="nav-link" href="#%E6%8A%8A-%E6%95%B0%E6%8D%AE%E8%B4%A8%E9%87%8F-%E5%8E%BB%E9%87%8D%E4%B8%8E%E6%B2%BB%E7%90%86-%E5%BD%93%E6%88%90%E8%AE%AD%E7%BB%83%E5%B9%B3%E5%8F%B0%E7%9A%84%E4%B8%80%E9%83%A8%E5%88%86"><span class="nav-text"> 把 数据质量、去重与治理 当成训练平台的一部分</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#%E6%9B%B4%E7%A8%B3%E5%A6%A5%E7%9A%84%E8%AE%BE%E8%AE%A1%E4%B8%8E%E8%AF%95%E9%AA%8C%E9%A1%BA%E5%BA%8F"><span class="nav-text"> 更稳妥的设计与试验顺序</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#%E9%AB%98%E9%A2%91%E5%A4%B1%E8%B4%A5%E6%A8%A1%E5%BC%8F"><span class="nav-text"> 高频失败模式</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#%E9%AA%8C%E6%94%B6-%E5%9B%9E%E6%BB%9A%E4%B8%8E%E8%B5%84%E4%BA%A7%E5%8C%96"><span class="nav-text"> 验收、回滚与资产化</span></a></li></ol></li></ol>
+
+    </div>
+</div>
+        </div>
+    
+</div>
+
+
+
+                
+
+            </div>
+
+            
+
+        </div>
+
+        <div class="main-content-footer">
+            <footer class="footer mt-5 py-5 h-auto text-base text-third-text-color relative border-t-2 border-t-border-color">
+    <div class="info-container py-3 text-center">
+        
+        <div class="text-center">
+            &copy;
+            
+              <span>2022</span>
+              -
+            
+            2026&nbsp;&nbsp;<i class="fa-solid fa-heart fa-beat" style="--fa-animation-duration: 0.5s; color: #f54545"></i>&nbsp;&nbsp;<a href="/">Charles</a>
+            
+                
+                <p class="post-count space-x-0.5">
+                    <span>
+                        479 posts in total
+                    </span>
+                    
+                        <span>
+                            1896.7k words in total
+                        </span>
+                    
+                </p>
+            
+        </div>
+        
+            <script data-swup-reload-script src="https://cn.vercount.one/js"></script>
+            <div class="relative text-center lg:absolute lg:right-[20px] lg:top-1/2 lg:-translate-y-1/2 lg:text-right">
+                
+                    <span id="busuanzi_container_site_uv" class="lg:!block">
+                        <span class="text-sm">Visitor Count</span>
+                        <span id="busuanzi_value_site_uv"></span>
+                    </span>
+                
+                
+                    <span id="busuanzi_container_site_pv" class="lg:!block">
+                        <span class="text-sm">Total Page Views</span>
+                        <span id="busuanzi_value_site_pv"></span>
+                    </span>
+                
+            </div>
+        
+        <div class="relative text-center lg:absolute lg:left-[20px] lg:top-1/2 lg:-translate-y-1/2 lg:text-left">
+            <span class="lg:block text-sm">Powered by Charles</span>
+            <span class="text-sm lg:block">Theme&nbsp;<a class="text-base" target="_blank" href="https://github.com/EvanNotFound/hexo-theme-redefine">Redefine v2.6.1</a></span>
+        </div>
+        
+        
+            <div>
+                Blog up for <span class="odometer" id="runtime_days" ></span> days <span class="odometer" id="runtime_hours"></span> hrs <span class="odometer" id="runtime_minutes"></span> Min <span class="odometer" id="runtime_seconds"></span> Sec
+            </div>
+        
+        
+            <script data-swup-reload-script>
+                try {
+                    function odometer_init() {
+                    const elements = document.querySelectorAll('.odometer');
+                    elements.forEach(el => {
+                        new Odometer({
+                            el,
+                            format: '( ddd).dd',
+                            duration: 200
+                        });
+                    });
+                    }
+                    odometer_init();
+                } catch (error) {}
+            </script>
+        
+        
+            
+                
+        
+                
+        
+        
+    </div>  
+</footer>
+        </div>
+    </div>
+
+    
+        <div class="post-tools">
+            <div class="post-tools-container">
+    <ul class="article-tools-list">
+        <!-- TOC aside toggle -->
+        
+            <li class="right-bottom-tools page-aside-toggle">
+                <i class="fa-regular fa-outdent"></i>
+            </li>
+        
+
+        <!-- go comment -->
+        
+            <li class="go-comment">
+                <i class="fa-regular fa-comments"></i>
+            </li>
+        
+    </ul>
+</div>
+
+        </div>
+    
+
+    <div class="right-side-tools-container">
+        <div class="side-tools-container">
+    <ul class="hidden-tools-list">
+        <li class="right-bottom-tools tool-font-adjust-plus flex justify-center items-center">
+            <i class="fa-regular fa-magnifying-glass-plus"></i>
+        </li>
+
+        <li class="right-bottom-tools tool-font-adjust-minus flex justify-center items-center">
+            <i class="fa-regular fa-magnifying-glass-minus"></i>
+        </li>
+
+        <li class="right-bottom-tools tool-dark-light-toggle flex justify-center items-center">
+            <i class="fa-regular fa-moon"></i>
+        </li>
+
+        <!-- rss -->
+        
+            <li class="right-bottom-tools rss flex justify-center items-center">
+                <a class="flex justify-center items-center"
+                   href="/atom.xml"
+                   target="_blank"
+                >
+                <i class="fa-regular fa-rss"></i>
+                </a>
+            </li>
+        
+
+        
+
+        <li class="right-bottom-tools tool-scroll-to-bottom flex justify-center items-center">
+            <i class="fa-regular fa-arrow-down"></i>
+        </li>
+    </ul>
+
+    <ul class="visible-tools-list">
+        <li class="right-bottom-tools toggle-tools-list flex justify-center items-center">
+            <i class="fa-regular fa-cog fa-spin"></i>
+        </li>
+        
+            <li class="right-bottom-tools tool-scroll-to-top flex justify-center items-center">
+                <i class="arrow-up fas fa-arrow-up"></i>
+                <span class="percent"></span>
+            </li>
+        
+        
+    </ul>
+</div>
+
+    </div>
+
+    <div class="image-viewer-container">
+    <img src="">
+</div>
+
+
+    
+        <div class="search-pop-overlay">
+    <div class="popup search-popup">
+        <div class="search-header">
+          <span class="search-input-field-pre">
+            <i class="fa-solid fa-keyboard"></i>
+          </span>
+            <div class="search-input-container">
+                <input autocomplete="off"
+                       autocorrect="off"
+                       autocapitalize="off"
+                       placeholder="Search..."
+                       spellcheck="false"
+                       type="search"
+                       class="search-input"
+                >
+            </div>
+            <span class="popup-btn-close">
+                <i class="fa-solid fa-times"></i>
+            </span>
+        </div>
+        <div id="search-result">
+            <div id="no-result">
+                <i class="fa-solid fa-spinner fa-spin-pulse fa-5x fa-fw"></i>
+            </div>
+        </div>
+    </div>
+</div>
+
+    
+
+</main>
+
+
+    <script src="https://evan.beee.top/projects/hexo-theme-redefine@2.6.1/source/js/libs/Swup.min.js"></script><script src="https://evan.beee.top/projects/hexo-theme-redefine@2.6.1/source/js/libs/SwupSlideTheme.min.js"></script><script src="https://evan.beee.top/projects/hexo-theme-redefine@2.6.1/source/js/libs/SwupScriptsPlugin.min.js"></script><script src="https://evan.beee.top/projects/hexo-theme-redefine@2.6.1/source/js/libs/SwupProgressPlugin.min.js"></script><script src="https://evan.beee.top/projects/hexo-theme-redefine@2.6.1/source/js/libs/SwupScrollPlugin.min.js"></script><script src="https://evan.beee.top/projects/hexo-theme-redefine@2.6.1/source/js/libs/SwupPreloadPlugin.min.js"></script>
+<script>
+    const swup = new Swup({
+        plugins: [
+            new SwupScriptsPlugin({
+                optin: true,
+            }),
+            new SwupProgressPlugin(),
+            new SwupScrollPlugin({
+                offset: 80,
+            }),
+            new SwupSlideTheme({
+                mainElement: ".main-content-body",
+            }),
+            new SwupPreloadPlugin(),
+        ],
+        containers: ["#swup"],
+    });
+</script>
+
+
+
+
+
+
+<script type="module" src="https://evan.beee.top/projects/hexo-theme-redefine@2.6.1/source/js/tools/imageViewer.js"></script><script type="module" src="https://evan.beee.top/projects/hexo-theme-redefine@2.6.1/source/js/utils.js"></script><script type="module" src="https://evan.beee.top/projects/hexo-theme-redefine@2.6.1/source/js/main.js"></script><script type="module" src="https://evan.beee.top/projects/hexo-theme-redefine@2.6.1/source/js/layouts/navbarShrink.js"></script><script type="module" src="https://evan.beee.top/projects/hexo-theme-redefine@2.6.1/source/js/tools/scrollTopBottom.js"></script><script type="module" src="https://evan.beee.top/projects/hexo-theme-redefine@2.6.1/source/js/tools/lightDarkSwitch.js"></script><script type="module" src="https://evan.beee.top/projects/hexo-theme-redefine@2.6.1/source/js/layouts/categoryList.js"></script>
+
+
+    <script type="module" src="https://evan.beee.top/projects/hexo-theme-redefine@2.6.1/source/js/tools/localSearch.js"></script>
+
+
+
+    <script type="module" src="https://evan.beee.top/projects/hexo-theme-redefine@2.6.1/source/js/tools/codeBlock.js"></script>
+
+
+
+    <script type="module" src="https://evan.beee.top/projects/hexo-theme-redefine@2.6.1/source/js/layouts/lazyload.js"></script>
+
+
+
+    <script src="https://evan.beee.top/projects/hexo-theme-redefine@2.6.1/source/js/tools/runtime.js"></script>
+    <script src="https://evan.beee.top/projects/hexo-theme-redefine@2.6.1/source/js/libs/odometer.min.js"></script>
+    <link rel="stylesheet" href="//evan.beee.top/projects/hexo-theme-redefine@2.6.1/source/assets/odometer-theme-minimal.css">
+
+
+
+  <script src="https://evan.beee.top/projects/hexo-theme-redefine@2.6.1/source/js/libs/Typed.min.js"></script>
+  <script type="module" src="https://evan.beee.top/projects/hexo-theme-redefine@2.6.1/source/js/plugins/typed.js"></script>
+
+
+
+    <script src="https://evan.beee.top/projects/hexo-theme-redefine@2.6.1/source/js/libs/mermaid.min.js"></script>
+    <script src="https://evan.beee.top/projects/hexo-theme-redefine@2.6.1/source/js/plugins/mermaid.js"></script>
+
+
+
+    <script src="https://evan.beee.top/projects/hexo-theme-redefine@2.6.1/source/js/libs/minimasonry.min.js"></script>
+    <script type="module" src="https://evan.beee.top/projects/hexo-theme-redefine@2.6.1/source/js/plugins/masonry.js"></script>
+
+
+
+
+<div class="post-scripts" data-swup-reload-script>
+    
+        <script type="module" src="https://evan.beee.top/projects/hexo-theme-redefine@2.6.1/source/js/tools/tocToggle.js"></script><script type="module" src="https://evan.beee.top/projects/hexo-theme-redefine@2.6.1/source/js/layouts/toc.js"></script><script type="module" src="https://evan.beee.top/projects/hexo-theme-redefine@2.6.1/source/js/plugins/tabs.js"></script>
+    
+</div>
+
+
+</body>
+</html>
+<!-- 页面点击小红心 -->
+<script type="text/javascript" src="/js/love.js"></script>

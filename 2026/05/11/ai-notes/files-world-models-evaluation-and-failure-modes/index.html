@@ -1,0 +1,1446 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="keywords" content="Charles">
+    
+    <meta name="author" content="Charles">
+    <!-- preconnect -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+
+    
+        
+        
+        
+    
+    <!--- Seo Part-->
+    
+    <link rel="canonical" href="https://charles2530.github.io/2026/05/11/ai-notes/files-world-models-evaluation-and-failure-modes/"/>
+    <meta name="robots" content="index,follow">
+    <meta name="googlebot" content="index,follow">
+    <meta name="revisit-after" content="1 days">
+    
+        <meta name="description" content="世界模型评测不能只看一步预测误差。一个模型可能生成很清晰的视频，却不能帮助规划；也可能短期 rollout 很准，但一接入闭环控制就被自己的误差放大。真正有用的评测应同时回答：模型是否学到世界结构、是否对动作和反事实敏感、是否能在闭环里提升决策、是否知道自己什么时候不可靠。 这页建议和 世界模型总览、生成式模拟与视频世">
+<meta property="og:type" content="article">
+<meta property="og:title" content="评测与失效模式">
+<meta property="og:url" content="https://charles2530.github.io/2026/05/11/ai-notes/files-world-models-evaluation-and-failure-modes/index.html">
+<meta property="og:site_name" content="Charles&#39;s Castle">
+<meta property="og:description" content="世界模型评测不能只看一步预测误差。一个模型可能生成很清晰的视频，却不能帮助规划；也可能短期 rollout 很准，但一接入闭环控制就被自己的误差放大。真正有用的评测应同时回答：模型是否学到世界结构、是否对动作和反事实敏感、是否能在闭环里提升决策、是否知道自己什么时候不可靠。 这页建议和 世界模型总览、生成式模拟与视频世">
+<meta property="og:locale" content="en_US">
+<meta property="article:published_time" content="2026-05-11T03:38:00.000Z">
+<meta property="article:modified_time" content="2026-05-11T03:38:00.000Z">
+<meta property="article:author" content="Du Jinyang">
+<meta property="article:tag" content="AI Notes">
+<meta property="article:tag" content="Reinforcement Learning">
+<meta property="article:tag" content="World Models">
+<meta name="twitter:card" content="summary">
+    
+    
+    <!--- Icon Part-->
+    <link rel="icon" type="image/png" href="https://charles2530.github.io/image/background/favicon.png" sizes="192x192">
+    <link rel="apple-touch-icon" sizes="180x180" href="https://charles2530.github.io/image/background/favicon.png">
+    <meta name="theme-color" content="#A31F34">
+    <link rel="shortcut icon" href="https://charles2530.github.io/image/background/favicon.png">
+    <!--- Page Info-->
+    
+    <title>
+        
+            评测与失效模式 -
+        
+        Charles&#39;s Castle
+    </title>
+
+    <link rel="stylesheet" href="//evan.beee.top/projects/hexo-theme-redefine@2.6.1/source/fonts/Chillax/chillax.css">
+
+    <!--- Inject Part-->
+    
+        
+            
+                
+                    <script data-swup-reload-script> var _hmt = _hmt || []; (function() { var hm = document.createElement("script"); hm.src = "https://hm.baidu.com/hm.js?8e0e5f382d14d87cbeadc33a36e71e86"; var s = document.getElementsByTagName("script")[0]; s.parentNode.insertBefore(hm, s); })(); </script>
+                
+    
+            
+    
+
+    
+        <style>
+    :root {
+        --preloader-background-color: #fff;
+        --preloader-text-color: #000;
+    }
+
+    @media (prefers-color-scheme: dark) {
+        :root {
+            --preloader-background-color: #202124;
+            --preloader-text-color: #fff;
+        }
+    }
+
+    @media (prefers-color-scheme: light) {
+        :root {
+            --preloader-background-color: #fff;
+            --preloader-text-color: #000;
+        }
+    }
+
+    @media (max-width: 600px) {
+        .ml13 {
+            font-size: 2.6rem !important; /* Adjust this value as needed */
+        }
+    }
+
+    .preloader {
+        display: flex;
+        flex-direction: column;
+        gap: 1rem; /* Tailwind 'gap-4' is 1rem */
+        align-items: center;
+        justify-content: center;
+        position: fixed;
+        padding: 12px;
+        top: 0;
+        right: 0;
+        bottom: 0;
+        left: 0;
+        width: 100vw;
+        height: 100vh; /* 'h-screen' is 100% of the viewport height */
+        background-color: var(--preloader-background-color);
+        z-index: 1100; /* 'z-[1100]' sets the z-index */
+        transition: opacity 0.2s ease-in-out;
+    }
+
+    .ml13 {
+        font-size: 3.2rem;
+        /* text-transform: uppercase; */
+        color: var(--preloader-text-color);
+        letter-spacing: -1px;
+        font-weight: 500;
+        font-family: 'Chillax-Variable', sans-serif;
+        text-align: center;
+    }
+
+    .ml13 .word {
+        display: inline-flex;
+        flex-wrap: wrap;
+        white-space: nowrap;
+    }
+
+    .ml13 .letter {
+        display: inline-block;
+        line-height: 1em;
+    }
+</style>
+
+<div class="preloader">
+    <script src="https://evan.beee.top/projects/hexo-theme-redefine@2.6.1/source/js/libs/anime.min.js"></script>
+    <h1 class="ml13">
+        Charles&#39;s Castle
+    </h1>
+    <script>
+        var textWrapper = document.querySelector('.ml13');
+        // Split text into words
+        var words = textWrapper.textContent.trim().split(' ');
+
+        // Clear the existing content
+        textWrapper.innerHTML = '';
+
+        // Wrap each word and its letters in spans
+        words.forEach(function(word) {
+            var wordSpan = document.createElement('span');
+            wordSpan.classList.add('word');
+            wordSpan.innerHTML = word.replace(/\S/g, "<span class='letter'>$&</span>");
+            textWrapper.appendChild(wordSpan);
+            textWrapper.appendChild(document.createTextNode(' ')); // Add space between words
+        });
+
+
+        anime.timeline({loop: true})
+            .add({
+                targets: '.ml13 .letter',
+                translateY: [100,0],
+                translateZ: 0,
+                opacity: [0,1],
+                easing: "easeOutExpo",
+                duration: 1400,
+                delay: (el, i) => 300 + 30 * i
+            }).add({
+            targets: '.ml13 .letter',
+            translateY: [0,-100],
+            opacity: [1,0],
+            easing: "easeInExpo",
+            duration: 1200,
+            delay: (el, i) => 100 + 30 * i
+        });
+
+        let themeStatus = JSON.parse(localStorage.getItem('REDEFINE-THEME-STATUS'))?.isDark;
+
+        // If the theme status is not found in local storage, check the preferred color scheme
+        if (themeStatus === undefined || themeStatus === null) {
+            if (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) {
+                themeStatus = 'dark';
+            } else {
+                themeStatus = 'light';
+            }
+        }
+
+        // Now you can use the themeStatus variable in your code
+        if (themeStatus) {
+            document.documentElement.style.setProperty('--preloader-background-color', '#202124');
+            document.documentElement.style.setProperty('--preloader-text-color', '#fff');
+        } else {
+            document.documentElement.style.setProperty('--preloader-background-color', '#fff');
+            document.documentElement.style.setProperty('--preloader-text-color', '#000');
+        }
+
+        window.addEventListener('load', function () {
+            hidePreloaderAfterTimeout(1000); // Hide after 1000 milliseconds once the window has loaded
+        });
+
+        // Backup failsafe: Hide preloader after a maximum of 5000 milliseconds, regardless of the window load event
+        hidePreloaderAfterTimeout(5000);
+
+        function hidePreloaderAfterTimeout(delay) {
+            setTimeout(function () {
+                var preloader = document.querySelector('.preloader');
+                preloader.style.opacity = '0';
+                setTimeout(function () {
+                    preloader.style.display = 'none';
+                }, 200);
+            }, delay);
+        }
+    </script>
+</div>
+    
+
+    
+<link rel="stylesheet" href="/css/style.css">
+
+
+    
+        <link rel="stylesheet" href="//evan.beee.top/projects/hexo-theme-redefine@2.6.1/source/assets/build/styles.css">
+    
+
+    <link rel="stylesheet" href="//evan.beee.top/projects/hexo-theme-redefine@2.6.1/source/fonts/fonts.css">
+    <link rel="stylesheet" href="//evan.beee.top/projects/hexo-theme-redefine@2.6.1/source/fonts/Satoshi/satoshi.css">
+    <!--- Font Part-->
+    
+    
+    
+    
+
+
+    <script id="hexo-configurations">
+    window.config = {"hostname":"charles2530.github.io","root":"/","language":"en","path":"search.xml"};
+    window.theme = {"articles":{"style":{"font_size":"16px","line_height":1.5,"image_border_radius":"14px","image_alignment":"center","image_caption":false,"link_icon":true,"title_alignment":"left","headings_top_spacing":{"h1":"5rem","h2":"4rem","h3":"2.8rem","h4":"2.5rem","h5":"2.2rem","h6":"2rem"}},"word_count":{"enable":true,"count":true,"min2read":true},"author_label":{"enable":true,"auto":true,"list":["lol","Neo","God"]},"code_block":{"copy":true,"style":"mac","font":{"enable":false,"family":null,"url":null}},"toc":{"enable":true,"max_depth":6,"number":false,"expand":true,"init_open":true},"copyright":{"enable":true,"default":"cc_by_nc_sa"},"lazyload":true,"recommendation":{"enable":true,"title":"recommend_articles","limit":3,"mobile_limit":2,"placeholder":"https://charles2530.github.io/image/background/p3.jfif","skip_dirs":[]}},"colors":{"primary":"#A31F34","secondary":"#1890ff","default_mode":"light"},"global":{"fonts":{"chinese":{"enable":false,"family":null,"url":null},"english":{"enable":false,"family":null,"url":null}},"content_max_width":"1000px","sidebar_width":"210px","hover":{"shadow":true,"scale":true},"scroll_progress":{"bar":true,"percentage":true},"website_counter":{"url":"https://cn.vercount.one/js","enable":true,"site_pv":true,"site_uv":true,"post_pv":true},"single_page":true,"preloader":true,"open_graph":true,"google_analytics":{"enable":false,"id":null}},"home_banner":{"enable":true,"style":"fixed","image":{"light":"https://charles2530.github.io/image/background/background-light1.jpg","dark":"https://charles2530.github.io/image/background/background-dark1.jpg"},"title":"Charles's Castle","subtitle":{"text":["Happiness is best!","Never give up!","Everyday is a gift!"],"hitokoto":{"enable":false,"api":"https://v1.hitokoto.cn"},"typing_speed":100,"backing_speed":80,"starting_delay":500,"backing_delay":1500,"loop":true,"smart_backspace":true},"text_color":{"light":"#000000","dark":"#d1d1b6"},"text_style":{"title_size":"3.2rem","subtitle_size":"1.5rem","line_height":1.2},"custom_font":{"enable":false,"family":null,"url":null},"social_links":{"enable":true,"style":"center","links":{"github":"https://github.com/Charles2530/","zhihu":"https://www.zhihu.com/people/yang-guang-xiao-zi-55-55","email":"charles2530@163.com"},"qrs":{"weixin":"https://charles2530.github.io/image/background/Wechat_icon.png"}}},"plugins":{"feed":{"enable":true},"aplayer":{"enable":false,"type":"fixed","audios":[{"name":null,"artist":null,"url":null,"cover":null},{"name":null,"artist":null,"url":null,"cover":null}]},"mermaid":{"enable":true,"version":"9.3.0"}},"version":"2.6.1","navbar":{"auto_hide":true,"color":{"left":"#f78736","right":"#367df7","transparency":35},"width":{"home":"1200px","pages":"1000px"},"links":{"Home":{"path":"/","icon":"fa-regular fa-house"},"Categories":{"path":"/categories","icon":"fas fa-bookmark"},"Tags":{"path":"/tags","icon":"fas fa-tags"},"About":{"icon":"fa-regular fa-user","submenus":{"Me":"/about","Github":"https://github.com/Charles2530/","Blog":"https://charles2530.github.io","Statistics":"https://tongji.baidu.com/"}},"AI Notes":{"path":"/ai-notes","icon":"fas fa-brain"}},"search":{"enable":true,"preload":true}},"page_templates":{"friends_column":2,"tags_style":"blur"},"home":{"sidebar":{"enable":true,"position":"left","first_item":"menu","announcement":"This is Charles's Castle","show_on_mobile":true,"links":{"Archives":{"path":"/archives","icon":"fa-regular fa-archive"},"Photos":{"icon":"fa-solid fa-image","path":"/masonry/"},"Essays":{"icon":"fa-solid fa-message-lines","path":"/essay/"},"Friends":{"icon":"fa-solid fa-user-group","path":"/friends/"}}},"article_date_format":"auto","categories":{"enable":true,"limit":3},"tags":{"enable":true,"limit":3}},"footerStart":"2022/12/27 00:00:00"};
+    window.lang_ago = {"second":"%s seconds ago","minute":"%s minutes ago","hour":"%s hours ago","day":"%s days ago","week":"%s weeks ago","month":"%s months ago","year":"%s years ago"};
+    window.data = {"masonry":true};
+  </script>
+    
+    <!--- Fontawesome Part-->
+    <link rel="stylesheet" href="//evan.beee.top/projects/hexo-theme-redefine@2.6.1/source/fontawesome/fontawesome.min.css">
+    <link rel="stylesheet" href="//evan.beee.top/projects/hexo-theme-redefine@2.6.1/source/fontawesome/brands.min.css">
+    <link rel="stylesheet" href="//evan.beee.top/projects/hexo-theme-redefine@2.6.1/source/fontawesome/solid.min.css">
+    <link rel="stylesheet" href="//evan.beee.top/projects/hexo-theme-redefine@2.6.1/source/fontawesome/regular.min.css">
+    
+    
+    
+    
+<meta name="generator" content="Hexo 6.3.0"><link rel="alternate" href="/atom.xml" title="Charles's Castle" type="application/atom+xml">
+<link rel="stylesheet" href="/css/prism-tomorrow.css" type="text/css"></head>
+
+
+<body>
+<div class="progress-bar-container">
+    
+        <span class="scroll-progress-bar"></span>
+    
+
+    
+        <span class="pjax-progress-bar"></span>
+<!--        <span class="swup-progress-icon">-->
+<!--            <i class="fa-solid fa-circle-notch fa-spin"></i>-->
+<!--        </span>-->
+    
+</div>
+
+
+<main class="page-container" id="swup">
+
+    
+
+    <div class="main-content-container">
+
+
+        <div class="main-content-header">
+            <header class="navbar-container px-6 md:px-12">
+
+    <div class="navbar-content ">
+        <div class="left">
+            
+                <a class="logo-image" href="/">
+                    <img src="https://charles2530.github.io/image/background/logo.jpg">
+                </a>
+            
+            <a class="logo-title" href="/">
+                
+                Charles&#39;s Castle
+                
+            </a>
+        </div>
+
+        <div class="right">
+            <!-- PC -->
+            <div class="desktop">
+                <ul class="navbar-list">
+                    
+                        
+                            
+
+                            <li class="navbar-item">
+                                <!-- Menu -->
+                                <a class=""
+                                   href="/"
+                                        >
+                                    <i class="fa-regular fa-house fa-fw"></i>
+                                    HOME
+                                    
+                                </a>
+
+                                <!-- Submenu -->
+                                
+                            </li>
+                    
+                        
+                            
+
+                            <li class="navbar-item">
+                                <!-- Menu -->
+                                <a class=""
+                                   href="/categories"
+                                        >
+                                    <i class="fas fa-bookmark fa-fw"></i>
+                                    CATEGORIES
+                                    
+                                </a>
+
+                                <!-- Submenu -->
+                                
+                            </li>
+                    
+                        
+                            
+
+                            <li class="navbar-item">
+                                <!-- Menu -->
+                                <a class=""
+                                   href="/tags"
+                                        >
+                                    <i class="fas fa-tags fa-fw"></i>
+                                    TAGS
+                                    
+                                </a>
+
+                                <!-- Submenu -->
+                                
+                            </li>
+                    
+                        
+                            
+
+                            <li class="navbar-item">
+                                <!-- Menu -->
+                                <a class="has-dropdown"
+                                   href="#"
+                                        onClick=&#34;return false;&#34;>
+                                    <i class="fa-regular fa-user fa-fw"></i>
+                                    ABOUT
+                                    <i class="fa-solid fa-chevron-down fa-fw"></i>
+                                </a>
+
+                                <!-- Submenu -->
+                                
+                                    <ul class="sub-menu">
+                                        
+                                            <li>
+                                                <a href="/about">
+                                                    ME
+                                                </a>
+                                            </li>
+                                        
+                                            <li>
+                                                <a target="_blank" rel="noopener" href="https://github.com/Charles2530/">
+                                                    GITHUB
+                                                </a>
+                                            </li>
+                                        
+                                            <li>
+                                                <a href="https://charles2530.github.io">
+                                                    BLOG
+                                                </a>
+                                            </li>
+                                        
+                                            <li>
+                                                <a target="_blank" rel="noopener" href="https://tongji.baidu.com/">
+                                                    STATISTICS
+                                                </a>
+                                            </li>
+                                        
+                                    </ul>
+                                
+                            </li>
+                    
+                        
+                            
+
+                            <li class="navbar-item">
+                                <!-- Menu -->
+                                <a class=""
+                                   href="/ai-notes"
+                                        >
+                                    <i class="fas fa-brain fa-fw"></i>
+                                    AI NOTES
+                                    
+                                </a>
+
+                                <!-- Submenu -->
+                                
+                            </li>
+                    
+                    
+                        <li class="navbar-item search search-popup-trigger">
+                            <i class="fa-solid fa-magnifying-glass"></i>
+                        </li>
+                    
+                </ul>
+            </div>
+            <!-- Mobile -->
+            <div class="mobile">
+                
+                    <div class="icon-item search search-popup-trigger"><i class="fa-solid fa-magnifying-glass"></i>
+                    </div>
+                
+                <div class="icon-item navbar-bar">
+                    <div class="navbar-bar-middle"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Mobile sheet -->
+    <div class="navbar-drawer h-screen w-full absolute top-0 left-0 bg-background-color flex flex-col justify-between">
+        <ul class="drawer-navbar-list flex flex-col px-4 justify-center items-start">
+            
+                
+                    
+
+                    <li class="drawer-navbar-item text-base my-1.5 flex flex-col w-full">
+                        
+                        <a class="py-1.5 px-2 flex flex-row items-center justify-between gap-1 hover:!text-primary active:!text-primary text-2xl font-semibold group border-b border-border-color hover:border-primary w-full "
+                           href="/"
+                        >
+                            <span>
+                                HOME
+                            </span>
+                            
+                                <i class="fa-regular fa-house fa-sm fa-fw"></i>
+                            
+                        </a>
+                        
+
+                        
+                    </li>
+            
+                
+                    
+
+                    <li class="drawer-navbar-item text-base my-1.5 flex flex-col w-full">
+                        
+                        <a class="py-1.5 px-2 flex flex-row items-center justify-between gap-1 hover:!text-primary active:!text-primary text-2xl font-semibold group border-b border-border-color hover:border-primary w-full "
+                           href="/categories"
+                        >
+                            <span>
+                                CATEGORIES
+                            </span>
+                            
+                                <i class="fas fa-bookmark fa-sm fa-fw"></i>
+                            
+                        </a>
+                        
+
+                        
+                    </li>
+            
+                
+                    
+
+                    <li class="drawer-navbar-item text-base my-1.5 flex flex-col w-full">
+                        
+                        <a class="py-1.5 px-2 flex flex-row items-center justify-between gap-1 hover:!text-primary active:!text-primary text-2xl font-semibold group border-b border-border-color hover:border-primary w-full "
+                           href="/tags"
+                        >
+                            <span>
+                                TAGS
+                            </span>
+                            
+                                <i class="fas fa-tags fa-sm fa-fw"></i>
+                            
+                        </a>
+                        
+
+                        
+                    </li>
+            
+                
+                    
+
+                    <li class="drawer-navbar-item-sub text-base my-1.5 flex flex-col w-full">
+                        
+                        <div class="py-1.5 px-2 flex flex-row items-center justify-between gap-1 hover:!text-primary active:!text-primary cursor-pointer text-2xl font-semibold group border-b border-border-color hover:border-primary w-full "
+                             navbar-data-toggle="submenu-About"
+                        >
+                            <span>
+                                ABOUT
+                            </span>
+                            
+                                <i class="fa-solid fa-chevron-right fa-sm fa-fw transition-all"></i>
+                            
+                        </div>
+                        
+
+                        
+                            <div class="flex-col items-start px-2 py-2 hidden" data-target="submenu-About">
+                                
+                                    <div class="drawer-navbar-item text-base flex flex-col justify-center items-start hover:underline active:underline hover:underline-offset-1 rounded-3xl">
+                                        <a class=" text-third-text-color text-xl"
+                                           href="/about">ME</a>
+                                    </div>
+                                
+                                    <div class="drawer-navbar-item text-base flex flex-col justify-center items-start hover:underline active:underline hover:underline-offset-1 rounded-3xl">
+                                        <a class=" text-third-text-color text-xl"
+                                           target="_blank" rel="noopener" href="https://github.com/Charles2530/">GITHUB</a>
+                                    </div>
+                                
+                                    <div class="drawer-navbar-item text-base flex flex-col justify-center items-start hover:underline active:underline hover:underline-offset-1 rounded-3xl">
+                                        <a class=" text-third-text-color text-xl"
+                                           href="https://charles2530.github.io">BLOG</a>
+                                    </div>
+                                
+                                    <div class="drawer-navbar-item text-base flex flex-col justify-center items-start hover:underline active:underline hover:underline-offset-1 rounded-3xl">
+                                        <a class=" text-third-text-color text-xl"
+                                           target="_blank" rel="noopener" href="https://tongji.baidu.com/">STATISTICS</a>
+                                    </div>
+                                
+                            </div>
+                        
+                    </li>
+            
+                
+                    
+
+                    <li class="drawer-navbar-item text-base my-1.5 flex flex-col w-full">
+                        
+                        <a class="py-1.5 px-2 flex flex-row items-center justify-between gap-1 hover:!text-primary active:!text-primary text-2xl font-semibold group border-b border-border-color hover:border-primary w-full "
+                           href="/ai-notes"
+                        >
+                            <span>
+                                AI NOTES
+                            </span>
+                            
+                                <i class="fas fa-brain fa-sm fa-fw"></i>
+                            
+                        </a>
+                        
+
+                        
+                    </li>
+            
+
+            
+            
+                
+                    
+                    <li class="drawer-navbar-item text-base my-1.5 flex flex-col w-full">
+                        <a class="py-1.5 px-2 flex flex-row items-center justify-between gap-1 hover:!text-primary active:!text-primary text-2xl font-semibold group border-b border-border-color hover:border-primary w-full active"
+                           href="/archives"
+                        >
+                            <span>Archives</span>
+                            <i class="fa-regular fa-archive fa-sm fa-fw"></i>
+                        </a>
+                    </li>
+                
+                    
+                    <li class="drawer-navbar-item text-base my-1.5 flex flex-col w-full">
+                        <a class="py-1.5 px-2 flex flex-row items-center justify-between gap-1 hover:!text-primary active:!text-primary text-2xl font-semibold group border-b border-border-color hover:border-primary w-full active"
+                           href="/masonry/"
+                        >
+                            <span>Photos</span>
+                            <i class="fa-solid fa-image fa-sm fa-fw"></i>
+                        </a>
+                    </li>
+                
+                    
+                    <li class="drawer-navbar-item text-base my-1.5 flex flex-col w-full">
+                        <a class="py-1.5 px-2 flex flex-row items-center justify-between gap-1 hover:!text-primary active:!text-primary text-2xl font-semibold group border-b border-border-color hover:border-primary w-full active"
+                           href="/essay/"
+                        >
+                            <span>Essays</span>
+                            <i class="fa-solid fa-message-lines fa-sm fa-fw"></i>
+                        </a>
+                    </li>
+                
+                    
+                    <li class="drawer-navbar-item text-base my-1.5 flex flex-col w-full">
+                        <a class="py-1.5 px-2 flex flex-row items-center justify-between gap-1 hover:!text-primary active:!text-primary text-2xl font-semibold group border-b border-border-color hover:border-primary w-full active"
+                           href="/friends/"
+                        >
+                            <span>Friends</span>
+                            <i class="fa-solid fa-user-group fa-sm fa-fw"></i>
+                        </a>
+                    </li>
+                
+            
+        </ul>
+
+        <div class="statistics flex justify-around my-2.5">
+    <a class="item tag-count-item flex flex-col justify-center items-center w-20" href="/tags">
+        <div class="number text-2xl sm:text-xl text-second-text-color font-semibold">44</div>
+        <div class="label text-third-text-color text-sm">Tags</div>
+    </a>
+    <a class="item tag-count-item flex flex-col justify-center items-center w-20" href="/categories">
+        <div class="number text-2xl sm:text-xl text-second-text-color font-semibold">96</div>
+        <div class="label text-third-text-color text-sm">Categories</div>
+    </a>
+    <a class="item tag-count-item flex flex-col justify-center items-center w-20" href="/archives">
+        <div class="number text-2xl sm:text-xl text-second-text-color font-semibold">479</div>
+        <div class="label text-third-text-color text-sm">Posts</div>
+    </a>
+</div>
+    </div>
+
+    <div class="window-mask"></div>
+
+</header>
+
+
+        </div>
+
+        <div class="main-content-body">
+
+            
+
+            <div class="main-content">
+
+                
+                    <div class="post-page-container flex relative justify-between box-border w-full h-full">
+    <div class="article-content-container">
+
+        <div class="article-title relative w-full">
+            
+                <div class="w-full flex items-center pt-6 justify-start">
+                    <h1 class="article-title-regular text-second-text-color text-4xl md:text-6xl font-bold px-2 sm:px-6 md:px-8 py-3">评测与失效模式</h1>
+                </div>
+            
+            </div>
+
+        
+            <div class="article-header flex flex-row gap-2 items-center px-2 sm:px-6 md:px-8">
+                <div class="avatar w-[46px] h-[46px] flex-shrink-0 rounded-medium border border-border-color p-[1px]">
+                    <img src="https://charles2530.github.io/image/background/logo2.jpg">
+                </div>
+                <div class="info flex flex-col justify-between">
+                    <div class="author flex items-center">
+                        <span class="name text-default-text-color text-lg font-semibold">Charles</span>
+                        
+                            <span class="author-label ml-1.5 text-xs px-2 py-0.5 rounded-small text-third-text-color border border-shadow-color-1">Lv7</span>
+                        
+                    </div>
+                    <div class="meta-info">
+                        <div class="article-meta-info">
+    <span class="article-date article-meta-item">
+        <i class="fa-regular fa-pen-fancy"></i>&nbsp;
+        <span class="desktop">2026-05-11 11:38</span>
+        <span class="mobile">2026-05-11 11:38</span>
+        <span class="hover-info">Created</span>
+    </span>
+    
+        <span class="article-date article-meta-item">
+            <i class="fa-regular fa-wrench"></i>&nbsp;
+            <span class="desktop">2026-05-11 11:38</span>
+            <span class="mobile">2026-05-11 11:38</span>
+            <span class="hover-info">Updated</span>
+        </span>
+    
+
+    
+        <span class="article-categories article-meta-item">
+            <i class="fa-regular fa-folders"></i>&nbsp;
+            <ul>
+                
+                
+                    
+                        
+                        <li>
+                            <a href="/categories/AI-Notes/">AI Notes</a>&nbsp;
+                        </li>
+                    
+                    
+                
+                    
+                        
+                            <li>></li>
+                        
+                        <li>
+                            <a href="/categories/AI-Notes/World-Models/">World Models</a>&nbsp;
+                        </li>
+                    
+                    
+                
+            </ul>
+        </span>
+    
+    
+        <span class="article-tags article-meta-item">
+            <i class="fa-regular fa-tags"></i>&nbsp;
+            <ul>
+                
+                    <li>
+                        <a href="/tags/AI-Notes/">AI Notes</a>&nbsp;
+                    </li>
+                
+                    <li>
+                        | <a href="/tags/Reinforcement-Learning/">Reinforcement Learning</a>&nbsp;
+                    </li>
+                
+                    <li>
+                        | <a href="/tags/World-Models/">World Models</a>&nbsp;
+                    </li>
+                
+            </ul>
+        </span>
+    
+
+    
+    
+        <span class="article-wordcount article-meta-item">
+            <i class="fa-regular fa-typewriter"></i>&nbsp;<span>2.5k Words</span>
+        </span>
+    
+    
+        <span class="article-min2read article-meta-item">
+            <i class="fa-regular fa-clock"></i>&nbsp;<span>8 Mins</span>
+        </span>
+    
+    
+        <span class="article-pv article-meta-item">
+            <i class="fa-regular fa-eye"></i>&nbsp;<span id="busuanzi_value_page_pv"></span>
+        </span>
+    
+</div>
+
+                    </div>
+                </div>
+            </div>
+        
+
+        
+
+
+        <div class="article-content markdown-body px-2 sm:px-6 md:px-8 pb-8">
+            <p>世界模型评测不能只看一步预测误差。一个模型可能生成很清晰的视频，却不能帮助规划；也可能短期 rollout 很准，但一接入闭环控制就被自己的误差放大。真正有用的评测应同时回答：模型是否学到世界结构、是否对动作和反事实敏感、是否能在闭环里提升决策、是否知道自己什么时候不可靠。</p>
+<p>这页建议和 <a href="/2026/05/11/ai-notes/files-world-models-index/">世界模型总览</a>、<a href="/2026/05/11/ai-notes/files-world-models-generative-simulation-and-video/">生成式模拟与视频世界模型</a>、<a href="/2026/05/11/ai-notes/files-world-models-uncertainty-and-risk-aware-planning/">不确定性与风险敏感规划</a> 一起读。总览页讲世界模型的定义，本页讲如何验收它是否可用。</p>
+
+  <div class="note p-4 mb-4 rounded-small info">
+    <p><strong>初学者先抓住</strong></p>
+<p>世界模型评测不能只看预测画面清不清楚。更关键的是：它是否对动作敏感，是否保留决策相关状态，接入 planner 后是否真的让任务变好。</p>
+
+  </div>
+
+  <div class="note p-4 mb-4 rounded-small default">
+    <p><strong>有趣例子：天气预报和出门决策</strong></p>
+<p>一张漂亮的云图不一定能帮你决定带不带伞。真正有用的天气模型要告诉你降雨概率、时间、地点和不确定性。世界模型也是这样：好看的未来不等于可规划的未来。</p>
+
+  </div>
+<h2 id="一-先分清评测对象wm-wam-vam-不一样"><a class="markdownIt-Anchor" href="#一-先分清评测对象wm-wam-vam-不一样"></a> 一、先分清评测对象：WM、WAM、VAM 不一样</h2>
+<p>世界模型至少有三层能力：</p>
+<ol>
+<li><strong>状态表示</strong>：是否把历史观测压成足够充分的 belief 或 latent；</li>
+<li><strong>动力学预测</strong>：给定状态和动作，能否合理预测未来；</li>
+<li><strong>决策支持</strong>：能否帮助规划、控制、探索、风险评估或数据回流。</li>
+</ol>
+<p><code>WM / WAM / VAM</code> 的评测重点不同：</p>
+<table>
+<thead>
+<tr>
+<th>类型</th>
+<th>应重点问什么</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>WM</code></td>
+<td>rollout 是否稳定，reward/risk/done 是否可读，imagined planning 是否提升决策</td>
+</tr>
+<tr>
+<td><code>WAM</code></td>
+<td>动作和世界是否被联合建模，动作生成是否从 world modeling 中获益</td>
+</tr>
+<tr>
+<td><code>VAM</code></td>
+<td>视频先验是否提升动作质量，视频 latent 是否有控制价值，视频分支成本是否值得</td>
+</tr>
+</tbody>
+</table>
+<p>因此，评测前先写清模型定位。一个只服务离线视频反事实的模型，不应被要求满足高频控制预算；一个声称可用于规划的模型，也不能只汇报视频质量。</p>
+<h2 id="二-观测层和状态层别把看起来准当成可规划"><a class="markdownIt-Anchor" href="#二-观测层和状态层别把看起来准当成可规划"></a> 二、观测层和状态层：别把“看起来准”当成“可规划”</h2>
+<p>观测层评测包括一步预测、多步 rollout、视频质量和 horizon-conditioned 曲线。一步预测损失可写成：</p>
+<h1 id="mathcall_1text-step"><a class="markdownIt-Anchor" href="#mathcall_1text-step"></a> $$<br />
+\mathcal{L}_{1\text{-step}}</h1>
+<p>\mathbb{E}[\ell(\hat{o}<em>{t+1}, o</em>{t+1})].<br />
+$$</p>
+<p>多步误差更关键：</p>
+<h1 id="mathcall_textrollouth"><a class="markdownIt-Anchor" href="#mathcall_textrollouth"></a> $$<br />
+\mathcal{L}_{\text{rollout}}(H)</h1>
+<p>\frac{1}{H}\sum_{h=1}^{H}<br />
+\mathbb{E}[\ell(\hat{o}<em>{t+h}, o</em>{t+h})].<br />
+$$</p>
+<p>如果 $H=1$ 表现很好，但随着 horizon 变长快速恶化，说明模型只能做局部拟合，不能稳定推演。对机器人、自动驾驶和长任务 agent 来说，这种模型很容易在规划中偏航。</p>
+<h3 id="状态表示评测"><a class="markdownIt-Anchor" href="#状态表示评测"></a> 状态表示评测</h3>
+<p>隐藏状态 $s_t$ 应保留任务相关信息，同时避免记忆大量无关细节。可用代理任务检查：</p>
+<ol>
+<li>是否能线性读出目标位置、速度、接触、遮挡和对象状态；</li>
+<li>是否能预测未来 reward、done、constraint violation；</li>
+<li>是否支持部分可观测环境中的 belief consistency；</li>
+<li>改变动作后，状态演化是否发生合理变化；</li>
+<li>是否能区分成功和失败轨迹的关键差异。</li>
+</ol>
+<p>视频质量指标如 FVD、PSNR、SSIM、LPIPS 只能说明一部分问题。世界模型最终要服务决策，清晰但平均化的未来可能比略粗糙但保留关键风险的未来更差。</p>
+<h2 id="三-决策层open-loop-closed-loop-与反事实"><a class="markdownIt-Anchor" href="#三-决策层open-loop-closed-loop-与反事实"></a> 三、决策层：Open-loop、Closed-loop 与反事实</h2>
+<p>世界模型最重要的指标之一，是接入规划或策略后能否提升累计回报：</p>
+<h1 id="jpi_textplan"><a class="markdownIt-Anchor" href="#jpi_textplan"></a> $$<br />
+J(\pi_{\text{plan}})</h1>
+<p>\mathbb{E}\left[\sum_{t=0}<sup>{T}\gamma</sup>t r_t\right].<br />
+$$</p>
+<p>但只报回报仍不够。评测必须区分 open-loop 和 closed-loop。</p>
+<table>
+<thead>
+<tr>
+<th>评测方式</th>
+<th>优点</th>
+<th>风险</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Open-loop</td>
+<td>可离线大规模跑，指标清晰，可复现</td>
+<td>始终靠近真实轨迹，不能暴露策略利用模型漏洞</td>
+</tr>
+<tr>
+<td>Closed-loop</td>
+<td>更接近真实部署，能暴露误差反馈</td>
+<td>成本高，变量多，复现实验更难</td>
+</tr>
+</tbody>
+</table>
+<p>很多世界模型 open-loop 好，closed-loop 差。原因是 closed-loop 会把模型错误反馈给后续输入，策略还会主动寻找模型中“看起来收益高”的漏洞。</p>
+
+  <div class="note p-4 mb-4 rounded-small info">
+    <p><strong>常见误区：open-loop 好就能闭环好</strong></p>
+<p>Open-loop 像让模型沿着真实历史轨迹补全未来，closed-loop 则是让模型的预测反过来影响下一步输入。前者更容易复现，后者更接近真实使用。世界模型一旦要服务规划，就必须检查策略是否会利用模型偏差，而不是只看离线 rollout 误差。</p>
+
+  </div>
+<h3 id="反事实评测应成为标配"><a class="markdownIt-Anchor" href="#反事实评测应成为标配"></a> 反事实评测应成为标配</h3>
+<p>如果模型声称理解动作后果，就必须测试反事实：</p>
+<ol>
+<li>固定历史，替换动作，未来是否合理变化；</li>
+<li>固定动作，改变场景结构，风险是否变化；</li>
+<li>边界决策处，不同动作的未来排序是否正确；</li>
+<li>模型是否能识别“更安全”和“更危险”的分支；</li>
+<li>动作敏感性是否集中在真正相关的状态变量上。</li>
+</ol>
+<p>动作敏感性可概念化为：</p>
+<p>$$<br />
+\Delta_{\text{act}} =<br />
+d(\hat{o}<em>{t+1:t+H}^{(a)}, \hat{o}</em>{t+1:t+H}^{(a’)}).<br />
+$$</p>
+<p>如果不同动作给出的未来几乎一样，模型再逼真也不适合控制。</p>
+<h2 id="四-风险-不确定性与长尾场景"><a class="markdownIt-Anchor" href="#四-风险-不确定性与长尾场景"></a> 四、风险、不确定性与长尾场景</h2>
+<p>高风险系统不能只看平均回报。世界模型必须在 near-miss、罕见遮挡、复杂接触、多主体交互、施工路段、突发横穿、透明/软体/反光物体等长尾场景中单独评测。</p>
+<p>不确定性评测至少要看：</p>
+<ol>
+<li>高不确定性是否对应更高真实误差；</li>
+<li>高风险预测是否对应更高失败率；</li>
+<li>预测区间是否覆盖真实未来；</li>
+<li>不同场景桶里的校准是否一致；</li>
+<li>不确定性升高时，回退策略是否更保守。</li>
+</ol>
+<p>只报一个 ECE 或平均 NLL 不够。模型可能在常规场景校准良好，但在稀有风险场景极度过度自信。对部署而言，后者更危险。</p>
+<h3 id="near-miss-应单独建桶"><a class="markdownIt-Anchor" href="#near-miss-应单独建桶"></a> Near-miss 应单独建桶</h3>
+<p>Near-miss 比真实事故更高频，也更适合回流训练。建议记录：</p>
+<ol>
+<li>最小安全间距；</li>
+<li>接触/碰撞前的风险分数；</li>
+<li>模型是否提前预测危险；</li>
+<li>planner 是否因为模型低估风险而继续推进；</li>
+<li>回退或人工接管是否及时触发。</li>
+</ol>
+<p>世界模型如果只拟合“常见正常情况”，在低概率危险事件上错误但自信，就不应进入高风险闭环。</p>
+<h2 id="五-典型失效模式"><a class="markdownIt-Anchor" href="#五-典型失效模式"></a> 五、典型失效模式</h2>
+<p>世界模型的 failure mode 最好按“修复动作”分类，而不是只写现象。</p>
+<table>
+<thead>
+<tr>
+<th>失效类型</th>
+<th>现象</th>
+<th>常见修复方向</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>表示失败</td>
+<td>小物体丢失、遮挡后失忆、接触状态不可读</td>
+<td>改 tokenizer/latent、加辅助头、补关键状态标签</td>
+</tr>
+<tr>
+<td>动力学失败</td>
+<td>短期准、长期漂，多主体交互崩</td>
+<td>多步训练、latent rollout 正则、真实 closed-loop 回归</td>
+</tr>
+<tr>
+<td>动作条件失败</td>
+<td>改动作未来不变，或动作影响方向错</td>
+<td>反事实数据、动作注入方式、action-conditioned loss</td>
+</tr>
+<tr>
+<td>平均化未来</td>
+<td>多模态未来被洗成均值</td>
+<td>随机 latent、分支采样、扩散/token 生成</td>
+</tr>
+<tr>
+<td>规划漏洞</td>
+<td>planner 找到模型里高回报但现实坏的动作</td>
+<td>adversarial planning test、模型不确定性惩罚、真实回放</td>
+</tr>
+<tr>
+<td>部署失败</td>
+<td>太慢、不可监控、无法回退</td>
+<td>分层使用、低频分析、回退阈值、资源预算</td>
+</tr>
+</tbody>
+</table>
+<p>一个具体例子是机械臂抓取。模型可能生成“物体靠近夹爪”的画面，但没有学到摩擦、接触和夹爪闭合后的状态转移。视觉上没问题，反事实动作一测就暴露：轻微改变抓取角度后，未来仍然几乎不变。</p>
+<h2 id="六-评测流水线与发布门槛"><a class="markdownIt-Anchor" href="#六-评测流水线与发布门槛"></a> 六、评测流水线与发布门槛</h2>
+<p>世界模型验收建议分五层：</p>
+<ol>
+<li><strong>观测层</strong>：一步、多步、视频质量、horizon-conditioned 曲线；</li>
+<li><strong>状态层</strong>：reward/risk/done 可读性、belief consistency、线性探测；</li>
+<li><strong>决策层</strong>：planning return、成功率、regret、closed-loop 表现；</li>
+<li><strong>鲁棒层</strong>：长尾、near-miss、OOD、部分观测、长时任务；</li>
+<li><strong>部署层</strong>：实时预算、回退条件、监控、人审和数据回流。</li>
+</ol>
+<p>发布门槛不应写成一张论文榜单，而应写成验收单：</p>
+<ol>
+<li>模型定位是 <code>WM / WAM / VAM</code> 中哪一类；</li>
+<li>输入输出接口和部署环节清楚；</li>
+<li>open-loop 与 closed-loop 指标都过线；</li>
+<li>counterfactual sensitivity 通过专项测试；</li>
+<li>高风险桶中不过度自信；</li>
+<li>实时性满足目标环节预算；</li>
+<li>失败样本能进入数据回流；</li>
+<li>已定义自动回退和人工接管条件。</li>
+</ol>
+<h3 id="人审也要结构化"><a class="markdownIt-Anchor" href="#人审也要结构化"></a> 人审也要结构化</h3>
+<p>人类评审仍然重要，但不能只问“看起来像不像”。更好的方式是按场景桶抽样，让评审者回答结构化问题：物理一致性、动作敏感性、风险可见性、长期稳定性、是否保留任务关键信息。</p>
+<h2 id="七-线上回流评测不是一次性表格"><a class="markdownIt-Anchor" href="#七-线上回流评测不是一次性表格"></a> 七、线上回流：评测不是一次性表格</h2>
+<p>一旦世界模型进入系统，评测就应变成持续回流：</p>
+<ol>
+<li>记录高不确定性样本；</li>
+<li>记录预测与真实偏差大的片段；</li>
+<li>记录 planner 依赖模型后失败的案例；</li>
+<li>记录 near-miss、人工接管和回退触发；</li>
+<li>把失败映射到表示、动力学、动作条件、规划或部署问题；</li>
+<li>将高价值样本进入专项评测桶和再训练数据。</li>
+</ol>
+<p>最终判断很直接：一个世界模型如果不能在闭环里提升决策、识别风险、支持反事实或改善数据回流，那它还只是预测模型或生成模型；只有当它改变系统决策质量时，才算通过世界模型验收。</p>
+
+        </div>
+
+        
+            <div class="post-copyright-info w-full my-8 px-2 sm:px-6 md:px-8">
+                <div class="article-copyright-info-container">
+    <ul>
+        <li><strong>Title:</strong> 评测与失效模式</li>
+        <li><strong>Author:</strong> Charles</li>
+        <li><strong>Created at
+                :</strong> 2026-05-11 11:38:00</li>
+        
+            <li>
+                <strong>Updated at
+                    :</strong> 2026-05-11 11:38:00
+            </li>
+        
+        <li>
+            <strong>Link:</strong> https://charles2530.github.io/2026/05/11/ai-notes/files-world-models-evaluation-and-failure-modes/
+        </li>
+        <li>
+            <strong>
+                License:
+            </strong>
+            
+
+            
+                This work is licensed under <a class="license" target="_blank" rel="noopener" href="https://creativecommons.org/licenses/by-nc-sa/4.0">CC BY-NC-SA 4.0</a>.
+            
+        </li>
+    </ul>
+</div>
+
+            </div>
+        
+
+        
+            <ul class="post-tags-box text-lg mt-1.5 flex-wrap justify-center flex md:hidden">
+                
+                    <li class="tag-item mx-0.5">
+                        <a href="/tags/AI-Notes/">#AI Notes</a>&nbsp;
+                    </li>
+                
+                    <li class="tag-item mx-0.5">
+                        <a href="/tags/Reinforcement-Learning/">#Reinforcement Learning</a>&nbsp;
+                    </li>
+                
+                    <li class="tag-item mx-0.5">
+                        <a href="/tags/World-Models/">#World Models</a>&nbsp;
+                    </li>
+                
+            </ul>
+        
+
+        
+  <div class="recommended-article px-2 sm:px-6 md:px-8">
+   <div class="recommended-desktop">
+    <div class="recommended-article-header text-xl md:text-3xl font-bold mt-10">
+     <i aria-hidden="true"></i><span>recommend_articles</span>
+    </div>
+    <div class="recommended-article-group"><a class="recommended-article-item" href="/2023/06/27/mysql-note-3/" title="MySQL_note_3" rel="bookmark">
+  <img src="https://charles2530.github.io/image/background/p7.jpg" alt="MySQL_note_3" class="!max-w-none">
+  <span class="title">MySQL_note_3</span>
+</a><a class="recommended-article-item" href="/2023/04/21/jml-note/" title="JML-note" rel="bookmark">
+  <img src="https://charles2530.github.io/image/background/p2.jpg" alt="JML-note" class="!max-w-none">
+  <span class="title">JML-note</span>
+</a><a class="recommended-article-item" href="/2023/07/31/ajax-note-4/" title="Ajax-note-4" rel="bookmark">
+  <img src="https://charles2530.github.io/image/background/p4.jfif" alt="Ajax-note-4" class="!max-w-none">
+  <span class="title">Ajax-note-4</span>
+</a></div>
+   </div>
+   <div class="recommended-mobile">
+   <div class="recommended-article-header text-xl md:text-3xl font-bold mt-10">
+     <i aria-hidden="true"></i><span>recommend_articles</span>
+   </div>
+   <div class="recommended-article-group"><a class="recommended-article-item" href="/2023/06/27/mysql-note-3/" title="MySQL_note_3" rel="bookmark">
+  <img src="https://charles2530.github.io/image/background/p7.jpg" alt="MySQL_note_3" class="!max-w-none">
+  <span class="title">MySQL_note_3</span>
+</a><a class="recommended-article-item" href="/2023/04/21/jml-note/" title="JML-note" rel="bookmark">
+  <img src="https://charles2530.github.io/image/background/p2.jpg" alt="JML-note" class="!max-w-none">
+  <span class="title">JML-note</span>
+</a></div>
+   </div>
+  </div>
+
+        
+            <div class="article-nav my-8 flex justify-between items-center px-2 sm:px-6 md:px-8">
+                
+                    <div class="article-prev border-border-color shadow-redefine-flat shadow-shadow-color-2 rounded-medium px-4 py-2 hover:shadow-redefine-flat-hover hover:shadow-shadow-color-2">
+                        <a class="prev"
+                        rel="prev"
+                        href="/2026/05/11/ai-notes/files-world-models-generative-simulation-and-video/"
+                        >
+                            <span class="left arrow-icon flex justify-center items-center">
+                                <i class="fa-solid fa-chevron-left"></i>
+                            </span>
+                            <span class="title flex justify-center items-center">
+                                <span class="post-nav-title-item">生成式模拟与视频世界模型</span>
+                                <span class="post-nav-item">Prev posts</span>
+                            </span>
+                        </a>
+                    </div>
+                
+                
+                    <div class="article-next border-border-color shadow-redefine-flat shadow-shadow-color-2 rounded-medium px-4 py-2 hover:shadow-redefine-flat-hover hover:shadow-shadow-color-2">
+                        <a class="next"
+                        rel="next"
+                        href="/2026/05/11/ai-notes/files-world-models-data-engines-and-self-improvement/"
+                        >
+                            <span class="title flex justify-center items-center">
+                                <span class="post-nav-title-item">数据引擎与自我改进</span>
+                                <span class="post-nav-item">Next posts</span>
+                            </span>
+                            <span class="right arrow-icon flex justify-center items-center">
+                                <i class="fa-solid fa-chevron-right"></i>
+                            </span>
+                        </a>
+                    </div>
+                
+            </div>
+        
+
+
+        
+            <div class="comment-container px-2 sm:px-6 md:px-8 pb-8">
+                <div class="comments-container mt-10 w-full ">
+    <div id="comment-anchor" class="w-full h-2.5"></div>
+    <div class="comment-area-title w-full my-1.5 md:my-2.5 text-xl md:text-3xl font-bold">
+        Comments
+    </div>
+    
+
+        <!-- 
+            
+    <div id="gitalk-container"></div>
+    <script data-swup-reload-script
+            src="//cdn.staticfile.org/gitalk/1.8.0/gitalk.min.js"></script>
+    <script data-swup-reload-script>
+
+        function loadGitalk() {
+            let __gitalk__pathname = decodeURI(location.pathname);
+            const __gitalk__pathnameLength = __gitalk__pathname.length;
+            const __gitalk__pathnameMaxLength = 50;
+            if (__gitalk__pathnameLength > __gitalk__pathnameMaxLength) {
+                __gitalk__pathname = __gitalk__pathname.substring(0, __gitalk__pathnameMaxLength - 3) + '...';
+            }
+
+            try {
+                Gitalk && new Gitalk({
+                    clientID: '8083299a8ee2aaf23879',
+                    clientSecret: 'a8161e81d4872181e884fdb69f7be24916b6a9d0',
+                    repo: 'charles2530_issues',
+                    owner: 'Charles2530',
+                    admin: ['Charles2530'],
+                    id: __gitalk__pathname,
+                    language: 'en',
+                    proxy: 'https://github.com/login/oauth/access_token'
+                }).render('gitalk-container');
+
+            } catch (e) {
+                window.Gitalk = null;
+            }
+        }
+
+        if ('true') {
+            const loadGitalkTimeout = setTimeout(() => {
+                loadGitalk();
+                clearTimeout(loadGitalkTimeout);
+            }, 1000);
+        } else {
+            window.addEventListener('DOMContentLoaded', loadGitalk);
+        }
+    </script>
+
+
+
+         -->
+        <script src="https://utteranc.es/client.js" repo="Charles2530/Charles2530.github.io" issue-term="pathname"
+            label="Comment" theme="preferred-color-scheme" crossorigin="anonymous" async>
+            </script>
+    
+</div>
+
+            </div>
+        
+    </div>
+
+    
+        <div class="toc-content-container">
+            <div class="post-toc-wrap">
+    <div class="post-toc">
+        <div class="toc-title">On this page</div>
+        <div class="page-title">评测与失效模式</div>
+        <ol class="nav"><li class="nav-item nav-level-2"><a class="nav-link" href="#%E4%B8%80-%E5%85%88%E5%88%86%E6%B8%85%E8%AF%84%E6%B5%8B%E5%AF%B9%E8%B1%A1wm-wam-vam-%E4%B8%8D%E4%B8%80%E6%A0%B7"><span class="nav-text"> 一、先分清评测对象：WM、WAM、VAM 不一样</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#%E4%BA%8C-%E8%A7%82%E6%B5%8B%E5%B1%82%E5%92%8C%E7%8A%B6%E6%80%81%E5%B1%82%E5%88%AB%E6%8A%8A%E7%9C%8B%E8%B5%B7%E6%9D%A5%E5%87%86%E5%BD%93%E6%88%90%E5%8F%AF%E8%A7%84%E5%88%92"><span class="nav-text"> 二、观测层和状态层：别把“看起来准”当成“可规划”</span></a></li></ol></li><li class="nav-item nav-level-1"><a class="nav-link" href="#mathcall_1text-step"><span class="nav-text"> $$
+\mathcal{L}_{1\text{-step}}</span></a></li><li class="nav-item nav-level-1"><a class="nav-link" href="#mathcall_textrollouth"><span class="nav-text"> $$
+\mathcal{L}_{\text{rollout}}(H)</span></a><ol class="nav-child"><li class="nav-item nav-level-3"><a class="nav-link" href="#%E7%8A%B6%E6%80%81%E8%A1%A8%E7%A4%BA%E8%AF%84%E6%B5%8B"><span class="nav-text"> 状态表示评测</span></a></li></ol></li><li class="nav-item nav-level-2"><a class="nav-link" href="#%E4%B8%89-%E5%86%B3%E7%AD%96%E5%B1%82open-loop-closed-loop-%E4%B8%8E%E5%8F%8D%E4%BA%8B%E5%AE%9E"><span class="nav-text"> 三、决策层：Open-loop、Closed-loop 与反事实</span></a></li></ol></li><li class="nav-item nav-level-1"><a class="nav-link" href="#jpi_textplan"><span class="nav-text"> $$
+J(\pi_{\text{plan}})</span></a><ol class="nav-child"><li class="nav-item nav-level-3"><a class="nav-link" href="#%E5%8F%8D%E4%BA%8B%E5%AE%9E%E8%AF%84%E6%B5%8B%E5%BA%94%E6%88%90%E4%B8%BA%E6%A0%87%E9%85%8D"><span class="nav-text"> 反事实评测应成为标配</span></a></li></ol></li><li class="nav-item nav-level-2"><a class="nav-link" href="#%E5%9B%9B-%E9%A3%8E%E9%99%A9-%E4%B8%8D%E7%A1%AE%E5%AE%9A%E6%80%A7%E4%B8%8E%E9%95%BF%E5%B0%BE%E5%9C%BA%E6%99%AF"><span class="nav-text"> 四、风险、不确定性与长尾场景</span></a><ol class="nav-child"><li class="nav-item nav-level-3"><a class="nav-link" href="#near-miss-%E5%BA%94%E5%8D%95%E7%8B%AC%E5%BB%BA%E6%A1%B6"><span class="nav-text"> Near-miss 应单独建桶</span></a></li></ol></li><li class="nav-item nav-level-2"><a class="nav-link" href="#%E4%BA%94-%E5%85%B8%E5%9E%8B%E5%A4%B1%E6%95%88%E6%A8%A1%E5%BC%8F"><span class="nav-text"> 五、典型失效模式</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#%E5%85%AD-%E8%AF%84%E6%B5%8B%E6%B5%81%E6%B0%B4%E7%BA%BF%E4%B8%8E%E5%8F%91%E5%B8%83%E9%97%A8%E6%A7%9B"><span class="nav-text"> 六、评测流水线与发布门槛</span></a><ol class="nav-child"><li class="nav-item nav-level-3"><a class="nav-link" href="#%E4%BA%BA%E5%AE%A1%E4%B9%9F%E8%A6%81%E7%BB%93%E6%9E%84%E5%8C%96"><span class="nav-text"> 人审也要结构化</span></a></li></ol></li><li class="nav-item nav-level-2"><a class="nav-link" href="#%E4%B8%83-%E7%BA%BF%E4%B8%8A%E5%9B%9E%E6%B5%81%E8%AF%84%E6%B5%8B%E4%B8%8D%E6%98%AF%E4%B8%80%E6%AC%A1%E6%80%A7%E8%A1%A8%E6%A0%BC"><span class="nav-text"> 七、线上回流：评测不是一次性表格</span></a></li></ol>
+
+    </div>
+</div>
+        </div>
+    
+</div>
+
+
+
+                
+
+            </div>
+
+            
+
+        </div>
+
+        <div class="main-content-footer">
+            <footer class="footer mt-5 py-5 h-auto text-base text-third-text-color relative border-t-2 border-t-border-color">
+    <div class="info-container py-3 text-center">
+        
+        <div class="text-center">
+            &copy;
+            
+              <span>2022</span>
+              -
+            
+            2026&nbsp;&nbsp;<i class="fa-solid fa-heart fa-beat" style="--fa-animation-duration: 0.5s; color: #f54545"></i>&nbsp;&nbsp;<a href="/">Charles</a>
+            
+                
+                <p class="post-count space-x-0.5">
+                    <span>
+                        479 posts in total
+                    </span>
+                    
+                        <span>
+                            1896.7k words in total
+                        </span>
+                    
+                </p>
+            
+        </div>
+        
+            <script data-swup-reload-script src="https://cn.vercount.one/js"></script>
+            <div class="relative text-center lg:absolute lg:right-[20px] lg:top-1/2 lg:-translate-y-1/2 lg:text-right">
+                
+                    <span id="busuanzi_container_site_uv" class="lg:!block">
+                        <span class="text-sm">Visitor Count</span>
+                        <span id="busuanzi_value_site_uv"></span>
+                    </span>
+                
+                
+                    <span id="busuanzi_container_site_pv" class="lg:!block">
+                        <span class="text-sm">Total Page Views</span>
+                        <span id="busuanzi_value_site_pv"></span>
+                    </span>
+                
+            </div>
+        
+        <div class="relative text-center lg:absolute lg:left-[20px] lg:top-1/2 lg:-translate-y-1/2 lg:text-left">
+            <span class="lg:block text-sm">Powered by Charles</span>
+            <span class="text-sm lg:block">Theme&nbsp;<a class="text-base" target="_blank" href="https://github.com/EvanNotFound/hexo-theme-redefine">Redefine v2.6.1</a></span>
+        </div>
+        
+        
+            <div>
+                Blog up for <span class="odometer" id="runtime_days" ></span> days <span class="odometer" id="runtime_hours"></span> hrs <span class="odometer" id="runtime_minutes"></span> Min <span class="odometer" id="runtime_seconds"></span> Sec
+            </div>
+        
+        
+            <script data-swup-reload-script>
+                try {
+                    function odometer_init() {
+                    const elements = document.querySelectorAll('.odometer');
+                    elements.forEach(el => {
+                        new Odometer({
+                            el,
+                            format: '( ddd).dd',
+                            duration: 200
+                        });
+                    });
+                    }
+                    odometer_init();
+                } catch (error) {}
+            </script>
+        
+        
+            
+                
+        
+                
+        
+        
+    </div>  
+</footer>
+        </div>
+    </div>
+
+    
+        <div class="post-tools">
+            <div class="post-tools-container">
+    <ul class="article-tools-list">
+        <!-- TOC aside toggle -->
+        
+            <li class="right-bottom-tools page-aside-toggle">
+                <i class="fa-regular fa-outdent"></i>
+            </li>
+        
+
+        <!-- go comment -->
+        
+            <li class="go-comment">
+                <i class="fa-regular fa-comments"></i>
+            </li>
+        
+    </ul>
+</div>
+
+        </div>
+    
+
+    <div class="right-side-tools-container">
+        <div class="side-tools-container">
+    <ul class="hidden-tools-list">
+        <li class="right-bottom-tools tool-font-adjust-plus flex justify-center items-center">
+            <i class="fa-regular fa-magnifying-glass-plus"></i>
+        </li>
+
+        <li class="right-bottom-tools tool-font-adjust-minus flex justify-center items-center">
+            <i class="fa-regular fa-magnifying-glass-minus"></i>
+        </li>
+
+        <li class="right-bottom-tools tool-dark-light-toggle flex justify-center items-center">
+            <i class="fa-regular fa-moon"></i>
+        </li>
+
+        <!-- rss -->
+        
+            <li class="right-bottom-tools rss flex justify-center items-center">
+                <a class="flex justify-center items-center"
+                   href="/atom.xml"
+                   target="_blank"
+                >
+                <i class="fa-regular fa-rss"></i>
+                </a>
+            </li>
+        
+
+        
+
+        <li class="right-bottom-tools tool-scroll-to-bottom flex justify-center items-center">
+            <i class="fa-regular fa-arrow-down"></i>
+        </li>
+    </ul>
+
+    <ul class="visible-tools-list">
+        <li class="right-bottom-tools toggle-tools-list flex justify-center items-center">
+            <i class="fa-regular fa-cog fa-spin"></i>
+        </li>
+        
+            <li class="right-bottom-tools tool-scroll-to-top flex justify-center items-center">
+                <i class="arrow-up fas fa-arrow-up"></i>
+                <span class="percent"></span>
+            </li>
+        
+        
+    </ul>
+</div>
+
+    </div>
+
+    <div class="image-viewer-container">
+    <img src="">
+</div>
+
+
+    
+        <div class="search-pop-overlay">
+    <div class="popup search-popup">
+        <div class="search-header">
+          <span class="search-input-field-pre">
+            <i class="fa-solid fa-keyboard"></i>
+          </span>
+            <div class="search-input-container">
+                <input autocomplete="off"
+                       autocorrect="off"
+                       autocapitalize="off"
+                       placeholder="Search..."
+                       spellcheck="false"
+                       type="search"
+                       class="search-input"
+                >
+            </div>
+            <span class="popup-btn-close">
+                <i class="fa-solid fa-times"></i>
+            </span>
+        </div>
+        <div id="search-result">
+            <div id="no-result">
+                <i class="fa-solid fa-spinner fa-spin-pulse fa-5x fa-fw"></i>
+            </div>
+        </div>
+    </div>
+</div>
+
+    
+
+</main>
+
+
+    <script src="https://evan.beee.top/projects/hexo-theme-redefine@2.6.1/source/js/libs/Swup.min.js"></script><script src="https://evan.beee.top/projects/hexo-theme-redefine@2.6.1/source/js/libs/SwupSlideTheme.min.js"></script><script src="https://evan.beee.top/projects/hexo-theme-redefine@2.6.1/source/js/libs/SwupScriptsPlugin.min.js"></script><script src="https://evan.beee.top/projects/hexo-theme-redefine@2.6.1/source/js/libs/SwupProgressPlugin.min.js"></script><script src="https://evan.beee.top/projects/hexo-theme-redefine@2.6.1/source/js/libs/SwupScrollPlugin.min.js"></script><script src="https://evan.beee.top/projects/hexo-theme-redefine@2.6.1/source/js/libs/SwupPreloadPlugin.min.js"></script>
+<script>
+    const swup = new Swup({
+        plugins: [
+            new SwupScriptsPlugin({
+                optin: true,
+            }),
+            new SwupProgressPlugin(),
+            new SwupScrollPlugin({
+                offset: 80,
+            }),
+            new SwupSlideTheme({
+                mainElement: ".main-content-body",
+            }),
+            new SwupPreloadPlugin(),
+        ],
+        containers: ["#swup"],
+    });
+</script>
+
+
+
+
+
+
+<script type="module" src="https://evan.beee.top/projects/hexo-theme-redefine@2.6.1/source/js/tools/imageViewer.js"></script><script type="module" src="https://evan.beee.top/projects/hexo-theme-redefine@2.6.1/source/js/utils.js"></script><script type="module" src="https://evan.beee.top/projects/hexo-theme-redefine@2.6.1/source/js/main.js"></script><script type="module" src="https://evan.beee.top/projects/hexo-theme-redefine@2.6.1/source/js/layouts/navbarShrink.js"></script><script type="module" src="https://evan.beee.top/projects/hexo-theme-redefine@2.6.1/source/js/tools/scrollTopBottom.js"></script><script type="module" src="https://evan.beee.top/projects/hexo-theme-redefine@2.6.1/source/js/tools/lightDarkSwitch.js"></script><script type="module" src="https://evan.beee.top/projects/hexo-theme-redefine@2.6.1/source/js/layouts/categoryList.js"></script>
+
+
+    <script type="module" src="https://evan.beee.top/projects/hexo-theme-redefine@2.6.1/source/js/tools/localSearch.js"></script>
+
+
+
+    <script type="module" src="https://evan.beee.top/projects/hexo-theme-redefine@2.6.1/source/js/tools/codeBlock.js"></script>
+
+
+
+    <script type="module" src="https://evan.beee.top/projects/hexo-theme-redefine@2.6.1/source/js/layouts/lazyload.js"></script>
+
+
+
+    <script src="https://evan.beee.top/projects/hexo-theme-redefine@2.6.1/source/js/tools/runtime.js"></script>
+    <script src="https://evan.beee.top/projects/hexo-theme-redefine@2.6.1/source/js/libs/odometer.min.js"></script>
+    <link rel="stylesheet" href="//evan.beee.top/projects/hexo-theme-redefine@2.6.1/source/assets/odometer-theme-minimal.css">
+
+
+
+  <script src="https://evan.beee.top/projects/hexo-theme-redefine@2.6.1/source/js/libs/Typed.min.js"></script>
+  <script type="module" src="https://evan.beee.top/projects/hexo-theme-redefine@2.6.1/source/js/plugins/typed.js"></script>
+
+
+
+    <script src="https://evan.beee.top/projects/hexo-theme-redefine@2.6.1/source/js/libs/mermaid.min.js"></script>
+    <script src="https://evan.beee.top/projects/hexo-theme-redefine@2.6.1/source/js/plugins/mermaid.js"></script>
+
+
+
+    <script src="https://evan.beee.top/projects/hexo-theme-redefine@2.6.1/source/js/libs/minimasonry.min.js"></script>
+    <script type="module" src="https://evan.beee.top/projects/hexo-theme-redefine@2.6.1/source/js/plugins/masonry.js"></script>
+
+
+
+
+<div class="post-scripts" data-swup-reload-script>
+    
+        <script type="module" src="https://evan.beee.top/projects/hexo-theme-redefine@2.6.1/source/js/tools/tocToggle.js"></script><script type="module" src="https://evan.beee.top/projects/hexo-theme-redefine@2.6.1/source/js/layouts/toc.js"></script><script type="module" src="https://evan.beee.top/projects/hexo-theme-redefine@2.6.1/source/js/plugins/tabs.js"></script>
+    
+</div>
+
+
+</body>
+</html>
+<!-- 页面点击小红心 -->
+<script type="text/javascript" src="/js/love.js"></script>

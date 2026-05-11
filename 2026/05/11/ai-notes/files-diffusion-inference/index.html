@@ -1,0 +1,1450 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="keywords" content="Charles">
+    
+    <meta name="author" content="Charles">
+    <!-- preconnect -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+
+    
+        
+        
+        
+    
+    <!--- Seo Part-->
+    
+    <link rel="canonical" href="https://charles2530.github.io/2026/05/11/ai-notes/files-diffusion-inference/"/>
+    <meta name="robots" content="index,follow">
+    <meta name="googlebot" content="index,follow">
+    <meta name="revisit-after" content="1 days">
+    
+        <meta name="description" content="扩散推理的本质，是把训练好的去噪网络当成一个向量场估计器，再沿着这条向量场从噪声走回数据分布。 采样器可以先按“预算怎么花”来理解。 Euler 更像低成本快速基线， Heun 用额外模型调用换更平滑的修正， DPM-Solver++ 则更适合作为少步高质量和强 guidance 场景的默认候选。DDPM 原论文的 p">
+<meta property="og:type" content="article">
+<meta property="og:title" content="扩散模型的采样与推理">
+<meta property="og:url" content="https://charles2530.github.io/2026/05/11/ai-notes/files-diffusion-inference/index.html">
+<meta property="og:site_name" content="Charles&#39;s Castle">
+<meta property="og:description" content="扩散推理的本质，是把训练好的去噪网络当成一个向量场估计器，再沿着这条向量场从噪声走回数据分布。 采样器可以先按“预算怎么花”来理解。 Euler 更像低成本快速基线， Heun 用额外模型调用换更平滑的修正， DPM-Solver++ 则更适合作为少步高质量和强 guidance 场景的默认候选。DDPM 原论文的 p">
+<meta property="og:locale" content="en_US">
+<meta property="og:image" content="https://charles2530.github.io/ai-notes-assets/images/paper-figures/diffusion/ddpm-figure-14-progressive-generation.jpg">
+<meta property="article:published_time" content="2026-05-11T01:07:00.000Z">
+<meta property="article:modified_time" content="2026-05-11T01:07:00.000Z">
+<meta property="article:author" content="Du Jinyang">
+<meta property="article:tag" content="AI Notes">
+<meta property="article:tag" content="Diffusion">
+<meta property="article:tag" content="Diffusion Models">
+<meta property="article:tag" content="Inference">
+<meta name="twitter:card" content="summary">
+<meta name="twitter:image" content="https://charles2530.github.io/ai-notes-assets/images/paper-figures/diffusion/ddpm-figure-14-progressive-generation.jpg">
+    
+    
+    <!--- Icon Part-->
+    <link rel="icon" type="image/png" href="https://charles2530.github.io/image/background/favicon.png" sizes="192x192">
+    <link rel="apple-touch-icon" sizes="180x180" href="https://charles2530.github.io/image/background/favicon.png">
+    <meta name="theme-color" content="#A31F34">
+    <link rel="shortcut icon" href="https://charles2530.github.io/image/background/favicon.png">
+    <!--- Page Info-->
+    
+    <title>
+        
+            扩散模型的采样与推理 -
+        
+        Charles&#39;s Castle
+    </title>
+
+    <link rel="stylesheet" href="//evan.beee.top/projects/hexo-theme-redefine@2.6.1/source/fonts/Chillax/chillax.css">
+
+    <!--- Inject Part-->
+    
+        
+            
+                
+                    <script data-swup-reload-script> var _hmt = _hmt || []; (function() { var hm = document.createElement("script"); hm.src = "https://hm.baidu.com/hm.js?8e0e5f382d14d87cbeadc33a36e71e86"; var s = document.getElementsByTagName("script")[0]; s.parentNode.insertBefore(hm, s); })(); </script>
+                
+    
+            
+    
+
+    
+        <style>
+    :root {
+        --preloader-background-color: #fff;
+        --preloader-text-color: #000;
+    }
+
+    @media (prefers-color-scheme: dark) {
+        :root {
+            --preloader-background-color: #202124;
+            --preloader-text-color: #fff;
+        }
+    }
+
+    @media (prefers-color-scheme: light) {
+        :root {
+            --preloader-background-color: #fff;
+            --preloader-text-color: #000;
+        }
+    }
+
+    @media (max-width: 600px) {
+        .ml13 {
+            font-size: 2.6rem !important; /* Adjust this value as needed */
+        }
+    }
+
+    .preloader {
+        display: flex;
+        flex-direction: column;
+        gap: 1rem; /* Tailwind 'gap-4' is 1rem */
+        align-items: center;
+        justify-content: center;
+        position: fixed;
+        padding: 12px;
+        top: 0;
+        right: 0;
+        bottom: 0;
+        left: 0;
+        width: 100vw;
+        height: 100vh; /* 'h-screen' is 100% of the viewport height */
+        background-color: var(--preloader-background-color);
+        z-index: 1100; /* 'z-[1100]' sets the z-index */
+        transition: opacity 0.2s ease-in-out;
+    }
+
+    .ml13 {
+        font-size: 3.2rem;
+        /* text-transform: uppercase; */
+        color: var(--preloader-text-color);
+        letter-spacing: -1px;
+        font-weight: 500;
+        font-family: 'Chillax-Variable', sans-serif;
+        text-align: center;
+    }
+
+    .ml13 .word {
+        display: inline-flex;
+        flex-wrap: wrap;
+        white-space: nowrap;
+    }
+
+    .ml13 .letter {
+        display: inline-block;
+        line-height: 1em;
+    }
+</style>
+
+<div class="preloader">
+    <script src="https://evan.beee.top/projects/hexo-theme-redefine@2.6.1/source/js/libs/anime.min.js"></script>
+    <h1 class="ml13">
+        Charles&#39;s Castle
+    </h1>
+    <script>
+        var textWrapper = document.querySelector('.ml13');
+        // Split text into words
+        var words = textWrapper.textContent.trim().split(' ');
+
+        // Clear the existing content
+        textWrapper.innerHTML = '';
+
+        // Wrap each word and its letters in spans
+        words.forEach(function(word) {
+            var wordSpan = document.createElement('span');
+            wordSpan.classList.add('word');
+            wordSpan.innerHTML = word.replace(/\S/g, "<span class='letter'>$&</span>");
+            textWrapper.appendChild(wordSpan);
+            textWrapper.appendChild(document.createTextNode(' ')); // Add space between words
+        });
+
+
+        anime.timeline({loop: true})
+            .add({
+                targets: '.ml13 .letter',
+                translateY: [100,0],
+                translateZ: 0,
+                opacity: [0,1],
+                easing: "easeOutExpo",
+                duration: 1400,
+                delay: (el, i) => 300 + 30 * i
+            }).add({
+            targets: '.ml13 .letter',
+            translateY: [0,-100],
+            opacity: [1,0],
+            easing: "easeInExpo",
+            duration: 1200,
+            delay: (el, i) => 100 + 30 * i
+        });
+
+        let themeStatus = JSON.parse(localStorage.getItem('REDEFINE-THEME-STATUS'))?.isDark;
+
+        // If the theme status is not found in local storage, check the preferred color scheme
+        if (themeStatus === undefined || themeStatus === null) {
+            if (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) {
+                themeStatus = 'dark';
+            } else {
+                themeStatus = 'light';
+            }
+        }
+
+        // Now you can use the themeStatus variable in your code
+        if (themeStatus) {
+            document.documentElement.style.setProperty('--preloader-background-color', '#202124');
+            document.documentElement.style.setProperty('--preloader-text-color', '#fff');
+        } else {
+            document.documentElement.style.setProperty('--preloader-background-color', '#fff');
+            document.documentElement.style.setProperty('--preloader-text-color', '#000');
+        }
+
+        window.addEventListener('load', function () {
+            hidePreloaderAfterTimeout(1000); // Hide after 1000 milliseconds once the window has loaded
+        });
+
+        // Backup failsafe: Hide preloader after a maximum of 5000 milliseconds, regardless of the window load event
+        hidePreloaderAfterTimeout(5000);
+
+        function hidePreloaderAfterTimeout(delay) {
+            setTimeout(function () {
+                var preloader = document.querySelector('.preloader');
+                preloader.style.opacity = '0';
+                setTimeout(function () {
+                    preloader.style.display = 'none';
+                }, 200);
+            }, delay);
+        }
+    </script>
+</div>
+    
+
+    
+<link rel="stylesheet" href="/css/style.css">
+
+
+    
+        <link rel="stylesheet" href="//evan.beee.top/projects/hexo-theme-redefine@2.6.1/source/assets/build/styles.css">
+    
+
+    <link rel="stylesheet" href="//evan.beee.top/projects/hexo-theme-redefine@2.6.1/source/fonts/fonts.css">
+    <link rel="stylesheet" href="//evan.beee.top/projects/hexo-theme-redefine@2.6.1/source/fonts/Satoshi/satoshi.css">
+    <!--- Font Part-->
+    
+    
+    
+    
+
+
+    <script id="hexo-configurations">
+    window.config = {"hostname":"charles2530.github.io","root":"/","language":"en","path":"search.xml"};
+    window.theme = {"articles":{"style":{"font_size":"16px","line_height":1.5,"image_border_radius":"14px","image_alignment":"center","image_caption":false,"link_icon":true,"title_alignment":"left","headings_top_spacing":{"h1":"5rem","h2":"4rem","h3":"2.8rem","h4":"2.5rem","h5":"2.2rem","h6":"2rem"}},"word_count":{"enable":true,"count":true,"min2read":true},"author_label":{"enable":true,"auto":true,"list":["lol","Neo","God"]},"code_block":{"copy":true,"style":"mac","font":{"enable":false,"family":null,"url":null}},"toc":{"enable":true,"max_depth":6,"number":false,"expand":true,"init_open":true},"copyright":{"enable":true,"default":"cc_by_nc_sa"},"lazyload":true,"recommendation":{"enable":true,"title":"recommend_articles","limit":3,"mobile_limit":2,"placeholder":"https://charles2530.github.io/image/background/p3.jfif","skip_dirs":[]}},"colors":{"primary":"#A31F34","secondary":"#1890ff","default_mode":"light"},"global":{"fonts":{"chinese":{"enable":false,"family":null,"url":null},"english":{"enable":false,"family":null,"url":null}},"content_max_width":"1000px","sidebar_width":"210px","hover":{"shadow":true,"scale":true},"scroll_progress":{"bar":true,"percentage":true},"website_counter":{"url":"https://cn.vercount.one/js","enable":true,"site_pv":true,"site_uv":true,"post_pv":true},"single_page":true,"preloader":true,"open_graph":true,"google_analytics":{"enable":false,"id":null}},"home_banner":{"enable":true,"style":"fixed","image":{"light":"https://charles2530.github.io/image/background/background-light1.jpg","dark":"https://charles2530.github.io/image/background/background-dark1.jpg"},"title":"Charles's Castle","subtitle":{"text":["Happiness is best!","Never give up!","Everyday is a gift!"],"hitokoto":{"enable":false,"api":"https://v1.hitokoto.cn"},"typing_speed":100,"backing_speed":80,"starting_delay":500,"backing_delay":1500,"loop":true,"smart_backspace":true},"text_color":{"light":"#000000","dark":"#d1d1b6"},"text_style":{"title_size":"3.2rem","subtitle_size":"1.5rem","line_height":1.2},"custom_font":{"enable":false,"family":null,"url":null},"social_links":{"enable":true,"style":"center","links":{"github":"https://github.com/Charles2530/","zhihu":"https://www.zhihu.com/people/yang-guang-xiao-zi-55-55","email":"charles2530@163.com"},"qrs":{"weixin":"https://charles2530.github.io/image/background/Wechat_icon.png"}}},"plugins":{"feed":{"enable":true},"aplayer":{"enable":false,"type":"fixed","audios":[{"name":null,"artist":null,"url":null,"cover":null},{"name":null,"artist":null,"url":null,"cover":null}]},"mermaid":{"enable":true,"version":"9.3.0"}},"version":"2.6.1","navbar":{"auto_hide":true,"color":{"left":"#f78736","right":"#367df7","transparency":35},"width":{"home":"1200px","pages":"1000px"},"links":{"Home":{"path":"/","icon":"fa-regular fa-house"},"Categories":{"path":"/categories","icon":"fas fa-bookmark"},"Tags":{"path":"/tags","icon":"fas fa-tags"},"About":{"icon":"fa-regular fa-user","submenus":{"Me":"/about","Github":"https://github.com/Charles2530/","Blog":"https://charles2530.github.io","Statistics":"https://tongji.baidu.com/"}},"AI Notes":{"path":"/ai-notes","icon":"fas fa-brain"}},"search":{"enable":true,"preload":true}},"page_templates":{"friends_column":2,"tags_style":"blur"},"home":{"sidebar":{"enable":true,"position":"left","first_item":"menu","announcement":"This is Charles's Castle","show_on_mobile":true,"links":{"Archives":{"path":"/archives","icon":"fa-regular fa-archive"},"Photos":{"icon":"fa-solid fa-image","path":"/masonry/"},"Essays":{"icon":"fa-solid fa-message-lines","path":"/essay/"},"Friends":{"icon":"fa-solid fa-user-group","path":"/friends/"}}},"article_date_format":"auto","categories":{"enable":true,"limit":3},"tags":{"enable":true,"limit":3}},"footerStart":"2022/12/27 00:00:00"};
+    window.lang_ago = {"second":"%s seconds ago","minute":"%s minutes ago","hour":"%s hours ago","day":"%s days ago","week":"%s weeks ago","month":"%s months ago","year":"%s years ago"};
+    window.data = {"masonry":true};
+  </script>
+    
+    <!--- Fontawesome Part-->
+    <link rel="stylesheet" href="//evan.beee.top/projects/hexo-theme-redefine@2.6.1/source/fontawesome/fontawesome.min.css">
+    <link rel="stylesheet" href="//evan.beee.top/projects/hexo-theme-redefine@2.6.1/source/fontawesome/brands.min.css">
+    <link rel="stylesheet" href="//evan.beee.top/projects/hexo-theme-redefine@2.6.1/source/fontawesome/solid.min.css">
+    <link rel="stylesheet" href="//evan.beee.top/projects/hexo-theme-redefine@2.6.1/source/fontawesome/regular.min.css">
+    
+    
+    
+    
+<meta name="generator" content="Hexo 6.3.0"><link rel="alternate" href="/atom.xml" title="Charles's Castle" type="application/atom+xml">
+<link rel="stylesheet" href="/css/prism-tomorrow.css" type="text/css"></head>
+
+
+<body>
+<div class="progress-bar-container">
+    
+        <span class="scroll-progress-bar"></span>
+    
+
+    
+        <span class="pjax-progress-bar"></span>
+<!--        <span class="swup-progress-icon">-->
+<!--            <i class="fa-solid fa-circle-notch fa-spin"></i>-->
+<!--        </span>-->
+    
+</div>
+
+
+<main class="page-container" id="swup">
+
+    
+
+    <div class="main-content-container">
+
+
+        <div class="main-content-header">
+            <header class="navbar-container px-6 md:px-12">
+
+    <div class="navbar-content ">
+        <div class="left">
+            
+                <a class="logo-image" href="/">
+                    <img src="https://charles2530.github.io/image/background/logo.jpg">
+                </a>
+            
+            <a class="logo-title" href="/">
+                
+                Charles&#39;s Castle
+                
+            </a>
+        </div>
+
+        <div class="right">
+            <!-- PC -->
+            <div class="desktop">
+                <ul class="navbar-list">
+                    
+                        
+                            
+
+                            <li class="navbar-item">
+                                <!-- Menu -->
+                                <a class=""
+                                   href="/"
+                                        >
+                                    <i class="fa-regular fa-house fa-fw"></i>
+                                    HOME
+                                    
+                                </a>
+
+                                <!-- Submenu -->
+                                
+                            </li>
+                    
+                        
+                            
+
+                            <li class="navbar-item">
+                                <!-- Menu -->
+                                <a class=""
+                                   href="/categories"
+                                        >
+                                    <i class="fas fa-bookmark fa-fw"></i>
+                                    CATEGORIES
+                                    
+                                </a>
+
+                                <!-- Submenu -->
+                                
+                            </li>
+                    
+                        
+                            
+
+                            <li class="navbar-item">
+                                <!-- Menu -->
+                                <a class=""
+                                   href="/tags"
+                                        >
+                                    <i class="fas fa-tags fa-fw"></i>
+                                    TAGS
+                                    
+                                </a>
+
+                                <!-- Submenu -->
+                                
+                            </li>
+                    
+                        
+                            
+
+                            <li class="navbar-item">
+                                <!-- Menu -->
+                                <a class="has-dropdown"
+                                   href="#"
+                                        onClick=&#34;return false;&#34;>
+                                    <i class="fa-regular fa-user fa-fw"></i>
+                                    ABOUT
+                                    <i class="fa-solid fa-chevron-down fa-fw"></i>
+                                </a>
+
+                                <!-- Submenu -->
+                                
+                                    <ul class="sub-menu">
+                                        
+                                            <li>
+                                                <a href="/about">
+                                                    ME
+                                                </a>
+                                            </li>
+                                        
+                                            <li>
+                                                <a target="_blank" rel="noopener" href="https://github.com/Charles2530/">
+                                                    GITHUB
+                                                </a>
+                                            </li>
+                                        
+                                            <li>
+                                                <a href="https://charles2530.github.io">
+                                                    BLOG
+                                                </a>
+                                            </li>
+                                        
+                                            <li>
+                                                <a target="_blank" rel="noopener" href="https://tongji.baidu.com/">
+                                                    STATISTICS
+                                                </a>
+                                            </li>
+                                        
+                                    </ul>
+                                
+                            </li>
+                    
+                        
+                            
+
+                            <li class="navbar-item">
+                                <!-- Menu -->
+                                <a class=""
+                                   href="/ai-notes"
+                                        >
+                                    <i class="fas fa-brain fa-fw"></i>
+                                    AI NOTES
+                                    
+                                </a>
+
+                                <!-- Submenu -->
+                                
+                            </li>
+                    
+                    
+                        <li class="navbar-item search search-popup-trigger">
+                            <i class="fa-solid fa-magnifying-glass"></i>
+                        </li>
+                    
+                </ul>
+            </div>
+            <!-- Mobile -->
+            <div class="mobile">
+                
+                    <div class="icon-item search search-popup-trigger"><i class="fa-solid fa-magnifying-glass"></i>
+                    </div>
+                
+                <div class="icon-item navbar-bar">
+                    <div class="navbar-bar-middle"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Mobile sheet -->
+    <div class="navbar-drawer h-screen w-full absolute top-0 left-0 bg-background-color flex flex-col justify-between">
+        <ul class="drawer-navbar-list flex flex-col px-4 justify-center items-start">
+            
+                
+                    
+
+                    <li class="drawer-navbar-item text-base my-1.5 flex flex-col w-full">
+                        
+                        <a class="py-1.5 px-2 flex flex-row items-center justify-between gap-1 hover:!text-primary active:!text-primary text-2xl font-semibold group border-b border-border-color hover:border-primary w-full "
+                           href="/"
+                        >
+                            <span>
+                                HOME
+                            </span>
+                            
+                                <i class="fa-regular fa-house fa-sm fa-fw"></i>
+                            
+                        </a>
+                        
+
+                        
+                    </li>
+            
+                
+                    
+
+                    <li class="drawer-navbar-item text-base my-1.5 flex flex-col w-full">
+                        
+                        <a class="py-1.5 px-2 flex flex-row items-center justify-between gap-1 hover:!text-primary active:!text-primary text-2xl font-semibold group border-b border-border-color hover:border-primary w-full "
+                           href="/categories"
+                        >
+                            <span>
+                                CATEGORIES
+                            </span>
+                            
+                                <i class="fas fa-bookmark fa-sm fa-fw"></i>
+                            
+                        </a>
+                        
+
+                        
+                    </li>
+            
+                
+                    
+
+                    <li class="drawer-navbar-item text-base my-1.5 flex flex-col w-full">
+                        
+                        <a class="py-1.5 px-2 flex flex-row items-center justify-between gap-1 hover:!text-primary active:!text-primary text-2xl font-semibold group border-b border-border-color hover:border-primary w-full "
+                           href="/tags"
+                        >
+                            <span>
+                                TAGS
+                            </span>
+                            
+                                <i class="fas fa-tags fa-sm fa-fw"></i>
+                            
+                        </a>
+                        
+
+                        
+                    </li>
+            
+                
+                    
+
+                    <li class="drawer-navbar-item-sub text-base my-1.5 flex flex-col w-full">
+                        
+                        <div class="py-1.5 px-2 flex flex-row items-center justify-between gap-1 hover:!text-primary active:!text-primary cursor-pointer text-2xl font-semibold group border-b border-border-color hover:border-primary w-full "
+                             navbar-data-toggle="submenu-About"
+                        >
+                            <span>
+                                ABOUT
+                            </span>
+                            
+                                <i class="fa-solid fa-chevron-right fa-sm fa-fw transition-all"></i>
+                            
+                        </div>
+                        
+
+                        
+                            <div class="flex-col items-start px-2 py-2 hidden" data-target="submenu-About">
+                                
+                                    <div class="drawer-navbar-item text-base flex flex-col justify-center items-start hover:underline active:underline hover:underline-offset-1 rounded-3xl">
+                                        <a class=" text-third-text-color text-xl"
+                                           href="/about">ME</a>
+                                    </div>
+                                
+                                    <div class="drawer-navbar-item text-base flex flex-col justify-center items-start hover:underline active:underline hover:underline-offset-1 rounded-3xl">
+                                        <a class=" text-third-text-color text-xl"
+                                           target="_blank" rel="noopener" href="https://github.com/Charles2530/">GITHUB</a>
+                                    </div>
+                                
+                                    <div class="drawer-navbar-item text-base flex flex-col justify-center items-start hover:underline active:underline hover:underline-offset-1 rounded-3xl">
+                                        <a class=" text-third-text-color text-xl"
+                                           href="https://charles2530.github.io">BLOG</a>
+                                    </div>
+                                
+                                    <div class="drawer-navbar-item text-base flex flex-col justify-center items-start hover:underline active:underline hover:underline-offset-1 rounded-3xl">
+                                        <a class=" text-third-text-color text-xl"
+                                           target="_blank" rel="noopener" href="https://tongji.baidu.com/">STATISTICS</a>
+                                    </div>
+                                
+                            </div>
+                        
+                    </li>
+            
+                
+                    
+
+                    <li class="drawer-navbar-item text-base my-1.5 flex flex-col w-full">
+                        
+                        <a class="py-1.5 px-2 flex flex-row items-center justify-between gap-1 hover:!text-primary active:!text-primary text-2xl font-semibold group border-b border-border-color hover:border-primary w-full "
+                           href="/ai-notes"
+                        >
+                            <span>
+                                AI NOTES
+                            </span>
+                            
+                                <i class="fas fa-brain fa-sm fa-fw"></i>
+                            
+                        </a>
+                        
+
+                        
+                    </li>
+            
+
+            
+            
+                
+                    
+                    <li class="drawer-navbar-item text-base my-1.5 flex flex-col w-full">
+                        <a class="py-1.5 px-2 flex flex-row items-center justify-between gap-1 hover:!text-primary active:!text-primary text-2xl font-semibold group border-b border-border-color hover:border-primary w-full active"
+                           href="/archives"
+                        >
+                            <span>Archives</span>
+                            <i class="fa-regular fa-archive fa-sm fa-fw"></i>
+                        </a>
+                    </li>
+                
+                    
+                    <li class="drawer-navbar-item text-base my-1.5 flex flex-col w-full">
+                        <a class="py-1.5 px-2 flex flex-row items-center justify-between gap-1 hover:!text-primary active:!text-primary text-2xl font-semibold group border-b border-border-color hover:border-primary w-full active"
+                           href="/masonry/"
+                        >
+                            <span>Photos</span>
+                            <i class="fa-solid fa-image fa-sm fa-fw"></i>
+                        </a>
+                    </li>
+                
+                    
+                    <li class="drawer-navbar-item text-base my-1.5 flex flex-col w-full">
+                        <a class="py-1.5 px-2 flex flex-row items-center justify-between gap-1 hover:!text-primary active:!text-primary text-2xl font-semibold group border-b border-border-color hover:border-primary w-full active"
+                           href="/essay/"
+                        >
+                            <span>Essays</span>
+                            <i class="fa-solid fa-message-lines fa-sm fa-fw"></i>
+                        </a>
+                    </li>
+                
+                    
+                    <li class="drawer-navbar-item text-base my-1.5 flex flex-col w-full">
+                        <a class="py-1.5 px-2 flex flex-row items-center justify-between gap-1 hover:!text-primary active:!text-primary text-2xl font-semibold group border-b border-border-color hover:border-primary w-full active"
+                           href="/friends/"
+                        >
+                            <span>Friends</span>
+                            <i class="fa-solid fa-user-group fa-sm fa-fw"></i>
+                        </a>
+                    </li>
+                
+            
+        </ul>
+
+        <div class="statistics flex justify-around my-2.5">
+    <a class="item tag-count-item flex flex-col justify-center items-center w-20" href="/tags">
+        <div class="number text-2xl sm:text-xl text-second-text-color font-semibold">44</div>
+        <div class="label text-third-text-color text-sm">Tags</div>
+    </a>
+    <a class="item tag-count-item flex flex-col justify-center items-center w-20" href="/categories">
+        <div class="number text-2xl sm:text-xl text-second-text-color font-semibold">96</div>
+        <div class="label text-third-text-color text-sm">Categories</div>
+    </a>
+    <a class="item tag-count-item flex flex-col justify-center items-center w-20" href="/archives">
+        <div class="number text-2xl sm:text-xl text-second-text-color font-semibold">479</div>
+        <div class="label text-third-text-color text-sm">Posts</div>
+    </a>
+</div>
+    </div>
+
+    <div class="window-mask"></div>
+
+</header>
+
+
+        </div>
+
+        <div class="main-content-body">
+
+            
+
+            <div class="main-content">
+
+                
+                    <div class="post-page-container flex relative justify-between box-border w-full h-full">
+    <div class="article-content-container">
+
+        <div class="article-title relative w-full">
+            
+                <div class="w-full flex items-center pt-6 justify-start">
+                    <h1 class="article-title-regular text-second-text-color text-4xl md:text-6xl font-bold px-2 sm:px-6 md:px-8 py-3">扩散模型的采样与推理</h1>
+                </div>
+            
+            </div>
+
+        
+            <div class="article-header flex flex-row gap-2 items-center px-2 sm:px-6 md:px-8">
+                <div class="avatar w-[46px] h-[46px] flex-shrink-0 rounded-medium border border-border-color p-[1px]">
+                    <img src="https://charles2530.github.io/image/background/logo2.jpg">
+                </div>
+                <div class="info flex flex-col justify-between">
+                    <div class="author flex items-center">
+                        <span class="name text-default-text-color text-lg font-semibold">Charles</span>
+                        
+                            <span class="author-label ml-1.5 text-xs px-2 py-0.5 rounded-small text-third-text-color border border-shadow-color-1">Lv7</span>
+                        
+                    </div>
+                    <div class="meta-info">
+                        <div class="article-meta-info">
+    <span class="article-date article-meta-item">
+        <i class="fa-regular fa-pen-fancy"></i>&nbsp;
+        <span class="desktop">2026-05-11 09:07</span>
+        <span class="mobile">2026-05-11 09:07</span>
+        <span class="hover-info">Created</span>
+    </span>
+    
+        <span class="article-date article-meta-item">
+            <i class="fa-regular fa-wrench"></i>&nbsp;
+            <span class="desktop">2026-05-11 09:07</span>
+            <span class="mobile">2026-05-11 09:07</span>
+            <span class="hover-info">Updated</span>
+        </span>
+    
+
+    
+        <span class="article-categories article-meta-item">
+            <i class="fa-regular fa-folders"></i>&nbsp;
+            <ul>
+                
+                
+                    
+                        
+                        <li>
+                            <a href="/categories/AI-Notes/">AI Notes</a>&nbsp;
+                        </li>
+                    
+                    
+                
+                    
+                        
+                            <li>></li>
+                        
+                        <li>
+                            <a href="/categories/AI-Notes/Diffusion/">Diffusion</a>&nbsp;
+                        </li>
+                    
+                    
+                
+            </ul>
+        </span>
+    
+    
+        <span class="article-tags article-meta-item">
+            <i class="fa-regular fa-tags"></i>&nbsp;
+            <ul>
+                
+                    <li>
+                        <a href="/tags/AI-Notes/">AI Notes</a>&nbsp;
+                    </li>
+                
+                    <li>
+                        | <a href="/tags/Diffusion/">Diffusion</a>&nbsp;
+                    </li>
+                
+                    <li>
+                        | <a href="/tags/Diffusion-Models/">Diffusion Models</a>&nbsp;
+                    </li>
+                
+                    <li>
+                        | <a href="/tags/Inference/">Inference</a>&nbsp;
+                    </li>
+                
+            </ul>
+        </span>
+    
+
+    
+    
+        <span class="article-wordcount article-meta-item">
+            <i class="fa-regular fa-typewriter"></i>&nbsp;<span>3.7k Words</span>
+        </span>
+    
+    
+        <span class="article-min2read article-meta-item">
+            <i class="fa-regular fa-clock"></i>&nbsp;<span>13 Mins</span>
+        </span>
+    
+    
+        <span class="article-pv article-meta-item">
+            <i class="fa-regular fa-eye"></i>&nbsp;<span id="busuanzi_value_page_pv"></span>
+        </span>
+    
+</div>
+
+                    </div>
+                </div>
+            </div>
+        
+
+        
+
+
+        <div class="article-content markdown-body px-2 sm:px-6 md:px-8 pb-8">
+            <p>扩散推理的本质，是把训练好的去噪网络当成一个向量场估计器，再沿着这条向量场从噪声走回数据分布。</p>
+<p>采样器可以先按“预算怎么花”来理解。<code>Euler</code> 更像低成本快速基线，<code>Heun</code> 用额外模型调用换更平滑的修正，<code>DPM-Solver++</code> 则更适合作为少步高质量和强 guidance 场景的默认候选。DDPM 原论文的 progressive generation 图能直观看到：采样不是一次完成，而是从噪声逐步形成结构和细节。</p>
+<p><img  
+                     lazyload
+                     src="/images/loading.svg"
+                     data-src="/ai-notes-assets/images/paper-figures/diffusion/ddpm-figure-14-progressive-generation.jpg"
+                      alt="DDPM progressive generation 原论文图" 
+                ></p>
+<p><small>图源：<a class="link"   target="_blank" rel="noopener" href="https://arxiv.org/abs/2006.11239" >Denoising Diffusion Probabilistic Models <i class="fa-regular fa-arrow-up-right-from-square fa-sm"></i></a>，Figure 14。原论文图意：CIFAR-10 unconditional generation 的 progressive generation 过程，展示反向采样链中图像如何从噪声逐步变成可辨认样本。</small></p>
+
+  <div class="note p-4 mb-4 rounded-small info">
+    <p><strong>图解：progressive generation 图要看成采样轨迹</strong></p>
+<p>这张图展示的是同一条反向链上不同时间点的样子：早期主要从噪声里形成粗结构，中后期逐步补边缘、颜色和纹理。它说明“采样步”本来承担逐层成形的职责。采样器不是在提升模型本身的知识，而是在决定同一个去噪网络如何离散求解。实际选型时不要只看单张图效果，应该按步数、guidance、prompt 类型、延迟和失败样本分桶比较。</p>
+
+  </div>
+
+  <div class="note p-4 mb-4 rounded-small info">
+    <p><strong>难点解释：采样器为什么能换</strong></p>
+<p>训练好的扩散网络给出的是“往哪里去噪”的方向估计。采样器决定每一步沿这个方向怎么走、走多远、是否校正。只要接口一致，同一个模型可以搭配不同 sampler，但步数越少，对 sampler 和预测质量的要求越高。</p>
+
+  </div>
+
+  <div class="note p-4 mb-4 rounded-small info">
+    <p><strong>常见误区：步数越少就越先进</strong></p>
+<p>少步采样真正要比较的是速度、质量、稳定性和失败分布。4 步模型如果只在简单 prompt 上好看，却在文字、多人、复杂布局或高 guidance 下明显抖动，工程上未必优于 12 或 20 步方案。初学者看采样器时，最好把步数当成预算约束，而不是方法排名。</p>
+
+  </div>
+
+  <div class="note p-4 mb-4 rounded-small default">
+    <p><strong>有趣例子：下山路线</strong></p>
+<p>去噪像从雾山山顶走到山脚村庄。Euler 每次看当前坡度就迈一步；Heun 会先试走再校正；DPM-Solver 像根据山路形状做更聪明的多步预测。路线不同，但目标都是尽快安全到村庄。</p>
+
+  </div>
+<h2 id="1-为什么推理会慢"><a class="markdownIt-Anchor" href="#1-为什么推理会慢"></a> 1. 为什么推理会慢</h2>
+<p>原始 <code>DDPM</code> 往往需要 (T=1000) 左右的离散步。若每一步都要跑一次大 UNet，整体时延会很高。</p>
+<p><strong>所以采样加速主要在做两件事</strong>：</p>
+<ul>
+<li>用更少的时间点离散同一条轨迹。</li>
+<li>用更高阶的数值方法减少离散误差。</li>
+</ul>
+<h2 id="2-ddim把随机链改成确定路径"><a class="markdownIt-Anchor" href="#2-ddim把随机链改成确定路径"></a> 2. DDIM：把随机链改成确定路径</h2>
+<p><code>DDIM</code> 的常见更新可以写成：</p>
+<p>[<br />
+x_{t-1} = \sqrt{\bar{\alpha}_{t-1}}\hat{x}<em>0 + \sqrt{1-\bar{\alpha}</em>{t-1}-\sigma_t^2},\hat{\epsilon} + \sigma_t z<br />
+]</p>
+<p>当 (\sigma_t = 0) 时，采样变成确定性的。这样做的好处是：</p>
+<ul>
+<li>同样模型可以跳过很多中间步。</li>
+<li>轨迹更可控。</li>
+<li>图像插值和反演更方便。</li>
+</ul>
+<h3 id="例子草图成图"><a class="markdownIt-Anchor" href="#例子草图成图"></a> 例子：草图成图</h3>
+<p>你给模型一张简单线稿和提示词“日落下的海边灯塔”。</p>
+<ul>
+<li>用很多步时，灯塔、海面、霞光会逐层细化。</li>
+<li>用 DDIM 减少到 20 或 30 步时，整体结构仍可保住，但一些浪花和云层细节会更依赖模型本身的先验。</li>
+</ul>
+<h2 id="3-ode-视角采样是数值积分"><a class="markdownIt-Anchor" href="#3-ode-视角采样是数值积分"></a> 3. <abbr title="Ordinary Differential Equation，常微分方程；在扩散里常指没有额外随机噪声项的 probability flow 轨迹。">ODE</abbr> 视角：采样是数值积分</h2>
+<p>在连续时间视角下，可以把采样写成 probability flow <a class="term-tip" href="../score-matching-sde-and-probability-flow/#6-probability-flow-ode" data-tip="ODE：Ordinary Differential Equation，常微分方程。这里把去噪过程看成确定性的连续轨迹，然后用有限步近似。"><abbr title="Ordinary Differential Equation，常微分方程；在扩散里常指没有额外随机噪声项的 probability flow 轨迹。">ODE</abbr></a>：</p>
+<p>[<br />
+\frac{dx}{dt} = f_\theta(x,t)<br />
+]</p>
+<p>这里 (f_\theta) 由 score 或噪声预测网络导出。于是采样器就变成了 <a class="term-tip" href="../score-matching-sde-and-probability-flow/#8" data-tip="ODE solver：常微分方程求解器。扩散采样里，它决定每一步怎样沿向量场移动，例如 Euler、Heun 或 DPM-Solver。"><abbr title="Ordinary Differential Equation，常微分方程；在扩散里常指没有额外随机噪声项的 probability flow 轨迹。">ODE</abbr> solver</a>。</p>
+
+  <div class="note p-4 mb-4 rounded-small success">
+    <p><strong>简称怎么读</strong></p>
+<p><code>ODE</code> 是常微分方程，强调确定性轨迹；<code>SDE</code> 是随机微分方程，轨迹里还包含随机扰动。扩散模型先有连续过程，再把连续过程离散成有限步采样，所以采样器本质上是在控制数值积分误差。</p>
+
+  </div>
+<h2 id="4-euler最简单的一阶方法"><a class="markdownIt-Anchor" href="#4-euler最简单的一阶方法"></a> 4. Euler：最简单的一阶方法</h2>
+<p>若把时间离散成 (t_n)，Euler 更新写成：</p>
+<p>[<br />
+x_{n+1} = x_n + h f_\theta(x_n, t_n)<br />
+]</p>
+<p><strong>优点</strong>：</p>
+<ul>
+<li>每步只需一次模型调用。</li>
+<li>实现最简单。</li>
+</ul>
+<p><strong>缺点</strong>：</p>
+<ul>
+<li>局部截断误差是一阶，步数太少时容易损细节。</li>
+</ul>
+<h3 id="例子四步速写采样"><a class="markdownIt-Anchor" href="#例子四步速写采样"></a> 例子：四步速写采样</h3>
+<p>假设我们只允许 4 步采样一张“蓝色陶瓷杯放在木桌上”的图像：</p>
+<ol>
+<li>第一步决定大布局，是俯视还是侧视。</li>
+<li>第二步拉出杯子和桌面的轮廓。</li>
+<li>第三步补蓝釉反光和阴影。</li>
+<li>第四步修边缘与背景景深。</li>
+</ol>
+<p>Euler 在这种极少步场景下速度很高，但每一步都很“硬”，容易让杯口边缘略粗糙。</p>
+<h2 id="5-heun预测后再校正"><a class="markdownIt-Anchor" href="#5-heun预测后再校正"></a> 5. Heun：预测后再校正</h2>
+<p>Heun 方法先预测，再修正：</p>
+<p>[<br />
+\tilde{x}<em>{n+1} = x_n + h f</em>\theta(x_n,t_n)<br />
+]</p>
+<p>[<br />
+x_{n+1} = x_n + \frac{h}{2}\left(f_\theta(x_n,t_n) + f_\theta(\tilde{x}<em>{n+1}, t</em>{n+1})\right)<br />
+]</p>
+<p>它本质上用两次斜率平均来提升精度。</p>
+<p><strong>优点</strong>：</p>
+<ul>
+<li>在同样步数下，常比 Euler 更平滑。</li>
+<li>中低步数下更容易保住轮廓和细节。</li>
+</ul>
+<p><strong>代价</strong>：</p>
+<ul>
+<li>近似每步两次网络调用。</li>
+</ul>
+<h2 id="6-dpm-solver为-diffusion-ode-定制的高阶解法"><a class="markdownIt-Anchor" href="#6-dpm-solver为-diffusion-ode-定制的高阶解法"></a> 6. DPM-Solver：为 diffusion <abbr title="Ordinary Differential Equation，常微分方程；在扩散里常指没有额外随机噪声项的 probability flow 轨迹。">ODE</abbr> 定制的高阶解法</h2>
+<p><code>DPM-Solver</code> 的思路不是机械套用通用 Runge-Kutta，而是利用扩散 <abbr title="Ordinary Differential Equation，常微分方程；在扩散里常指没有额外随机噪声项的 probability flow 轨迹。">ODE</abbr> 的特殊结构，把线性项做更准确处理。</p>
+<p><strong>可以把它粗略理解为</strong>：</p>
+<p>[<br />
+x_{t_{n+1}} = \Phi(x_{t_n}, \epsilon_\theta, t_n, t_{n+1})<br />
+]</p>
+<p>其中 (\Phi) 不是普通的 Euler 步，而是考虑了噪声日程与网络输出结构的专用更新算子。</p>
+<p><strong>这类方法的价值在于</strong>：</p>
+<ul>
+<li>当步数压到 10 到 20 时，仍能保持较高质量。</li>
+<li>对大型文生图模型尤其有用。</li>
+</ul>
+<h2 id="7-dpm-solver-与-guidance"><a class="markdownIt-Anchor" href="#7-dpm-solver-与-guidance"></a> 7. DPM-Solver++ 与 guidance</h2>
+<p>在 classifier-free guidance 下，向量场会更“陡”，数值求解更容易不稳。<code>DPM-Solver++</code> 通过更适合 guided sampling 的参数化改善这个问题。</p>
+<p><strong>工程上可以把这看成</strong>：</p>
+<ul>
+<li>无 guidance 时，求解路径较平缓。</li>
+<li>高 guidance 时，系统更像高曲率轨迹，低阶方法更容易偏。</li>
+<li><code>DPM-Solver++</code> 正是在这种情况下更稳。</li>
+</ul>
+<h2 id="8-如何选"><a class="markdownIt-Anchor" href="#8-如何选"></a> 8. 如何选</h2>
+<h3 id="只想快不想重训"><a class="markdownIt-Anchor" href="#只想快不想重训"></a> 只想快，不想重训</h3>
+<ul>
+<li>先试 <code>DPM-Solver++</code></li>
+<li>其次 <code>Euler</code></li>
+<li>再根据细节需求看 <code>Heun</code></li>
+</ul>
+<p>这一类需求最典型的场景，是你手里已经有一个训练好的扩散模型，希望<strong>只改推理栈、不动训练栈</strong>。此时应优先选择对现有权重最友好的 solver，而不是一上来就引入蒸馏、Consistency 或一步模型。<code>DPM-Solver++</code> 往往是默认优先项，因为它在少步和 guidance 场景下通常更稳；<code>Euler</code> 更像一个快速、直接、好调试的基线；<code>Heun</code> 则适合你愿意多付一点计算，去换更平滑的边缘和更稳的中低步质量。</p>
+<p>一个很实用的策略是，先固定同一组 prompt、seed 和 guidance，把 <code>Euler</code>、<code>Heun</code>、<code>DPM-Solver++</code> 在 8 步、12 步、20 步几个延迟桶上拉出速度-质量曲线。这样你看到的不只是“哪个平均更好”，而是同一模型在不同预算下最合适的 solver。</p>
+<h3 id="想做交互式预览"><a class="markdownIt-Anchor" href="#想做交互式预览"></a> 想做交互式预览</h3>
+<ul>
+<li>用很少步的 <code>Euler</code> 或 <code>DDIM</code></li>
+<li>先给用户低成本草图</li>
+<li>再切高质量采样器二次精修</li>
+</ul>
+<p>交互式预览的重点并不是一次把终图做到最好，而是<strong>尽快给用户一个可判断方向的中间结果</strong>。因此预览阶段更看重 TTFT 和整体构图是否对，而不是纹理是否已经打磨完整。少步 <code>Euler</code> 或 <code>DDIM</code> 的价值就在这里：先把主体、构图、色调和大轮廓给出来，让用户尽早决定要不要继续。</p>
+<p>这类场景通常适合做两段式工作流。第一段用 4 到 8 步左右的便宜采样快速出草图；第二段只对用户确认后的候选图切到更高质量 solver、更多步数，甚至叠加超分与修复。这样能把总系统成本从“每张图都精修”改成“只有值得的图才精修”。</p>
+<h3 id="想做生产级文生图"><a class="markdownIt-Anchor" href="#想做生产级文生图"></a> 想做生产级文生图</h3>
+<ul>
+<li>用 <code>DPM-Solver++</code> 或同类高阶 solver 作为默认</li>
+<li>为高 guidance 场景单独做参数搜索</li>
+</ul>
+<p>生产级文生图更在意的是<strong>稳定收益</strong>，而不是偶尔出一张更好的样例图。因此默认 solver 不能只看最好看的展示图，而要看不同 prompt 类型、不同 guidance、不同分辨率和不同 seed 下的整体波动。高阶 solver 往往更适合作为默认路径，是因为它们在少步情况下更容易同时兼顾成本和可接受质量。</p>
+<p>此外，生产场景下 guidance 往往不是一个固定值。广告图、写实人像、二次元、logo 或海报的最优 guidance 可能完全不同。更稳的做法是把 solver 和 guidance 一起做桶化配置，而不是假设一组全局参数能覆盖所有流量。</p>
+<h2 id="9-一个直观结论"><a class="markdownIt-Anchor" href="#9-一个直观结论"></a> 9. 一个直观结论</h2>
+<p><strong>采样器像不同的开车方式</strong>：</p>
+<ul>
+<li><code>Euler</code> 像直来直去地快速修正方向。</li>
+<li><code>Heun</code> 像先试探一下方向，再回头纠偏。</li>
+<li><code>DPM-Solver</code> 像对道路曲率有更多先验，因此在少量转向中也能更平滑地开到终点。</li>
+</ul>
+<p>如果把这个比喻再往工程上落一点，可以把采样器理解成“在相同模型能力下，决定你怎样花推理预算”的执行策略。<code>Euler</code> 更适合做低成本基线和快速预览，<code>Heun</code> 更像在同等步数下争取更稳的折中，<code>DPM-Solver</code> 系列则是在明确追求少步高质量时更像默认主力。真正的设计问题，从来不是哪一个名字更先进，而是你的预算、任务和质量门槛更适合哪种开车方式。</p>
+<h2 id="快速代码示例"><a class="markdownIt-Anchor" href="#快速代码示例"></a> 快速代码示例</h2>
+<div class="highlight-container" data-rel="Python"><figure class="iseeu highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">from</span> diffusers <span class="keyword">import</span> DiffusionPipeline, DPMSolverMultistepScheduler</span><br><span class="line"><span class="keyword">import</span> torch</span><br><span class="line"></span><br><span class="line">pipe = DiffusionPipeline.from_pretrained(</span><br><span class="line">    <span class="string">&quot;stabilityai/stable-diffusion-xl-base-1.0&quot;</span>,</span><br><span class="line">    torch_dtype=torch.float16,</span><br><span class="line">).to(<span class="string">&quot;cuda&quot;</span>)</span><br><span class="line">pipe.scheduler = DPMSolverMultistepScheduler.from_config(pipe.scheduler.config)</span><br><span class="line"></span><br><span class="line">image = pipe(</span><br><span class="line">    <span class="string">&quot;rainy cyberpunk street, neon sign, ultra detailed&quot;</span>,</span><br><span class="line">    num_inference_steps=<span class="number">20</span>,   <span class="comment"># 步数预算</span></span><br><span class="line">    guidance_scale=<span class="number">6.0</span>,       <span class="comment"># 条件强度</span></span><br><span class="line">).images[<span class="number">0</span>]</span><br><span class="line">image.save(<span class="string">&quot;sample.png&quot;</span>)</span><br></pre></td></tr></table></figure></div>
+<p>这段代码展示了一个可直接运行的文生图最小推理链路：加载模型后把 scheduler 切到 <code>DPMSolverMultistep</code>，再通过 <code>num_inference_steps</code> 与 <code>guidance_scale</code> 控制速度和条件强度。通常先用 15 到 30 步做首轮调参，再按任务质量要求细化。</p>
+<h2 id="实践补充与检查"><a class="markdownIt-Anchor" href="#实践补充与检查"></a> 实践补充与检查</h2>
+<h3 id="把-扩散模型的采样与推理-从方法名写成设计空间"><a class="markdownIt-Anchor" href="#把-扩散模型的采样与推理-从方法名写成设计空间"></a> 把 <strong>扩散模型的采样与推理</strong> 从方法名写成设计空间</h3>
+<p>这一类页面如果只停留在“概念、公式、论文关系”，读者很容易知道名词却不知道何时该用、何时不该用。围绕 <strong>扩散模型的采样与推理</strong>，更扎实的写法应当把它放回一个明确设计空间：</p>
+<ol>
+<li><strong>采样步数、solver 稳定性、guidance 强度、延迟预算、部署路径</strong>。</li>
+</ol>
+<p>只有把这些坐标讲清楚，读者才能理解：某种方法为什么在论文里成立、落到工程里时最容易在哪些环节变形，以及它和相邻方法的真正边界在哪里。</p>
+<h3 id="更实用的分析顺序"><a class="markdownIt-Anchor" href="#更实用的分析顺序"></a> 更实用的分析顺序</h3>
+<p>围绕 <strong>扩散模型的采样与推理</strong>，建议读者和实践者都先按下面顺序思考：</p>
+<ol>
+<li><strong>先问目标</strong>：你到底追求画质、控制性、速度、稳定性、还是部署成本；</li>
+<li><strong>再问数据制度</strong>：训练样本是什么形态、分布有没有长尾、标注或条件信号是否可靠；</li>
+<li><strong>再问系统边界</strong>：推理预算、显存预算、工具链与下游接口是否支持；</li>
+<li><strong>最后问方法细节</strong>：采样器、蒸馏、量化、损失函数、控制机制的具体选型。</li>
+</ol>
+<p>这比一上来就在方法之间横向比较更有帮助，因为很多“方法优劣”其实是由目标和系统边界决定的，而不是由方法名字决定的。</p>
+<h3 id="最容易被忽略的失败模式"><a class="markdownIt-Anchor" href="#最容易被忽略的失败模式"></a> 最容易被忽略的失败模式</h3>
+<p>围绕 <strong>扩散模型的采样与推理</strong>，常见失败并不只是“指标低”，更常见的是：</p>
+<ol>
+<li><strong>只追更少步数</strong>。</li>
+<li><strong>忽略质量抖动</strong>。</li>
+<li><strong>线上路径与离线图像生成目标混淆</strong>。</li>
+</ol>
+<p>这些问题说明，方法页若只讲主线和优点，会让读者得到一个过于平滑的印象。真正扎实的内容应当明确指出：哪些收益最容易被 benchmark 放大，哪些副作用最容易被平均值遮住，哪些结论只在某些数据制度或硬件路径上成立。</p>
+<p>更具体地说，少步采样最常见的失败不是“所有图都变差”，而是<strong>某些 prompt 桶突然不稳</strong>。例如结构复杂场景、长文本 prompt、高 guidance、人像局部细节、文字生成或多对象关系，往往比平均样本更容易暴露 solver 的极限。如果只看一组平均 FID 或人工挑选样例，很容易高估方法的泛化稳定性。</p>
+<p>还有一种误判是，把离线单图生成的成功直接外推到交互式系统。真实产品里，预览模式、精修模式、重试逻辑、缓存、并发和用户可感知延迟会一起改写方法价值。某个 solver 离线略优，不代表它在线上就是最优默认。</p>
+<h3 id="验收与实践清单"><a class="markdownIt-Anchor" href="#验收与实践清单"></a> 验收与实践清单</h3>
+<p>对 <strong>扩散模型的采样与推理</strong>，更像工程文档的验收至少要覆盖：</p>
+<ol>
+<li><strong>按任务场景选 sampler</strong>。</li>
+<li><strong>记录速度-质量曲线</strong>。</li>
+<li><strong>为不同延迟桶保留多档策略</strong>。</li>
+</ol>
+<p>此外，建议把方法验收长期绑定三类材料：</p>
+<ol>
+<li><strong>热路径案例</strong>，证明它在主场景下确实有价值；</li>
+<li><strong>尾部案例</strong>，避免方法只在容易样本上好看；</li>
+<li><strong>回退与替代方案</strong>，明确什么时候应该切回更简单、更稳的方法。</li>
+</ol>
+<p>做到这一步后，<strong>扩散模型的采样与推理</strong> 才会从“资料页”升级成“真正能指导设计决策的页面”。</p>
+<p>如果再往实践里收一层，至少应补三类固定证据：</p>
+<ol>
+<li><strong>固定 prompt 套件</strong>：覆盖写实、人像、复杂构图、字体、海报、多对象和极端 guidance；</li>
+<li><strong>固定延迟桶</strong>：例如 4 步、8 步、12 步、20 步，明确每档预算能换来什么质量；</li>
+<li><strong>固定回退门槛</strong>：当某类 prompt 或某档 guidance 出现明显抖动时，系统自动切回更稳的 solver 或更高步数。</li>
+</ol>
+<p>只有把这些证据固定下来，采样器选择才会真正变成工程决策，而不只是主观偏好。</p>
+
+        </div>
+
+        
+            <div class="post-copyright-info w-full my-8 px-2 sm:px-6 md:px-8">
+                <div class="article-copyright-info-container">
+    <ul>
+        <li><strong>Title:</strong> 扩散模型的采样与推理</li>
+        <li><strong>Author:</strong> Charles</li>
+        <li><strong>Created at
+                :</strong> 2026-05-11 09:07:00</li>
+        
+            <li>
+                <strong>Updated at
+                    :</strong> 2026-05-11 09:07:00
+            </li>
+        
+        <li>
+            <strong>Link:</strong> https://charles2530.github.io/2026/05/11/ai-notes/files-diffusion-inference/
+        </li>
+        <li>
+            <strong>
+                License:
+            </strong>
+            
+
+            
+                This work is licensed under <a class="license" target="_blank" rel="noopener" href="https://creativecommons.org/licenses/by-nc-sa/4.0">CC BY-NC-SA 4.0</a>.
+            
+        </li>
+    </ul>
+</div>
+
+            </div>
+        
+
+        
+            <ul class="post-tags-box text-lg mt-1.5 flex-wrap justify-center flex md:hidden">
+                
+                    <li class="tag-item mx-0.5">
+                        <a href="/tags/AI-Notes/">#AI Notes</a>&nbsp;
+                    </li>
+                
+                    <li class="tag-item mx-0.5">
+                        <a href="/tags/Diffusion/">#Diffusion</a>&nbsp;
+                    </li>
+                
+                    <li class="tag-item mx-0.5">
+                        <a href="/tags/Diffusion-Models/">#Diffusion Models</a>&nbsp;
+                    </li>
+                
+                    <li class="tag-item mx-0.5">
+                        <a href="/tags/Inference/">#Inference</a>&nbsp;
+                    </li>
+                
+            </ul>
+        
+
+        
+  <div class="recommended-article px-2 sm:px-6 md:px-8">
+   <div class="recommended-desktop">
+    <div class="recommended-article-header text-xl md:text-3xl font-bold mt-10">
+     <i aria-hidden="true"></i><span>recommend_articles</span>
+    </div>
+    <div class="recommended-article-group"><a class="recommended-article-item" href="/2026/05/11/ai-notes/files-paper-deep-dives-world-models-dreamerv3/" title="DreamerV3：Mastering Diverse Domains through World Models" rel="bookmark">
+  <img src="https://charles2530.github.io/image/background/p3.jfif" alt="DreamerV3：Mastering Diverse Domains through World Models" class="!max-w-none">
+  <span class="title">DreamerV3：Mastering Diverse Domains through World Models</span>
+</a><a class="recommended-article-item" href="/2026/05/11/ai-notes/files-foundations-tensors-shapes-and-computation-graphs/" title="张量、Shape 与计算图" rel="bookmark">
+  <img src="https://charles2530.github.io/image/background/p3.jfif" alt="张量、Shape 与计算图" class="!max-w-none">
+  <span class="title">张量、Shape 与计算图</span>
+</a><a class="recommended-article-item" href="/2024/05/04/x86-construction/" title="x86-construction" rel="bookmark">
+  <img src="https://charles2530.github.io/image/background/p4.jpg" alt="x86-construction" class="!max-w-none">
+  <span class="title">x86-construction</span>
+</a></div>
+   </div>
+   <div class="recommended-mobile">
+   <div class="recommended-article-header text-xl md:text-3xl font-bold mt-10">
+     <i aria-hidden="true"></i><span>recommend_articles</span>
+   </div>
+   <div class="recommended-article-group"><a class="recommended-article-item" href="/2026/05/11/ai-notes/files-paper-deep-dives-world-models-dreamerv3/" title="DreamerV3：Mastering Diverse Domains through World Models" rel="bookmark">
+  <img src="https://charles2530.github.io/image/background/p3.jfif" alt="DreamerV3：Mastering Diverse Domains through World Models" class="!max-w-none">
+  <span class="title">DreamerV3：Mastering Diverse Domains through World Models</span>
+</a><a class="recommended-article-item" href="/2026/05/11/ai-notes/files-foundations-tensors-shapes-and-computation-graphs/" title="张量、Shape 与计算图" rel="bookmark">
+  <img src="https://charles2530.github.io/image/background/p3.jfif" alt="张量、Shape 与计算图" class="!max-w-none">
+  <span class="title">张量、Shape 与计算图</span>
+</a></div>
+   </div>
+  </div>
+
+        
+            <div class="article-nav my-8 flex justify-between items-center px-2 sm:px-6 md:px-8">
+                
+                    <div class="article-prev border-border-color shadow-redefine-flat shadow-shadow-color-2 rounded-medium px-4 py-2 hover:shadow-redefine-flat-hover hover:shadow-shadow-color-2">
+                        <a class="prev"
+                        rel="prev"
+                        href="/2026/05/11/ai-notes/files-diffusion-noise-schedules-and-parameterization/"
+                        >
+                            <span class="left arrow-icon flex justify-center items-center">
+                                <i class="fa-solid fa-chevron-left"></i>
+                            </span>
+                            <span class="title flex justify-center items-center">
+                                <span class="post-nav-title-item">扩散模型中的噪声日程与参数化</span>
+                                <span class="post-nav-item">Prev posts</span>
+                            </span>
+                        </a>
+                    </div>
+                
+                
+                    <div class="article-next border-border-color shadow-redefine-flat shadow-shadow-color-2 rounded-medium px-4 py-2 hover:shadow-redefine-flat-hover hover:shadow-shadow-color-2">
+                        <a class="next"
+                        rel="next"
+                        href="/2026/05/11/ai-notes/files-diffusion-index/"
+                        >
+                            <span class="title flex justify-center items-center">
+                                <span class="post-nav-title-item">扩散模型总览</span>
+                                <span class="post-nav-item">Next posts</span>
+                            </span>
+                            <span class="right arrow-icon flex justify-center items-center">
+                                <i class="fa-solid fa-chevron-right"></i>
+                            </span>
+                        </a>
+                    </div>
+                
+            </div>
+        
+
+
+        
+            <div class="comment-container px-2 sm:px-6 md:px-8 pb-8">
+                <div class="comments-container mt-10 w-full ">
+    <div id="comment-anchor" class="w-full h-2.5"></div>
+    <div class="comment-area-title w-full my-1.5 md:my-2.5 text-xl md:text-3xl font-bold">
+        Comments
+    </div>
+    
+
+        <!-- 
+            
+    <div id="gitalk-container"></div>
+    <script data-swup-reload-script
+            src="//cdn.staticfile.org/gitalk/1.8.0/gitalk.min.js"></script>
+    <script data-swup-reload-script>
+
+        function loadGitalk() {
+            let __gitalk__pathname = decodeURI(location.pathname);
+            const __gitalk__pathnameLength = __gitalk__pathname.length;
+            const __gitalk__pathnameMaxLength = 50;
+            if (__gitalk__pathnameLength > __gitalk__pathnameMaxLength) {
+                __gitalk__pathname = __gitalk__pathname.substring(0, __gitalk__pathnameMaxLength - 3) + '...';
+            }
+
+            try {
+                Gitalk && new Gitalk({
+                    clientID: '8083299a8ee2aaf23879',
+                    clientSecret: 'a8161e81d4872181e884fdb69f7be24916b6a9d0',
+                    repo: 'charles2530_issues',
+                    owner: 'Charles2530',
+                    admin: ['Charles2530'],
+                    id: __gitalk__pathname,
+                    language: 'en',
+                    proxy: 'https://github.com/login/oauth/access_token'
+                }).render('gitalk-container');
+
+            } catch (e) {
+                window.Gitalk = null;
+            }
+        }
+
+        if ('true') {
+            const loadGitalkTimeout = setTimeout(() => {
+                loadGitalk();
+                clearTimeout(loadGitalkTimeout);
+            }, 1000);
+        } else {
+            window.addEventListener('DOMContentLoaded', loadGitalk);
+        }
+    </script>
+
+
+
+         -->
+        <script src="https://utteranc.es/client.js" repo="Charles2530/Charles2530.github.io" issue-term="pathname"
+            label="Comment" theme="preferred-color-scheme" crossorigin="anonymous" async>
+            </script>
+    
+</div>
+
+            </div>
+        
+    </div>
+
+    
+        <div class="toc-content-container">
+            <div class="post-toc-wrap">
+    <div class="post-toc">
+        <div class="toc-title">On this page</div>
+        <div class="page-title">扩散模型的采样与推理</div>
+        <ol class="nav"><li class="nav-item nav-level-2"><a class="nav-link" href="#1-%E4%B8%BA%E4%BB%80%E4%B9%88%E6%8E%A8%E7%90%86%E4%BC%9A%E6%85%A2"><span class="nav-text"> 1. 为什么推理会慢</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#2-ddim%E6%8A%8A%E9%9A%8F%E6%9C%BA%E9%93%BE%E6%94%B9%E6%88%90%E7%A1%AE%E5%AE%9A%E8%B7%AF%E5%BE%84"><span class="nav-text"> 2. DDIM：把随机链改成确定路径</span></a><ol class="nav-child"><li class="nav-item nav-level-3"><a class="nav-link" href="#%E4%BE%8B%E5%AD%90%E8%8D%89%E5%9B%BE%E6%88%90%E5%9B%BE"><span class="nav-text"> 例子：草图成图</span></a></li></ol></li><li class="nav-item nav-level-2"><a class="nav-link" href="#3-ode-%E8%A7%86%E8%A7%92%E9%87%87%E6%A0%B7%E6%98%AF%E6%95%B0%E5%80%BC%E7%A7%AF%E5%88%86"><span class="nav-text"> 3. ODE 视角：采样是数值积分</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#4-euler%E6%9C%80%E7%AE%80%E5%8D%95%E7%9A%84%E4%B8%80%E9%98%B6%E6%96%B9%E6%B3%95"><span class="nav-text"> 4. Euler：最简单的一阶方法</span></a><ol class="nav-child"><li class="nav-item nav-level-3"><a class="nav-link" href="#%E4%BE%8B%E5%AD%90%E5%9B%9B%E6%AD%A5%E9%80%9F%E5%86%99%E9%87%87%E6%A0%B7"><span class="nav-text"> 例子：四步速写采样</span></a></li></ol></li><li class="nav-item nav-level-2"><a class="nav-link" href="#5-heun%E9%A2%84%E6%B5%8B%E5%90%8E%E5%86%8D%E6%A0%A1%E6%AD%A3"><span class="nav-text"> 5. Heun：预测后再校正</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#6-dpm-solver%E4%B8%BA-diffusion-ode-%E5%AE%9A%E5%88%B6%E7%9A%84%E9%AB%98%E9%98%B6%E8%A7%A3%E6%B3%95"><span class="nav-text"> 6. DPM-Solver：为 diffusion ODE 定制的高阶解法</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#7-dpm-solver-%E4%B8%8E-guidance"><span class="nav-text"> 7. DPM-Solver++ 与 guidance</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#8-%E5%A6%82%E4%BD%95%E9%80%89"><span class="nav-text"> 8. 如何选</span></a><ol class="nav-child"><li class="nav-item nav-level-3"><a class="nav-link" href="#%E5%8F%AA%E6%83%B3%E5%BF%AB%E4%B8%8D%E6%83%B3%E9%87%8D%E8%AE%AD"><span class="nav-text"> 只想快，不想重训</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#%E6%83%B3%E5%81%9A%E4%BA%A4%E4%BA%92%E5%BC%8F%E9%A2%84%E8%A7%88"><span class="nav-text"> 想做交互式预览</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#%E6%83%B3%E5%81%9A%E7%94%9F%E4%BA%A7%E7%BA%A7%E6%96%87%E7%94%9F%E5%9B%BE"><span class="nav-text"> 想做生产级文生图</span></a></li></ol></li><li class="nav-item nav-level-2"><a class="nav-link" href="#9-%E4%B8%80%E4%B8%AA%E7%9B%B4%E8%A7%82%E7%BB%93%E8%AE%BA"><span class="nav-text"> 9. 一个直观结论</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#%E5%BF%AB%E9%80%9F%E4%BB%A3%E7%A0%81%E7%A4%BA%E4%BE%8B"><span class="nav-text"> 快速代码示例</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#%E5%AE%9E%E8%B7%B5%E8%A1%A5%E5%85%85%E4%B8%8E%E6%A3%80%E6%9F%A5"><span class="nav-text"> 实践补充与检查</span></a><ol class="nav-child"><li class="nav-item nav-level-3"><a class="nav-link" href="#%E6%8A%8A-%E6%89%A9%E6%95%A3%E6%A8%A1%E5%9E%8B%E7%9A%84%E9%87%87%E6%A0%B7%E4%B8%8E%E6%8E%A8%E7%90%86-%E4%BB%8E%E6%96%B9%E6%B3%95%E5%90%8D%E5%86%99%E6%88%90%E8%AE%BE%E8%AE%A1%E7%A9%BA%E9%97%B4"><span class="nav-text"> 把 扩散模型的采样与推理 从方法名写成设计空间</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#%E6%9B%B4%E5%AE%9E%E7%94%A8%E7%9A%84%E5%88%86%E6%9E%90%E9%A1%BA%E5%BA%8F"><span class="nav-text"> 更实用的分析顺序</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#%E6%9C%80%E5%AE%B9%E6%98%93%E8%A2%AB%E5%BF%BD%E7%95%A5%E7%9A%84%E5%A4%B1%E8%B4%A5%E6%A8%A1%E5%BC%8F"><span class="nav-text"> 最容易被忽略的失败模式</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#%E9%AA%8C%E6%94%B6%E4%B8%8E%E5%AE%9E%E8%B7%B5%E6%B8%85%E5%8D%95"><span class="nav-text"> 验收与实践清单</span></a></li></ol></li></ol>
+
+    </div>
+</div>
+        </div>
+    
+</div>
+
+
+
+                
+
+            </div>
+
+            
+
+        </div>
+
+        <div class="main-content-footer">
+            <footer class="footer mt-5 py-5 h-auto text-base text-third-text-color relative border-t-2 border-t-border-color">
+    <div class="info-container py-3 text-center">
+        
+        <div class="text-center">
+            &copy;
+            
+              <span>2022</span>
+              -
+            
+            2026&nbsp;&nbsp;<i class="fa-solid fa-heart fa-beat" style="--fa-animation-duration: 0.5s; color: #f54545"></i>&nbsp;&nbsp;<a href="/">Charles</a>
+            
+                
+                <p class="post-count space-x-0.5">
+                    <span>
+                        479 posts in total
+                    </span>
+                    
+                        <span>
+                            1896.7k words in total
+                        </span>
+                    
+                </p>
+            
+        </div>
+        
+            <script data-swup-reload-script src="https://cn.vercount.one/js"></script>
+            <div class="relative text-center lg:absolute lg:right-[20px] lg:top-1/2 lg:-translate-y-1/2 lg:text-right">
+                
+                    <span id="busuanzi_container_site_uv" class="lg:!block">
+                        <span class="text-sm">Visitor Count</span>
+                        <span id="busuanzi_value_site_uv"></span>
+                    </span>
+                
+                
+                    <span id="busuanzi_container_site_pv" class="lg:!block">
+                        <span class="text-sm">Total Page Views</span>
+                        <span id="busuanzi_value_site_pv"></span>
+                    </span>
+                
+            </div>
+        
+        <div class="relative text-center lg:absolute lg:left-[20px] lg:top-1/2 lg:-translate-y-1/2 lg:text-left">
+            <span class="lg:block text-sm">Powered by Charles</span>
+            <span class="text-sm lg:block">Theme&nbsp;<a class="text-base" target="_blank" href="https://github.com/EvanNotFound/hexo-theme-redefine">Redefine v2.6.1</a></span>
+        </div>
+        
+        
+            <div>
+                Blog up for <span class="odometer" id="runtime_days" ></span> days <span class="odometer" id="runtime_hours"></span> hrs <span class="odometer" id="runtime_minutes"></span> Min <span class="odometer" id="runtime_seconds"></span> Sec
+            </div>
+        
+        
+            <script data-swup-reload-script>
+                try {
+                    function odometer_init() {
+                    const elements = document.querySelectorAll('.odometer');
+                    elements.forEach(el => {
+                        new Odometer({
+                            el,
+                            format: '( ddd).dd',
+                            duration: 200
+                        });
+                    });
+                    }
+                    odometer_init();
+                } catch (error) {}
+            </script>
+        
+        
+            
+                
+        
+                
+        
+        
+    </div>  
+</footer>
+        </div>
+    </div>
+
+    
+        <div class="post-tools">
+            <div class="post-tools-container">
+    <ul class="article-tools-list">
+        <!-- TOC aside toggle -->
+        
+            <li class="right-bottom-tools page-aside-toggle">
+                <i class="fa-regular fa-outdent"></i>
+            </li>
+        
+
+        <!-- go comment -->
+        
+            <li class="go-comment">
+                <i class="fa-regular fa-comments"></i>
+            </li>
+        
+    </ul>
+</div>
+
+        </div>
+    
+
+    <div class="right-side-tools-container">
+        <div class="side-tools-container">
+    <ul class="hidden-tools-list">
+        <li class="right-bottom-tools tool-font-adjust-plus flex justify-center items-center">
+            <i class="fa-regular fa-magnifying-glass-plus"></i>
+        </li>
+
+        <li class="right-bottom-tools tool-font-adjust-minus flex justify-center items-center">
+            <i class="fa-regular fa-magnifying-glass-minus"></i>
+        </li>
+
+        <li class="right-bottom-tools tool-dark-light-toggle flex justify-center items-center">
+            <i class="fa-regular fa-moon"></i>
+        </li>
+
+        <!-- rss -->
+        
+            <li class="right-bottom-tools rss flex justify-center items-center">
+                <a class="flex justify-center items-center"
+                   href="/atom.xml"
+                   target="_blank"
+                >
+                <i class="fa-regular fa-rss"></i>
+                </a>
+            </li>
+        
+
+        
+
+        <li class="right-bottom-tools tool-scroll-to-bottom flex justify-center items-center">
+            <i class="fa-regular fa-arrow-down"></i>
+        </li>
+    </ul>
+
+    <ul class="visible-tools-list">
+        <li class="right-bottom-tools toggle-tools-list flex justify-center items-center">
+            <i class="fa-regular fa-cog fa-spin"></i>
+        </li>
+        
+            <li class="right-bottom-tools tool-scroll-to-top flex justify-center items-center">
+                <i class="arrow-up fas fa-arrow-up"></i>
+                <span class="percent"></span>
+            </li>
+        
+        
+    </ul>
+</div>
+
+    </div>
+
+    <div class="image-viewer-container">
+    <img src="">
+</div>
+
+
+    
+        <div class="search-pop-overlay">
+    <div class="popup search-popup">
+        <div class="search-header">
+          <span class="search-input-field-pre">
+            <i class="fa-solid fa-keyboard"></i>
+          </span>
+            <div class="search-input-container">
+                <input autocomplete="off"
+                       autocorrect="off"
+                       autocapitalize="off"
+                       placeholder="Search..."
+                       spellcheck="false"
+                       type="search"
+                       class="search-input"
+                >
+            </div>
+            <span class="popup-btn-close">
+                <i class="fa-solid fa-times"></i>
+            </span>
+        </div>
+        <div id="search-result">
+            <div id="no-result">
+                <i class="fa-solid fa-spinner fa-spin-pulse fa-5x fa-fw"></i>
+            </div>
+        </div>
+    </div>
+</div>
+
+    
+
+</main>
+
+
+    <script src="https://evan.beee.top/projects/hexo-theme-redefine@2.6.1/source/js/libs/Swup.min.js"></script><script src="https://evan.beee.top/projects/hexo-theme-redefine@2.6.1/source/js/libs/SwupSlideTheme.min.js"></script><script src="https://evan.beee.top/projects/hexo-theme-redefine@2.6.1/source/js/libs/SwupScriptsPlugin.min.js"></script><script src="https://evan.beee.top/projects/hexo-theme-redefine@2.6.1/source/js/libs/SwupProgressPlugin.min.js"></script><script src="https://evan.beee.top/projects/hexo-theme-redefine@2.6.1/source/js/libs/SwupScrollPlugin.min.js"></script><script src="https://evan.beee.top/projects/hexo-theme-redefine@2.6.1/source/js/libs/SwupPreloadPlugin.min.js"></script>
+<script>
+    const swup = new Swup({
+        plugins: [
+            new SwupScriptsPlugin({
+                optin: true,
+            }),
+            new SwupProgressPlugin(),
+            new SwupScrollPlugin({
+                offset: 80,
+            }),
+            new SwupSlideTheme({
+                mainElement: ".main-content-body",
+            }),
+            new SwupPreloadPlugin(),
+        ],
+        containers: ["#swup"],
+    });
+</script>
+
+
+
+
+
+
+<script type="module" src="https://evan.beee.top/projects/hexo-theme-redefine@2.6.1/source/js/tools/imageViewer.js"></script><script type="module" src="https://evan.beee.top/projects/hexo-theme-redefine@2.6.1/source/js/utils.js"></script><script type="module" src="https://evan.beee.top/projects/hexo-theme-redefine@2.6.1/source/js/main.js"></script><script type="module" src="https://evan.beee.top/projects/hexo-theme-redefine@2.6.1/source/js/layouts/navbarShrink.js"></script><script type="module" src="https://evan.beee.top/projects/hexo-theme-redefine@2.6.1/source/js/tools/scrollTopBottom.js"></script><script type="module" src="https://evan.beee.top/projects/hexo-theme-redefine@2.6.1/source/js/tools/lightDarkSwitch.js"></script><script type="module" src="https://evan.beee.top/projects/hexo-theme-redefine@2.6.1/source/js/layouts/categoryList.js"></script>
+
+
+    <script type="module" src="https://evan.beee.top/projects/hexo-theme-redefine@2.6.1/source/js/tools/localSearch.js"></script>
+
+
+
+    <script type="module" src="https://evan.beee.top/projects/hexo-theme-redefine@2.6.1/source/js/tools/codeBlock.js"></script>
+
+
+
+    <script type="module" src="https://evan.beee.top/projects/hexo-theme-redefine@2.6.1/source/js/layouts/lazyload.js"></script>
+
+
+
+    <script src="https://evan.beee.top/projects/hexo-theme-redefine@2.6.1/source/js/tools/runtime.js"></script>
+    <script src="https://evan.beee.top/projects/hexo-theme-redefine@2.6.1/source/js/libs/odometer.min.js"></script>
+    <link rel="stylesheet" href="//evan.beee.top/projects/hexo-theme-redefine@2.6.1/source/assets/odometer-theme-minimal.css">
+
+
+
+  <script src="https://evan.beee.top/projects/hexo-theme-redefine@2.6.1/source/js/libs/Typed.min.js"></script>
+  <script type="module" src="https://evan.beee.top/projects/hexo-theme-redefine@2.6.1/source/js/plugins/typed.js"></script>
+
+
+
+    <script src="https://evan.beee.top/projects/hexo-theme-redefine@2.6.1/source/js/libs/mermaid.min.js"></script>
+    <script src="https://evan.beee.top/projects/hexo-theme-redefine@2.6.1/source/js/plugins/mermaid.js"></script>
+
+
+
+    <script src="https://evan.beee.top/projects/hexo-theme-redefine@2.6.1/source/js/libs/minimasonry.min.js"></script>
+    <script type="module" src="https://evan.beee.top/projects/hexo-theme-redefine@2.6.1/source/js/plugins/masonry.js"></script>
+
+
+
+
+<div class="post-scripts" data-swup-reload-script>
+    
+        <script type="module" src="https://evan.beee.top/projects/hexo-theme-redefine@2.6.1/source/js/tools/tocToggle.js"></script><script type="module" src="https://evan.beee.top/projects/hexo-theme-redefine@2.6.1/source/js/layouts/toc.js"></script><script type="module" src="https://evan.beee.top/projects/hexo-theme-redefine@2.6.1/source/js/plugins/tabs.js"></script>
+    
+</div>
+
+
+</body>
+</html>
+<!-- 页面点击小红心 -->
+<script type="text/javascript" src="/js/love.js"></script>

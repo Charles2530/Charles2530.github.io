@@ -1,0 +1,1494 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="keywords" content="Charles">
+    
+    <meta name="author" content="Charles">
+    <!-- preconnect -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+
+    
+        
+        
+        
+    
+    <!--- Seo Part-->
+    
+    <link rel="canonical" href="https://charles2530.github.io/2026/05/11/ai-notes/files-inference-index/"/>
+    <meta name="robots" content="index,follow">
+    <meta name="googlebot" content="index,follow">
+    <meta name="revisit-after" content="1 days">
+    
+        <meta name="description" content="Inference Systems 这一专题围绕在线推理系统展开，重点讨论服务系统、运行时、KV cache、长上下文、MoE、多模型路由、在线评测与容量治理。 服务系统 运行时 KV Cache 容量运维 专题定位 核心问题 如何把训练好的模型变成一条可运营的在线系统，在质量、时延、吞吐、成本和稳定性之间做持续平衡。">
+<meta property="og:type" content="article">
+<meta property="og:title" content="推理总览">
+<meta property="og:url" content="https://charles2530.github.io/2026/05/11/ai-notes/files-inference-index/index.html">
+<meta property="og:site_name" content="Charles&#39;s Castle">
+<meta property="og:description" content="Inference Systems 这一专题围绕在线推理系统展开，重点讨论服务系统、运行时、KV cache、长上下文、MoE、多模型路由、在线评测与容量治理。 服务系统 运行时 KV Cache 容量运维 专题定位 核心问题 如何把训练好的模型变成一条可运营的在线系统，在质量、时延、吞吐、成本和稳定性之间做持续平衡。">
+<meta property="og:locale" content="en_US">
+<meta property="og:image" content="https://charles2530.github.io/ai-notes-assets/images/paper-figures/inference/vllm-system-overview.png">
+<meta property="article:published_time" content="2026-05-11T01:40:00.000Z">
+<meta property="article:modified_time" content="2026-05-11T01:40:00.000Z">
+<meta property="article:author" content="Du Jinyang">
+<meta property="article:tag" content="AI Notes">
+<meta property="article:tag" content="GPU Systems">
+<meta property="article:tag" content="Inference">
+<meta property="article:tag" content="Embodied AI">
+<meta name="twitter:card" content="summary">
+<meta name="twitter:image" content="https://charles2530.github.io/ai-notes-assets/images/paper-figures/inference/vllm-system-overview.png">
+    
+    
+    <!--- Icon Part-->
+    <link rel="icon" type="image/png" href="https://charles2530.github.io/image/background/favicon.png" sizes="192x192">
+    <link rel="apple-touch-icon" sizes="180x180" href="https://charles2530.github.io/image/background/favicon.png">
+    <meta name="theme-color" content="#A31F34">
+    <link rel="shortcut icon" href="https://charles2530.github.io/image/background/favicon.png">
+    <!--- Page Info-->
+    
+    <title>
+        
+            推理总览 -
+        
+        Charles&#39;s Castle
+    </title>
+
+    <link rel="stylesheet" href="//evan.beee.top/projects/hexo-theme-redefine@2.6.1/source/fonts/Chillax/chillax.css">
+
+    <!--- Inject Part-->
+    
+        
+            
+                
+                    <script data-swup-reload-script> var _hmt = _hmt || []; (function() { var hm = document.createElement("script"); hm.src = "https://hm.baidu.com/hm.js?8e0e5f382d14d87cbeadc33a36e71e86"; var s = document.getElementsByTagName("script")[0]; s.parentNode.insertBefore(hm, s); })(); </script>
+                
+    
+            
+    
+
+    
+        <style>
+    :root {
+        --preloader-background-color: #fff;
+        --preloader-text-color: #000;
+    }
+
+    @media (prefers-color-scheme: dark) {
+        :root {
+            --preloader-background-color: #202124;
+            --preloader-text-color: #fff;
+        }
+    }
+
+    @media (prefers-color-scheme: light) {
+        :root {
+            --preloader-background-color: #fff;
+            --preloader-text-color: #000;
+        }
+    }
+
+    @media (max-width: 600px) {
+        .ml13 {
+            font-size: 2.6rem !important; /* Adjust this value as needed */
+        }
+    }
+
+    .preloader {
+        display: flex;
+        flex-direction: column;
+        gap: 1rem; /* Tailwind 'gap-4' is 1rem */
+        align-items: center;
+        justify-content: center;
+        position: fixed;
+        padding: 12px;
+        top: 0;
+        right: 0;
+        bottom: 0;
+        left: 0;
+        width: 100vw;
+        height: 100vh; /* 'h-screen' is 100% of the viewport height */
+        background-color: var(--preloader-background-color);
+        z-index: 1100; /* 'z-[1100]' sets the z-index */
+        transition: opacity 0.2s ease-in-out;
+    }
+
+    .ml13 {
+        font-size: 3.2rem;
+        /* text-transform: uppercase; */
+        color: var(--preloader-text-color);
+        letter-spacing: -1px;
+        font-weight: 500;
+        font-family: 'Chillax-Variable', sans-serif;
+        text-align: center;
+    }
+
+    .ml13 .word {
+        display: inline-flex;
+        flex-wrap: wrap;
+        white-space: nowrap;
+    }
+
+    .ml13 .letter {
+        display: inline-block;
+        line-height: 1em;
+    }
+</style>
+
+<div class="preloader">
+    <script src="https://evan.beee.top/projects/hexo-theme-redefine@2.6.1/source/js/libs/anime.min.js"></script>
+    <h1 class="ml13">
+        Charles&#39;s Castle
+    </h1>
+    <script>
+        var textWrapper = document.querySelector('.ml13');
+        // Split text into words
+        var words = textWrapper.textContent.trim().split(' ');
+
+        // Clear the existing content
+        textWrapper.innerHTML = '';
+
+        // Wrap each word and its letters in spans
+        words.forEach(function(word) {
+            var wordSpan = document.createElement('span');
+            wordSpan.classList.add('word');
+            wordSpan.innerHTML = word.replace(/\S/g, "<span class='letter'>$&</span>");
+            textWrapper.appendChild(wordSpan);
+            textWrapper.appendChild(document.createTextNode(' ')); // Add space between words
+        });
+
+
+        anime.timeline({loop: true})
+            .add({
+                targets: '.ml13 .letter',
+                translateY: [100,0],
+                translateZ: 0,
+                opacity: [0,1],
+                easing: "easeOutExpo",
+                duration: 1400,
+                delay: (el, i) => 300 + 30 * i
+            }).add({
+            targets: '.ml13 .letter',
+            translateY: [0,-100],
+            opacity: [1,0],
+            easing: "easeInExpo",
+            duration: 1200,
+            delay: (el, i) => 100 + 30 * i
+        });
+
+        let themeStatus = JSON.parse(localStorage.getItem('REDEFINE-THEME-STATUS'))?.isDark;
+
+        // If the theme status is not found in local storage, check the preferred color scheme
+        if (themeStatus === undefined || themeStatus === null) {
+            if (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) {
+                themeStatus = 'dark';
+            } else {
+                themeStatus = 'light';
+            }
+        }
+
+        // Now you can use the themeStatus variable in your code
+        if (themeStatus) {
+            document.documentElement.style.setProperty('--preloader-background-color', '#202124');
+            document.documentElement.style.setProperty('--preloader-text-color', '#fff');
+        } else {
+            document.documentElement.style.setProperty('--preloader-background-color', '#fff');
+            document.documentElement.style.setProperty('--preloader-text-color', '#000');
+        }
+
+        window.addEventListener('load', function () {
+            hidePreloaderAfterTimeout(1000); // Hide after 1000 milliseconds once the window has loaded
+        });
+
+        // Backup failsafe: Hide preloader after a maximum of 5000 milliseconds, regardless of the window load event
+        hidePreloaderAfterTimeout(5000);
+
+        function hidePreloaderAfterTimeout(delay) {
+            setTimeout(function () {
+                var preloader = document.querySelector('.preloader');
+                preloader.style.opacity = '0';
+                setTimeout(function () {
+                    preloader.style.display = 'none';
+                }, 200);
+            }, delay);
+        }
+    </script>
+</div>
+    
+
+    
+<link rel="stylesheet" href="/css/style.css">
+
+
+    
+        <link rel="stylesheet" href="//evan.beee.top/projects/hexo-theme-redefine@2.6.1/source/assets/build/styles.css">
+    
+
+    <link rel="stylesheet" href="//evan.beee.top/projects/hexo-theme-redefine@2.6.1/source/fonts/fonts.css">
+    <link rel="stylesheet" href="//evan.beee.top/projects/hexo-theme-redefine@2.6.1/source/fonts/Satoshi/satoshi.css">
+    <!--- Font Part-->
+    
+    
+    
+    
+
+
+    <script id="hexo-configurations">
+    window.config = {"hostname":"charles2530.github.io","root":"/","language":"en","path":"search.xml"};
+    window.theme = {"articles":{"style":{"font_size":"16px","line_height":1.5,"image_border_radius":"14px","image_alignment":"center","image_caption":false,"link_icon":true,"title_alignment":"left","headings_top_spacing":{"h1":"5rem","h2":"4rem","h3":"2.8rem","h4":"2.5rem","h5":"2.2rem","h6":"2rem"}},"word_count":{"enable":true,"count":true,"min2read":true},"author_label":{"enable":true,"auto":true,"list":["lol","Neo","God"]},"code_block":{"copy":true,"style":"mac","font":{"enable":false,"family":null,"url":null}},"toc":{"enable":true,"max_depth":6,"number":false,"expand":true,"init_open":true},"copyright":{"enable":true,"default":"cc_by_nc_sa"},"lazyload":true,"recommendation":{"enable":true,"title":"recommend_articles","limit":3,"mobile_limit":2,"placeholder":"https://charles2530.github.io/image/background/p3.jfif","skip_dirs":[]}},"colors":{"primary":"#A31F34","secondary":"#1890ff","default_mode":"light"},"global":{"fonts":{"chinese":{"enable":false,"family":null,"url":null},"english":{"enable":false,"family":null,"url":null}},"content_max_width":"1000px","sidebar_width":"210px","hover":{"shadow":true,"scale":true},"scroll_progress":{"bar":true,"percentage":true},"website_counter":{"url":"https://cn.vercount.one/js","enable":true,"site_pv":true,"site_uv":true,"post_pv":true},"single_page":true,"preloader":true,"open_graph":true,"google_analytics":{"enable":false,"id":null}},"home_banner":{"enable":true,"style":"fixed","image":{"light":"https://charles2530.github.io/image/background/background-light1.jpg","dark":"https://charles2530.github.io/image/background/background-dark1.jpg"},"title":"Charles's Castle","subtitle":{"text":["Happiness is best!","Never give up!","Everyday is a gift!"],"hitokoto":{"enable":false,"api":"https://v1.hitokoto.cn"},"typing_speed":100,"backing_speed":80,"starting_delay":500,"backing_delay":1500,"loop":true,"smart_backspace":true},"text_color":{"light":"#000000","dark":"#d1d1b6"},"text_style":{"title_size":"3.2rem","subtitle_size":"1.5rem","line_height":1.2},"custom_font":{"enable":false,"family":null,"url":null},"social_links":{"enable":true,"style":"center","links":{"github":"https://github.com/Charles2530/","zhihu":"https://www.zhihu.com/people/yang-guang-xiao-zi-55-55","email":"charles2530@163.com"},"qrs":{"weixin":"https://charles2530.github.io/image/background/Wechat_icon.png"}}},"plugins":{"feed":{"enable":true},"aplayer":{"enable":false,"type":"fixed","audios":[{"name":null,"artist":null,"url":null,"cover":null},{"name":null,"artist":null,"url":null,"cover":null}]},"mermaid":{"enable":true,"version":"9.3.0"}},"version":"2.6.1","navbar":{"auto_hide":true,"color":{"left":"#f78736","right":"#367df7","transparency":35},"width":{"home":"1200px","pages":"1000px"},"links":{"Home":{"path":"/","icon":"fa-regular fa-house"},"Categories":{"path":"/categories","icon":"fas fa-bookmark"},"Tags":{"path":"/tags","icon":"fas fa-tags"},"About":{"icon":"fa-regular fa-user","submenus":{"Me":"/about","Github":"https://github.com/Charles2530/","Blog":"https://charles2530.github.io","Statistics":"https://tongji.baidu.com/"}},"AI Notes":{"path":"/ai-notes","icon":"fas fa-brain"}},"search":{"enable":true,"preload":true}},"page_templates":{"friends_column":2,"tags_style":"blur"},"home":{"sidebar":{"enable":true,"position":"left","first_item":"menu","announcement":"This is Charles's Castle","show_on_mobile":true,"links":{"Archives":{"path":"/archives","icon":"fa-regular fa-archive"},"Photos":{"icon":"fa-solid fa-image","path":"/masonry/"},"Essays":{"icon":"fa-solid fa-message-lines","path":"/essay/"},"Friends":{"icon":"fa-solid fa-user-group","path":"/friends/"}}},"article_date_format":"auto","categories":{"enable":true,"limit":3},"tags":{"enable":true,"limit":3}},"footerStart":"2022/12/27 00:00:00"};
+    window.lang_ago = {"second":"%s seconds ago","minute":"%s minutes ago","hour":"%s hours ago","day":"%s days ago","week":"%s weeks ago","month":"%s months ago","year":"%s years ago"};
+    window.data = {"masonry":true};
+  </script>
+    
+    <!--- Fontawesome Part-->
+    <link rel="stylesheet" href="//evan.beee.top/projects/hexo-theme-redefine@2.6.1/source/fontawesome/fontawesome.min.css">
+    <link rel="stylesheet" href="//evan.beee.top/projects/hexo-theme-redefine@2.6.1/source/fontawesome/brands.min.css">
+    <link rel="stylesheet" href="//evan.beee.top/projects/hexo-theme-redefine@2.6.1/source/fontawesome/solid.min.css">
+    <link rel="stylesheet" href="//evan.beee.top/projects/hexo-theme-redefine@2.6.1/source/fontawesome/regular.min.css">
+    
+    
+    
+    
+<meta name="generator" content="Hexo 6.3.0"><link rel="alternate" href="/atom.xml" title="Charles's Castle" type="application/atom+xml">
+<link rel="stylesheet" href="/css/prism-tomorrow.css" type="text/css"></head>
+
+
+<body>
+<div class="progress-bar-container">
+    
+        <span class="scroll-progress-bar"></span>
+    
+
+    
+        <span class="pjax-progress-bar"></span>
+<!--        <span class="swup-progress-icon">-->
+<!--            <i class="fa-solid fa-circle-notch fa-spin"></i>-->
+<!--        </span>-->
+    
+</div>
+
+
+<main class="page-container" id="swup">
+
+    
+
+    <div class="main-content-container">
+
+
+        <div class="main-content-header">
+            <header class="navbar-container px-6 md:px-12">
+
+    <div class="navbar-content ">
+        <div class="left">
+            
+                <a class="logo-image" href="/">
+                    <img src="https://charles2530.github.io/image/background/logo.jpg">
+                </a>
+            
+            <a class="logo-title" href="/">
+                
+                Charles&#39;s Castle
+                
+            </a>
+        </div>
+
+        <div class="right">
+            <!-- PC -->
+            <div class="desktop">
+                <ul class="navbar-list">
+                    
+                        
+                            
+
+                            <li class="navbar-item">
+                                <!-- Menu -->
+                                <a class=""
+                                   href="/"
+                                        >
+                                    <i class="fa-regular fa-house fa-fw"></i>
+                                    HOME
+                                    
+                                </a>
+
+                                <!-- Submenu -->
+                                
+                            </li>
+                    
+                        
+                            
+
+                            <li class="navbar-item">
+                                <!-- Menu -->
+                                <a class=""
+                                   href="/categories"
+                                        >
+                                    <i class="fas fa-bookmark fa-fw"></i>
+                                    CATEGORIES
+                                    
+                                </a>
+
+                                <!-- Submenu -->
+                                
+                            </li>
+                    
+                        
+                            
+
+                            <li class="navbar-item">
+                                <!-- Menu -->
+                                <a class=""
+                                   href="/tags"
+                                        >
+                                    <i class="fas fa-tags fa-fw"></i>
+                                    TAGS
+                                    
+                                </a>
+
+                                <!-- Submenu -->
+                                
+                            </li>
+                    
+                        
+                            
+
+                            <li class="navbar-item">
+                                <!-- Menu -->
+                                <a class="has-dropdown"
+                                   href="#"
+                                        onClick=&#34;return false;&#34;>
+                                    <i class="fa-regular fa-user fa-fw"></i>
+                                    ABOUT
+                                    <i class="fa-solid fa-chevron-down fa-fw"></i>
+                                </a>
+
+                                <!-- Submenu -->
+                                
+                                    <ul class="sub-menu">
+                                        
+                                            <li>
+                                                <a href="/about">
+                                                    ME
+                                                </a>
+                                            </li>
+                                        
+                                            <li>
+                                                <a target="_blank" rel="noopener" href="https://github.com/Charles2530/">
+                                                    GITHUB
+                                                </a>
+                                            </li>
+                                        
+                                            <li>
+                                                <a href="https://charles2530.github.io">
+                                                    BLOG
+                                                </a>
+                                            </li>
+                                        
+                                            <li>
+                                                <a target="_blank" rel="noopener" href="https://tongji.baidu.com/">
+                                                    STATISTICS
+                                                </a>
+                                            </li>
+                                        
+                                    </ul>
+                                
+                            </li>
+                    
+                        
+                            
+
+                            <li class="navbar-item">
+                                <!-- Menu -->
+                                <a class=""
+                                   href="/ai-notes"
+                                        >
+                                    <i class="fas fa-brain fa-fw"></i>
+                                    AI NOTES
+                                    
+                                </a>
+
+                                <!-- Submenu -->
+                                
+                            </li>
+                    
+                    
+                        <li class="navbar-item search search-popup-trigger">
+                            <i class="fa-solid fa-magnifying-glass"></i>
+                        </li>
+                    
+                </ul>
+            </div>
+            <!-- Mobile -->
+            <div class="mobile">
+                
+                    <div class="icon-item search search-popup-trigger"><i class="fa-solid fa-magnifying-glass"></i>
+                    </div>
+                
+                <div class="icon-item navbar-bar">
+                    <div class="navbar-bar-middle"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Mobile sheet -->
+    <div class="navbar-drawer h-screen w-full absolute top-0 left-0 bg-background-color flex flex-col justify-between">
+        <ul class="drawer-navbar-list flex flex-col px-4 justify-center items-start">
+            
+                
+                    
+
+                    <li class="drawer-navbar-item text-base my-1.5 flex flex-col w-full">
+                        
+                        <a class="py-1.5 px-2 flex flex-row items-center justify-between gap-1 hover:!text-primary active:!text-primary text-2xl font-semibold group border-b border-border-color hover:border-primary w-full "
+                           href="/"
+                        >
+                            <span>
+                                HOME
+                            </span>
+                            
+                                <i class="fa-regular fa-house fa-sm fa-fw"></i>
+                            
+                        </a>
+                        
+
+                        
+                    </li>
+            
+                
+                    
+
+                    <li class="drawer-navbar-item text-base my-1.5 flex flex-col w-full">
+                        
+                        <a class="py-1.5 px-2 flex flex-row items-center justify-between gap-1 hover:!text-primary active:!text-primary text-2xl font-semibold group border-b border-border-color hover:border-primary w-full "
+                           href="/categories"
+                        >
+                            <span>
+                                CATEGORIES
+                            </span>
+                            
+                                <i class="fas fa-bookmark fa-sm fa-fw"></i>
+                            
+                        </a>
+                        
+
+                        
+                    </li>
+            
+                
+                    
+
+                    <li class="drawer-navbar-item text-base my-1.5 flex flex-col w-full">
+                        
+                        <a class="py-1.5 px-2 flex flex-row items-center justify-between gap-1 hover:!text-primary active:!text-primary text-2xl font-semibold group border-b border-border-color hover:border-primary w-full "
+                           href="/tags"
+                        >
+                            <span>
+                                TAGS
+                            </span>
+                            
+                                <i class="fas fa-tags fa-sm fa-fw"></i>
+                            
+                        </a>
+                        
+
+                        
+                    </li>
+            
+                
+                    
+
+                    <li class="drawer-navbar-item-sub text-base my-1.5 flex flex-col w-full">
+                        
+                        <div class="py-1.5 px-2 flex flex-row items-center justify-between gap-1 hover:!text-primary active:!text-primary cursor-pointer text-2xl font-semibold group border-b border-border-color hover:border-primary w-full "
+                             navbar-data-toggle="submenu-About"
+                        >
+                            <span>
+                                ABOUT
+                            </span>
+                            
+                                <i class="fa-solid fa-chevron-right fa-sm fa-fw transition-all"></i>
+                            
+                        </div>
+                        
+
+                        
+                            <div class="flex-col items-start px-2 py-2 hidden" data-target="submenu-About">
+                                
+                                    <div class="drawer-navbar-item text-base flex flex-col justify-center items-start hover:underline active:underline hover:underline-offset-1 rounded-3xl">
+                                        <a class=" text-third-text-color text-xl"
+                                           href="/about">ME</a>
+                                    </div>
+                                
+                                    <div class="drawer-navbar-item text-base flex flex-col justify-center items-start hover:underline active:underline hover:underline-offset-1 rounded-3xl">
+                                        <a class=" text-third-text-color text-xl"
+                                           target="_blank" rel="noopener" href="https://github.com/Charles2530/">GITHUB</a>
+                                    </div>
+                                
+                                    <div class="drawer-navbar-item text-base flex flex-col justify-center items-start hover:underline active:underline hover:underline-offset-1 rounded-3xl">
+                                        <a class=" text-third-text-color text-xl"
+                                           href="https://charles2530.github.io">BLOG</a>
+                                    </div>
+                                
+                                    <div class="drawer-navbar-item text-base flex flex-col justify-center items-start hover:underline active:underline hover:underline-offset-1 rounded-3xl">
+                                        <a class=" text-third-text-color text-xl"
+                                           target="_blank" rel="noopener" href="https://tongji.baidu.com/">STATISTICS</a>
+                                    </div>
+                                
+                            </div>
+                        
+                    </li>
+            
+                
+                    
+
+                    <li class="drawer-navbar-item text-base my-1.5 flex flex-col w-full">
+                        
+                        <a class="py-1.5 px-2 flex flex-row items-center justify-between gap-1 hover:!text-primary active:!text-primary text-2xl font-semibold group border-b border-border-color hover:border-primary w-full "
+                           href="/ai-notes"
+                        >
+                            <span>
+                                AI NOTES
+                            </span>
+                            
+                                <i class="fas fa-brain fa-sm fa-fw"></i>
+                            
+                        </a>
+                        
+
+                        
+                    </li>
+            
+
+            
+            
+                
+                    
+                    <li class="drawer-navbar-item text-base my-1.5 flex flex-col w-full">
+                        <a class="py-1.5 px-2 flex flex-row items-center justify-between gap-1 hover:!text-primary active:!text-primary text-2xl font-semibold group border-b border-border-color hover:border-primary w-full active"
+                           href="/archives"
+                        >
+                            <span>Archives</span>
+                            <i class="fa-regular fa-archive fa-sm fa-fw"></i>
+                        </a>
+                    </li>
+                
+                    
+                    <li class="drawer-navbar-item text-base my-1.5 flex flex-col w-full">
+                        <a class="py-1.5 px-2 flex flex-row items-center justify-between gap-1 hover:!text-primary active:!text-primary text-2xl font-semibold group border-b border-border-color hover:border-primary w-full active"
+                           href="/masonry/"
+                        >
+                            <span>Photos</span>
+                            <i class="fa-solid fa-image fa-sm fa-fw"></i>
+                        </a>
+                    </li>
+                
+                    
+                    <li class="drawer-navbar-item text-base my-1.5 flex flex-col w-full">
+                        <a class="py-1.5 px-2 flex flex-row items-center justify-between gap-1 hover:!text-primary active:!text-primary text-2xl font-semibold group border-b border-border-color hover:border-primary w-full active"
+                           href="/essay/"
+                        >
+                            <span>Essays</span>
+                            <i class="fa-solid fa-message-lines fa-sm fa-fw"></i>
+                        </a>
+                    </li>
+                
+                    
+                    <li class="drawer-navbar-item text-base my-1.5 flex flex-col w-full">
+                        <a class="py-1.5 px-2 flex flex-row items-center justify-between gap-1 hover:!text-primary active:!text-primary text-2xl font-semibold group border-b border-border-color hover:border-primary w-full active"
+                           href="/friends/"
+                        >
+                            <span>Friends</span>
+                            <i class="fa-solid fa-user-group fa-sm fa-fw"></i>
+                        </a>
+                    </li>
+                
+            
+        </ul>
+
+        <div class="statistics flex justify-around my-2.5">
+    <a class="item tag-count-item flex flex-col justify-center items-center w-20" href="/tags">
+        <div class="number text-2xl sm:text-xl text-second-text-color font-semibold">44</div>
+        <div class="label text-third-text-color text-sm">Tags</div>
+    </a>
+    <a class="item tag-count-item flex flex-col justify-center items-center w-20" href="/categories">
+        <div class="number text-2xl sm:text-xl text-second-text-color font-semibold">96</div>
+        <div class="label text-third-text-color text-sm">Categories</div>
+    </a>
+    <a class="item tag-count-item flex flex-col justify-center items-center w-20" href="/archives">
+        <div class="number text-2xl sm:text-xl text-second-text-color font-semibold">479</div>
+        <div class="label text-third-text-color text-sm">Posts</div>
+    </a>
+</div>
+    </div>
+
+    <div class="window-mask"></div>
+
+</header>
+
+
+        </div>
+
+        <div class="main-content-body">
+
+            
+
+            <div class="main-content">
+
+                
+                    <div class="post-page-container flex relative justify-between box-border w-full h-full">
+    <div class="article-content-container">
+
+        <div class="article-title relative w-full">
+            
+                <div class="w-full flex items-center pt-6 justify-start">
+                    <h1 class="article-title-regular text-second-text-color text-4xl md:text-6xl font-bold px-2 sm:px-6 md:px-8 py-3">推理总览</h1>
+                </div>
+            
+            </div>
+
+        
+            <div class="article-header flex flex-row gap-2 items-center px-2 sm:px-6 md:px-8">
+                <div class="avatar w-[46px] h-[46px] flex-shrink-0 rounded-medium border border-border-color p-[1px]">
+                    <img src="https://charles2530.github.io/image/background/logo2.jpg">
+                </div>
+                <div class="info flex flex-col justify-between">
+                    <div class="author flex items-center">
+                        <span class="name text-default-text-color text-lg font-semibold">Charles</span>
+                        
+                            <span class="author-label ml-1.5 text-xs px-2 py-0.5 rounded-small text-third-text-color border border-shadow-color-1">Lv7</span>
+                        
+                    </div>
+                    <div class="meta-info">
+                        <div class="article-meta-info">
+    <span class="article-date article-meta-item">
+        <i class="fa-regular fa-pen-fancy"></i>&nbsp;
+        <span class="desktop">2026-05-11 09:40</span>
+        <span class="mobile">2026-05-11 09:40</span>
+        <span class="hover-info">Created</span>
+    </span>
+    
+        <span class="article-date article-meta-item">
+            <i class="fa-regular fa-wrench"></i>&nbsp;
+            <span class="desktop">2026-05-11 09:40</span>
+            <span class="mobile">2026-05-11 09:40</span>
+            <span class="hover-info">Updated</span>
+        </span>
+    
+
+    
+        <span class="article-categories article-meta-item">
+            <i class="fa-regular fa-folders"></i>&nbsp;
+            <ul>
+                
+                
+                    
+                        
+                        <li>
+                            <a href="/categories/AI-Notes/">AI Notes</a>&nbsp;
+                        </li>
+                    
+                    
+                
+                    
+                        
+                            <li>></li>
+                        
+                        <li>
+                            <a href="/categories/AI-Notes/Inference/">Inference</a>&nbsp;
+                        </li>
+                    
+                    
+                
+            </ul>
+        </span>
+    
+    
+        <span class="article-tags article-meta-item">
+            <i class="fa-regular fa-tags"></i>&nbsp;
+            <ul>
+                
+                    <li>
+                        <a href="/tags/AI-Notes/">AI Notes</a>&nbsp;
+                    </li>
+                
+                    <li>
+                        | <a href="/tags/GPU-Systems/">GPU Systems</a>&nbsp;
+                    </li>
+                
+                    <li>
+                        | <a href="/tags/Inference/">Inference</a>&nbsp;
+                    </li>
+                
+                    <li>
+                        | <a href="/tags/Embodied-AI/">Embodied AI</a>&nbsp;
+                    </li>
+                
+            </ul>
+        </span>
+    
+
+    
+    
+        <span class="article-wordcount article-meta-item">
+            <i class="fa-regular fa-typewriter"></i>&nbsp;<span>3.9k Words</span>
+        </span>
+    
+    
+        <span class="article-min2read article-meta-item">
+            <i class="fa-regular fa-clock"></i>&nbsp;<span>14 Mins</span>
+        </span>
+    
+    
+        <span class="article-pv article-meta-item">
+            <i class="fa-regular fa-eye"></i>&nbsp;<span id="busuanzi_value_page_pv"></span>
+        </span>
+    
+</div>
+
+                    </div>
+                </div>
+            </div>
+        
+
+        
+
+
+        <div class="article-content markdown-body px-2 sm:px-6 md:px-8 pb-8">
+            <div class="atlas-hero">
+  <div class="atlas-kicker">Inference Systems</div>
+  <p class="atlas-lead">这一专题围绕在线推理系统展开，重点讨论服务系统、运行时、KV cache、长上下文、MoE、多模型路由、在线评测与容量治理。</p>
+  <div class="atlas-chip-row">
+    <span class="atlas-chip">服务系统</span>
+    <span class="atlas-chip">运行时</span>
+    <span class="atlas-chip">KV Cache</span>
+    <span class="atlas-chip">容量运维</span>
+  </div>
+</div>
+<h2 id="专题定位"><a class="markdownIt-Anchor" href="#专题定位"></a> 专题定位</h2>
+<div class="atlas-meta-grid">
+  <div>
+    <strong>核心问题</strong>
+    <p>如何把训练好的模型变成一条可运营的在线系统，在质量、时延、吞吐、成本和稳定性之间做持续平衡。</p>
+  </div>
+  <div>
+    <strong>适合读者</strong>
+    <p>适合做在线服务、RAG、Agent、模型路由、多租户平台和推理基础设施的人。</p>
+  </div>
+  <div>
+    <strong>阅读方式</strong>
+    <p>建议先看服务系统和运行时，再进入缓存、长上下文、MoE、多模型和在线评测。</p>
+  </div>
+</div>
+
+  <div class="note p-4 mb-4 rounded-small info">
+    <p><strong>在全站主线里的位置</strong></p>
+<p>推理专题是工程支撑，解决“训练好的模型如何稳定、低延迟、低成本地被调用”。对世界模型和 VLA 来说，它尤其重要在实时闭环：rollout、动作预测、视频生成和安全检查都可能反复调用模型。如果只是建立概念主线，可以先跳过大部分推理细节；一旦进入交互式世界模型或机器人部署，再回来读缓存、调度、量化和在线评测。</p>
+
+  </div>
+<h2 id="推荐入口"><a class="markdownIt-Anchor" href="#推荐入口"></a> 推荐入口</h2>
+<div class="atlas-card-grid">
+  <a class="atlas-card" href="serving-systems/">
+    <strong>服务系统</strong>
+    <p>先建立 prefill、decode、排队、批处理和尾延迟的总体系统图。</p>
+  </a>
+  <a class="atlas-card" href="serving-runtimes-vllm-sglang-and-tensorrt-llm/">
+    <strong>vLLM、SGLang 与 TensorRT-LLM</strong>
+    <p>理解运行时选型如何影响 cache、量化、结构化生成和多模型集成。</p>
+  </a>
+  <a class="atlas-card" href="context-compression-kv-eviction-and-memory-hierarchies/">
+    <strong>上下文压缩、KV 淘汰与内存分层</strong>
+    <p>快速切入长上下文系统最现实的内存与缓存管理问题。</p>
+  </a>
+</div>
+<p>推理系统的目标，不只是“模型能跑”，而是“在成本、延迟、吞吐和稳定性之间做平衡”。</p>
+<p>对自回归模型，单请求时延可粗略写成：</p>
+<p>[<br />
+T \approx T_{\text{queue}} + T_{\text{prefill}} + T_{\text{decode}} + T_{\text{post}}<br />
+]</p>
+<p>若输出长度为 (n)，则常可进一步近似为：</p>
+<p>[<br />
+T_{\text{decode}} \approx n \cdot T_{\text{step}}<br />
+]</p>
+
+  <div class="note p-4 mb-4 rounded-small success">
+    <p><strong>基础知识入口</strong></p>
+<p>推理系统里的 <code>KV Cache</code>、latency、throughput、runtime、kernel 和低精度路径，都依赖基础执行模型。建议先看 <a href="/2026/05/11/ai-notes/files-foundations-transformer-attention-and-tokenization/">Transformer 与 Attention</a>、<a href="/2026/05/11/ai-notes/files-foundations-positional-encoding-masks-and-context/">位置编码、Mask 与上下文</a> 和 <a href="/2026/05/11/ai-notes/files-foundations-numerics-memory-and-runtime-basics/">数值、显存与运行时基础</a>。</p>
+
+  </div>
+<p>vLLM 原论文图可以作为推理专题的第一张系统图：在线推理不只是模型前向，还包括 scheduler、KV cache manager、GPU/CPU block allocator 和 worker 之间的协同。</p>
+<p><img  
+                     lazyload
+                     src="/images/loading.svg"
+                     data-src="/ai-notes-assets/images/paper-figures/inference/vllm-system-overview.png"
+                      alt="vLLM system overview 原论文图" 
+                ></p>
+<p><small>图源：<a class="link"   target="_blank" rel="noopener" href="https://arxiv.org/abs/2309.06180" >Efficient Memory Management for Large Language Model Serving with PagedAttention <i class="fa-regular fa-arrow-up-right-from-square fa-sm"></i></a>，Figure 3。原论文图意：vLLM 使用 centralized scheduler 协调 GPU workers，并由 KV cache manager 通过 paged block 方式管理 GPU/CPU KV cache。</small></p>
+
+  <div class="note p-4 mb-4 rounded-small info">
+    <p><strong>图解：推理 runtime 是执行系统，不是一个 generate 函数</strong></p>
+<p>图里的 scheduler 负责把请求编队，KV cache manager 负责把逻辑 token block 映射到物理 cache block，worker 才负责真正执行模型。TTFT、TPOT、吞吐和 P99 往往由这些系统组件共同决定。理解推理时，先把“请求如何进入 GPU”和“KV 如何分配回收”画清楚，再谈 kernel 或量化会更稳。</p>
+
+  </div>
+<h2 id="1-推理系统为什么和训练系统完全不同"><a class="markdownIt-Anchor" href="#1-推理系统为什么和训练系统完全不同"></a> 1. 推理系统为什么和训练系统完全不同</h2>
+<p><strong>训练关心的是</strong>：</p>
+<ul>
+<li>loss：优化目标是否下降，训练信号是否合理。</li>
+<li>收敛：参数更新是否稳定走向可用解，而不是震荡或发散。</li>
+<li>泛化：模型在未见数据和长尾任务上是否仍然可靠。</li>
+</ul>
+<p><strong>推理关心的是</strong>：</p>
+<ul>
+<li>首 token 延迟：用户看到第一段输出前等多久。</li>
+<li>每 token 生成速度：流式输出过程中每个 token 的间隔。</li>
+<li>QPS：单位时间能处理多少请求。</li>
+<li>tail latency：P95/P99 是否稳定，决定最差体验。</li>
+<li>单位请求成本：每次调用消耗多少 GPU、显存和工程资源。</li>
+</ul>
+<p>因此同一个模型，训练做得很好，不代表在线服务就自然高效。</p>
+<h3 id="11-为什么很多团队会误判推理问题"><a class="markdownIt-Anchor" href="#11-为什么很多团队会误判推理问题"></a> 1.1 为什么很多团队会误判推理问题</h3>
+<p>因为训练视角很容易把问题看成“模型是否强”。但推理视角里，很多关键问题其实是：</p>
+<ol>
+<li>请求是否被正确分流；</li>
+<li>上下文是否被合理装配；</li>
+<li>KV cache 是否被有效管理；</li>
+<li>prefill 和 decode 是否被分开优化；</li>
+<li>尾延迟是否被控制。</li>
+</ol>
+<p>所以推理更多是系统设计问题，而不是单模型问题。</p>
+<h2 id="2-一个直观例子短问题-长-pdf"><a class="markdownIt-Anchor" href="#2-一个直观例子短问题-长-pdf"></a> 2. 一个直观例子：短问题 + 长 PDF</h2>
+<p>用户问一句很短的话，但带了 20 页 PDF。真正贵的往往不是解码，而是前面的 prefill，因为要先把整段上下文编码进 KV cache。</p>
+<p><strong>这说明推理至少要区分两类负载</strong>：</p>
+<ul>
+<li>prefill：一次性处理输入上下文并写入 KV cache，长输入时成本高。</li>
+<li>decode：逐 token 生成输出，常受 KV cache 读写和调度影响。</li>
+</ul>
+<p>它们的瓶颈和优化手段并不一样。</p>
+<h3 id="21-再看一个反例短轮次-agent"><a class="markdownIt-Anchor" href="#21-再看一个反例短轮次-agent"></a> 2.1 再看一个反例：短轮次 agent</h3>
+<p>如果系统是屏幕 agent 或工具 agent，请求上下文可能不长，但每次都需要快速多轮调用。此时瓶颈可能不在 prefill，而在：</p>
+<ol>
+<li>小 batch 下的 kernel 利用率；</li>
+<li>高频工具链切换；</li>
+<li>路由和缓存污染；</li>
+<li>多轮状态膨胀。</li>
+</ol>
+<p>这说明“推理慢”并不是一个统一问题。</p>
+<h2 id="3-推理要解决的四个核心问题"><a class="markdownIt-Anchor" href="#3-推理要解决的四个核心问题"></a> 3. 推理要解决的四个核心问题</h2>
+<h3 id="延迟"><a class="markdownIt-Anchor" href="#延迟"></a> 延迟</h3>
+<p>用户多久能看到第一段输出。</p>
+<p>更细一点说，延迟至少要拆成<strong>排队、网络、prefill、decode 和后处理</strong>几个阶段。不同业务对延迟的敏感点并不一样。聊天产品往往首先在意首 token 时间，agent 系统更在意整条多步链路的总完成时间，而批量离线生成则可能根本不在乎 TTFT，却非常在意整体吞吐和资源利用率。</p>
+<h3 id="吞吐"><a class="markdownIt-Anchor" href="#吞吐"></a> 吞吐</h3>
+<p>同样资源下一秒能服务多少 token 或多少请求。</p>
+<p>吞吐不只是“卡打满没有”。它还涉及请求混部后的有效吞吐、短长请求混合时的吞吐退化、连续批处理对不同阶段的影响，以及高峰流量下系统是否还能稳定维持接近设计值的服务能力。很多线上系统平均吞吐看上去不错，但一旦混入长上下文、工具调用或图像输入，请求画像一变，吞吐就会迅速塌掉。</p>
+<h3 id="成本"><a class="markdownIt-Anchor" href="#成本"></a> 成本</h3>
+<p>每次请求到底花多少钱。</p>
+<p>成本既包括直接的 GPU 成本，也包括显存占用、缓存驻留、工程维护复杂度、失败重试和容量冗余。一个表面上更快的方案，若需要更高的显存水位、更复杂的旁路服务或更脆弱的缓存策略，最终未必更便宜。推理优化里，真正需要关注的是<strong>单位可接受质量对应的单位成本</strong>，而不是抽象意义上的“越省越好”。</p>
+<h3 id="稳定性"><a class="markdownIt-Anchor" href="#稳定性"></a> 稳定性</h3>
+<p>P95/P99 会不会突然拉高。</p>
+<p>稳定性回答的是系统能否长期经营，而不是能否偶尔跑出漂亮 benchmark。线上常见的问题包括长请求挤占短请求、某一类 prompt 触发显存峰值、prefix cache 失效导致瞬时流量放大，以及多模型路由切换后某条慢路径被放大。只看平均值，很容易把这些风险藏起来。</p>
+<h3 id="31-还有一个经常被漏掉的问题可观测性"><a class="markdownIt-Anchor" href="#31-还有一个经常被漏掉的问题可观测性"></a> 3.1 还有一个经常被漏掉的问题：可观测性</h3>
+<p>一个推理系统若无法回答“为什么今天比昨天慢”“为什么某类请求集中失败”“为什么某些用户突然都掉到了慢模型上”，那它即使暂时跑得起来，也很难长期维护。</p>
+<p>可观测性的价值在于，它把推理系统从“黑箱服务”变成“可诊断系统”。至少要能分阶段看排队时间、prefill 时间、decode 时间、cache 命中率、路由分布、显存水位和异常请求桶。否则团队即使知道系统出了问题，也很难知道该先改调度、改路由、改缓存还是改模型。</p>
+<h2 id="4-一个统一理解"><a class="markdownIt-Anchor" href="#4-一个统一理解"></a> 4. 一个统一理解</h2>
+<p>可以把在线推理看成一个队列系统：</p>
+<p>[<br />
+\text{requests} \rightarrow \text{scheduling} \rightarrow \text{GPU compute} \rightarrow \text{responses}<br />
+]</p>
+<p>因此很多问题其实不是“模型慢”，而是：</p>
+<ul>
+<li>调度不合理：长短请求、在线和后台任务没有被正确排队。</li>
+<li>cache 管理差：KV、prefix 或检索缓存没有被有效复用和回收。</li>
+<li>请求类型混在一起：长文档、短聊天、agent 和多模态请求互相拖慢。</li>
+<li>路由策略没分层：简单任务和高价值复杂任务走了同一条昂贵路径。</li>
+</ul>
+<h3 id="41-推理为什么天然是多目标优化"><a class="markdownIt-Anchor" href="#41-推理为什么天然是多目标优化"></a> 4.1 推理为什么天然是多目标优化</h3>
+<p>很多优化只能同时改善一部分目标：</p>
+<ol>
+<li>更 aggressive batching 提升吞吐，但可能拉高 TTFT；</li>
+<li>更强检索提升质量，但拉长关键路径；</li>
+<li>量化降低成本，但可能损伤长尾能力；</li>
+<li>小模型更快，但复杂任务可能需要升级回大模型。</li>
+</ol>
+<p>所以推理决策本质上是多目标权衡，而不是“尽量更快”这么单一。</p>
+<h2 id="5-推理优化的主要抓手"><a class="markdownIt-Anchor" href="#5-推理优化的主要抓手"></a> 5. 推理优化的主要抓手</h2>
+<h3 id="服务系统设计"><a class="markdownIt-Anchor" href="#服务系统设计"></a> 服务系统设计</h3>
+<p>如 continuous batching、并行策略、资源池化。</p>
+<p>服务系统设计决定请求怎样进入 GPU、怎样被合批、怎样和其他请求共享资源。它不仅影响平均吞吐，还影响尾延迟、租户隔离和故障放大方式。一个好的服务系统，会明确区分热路径与慢路径、长请求与短请求、在线用户流量与后台批量任务，而不是把所有东西都塞进同一个资源池里。</p>
+<h3 id="缓存"><a class="markdownIt-Anchor" href="#缓存"></a> 缓存</h3>
+<p>如 KV cache、prefix cache、检索缓存。</p>
+<p>缓存是推理系统最像“放大器”的组件。命中时能显著降低重复计算和首 token 延迟，失效时却可能造成显存膨胀、冷热不均和回收抖动。更重要的是，缓存从来不是只靠技术实现就能成功，它还依赖 prompt 结构是否稳定、会话边界是否清楚、上下文拼装是否一致以及淘汰策略是否贴近真实流量。</p>
+<h3 id="路由"><a class="markdownIt-Anchor" href="#路由"></a> 路由</h3>
+<p>如不同请求走不同模型或链路。</p>
+<p>路由负责把“不同难度、不同价值、不同形态”的请求送往不同路径。它既可以是显式规则，例如高价值用户走更强模型，也可以是隐式分类器，例如根据上下文长度、工具需求和历史失败率选择不同链路。一个成熟的推理系统，几乎不可能只靠单模型单路径覆盖所有请求。</p>
+<h3 id="加速推理方法"><a class="markdownIt-Anchor" href="#加速推理方法"></a> 加速推理方法</h3>
+<p>如 speculative decoding、量化、kernel 优化。</p>
+<p>这类方法解决的是单位时间内如何多做一点有效计算，但它们的价值必须回到系统里判断。比如 speculative decoding 要看 draft 模型命中率和额外调度成本，量化要看长尾质量与 kernel 支持，kernel 优化要看是否真的命中热路径。脱离真实流量分布去谈加速，往往只能得到局部最优。</p>
+<h3 id="上下文管理"><a class="markdownIt-Anchor" href="#上下文管理"></a> 上下文管理</h3>
+<p>如压缩、裁剪、淘汰和外部记忆分层。</p>
+<p>上下文管理本质上是在回答两个问题：<strong>哪些内容必须保留，哪些内容应该外置</strong>。随着 RAG、agent 和记忆系统接入，推理的瓶颈越来越不只是生成，而是上下文如何组织。一个设计合理的系统，不会默认把所有历史都塞进 prompt，而会根据任务目标、召回质量、缓存状态和时延预算来动态决定保留什么。</p>
+<h3 id="51-为什么这些抓手必须一起看"><a class="markdownIt-Anchor" href="#51-为什么这些抓手必须一起看"></a> 5.1 为什么这些抓手必须一起看</h3>
+<p><strong>因为单点优化常常会转移瓶颈</strong>：</p>
+<ol>
+<li>量化后显存省了，但 cache 成了新瓶颈；</li>
+<li>检索做强了，但上下文拼接太长；</li>
+<li>speculative 解码快了，但排队和路由变差；</li>
+<li>continuous batching 提升了吞吐，却把尾延迟拉高。</li>
+</ol>
+<p><strong>推理系统的难点就在这里</strong>：你很少能只动一个旋钮而不影响其他部分。</p>
+<h2 id="6-推理文档在本知识库里的位置"><a class="markdownIt-Anchor" href="#6-推理文档在本知识库里的位置"></a> 6. 推理文档在本知识库里的位置</h2>
+<p>这里的推理章节不是只讲某个 kernel 或某个 serving 框架，而是把完整的在线系统拆成若干关键层：</p>
+<ol>
+<li>服务系统与调度；</li>
+<li><code>vLLM</code>、<code>SGLang</code>、<code>TensorRT-LLM</code> 等运行时如何承接 cache、batching 与 kernel；</li>
+<li>解耦式 prefill、KV 服务与容量运维如何把上下文和增量生成分层处理；</li>
+<li>缓存、路由与投机执行；</li>
+<li>RAG、agent 与长上下文；</li>
+<li>上下文压缩与内存分层；</li>
+<li>GPU kernel、batching 与显存系统；</li>
+<li>多模型与 MoE 路由；</li>
+<li>成本建模、SLO 和线上评测。</li>
+</ol>
+<p>这样阅读时会更容易建立系统图，而不是只记一些零散优化技巧。</p>
+<h2 id="7-推荐阅读顺序"><a class="markdownIt-Anchor" href="#7-推荐阅读顺序"></a> 7. 推荐阅读顺序</h2>
+<p><strong>建议先读</strong>：</p>
+<ol>
+<li><a href="/2026/05/11/ai-notes/files-inference-serving-systems/">服务系统</a></li>
+<li><a href="/2026/05/11/ai-notes/files-inference-serving-runtimes-vllm-sglang-and-tensorrt-llm/">vLLM、SGLang 与 TensorRT-LLM</a></li>
+<li><a href="/2026/05/11/ai-notes/files-inference-disaggregated-prefill-kv-services-and-capacity-ops/">解耦式 Prefill、KV 服务与容量运维</a></li>
+<li><a href="/2026/05/11/ai-notes/files-inference-caching-routing-and-speculative/">缓存、路由与投机执行</a></li>
+<li><a href="/2026/05/11/ai-notes/files-inference-rag-agents-and-long-context-systems/">RAG、Agent 与长上下文系统</a></li>
+<li><a href="/2026/05/11/ai-notes/files-inference-gpu-kernels-batching-and-memory-systems/">GPU Kernel、Batching 与内存系统</a></li>
+<li><a href="/2026/05/11/ai-notes/files-inference-observability-and-online-evaluation/">可观测性与在线评测</a></li>
+</ol>
+<p>如果你更关心成本与容量规划，再继续看：</p>
+<ol>
+<li><a href="/2026/05/11/ai-notes/files-inference-moe-routing-and-multi-model-serving/">MoE 路由与多模型服务</a></li>
+<li><a href="/2026/05/11/ai-notes/files-inference-cost-modeling-and-slo-design/">成本建模与 SLO 设计</a></li>
+<li><a href="/2026/05/11/ai-notes/files-inference-context-compression-kv-eviction-and-memory-hierarchies/">上下文压缩、KV 淘汰与内存分层</a></li>
+</ol>
+<h2 id="阶段检查与下一站"><a class="markdownIt-Anchor" href="#阶段检查与下一站"></a> 阶段检查与下一站</h2>
+<p>推理专题不要按“优化技巧清单”来读，而要按线上请求的生命周期来读。</p>
+<table>
+<thead>
+<tr>
+<th>阶段</th>
+<th>关键问题</th>
+<th>相关页面</th>
+<th>下一站</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>1. 请求进入系统</td>
+<td>如何排队、合批、分流，TTFT 和 TPOT 谁是主瓶颈</td>
+<td><a href="/2026/05/11/ai-notes/files-inference-serving-systems/">服务系统</a>、<a href="/2026/05/11/ai-notes/files-inference-cost-modeling-and-slo-design/">成本建模与 SLO 设计</a></td>
+<td><a href="/2026/05/11/ai-notes/files-training-index/">训练总览</a> 中的评测与成本</td>
+</tr>
+<tr>
+<td>2. 模型在 GPU 上跑</td>
+<td>runtime、kernel、batching 和 KV cache 如何决定吞吐</td>
+<td><a href="/2026/05/11/ai-notes/files-inference-serving-runtimes-vllm-sglang-and-tensorrt-llm/">vLLM、SGLang 与 TensorRT-LLM</a>、<a href="/2026/05/11/ai-notes/files-inference-gpu-kernels-batching-and-memory-systems/">GPU Kernel、Batching 与内存系统</a></td>
+<td><a href="/2026/05/11/ai-notes/files-operators-index/">算子与编译器</a></td>
+</tr>
+<tr>
+<td>3. 上下文被管理</td>
+<td>长上下文、RAG、agent 和记忆系统如何控制成本与错误传播</td>
+<td><a href="/2026/05/11/ai-notes/files-inference-rag-agents-and-long-context-systems/">RAG、Agent 与长上下文系统</a>、<a href="/2026/05/11/ai-notes/files-inference-context-compression-kv-eviction-and-memory-hierarchies/">上下文压缩、KV 淘汰与内存分层</a></td>
+<td><a href="/2026/05/11/ai-notes/files-vlm-index/">VLM/VLA</a> 或 <a href="/2026/05/11/ai-notes/files-world-models-index/">世界模型</a></td>
+</tr>
+<tr>
+<td>4. 系统可运营</td>
+<td>线上分桶、异常回放、容量规划和多模型路由如何闭环</td>
+<td><a href="/2026/05/11/ai-notes/files-inference-observability-and-online-evaluation/">可观测性与在线评测</a>、<a href="/2026/05/11/ai-notes/files-inference-moe-routing-and-multi-model-serving/">MoE 路由与多模型服务</a></td>
+<td><a href="/2026/05/11/ai-notes/files-quantization-index/">量化</a></td>
+</tr>
+</tbody>
+</table>
+<p>读完推理模块后，应该能把“慢、贵、不稳、掉点”拆成请求画像、调度、缓存、runtime、kernel、模型质量和评测口径中的具体责任层。</p>
+<h2 id="快速代码示例"><a class="markdownIt-Anchor" href="#快速代码示例"></a> 快速代码示例</h2>
+<div class="highlight-container" data-rel="Python"><figure class="iseeu highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">from</span> vllm <span class="keyword">import</span> LLM, SamplingParams</span><br><span class="line"></span><br><span class="line">llm = LLM(</span><br><span class="line">    model=<span class="string">&quot;Qwen/Qwen2.5-7B-Instruct&quot;</span>,</span><br><span class="line">    tensor_parallel_size=<span class="number">2</span>,</span><br><span class="line">    max_model_len=<span class="number">8192</span>,</span><br><span class="line">)</span><br><span class="line">params = SamplingParams(temperature=<span class="number">0.2</span>, max_tokens=<span class="number">256</span>)</span><br><span class="line">outputs = llm.generate(</span><br><span class="line">    [<span class="string">&quot;请总结下面错误日志并给出修复建议：...&quot;</span>],</span><br><span class="line">    params,</span><br><span class="line">)</span><br><span class="line"><span class="built_in">print</span>(outputs[<span class="number">0</span>].outputs[<span class="number">0</span>].text)</span><br></pre></td></tr></table></figure></div>
+<p>这段代码给出一个最小 <code>vLLM</code> 推理入口：初始化模型时设置并行与上下文长度，采样参数独立管理，再统一走 <code>generate</code>。在生产中可继续扩展成批处理、流式输出和多路路由。</p>
+<h2 id="8-一个总判断"><a class="markdownIt-Anchor" href="#8-一个总判断"></a> 8. 一个总判断</h2>
+<p>推理系统不是“把训练好的模型部署一下”，而是把调度、缓存、路由、上下文管理、加速策略和业务目标放到同一个运行框架里。真正成熟的推理团队，不只是知道某个模型多快，而是知道什么请求该走什么路径、什么成本是值得的、哪些尾部风险正在积累，以及一旦流量和任务形态改变，系统会先从哪里出问题。</p>
+<p>换句话说，推理的难点不是“做一次优化”，而是<strong>持续地和流量分布一起演化</strong>。业务会变，模型会变，请求长度会变，缓存命中模式会变，硬件和 runtime 也会变。只有把系统拆成可观察、可调度、可回退的几层结构，推理优化才不会沦为一次次救火。</p>
+
+        </div>
+
+        
+            <div class="post-copyright-info w-full my-8 px-2 sm:px-6 md:px-8">
+                <div class="article-copyright-info-container">
+    <ul>
+        <li><strong>Title:</strong> 推理总览</li>
+        <li><strong>Author:</strong> Charles</li>
+        <li><strong>Created at
+                :</strong> 2026-05-11 09:40:00</li>
+        
+            <li>
+                <strong>Updated at
+                    :</strong> 2026-05-11 09:40:00
+            </li>
+        
+        <li>
+            <strong>Link:</strong> https://charles2530.github.io/2026/05/11/ai-notes/files-inference-index/
+        </li>
+        <li>
+            <strong>
+                License:
+            </strong>
+            
+
+            
+                This work is licensed under <a class="license" target="_blank" rel="noopener" href="https://creativecommons.org/licenses/by-nc-sa/4.0">CC BY-NC-SA 4.0</a>.
+            
+        </li>
+    </ul>
+</div>
+
+            </div>
+        
+
+        
+            <ul class="post-tags-box text-lg mt-1.5 flex-wrap justify-center flex md:hidden">
+                
+                    <li class="tag-item mx-0.5">
+                        <a href="/tags/AI-Notes/">#AI Notes</a>&nbsp;
+                    </li>
+                
+                    <li class="tag-item mx-0.5">
+                        <a href="/tags/GPU-Systems/">#GPU Systems</a>&nbsp;
+                    </li>
+                
+                    <li class="tag-item mx-0.5">
+                        <a href="/tags/Inference/">#Inference</a>&nbsp;
+                    </li>
+                
+                    <li class="tag-item mx-0.5">
+                        <a href="/tags/Embodied-AI/">#Embodied AI</a>&nbsp;
+                    </li>
+                
+            </ul>
+        
+
+        
+  <div class="recommended-article px-2 sm:px-6 md:px-8">
+   <div class="recommended-desktop">
+    <div class="recommended-article-header text-xl md:text-3xl font-bold mt-10">
+     <i aria-hidden="true"></i><span>recommend_articles</span>
+    </div>
+    <div class="recommended-article-group"><a class="recommended-article-item" href="/2023/07/20/compiler-theory-4/" title="compiler-theory-4" rel="bookmark">
+  <img src="https://charles2530.github.io/image/background/p3.jpg" alt="compiler-theory-4" class="!max-w-none">
+  <span class="title">compiler-theory-4</span>
+</a><a class="recommended-article-item" href="/2022/12/28/cpp-part4/" title="Cpp_part4" rel="bookmark">
+  <img src="https://charles2530.github.io/image/background/p4.jfif" alt="Cpp_part4" class="!max-w-none">
+  <span class="title">Cpp_part4</span>
+</a><a class="recommended-article-item" href="/2023/01/12/shrink-point-algorithm/" title="Shrink-point-algorithm" rel="bookmark">
+  <img src="https://charles2530.github.io/image/background/p1.jpg" alt="Shrink-point-algorithm" class="!max-w-none">
+  <span class="title">Shrink-point-algorithm</span>
+</a></div>
+   </div>
+   <div class="recommended-mobile">
+   <div class="recommended-article-header text-xl md:text-3xl font-bold mt-10">
+     <i aria-hidden="true"></i><span>recommend_articles</span>
+   </div>
+   <div class="recommended-article-group"><a class="recommended-article-item" href="/2023/07/20/compiler-theory-4/" title="compiler-theory-4" rel="bookmark">
+  <img src="https://charles2530.github.io/image/background/p3.jpg" alt="compiler-theory-4" class="!max-w-none">
+  <span class="title">compiler-theory-4</span>
+</a><a class="recommended-article-item" href="/2022/12/28/cpp-part4/" title="Cpp_part4" rel="bookmark">
+  <img src="https://charles2530.github.io/image/background/p4.jfif" alt="Cpp_part4" class="!max-w-none">
+  <span class="title">Cpp_part4</span>
+</a></div>
+   </div>
+  </div>
+
+        
+            <div class="article-nav my-8 flex justify-between items-center px-2 sm:px-6 md:px-8">
+                
+                    <div class="article-prev border-border-color shadow-redefine-flat shadow-shadow-color-2 rounded-medium px-4 py-2 hover:shadow-redefine-flat-hover hover:shadow-shadow-color-2">
+                        <a class="prev"
+                        rel="prev"
+                        href="/2026/05/11/ai-notes/files-inference-moe-routing-and-multi-model-serving/"
+                        >
+                            <span class="left arrow-icon flex justify-center items-center">
+                                <i class="fa-solid fa-chevron-left"></i>
+                            </span>
+                            <span class="title flex justify-center items-center">
+                                <span class="post-nav-title-item">MoE 路由与多模型服务</span>
+                                <span class="post-nav-item">Prev posts</span>
+                            </span>
+                        </a>
+                    </div>
+                
+                
+                    <div class="article-next border-border-color shadow-redefine-flat shadow-shadow-color-2 rounded-medium px-4 py-2 hover:shadow-redefine-flat-hover hover:shadow-shadow-color-2">
+                        <a class="next"
+                        rel="next"
+                        href="/2026/05/11/ai-notes/files-inference-gpu-kernels-batching-and-memory-systems/"
+                        >
+                            <span class="title flex justify-center items-center">
+                                <span class="post-nav-title-item">GPU Kernel、Batching 与内存系统</span>
+                                <span class="post-nav-item">Next posts</span>
+                            </span>
+                            <span class="right arrow-icon flex justify-center items-center">
+                                <i class="fa-solid fa-chevron-right"></i>
+                            </span>
+                        </a>
+                    </div>
+                
+            </div>
+        
+
+
+        
+            <div class="comment-container px-2 sm:px-6 md:px-8 pb-8">
+                <div class="comments-container mt-10 w-full ">
+    <div id="comment-anchor" class="w-full h-2.5"></div>
+    <div class="comment-area-title w-full my-1.5 md:my-2.5 text-xl md:text-3xl font-bold">
+        Comments
+    </div>
+    
+
+        <!-- 
+            
+    <div id="gitalk-container"></div>
+    <script data-swup-reload-script
+            src="//cdn.staticfile.org/gitalk/1.8.0/gitalk.min.js"></script>
+    <script data-swup-reload-script>
+
+        function loadGitalk() {
+            let __gitalk__pathname = decodeURI(location.pathname);
+            const __gitalk__pathnameLength = __gitalk__pathname.length;
+            const __gitalk__pathnameMaxLength = 50;
+            if (__gitalk__pathnameLength > __gitalk__pathnameMaxLength) {
+                __gitalk__pathname = __gitalk__pathname.substring(0, __gitalk__pathnameMaxLength - 3) + '...';
+            }
+
+            try {
+                Gitalk && new Gitalk({
+                    clientID: '8083299a8ee2aaf23879',
+                    clientSecret: 'a8161e81d4872181e884fdb69f7be24916b6a9d0',
+                    repo: 'charles2530_issues',
+                    owner: 'Charles2530',
+                    admin: ['Charles2530'],
+                    id: __gitalk__pathname,
+                    language: 'en',
+                    proxy: 'https://github.com/login/oauth/access_token'
+                }).render('gitalk-container');
+
+            } catch (e) {
+                window.Gitalk = null;
+            }
+        }
+
+        if ('true') {
+            const loadGitalkTimeout = setTimeout(() => {
+                loadGitalk();
+                clearTimeout(loadGitalkTimeout);
+            }, 1000);
+        } else {
+            window.addEventListener('DOMContentLoaded', loadGitalk);
+        }
+    </script>
+
+
+
+         -->
+        <script src="https://utteranc.es/client.js" repo="Charles2530/Charles2530.github.io" issue-term="pathname"
+            label="Comment" theme="preferred-color-scheme" crossorigin="anonymous" async>
+            </script>
+    
+</div>
+
+            </div>
+        
+    </div>
+
+    
+        <div class="toc-content-container">
+            <div class="post-toc-wrap">
+    <div class="post-toc">
+        <div class="toc-title">On this page</div>
+        <div class="page-title">推理总览</div>
+        <ol class="nav"><li class="nav-item nav-level-2"><a class="nav-link" href="#%E4%B8%93%E9%A2%98%E5%AE%9A%E4%BD%8D"><span class="nav-text"> 专题定位</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#%E6%8E%A8%E8%8D%90%E5%85%A5%E5%8F%A3"><span class="nav-text"> 推荐入口</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#1-%E6%8E%A8%E7%90%86%E7%B3%BB%E7%BB%9F%E4%B8%BA%E4%BB%80%E4%B9%88%E5%92%8C%E8%AE%AD%E7%BB%83%E7%B3%BB%E7%BB%9F%E5%AE%8C%E5%85%A8%E4%B8%8D%E5%90%8C"><span class="nav-text"> 1. 推理系统为什么和训练系统完全不同</span></a><ol class="nav-child"><li class="nav-item nav-level-3"><a class="nav-link" href="#11-%E4%B8%BA%E4%BB%80%E4%B9%88%E5%BE%88%E5%A4%9A%E5%9B%A2%E9%98%9F%E4%BC%9A%E8%AF%AF%E5%88%A4%E6%8E%A8%E7%90%86%E9%97%AE%E9%A2%98"><span class="nav-text"> 1.1 为什么很多团队会误判推理问题</span></a></li></ol></li><li class="nav-item nav-level-2"><a class="nav-link" href="#2-%E4%B8%80%E4%B8%AA%E7%9B%B4%E8%A7%82%E4%BE%8B%E5%AD%90%E7%9F%AD%E9%97%AE%E9%A2%98-%E9%95%BF-pdf"><span class="nav-text"> 2. 一个直观例子：短问题 + 长 PDF</span></a><ol class="nav-child"><li class="nav-item nav-level-3"><a class="nav-link" href="#21-%E5%86%8D%E7%9C%8B%E4%B8%80%E4%B8%AA%E5%8F%8D%E4%BE%8B%E7%9F%AD%E8%BD%AE%E6%AC%A1-agent"><span class="nav-text"> 2.1 再看一个反例：短轮次 agent</span></a></li></ol></li><li class="nav-item nav-level-2"><a class="nav-link" href="#3-%E6%8E%A8%E7%90%86%E8%A6%81%E8%A7%A3%E5%86%B3%E7%9A%84%E5%9B%9B%E4%B8%AA%E6%A0%B8%E5%BF%83%E9%97%AE%E9%A2%98"><span class="nav-text"> 3. 推理要解决的四个核心问题</span></a><ol class="nav-child"><li class="nav-item nav-level-3"><a class="nav-link" href="#%E5%BB%B6%E8%BF%9F"><span class="nav-text"> 延迟</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#%E5%90%9E%E5%90%90"><span class="nav-text"> 吞吐</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#%E6%88%90%E6%9C%AC"><span class="nav-text"> 成本</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#%E7%A8%B3%E5%AE%9A%E6%80%A7"><span class="nav-text"> 稳定性</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#31-%E8%BF%98%E6%9C%89%E4%B8%80%E4%B8%AA%E7%BB%8F%E5%B8%B8%E8%A2%AB%E6%BC%8F%E6%8E%89%E7%9A%84%E9%97%AE%E9%A2%98%E5%8F%AF%E8%A7%82%E6%B5%8B%E6%80%A7"><span class="nav-text"> 3.1 还有一个经常被漏掉的问题：可观测性</span></a></li></ol></li><li class="nav-item nav-level-2"><a class="nav-link" href="#4-%E4%B8%80%E4%B8%AA%E7%BB%9F%E4%B8%80%E7%90%86%E8%A7%A3"><span class="nav-text"> 4. 一个统一理解</span></a><ol class="nav-child"><li class="nav-item nav-level-3"><a class="nav-link" href="#41-%E6%8E%A8%E7%90%86%E4%B8%BA%E4%BB%80%E4%B9%88%E5%A4%A9%E7%84%B6%E6%98%AF%E5%A4%9A%E7%9B%AE%E6%A0%87%E4%BC%98%E5%8C%96"><span class="nav-text"> 4.1 推理为什么天然是多目标优化</span></a></li></ol></li><li class="nav-item nav-level-2"><a class="nav-link" href="#5-%E6%8E%A8%E7%90%86%E4%BC%98%E5%8C%96%E7%9A%84%E4%B8%BB%E8%A6%81%E6%8A%93%E6%89%8B"><span class="nav-text"> 5. 推理优化的主要抓手</span></a><ol class="nav-child"><li class="nav-item nav-level-3"><a class="nav-link" href="#%E6%9C%8D%E5%8A%A1%E7%B3%BB%E7%BB%9F%E8%AE%BE%E8%AE%A1"><span class="nav-text"> 服务系统设计</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#%E7%BC%93%E5%AD%98"><span class="nav-text"> 缓存</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#%E8%B7%AF%E7%94%B1"><span class="nav-text"> 路由</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#%E5%8A%A0%E9%80%9F%E6%8E%A8%E7%90%86%E6%96%B9%E6%B3%95"><span class="nav-text"> 加速推理方法</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#%E4%B8%8A%E4%B8%8B%E6%96%87%E7%AE%A1%E7%90%86"><span class="nav-text"> 上下文管理</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#51-%E4%B8%BA%E4%BB%80%E4%B9%88%E8%BF%99%E4%BA%9B%E6%8A%93%E6%89%8B%E5%BF%85%E9%A1%BB%E4%B8%80%E8%B5%B7%E7%9C%8B"><span class="nav-text"> 5.1 为什么这些抓手必须一起看</span></a></li></ol></li><li class="nav-item nav-level-2"><a class="nav-link" href="#6-%E6%8E%A8%E7%90%86%E6%96%87%E6%A1%A3%E5%9C%A8%E6%9C%AC%E7%9F%A5%E8%AF%86%E5%BA%93%E9%87%8C%E7%9A%84%E4%BD%8D%E7%BD%AE"><span class="nav-text"> 6. 推理文档在本知识库里的位置</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#7-%E6%8E%A8%E8%8D%90%E9%98%85%E8%AF%BB%E9%A1%BA%E5%BA%8F"><span class="nav-text"> 7. 推荐阅读顺序</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#%E9%98%B6%E6%AE%B5%E6%A3%80%E6%9F%A5%E4%B8%8E%E4%B8%8B%E4%B8%80%E7%AB%99"><span class="nav-text"> 阶段检查与下一站</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#%E5%BF%AB%E9%80%9F%E4%BB%A3%E7%A0%81%E7%A4%BA%E4%BE%8B"><span class="nav-text"> 快速代码示例</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#8-%E4%B8%80%E4%B8%AA%E6%80%BB%E5%88%A4%E6%96%AD"><span class="nav-text"> 8. 一个总判断</span></a></li></ol>
+
+    </div>
+</div>
+        </div>
+    
+</div>
+
+
+
+                
+
+            </div>
+
+            
+
+        </div>
+
+        <div class="main-content-footer">
+            <footer class="footer mt-5 py-5 h-auto text-base text-third-text-color relative border-t-2 border-t-border-color">
+    <div class="info-container py-3 text-center">
+        
+        <div class="text-center">
+            &copy;
+            
+              <span>2022</span>
+              -
+            
+            2026&nbsp;&nbsp;<i class="fa-solid fa-heart fa-beat" style="--fa-animation-duration: 0.5s; color: #f54545"></i>&nbsp;&nbsp;<a href="/">Charles</a>
+            
+                
+                <p class="post-count space-x-0.5">
+                    <span>
+                        479 posts in total
+                    </span>
+                    
+                        <span>
+                            1896.7k words in total
+                        </span>
+                    
+                </p>
+            
+        </div>
+        
+            <script data-swup-reload-script src="https://cn.vercount.one/js"></script>
+            <div class="relative text-center lg:absolute lg:right-[20px] lg:top-1/2 lg:-translate-y-1/2 lg:text-right">
+                
+                    <span id="busuanzi_container_site_uv" class="lg:!block">
+                        <span class="text-sm">Visitor Count</span>
+                        <span id="busuanzi_value_site_uv"></span>
+                    </span>
+                
+                
+                    <span id="busuanzi_container_site_pv" class="lg:!block">
+                        <span class="text-sm">Total Page Views</span>
+                        <span id="busuanzi_value_site_pv"></span>
+                    </span>
+                
+            </div>
+        
+        <div class="relative text-center lg:absolute lg:left-[20px] lg:top-1/2 lg:-translate-y-1/2 lg:text-left">
+            <span class="lg:block text-sm">Powered by Charles</span>
+            <span class="text-sm lg:block">Theme&nbsp;<a class="text-base" target="_blank" href="https://github.com/EvanNotFound/hexo-theme-redefine">Redefine v2.6.1</a></span>
+        </div>
+        
+        
+            <div>
+                Blog up for <span class="odometer" id="runtime_days" ></span> days <span class="odometer" id="runtime_hours"></span> hrs <span class="odometer" id="runtime_minutes"></span> Min <span class="odometer" id="runtime_seconds"></span> Sec
+            </div>
+        
+        
+            <script data-swup-reload-script>
+                try {
+                    function odometer_init() {
+                    const elements = document.querySelectorAll('.odometer');
+                    elements.forEach(el => {
+                        new Odometer({
+                            el,
+                            format: '( ddd).dd',
+                            duration: 200
+                        });
+                    });
+                    }
+                    odometer_init();
+                } catch (error) {}
+            </script>
+        
+        
+            
+                
+        
+                
+        
+        
+    </div>  
+</footer>
+        </div>
+    </div>
+
+    
+        <div class="post-tools">
+            <div class="post-tools-container">
+    <ul class="article-tools-list">
+        <!-- TOC aside toggle -->
+        
+            <li class="right-bottom-tools page-aside-toggle">
+                <i class="fa-regular fa-outdent"></i>
+            </li>
+        
+
+        <!-- go comment -->
+        
+            <li class="go-comment">
+                <i class="fa-regular fa-comments"></i>
+            </li>
+        
+    </ul>
+</div>
+
+        </div>
+    
+
+    <div class="right-side-tools-container">
+        <div class="side-tools-container">
+    <ul class="hidden-tools-list">
+        <li class="right-bottom-tools tool-font-adjust-plus flex justify-center items-center">
+            <i class="fa-regular fa-magnifying-glass-plus"></i>
+        </li>
+
+        <li class="right-bottom-tools tool-font-adjust-minus flex justify-center items-center">
+            <i class="fa-regular fa-magnifying-glass-minus"></i>
+        </li>
+
+        <li class="right-bottom-tools tool-dark-light-toggle flex justify-center items-center">
+            <i class="fa-regular fa-moon"></i>
+        </li>
+
+        <!-- rss -->
+        
+            <li class="right-bottom-tools rss flex justify-center items-center">
+                <a class="flex justify-center items-center"
+                   href="/atom.xml"
+                   target="_blank"
+                >
+                <i class="fa-regular fa-rss"></i>
+                </a>
+            </li>
+        
+
+        
+
+        <li class="right-bottom-tools tool-scroll-to-bottom flex justify-center items-center">
+            <i class="fa-regular fa-arrow-down"></i>
+        </li>
+    </ul>
+
+    <ul class="visible-tools-list">
+        <li class="right-bottom-tools toggle-tools-list flex justify-center items-center">
+            <i class="fa-regular fa-cog fa-spin"></i>
+        </li>
+        
+            <li class="right-bottom-tools tool-scroll-to-top flex justify-center items-center">
+                <i class="arrow-up fas fa-arrow-up"></i>
+                <span class="percent"></span>
+            </li>
+        
+        
+    </ul>
+</div>
+
+    </div>
+
+    <div class="image-viewer-container">
+    <img src="">
+</div>
+
+
+    
+        <div class="search-pop-overlay">
+    <div class="popup search-popup">
+        <div class="search-header">
+          <span class="search-input-field-pre">
+            <i class="fa-solid fa-keyboard"></i>
+          </span>
+            <div class="search-input-container">
+                <input autocomplete="off"
+                       autocorrect="off"
+                       autocapitalize="off"
+                       placeholder="Search..."
+                       spellcheck="false"
+                       type="search"
+                       class="search-input"
+                >
+            </div>
+            <span class="popup-btn-close">
+                <i class="fa-solid fa-times"></i>
+            </span>
+        </div>
+        <div id="search-result">
+            <div id="no-result">
+                <i class="fa-solid fa-spinner fa-spin-pulse fa-5x fa-fw"></i>
+            </div>
+        </div>
+    </div>
+</div>
+
+    
+
+</main>
+
+
+    <script src="https://evan.beee.top/projects/hexo-theme-redefine@2.6.1/source/js/libs/Swup.min.js"></script><script src="https://evan.beee.top/projects/hexo-theme-redefine@2.6.1/source/js/libs/SwupSlideTheme.min.js"></script><script src="https://evan.beee.top/projects/hexo-theme-redefine@2.6.1/source/js/libs/SwupScriptsPlugin.min.js"></script><script src="https://evan.beee.top/projects/hexo-theme-redefine@2.6.1/source/js/libs/SwupProgressPlugin.min.js"></script><script src="https://evan.beee.top/projects/hexo-theme-redefine@2.6.1/source/js/libs/SwupScrollPlugin.min.js"></script><script src="https://evan.beee.top/projects/hexo-theme-redefine@2.6.1/source/js/libs/SwupPreloadPlugin.min.js"></script>
+<script>
+    const swup = new Swup({
+        plugins: [
+            new SwupScriptsPlugin({
+                optin: true,
+            }),
+            new SwupProgressPlugin(),
+            new SwupScrollPlugin({
+                offset: 80,
+            }),
+            new SwupSlideTheme({
+                mainElement: ".main-content-body",
+            }),
+            new SwupPreloadPlugin(),
+        ],
+        containers: ["#swup"],
+    });
+</script>
+
+
+
+
+
+
+<script type="module" src="https://evan.beee.top/projects/hexo-theme-redefine@2.6.1/source/js/tools/imageViewer.js"></script><script type="module" src="https://evan.beee.top/projects/hexo-theme-redefine@2.6.1/source/js/utils.js"></script><script type="module" src="https://evan.beee.top/projects/hexo-theme-redefine@2.6.1/source/js/main.js"></script><script type="module" src="https://evan.beee.top/projects/hexo-theme-redefine@2.6.1/source/js/layouts/navbarShrink.js"></script><script type="module" src="https://evan.beee.top/projects/hexo-theme-redefine@2.6.1/source/js/tools/scrollTopBottom.js"></script><script type="module" src="https://evan.beee.top/projects/hexo-theme-redefine@2.6.1/source/js/tools/lightDarkSwitch.js"></script><script type="module" src="https://evan.beee.top/projects/hexo-theme-redefine@2.6.1/source/js/layouts/categoryList.js"></script>
+
+
+    <script type="module" src="https://evan.beee.top/projects/hexo-theme-redefine@2.6.1/source/js/tools/localSearch.js"></script>
+
+
+
+    <script type="module" src="https://evan.beee.top/projects/hexo-theme-redefine@2.6.1/source/js/tools/codeBlock.js"></script>
+
+
+
+    <script type="module" src="https://evan.beee.top/projects/hexo-theme-redefine@2.6.1/source/js/layouts/lazyload.js"></script>
+
+
+
+    <script src="https://evan.beee.top/projects/hexo-theme-redefine@2.6.1/source/js/tools/runtime.js"></script>
+    <script src="https://evan.beee.top/projects/hexo-theme-redefine@2.6.1/source/js/libs/odometer.min.js"></script>
+    <link rel="stylesheet" href="//evan.beee.top/projects/hexo-theme-redefine@2.6.1/source/assets/odometer-theme-minimal.css">
+
+
+
+  <script src="https://evan.beee.top/projects/hexo-theme-redefine@2.6.1/source/js/libs/Typed.min.js"></script>
+  <script type="module" src="https://evan.beee.top/projects/hexo-theme-redefine@2.6.1/source/js/plugins/typed.js"></script>
+
+
+
+    <script src="https://evan.beee.top/projects/hexo-theme-redefine@2.6.1/source/js/libs/mermaid.min.js"></script>
+    <script src="https://evan.beee.top/projects/hexo-theme-redefine@2.6.1/source/js/plugins/mermaid.js"></script>
+
+
+
+    <script src="https://evan.beee.top/projects/hexo-theme-redefine@2.6.1/source/js/libs/minimasonry.min.js"></script>
+    <script type="module" src="https://evan.beee.top/projects/hexo-theme-redefine@2.6.1/source/js/plugins/masonry.js"></script>
+
+
+
+
+<div class="post-scripts" data-swup-reload-script>
+    
+        <script type="module" src="https://evan.beee.top/projects/hexo-theme-redefine@2.6.1/source/js/tools/tocToggle.js"></script><script type="module" src="https://evan.beee.top/projects/hexo-theme-redefine@2.6.1/source/js/layouts/toc.js"></script><script type="module" src="https://evan.beee.top/projects/hexo-theme-redefine@2.6.1/source/js/plugins/tabs.js"></script>
+    
+</div>
+
+
+</body>
+</html>
+<!-- 页面点击小红心 -->
+<script type="text/javascript" src="/js/love.js"></script>

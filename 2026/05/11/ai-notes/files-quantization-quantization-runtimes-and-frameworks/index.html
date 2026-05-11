@@ -1,0 +1,1615 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="keywords" content="Charles">
+    
+    <meta name="author" content="Charles">
+    <!-- preconnect -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+
+    
+        
+        
+        
+    
+    <!--- Seo Part-->
+    
+    <link rel="canonical" href="https://charles2530.github.io/2026/05/11/ai-notes/files-quantization-quantization-runtimes-and-frameworks/"/>
+    <meta name="robots" content="index,follow">
+    <meta name="googlebot" content="index,follow">
+    <meta name="revisit-after" content="1 days">
+    
+        <meta name="description" content="量化真正落地时，不能只看“模型被压到几 bit”。 更关键的问题是： 目标运行时是否真的支持这种量化格式，并且能把显存、带宽或吞吐收益兑现出来 。 这一页把常见量化运行框架放到同一张工程地图里，重点回答： 1. 这些框架各自适合什么场景； 2. 支持的量化格式大致属于哪一类； 3. ONNX Runtime 和 ONN">
+<meta property="og:type" content="article">
+<meta property="og:title" content="量化运行时与框架：vLLM、LightLLM、SGLang、TensorRT-LLM 与 ONNX Runtime">
+<meta property="og:url" content="https://charles2530.github.io/2026/05/11/ai-notes/files-quantization-quantization-runtimes-and-frameworks/index.html">
+<meta property="og:site_name" content="Charles&#39;s Castle">
+<meta property="og:description" content="量化真正落地时，不能只看“模型被压到几 bit”。 更关键的问题是： 目标运行时是否真的支持这种量化格式，并且能把显存、带宽或吞吐收益兑现出来 。 这一页把常见量化运行框架放到同一张工程地图里，重点回答： 1. 这些框架各自适合什么场景； 2. 支持的量化格式大致属于哪一类； 3. ONNX Runtime 和 ONN">
+<meta property="og:locale" content="en_US">
+<meta property="og:image" content="https://charles2530.github.io/ai-notes-assets/images/paper-figures/quantization/smoothquant-figure-6-precision-mapping.png">
+<meta property="article:published_time" content="2026-05-11T02:55:00.000Z">
+<meta property="article:modified_time" content="2026-05-11T02:55:00.000Z">
+<meta property="article:author" content="Du Jinyang">
+<meta property="article:tag" content="AI Notes">
+<meta property="article:tag" content="Training">
+<meta property="article:tag" content="GPU Systems">
+<meta property="article:tag" content="Inference">
+<meta property="article:tag" content="Quantization">
+<meta name="twitter:card" content="summary">
+<meta name="twitter:image" content="https://charles2530.github.io/ai-notes-assets/images/paper-figures/quantization/smoothquant-figure-6-precision-mapping.png">
+    
+    
+    <!--- Icon Part-->
+    <link rel="icon" type="image/png" href="https://charles2530.github.io/image/background/favicon.png" sizes="192x192">
+    <link rel="apple-touch-icon" sizes="180x180" href="https://charles2530.github.io/image/background/favicon.png">
+    <meta name="theme-color" content="#A31F34">
+    <link rel="shortcut icon" href="https://charles2530.github.io/image/background/favicon.png">
+    <!--- Page Info-->
+    
+    <title>
+        
+            量化运行时与框架：vLLM、LightLLM、SGLang、TensorRT-LLM 与 ONNX Runtime -
+        
+        Charles&#39;s Castle
+    </title>
+
+    <link rel="stylesheet" href="//evan.beee.top/projects/hexo-theme-redefine@2.6.1/source/fonts/Chillax/chillax.css">
+
+    <!--- Inject Part-->
+    
+        
+            
+                
+                    <script data-swup-reload-script> var _hmt = _hmt || []; (function() { var hm = document.createElement("script"); hm.src = "https://hm.baidu.com/hm.js?8e0e5f382d14d87cbeadc33a36e71e86"; var s = document.getElementsByTagName("script")[0]; s.parentNode.insertBefore(hm, s); })(); </script>
+                
+    
+            
+    
+
+    
+        <style>
+    :root {
+        --preloader-background-color: #fff;
+        --preloader-text-color: #000;
+    }
+
+    @media (prefers-color-scheme: dark) {
+        :root {
+            --preloader-background-color: #202124;
+            --preloader-text-color: #fff;
+        }
+    }
+
+    @media (prefers-color-scheme: light) {
+        :root {
+            --preloader-background-color: #fff;
+            --preloader-text-color: #000;
+        }
+    }
+
+    @media (max-width: 600px) {
+        .ml13 {
+            font-size: 2.6rem !important; /* Adjust this value as needed */
+        }
+    }
+
+    .preloader {
+        display: flex;
+        flex-direction: column;
+        gap: 1rem; /* Tailwind 'gap-4' is 1rem */
+        align-items: center;
+        justify-content: center;
+        position: fixed;
+        padding: 12px;
+        top: 0;
+        right: 0;
+        bottom: 0;
+        left: 0;
+        width: 100vw;
+        height: 100vh; /* 'h-screen' is 100% of the viewport height */
+        background-color: var(--preloader-background-color);
+        z-index: 1100; /* 'z-[1100]' sets the z-index */
+        transition: opacity 0.2s ease-in-out;
+    }
+
+    .ml13 {
+        font-size: 3.2rem;
+        /* text-transform: uppercase; */
+        color: var(--preloader-text-color);
+        letter-spacing: -1px;
+        font-weight: 500;
+        font-family: 'Chillax-Variable', sans-serif;
+        text-align: center;
+    }
+
+    .ml13 .word {
+        display: inline-flex;
+        flex-wrap: wrap;
+        white-space: nowrap;
+    }
+
+    .ml13 .letter {
+        display: inline-block;
+        line-height: 1em;
+    }
+</style>
+
+<div class="preloader">
+    <script src="https://evan.beee.top/projects/hexo-theme-redefine@2.6.1/source/js/libs/anime.min.js"></script>
+    <h1 class="ml13">
+        Charles&#39;s Castle
+    </h1>
+    <script>
+        var textWrapper = document.querySelector('.ml13');
+        // Split text into words
+        var words = textWrapper.textContent.trim().split(' ');
+
+        // Clear the existing content
+        textWrapper.innerHTML = '';
+
+        // Wrap each word and its letters in spans
+        words.forEach(function(word) {
+            var wordSpan = document.createElement('span');
+            wordSpan.classList.add('word');
+            wordSpan.innerHTML = word.replace(/\S/g, "<span class='letter'>$&</span>");
+            textWrapper.appendChild(wordSpan);
+            textWrapper.appendChild(document.createTextNode(' ')); // Add space between words
+        });
+
+
+        anime.timeline({loop: true})
+            .add({
+                targets: '.ml13 .letter',
+                translateY: [100,0],
+                translateZ: 0,
+                opacity: [0,1],
+                easing: "easeOutExpo",
+                duration: 1400,
+                delay: (el, i) => 300 + 30 * i
+            }).add({
+            targets: '.ml13 .letter',
+            translateY: [0,-100],
+            opacity: [1,0],
+            easing: "easeInExpo",
+            duration: 1200,
+            delay: (el, i) => 100 + 30 * i
+        });
+
+        let themeStatus = JSON.parse(localStorage.getItem('REDEFINE-THEME-STATUS'))?.isDark;
+
+        // If the theme status is not found in local storage, check the preferred color scheme
+        if (themeStatus === undefined || themeStatus === null) {
+            if (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) {
+                themeStatus = 'dark';
+            } else {
+                themeStatus = 'light';
+            }
+        }
+
+        // Now you can use the themeStatus variable in your code
+        if (themeStatus) {
+            document.documentElement.style.setProperty('--preloader-background-color', '#202124');
+            document.documentElement.style.setProperty('--preloader-text-color', '#fff');
+        } else {
+            document.documentElement.style.setProperty('--preloader-background-color', '#fff');
+            document.documentElement.style.setProperty('--preloader-text-color', '#000');
+        }
+
+        window.addEventListener('load', function () {
+            hidePreloaderAfterTimeout(1000); // Hide after 1000 milliseconds once the window has loaded
+        });
+
+        // Backup failsafe: Hide preloader after a maximum of 5000 milliseconds, regardless of the window load event
+        hidePreloaderAfterTimeout(5000);
+
+        function hidePreloaderAfterTimeout(delay) {
+            setTimeout(function () {
+                var preloader = document.querySelector('.preloader');
+                preloader.style.opacity = '0';
+                setTimeout(function () {
+                    preloader.style.display = 'none';
+                }, 200);
+            }, delay);
+        }
+    </script>
+</div>
+    
+
+    
+<link rel="stylesheet" href="/css/style.css">
+
+
+    
+        <link rel="stylesheet" href="//evan.beee.top/projects/hexo-theme-redefine@2.6.1/source/assets/build/styles.css">
+    
+
+    <link rel="stylesheet" href="//evan.beee.top/projects/hexo-theme-redefine@2.6.1/source/fonts/fonts.css">
+    <link rel="stylesheet" href="//evan.beee.top/projects/hexo-theme-redefine@2.6.1/source/fonts/Satoshi/satoshi.css">
+    <!--- Font Part-->
+    
+    
+    
+    
+
+
+    <script id="hexo-configurations">
+    window.config = {"hostname":"charles2530.github.io","root":"/","language":"en","path":"search.xml"};
+    window.theme = {"articles":{"style":{"font_size":"16px","line_height":1.5,"image_border_radius":"14px","image_alignment":"center","image_caption":false,"link_icon":true,"title_alignment":"left","headings_top_spacing":{"h1":"5rem","h2":"4rem","h3":"2.8rem","h4":"2.5rem","h5":"2.2rem","h6":"2rem"}},"word_count":{"enable":true,"count":true,"min2read":true},"author_label":{"enable":true,"auto":true,"list":["lol","Neo","God"]},"code_block":{"copy":true,"style":"mac","font":{"enable":false,"family":null,"url":null}},"toc":{"enable":true,"max_depth":6,"number":false,"expand":true,"init_open":true},"copyright":{"enable":true,"default":"cc_by_nc_sa"},"lazyload":true,"recommendation":{"enable":true,"title":"recommend_articles","limit":3,"mobile_limit":2,"placeholder":"https://charles2530.github.io/image/background/p3.jfif","skip_dirs":[]}},"colors":{"primary":"#A31F34","secondary":"#1890ff","default_mode":"light"},"global":{"fonts":{"chinese":{"enable":false,"family":null,"url":null},"english":{"enable":false,"family":null,"url":null}},"content_max_width":"1000px","sidebar_width":"210px","hover":{"shadow":true,"scale":true},"scroll_progress":{"bar":true,"percentage":true},"website_counter":{"url":"https://cn.vercount.one/js","enable":true,"site_pv":true,"site_uv":true,"post_pv":true},"single_page":true,"preloader":true,"open_graph":true,"google_analytics":{"enable":false,"id":null}},"home_banner":{"enable":true,"style":"fixed","image":{"light":"https://charles2530.github.io/image/background/background-light1.jpg","dark":"https://charles2530.github.io/image/background/background-dark1.jpg"},"title":"Charles's Castle","subtitle":{"text":["Happiness is best!","Never give up!","Everyday is a gift!"],"hitokoto":{"enable":false,"api":"https://v1.hitokoto.cn"},"typing_speed":100,"backing_speed":80,"starting_delay":500,"backing_delay":1500,"loop":true,"smart_backspace":true},"text_color":{"light":"#000000","dark":"#d1d1b6"},"text_style":{"title_size":"3.2rem","subtitle_size":"1.5rem","line_height":1.2},"custom_font":{"enable":false,"family":null,"url":null},"social_links":{"enable":true,"style":"center","links":{"github":"https://github.com/Charles2530/","zhihu":"https://www.zhihu.com/people/yang-guang-xiao-zi-55-55","email":"charles2530@163.com"},"qrs":{"weixin":"https://charles2530.github.io/image/background/Wechat_icon.png"}}},"plugins":{"feed":{"enable":true},"aplayer":{"enable":false,"type":"fixed","audios":[{"name":null,"artist":null,"url":null,"cover":null},{"name":null,"artist":null,"url":null,"cover":null}]},"mermaid":{"enable":true,"version":"9.3.0"}},"version":"2.6.1","navbar":{"auto_hide":true,"color":{"left":"#f78736","right":"#367df7","transparency":35},"width":{"home":"1200px","pages":"1000px"},"links":{"Home":{"path":"/","icon":"fa-regular fa-house"},"Categories":{"path":"/categories","icon":"fas fa-bookmark"},"Tags":{"path":"/tags","icon":"fas fa-tags"},"About":{"icon":"fa-regular fa-user","submenus":{"Me":"/about","Github":"https://github.com/Charles2530/","Blog":"https://charles2530.github.io","Statistics":"https://tongji.baidu.com/"}},"AI Notes":{"path":"/ai-notes","icon":"fas fa-brain"}},"search":{"enable":true,"preload":true}},"page_templates":{"friends_column":2,"tags_style":"blur"},"home":{"sidebar":{"enable":true,"position":"left","first_item":"menu","announcement":"This is Charles's Castle","show_on_mobile":true,"links":{"Archives":{"path":"/archives","icon":"fa-regular fa-archive"},"Photos":{"icon":"fa-solid fa-image","path":"/masonry/"},"Essays":{"icon":"fa-solid fa-message-lines","path":"/essay/"},"Friends":{"icon":"fa-solid fa-user-group","path":"/friends/"}}},"article_date_format":"auto","categories":{"enable":true,"limit":3},"tags":{"enable":true,"limit":3}},"footerStart":"2022/12/27 00:00:00"};
+    window.lang_ago = {"second":"%s seconds ago","minute":"%s minutes ago","hour":"%s hours ago","day":"%s days ago","week":"%s weeks ago","month":"%s months ago","year":"%s years ago"};
+    window.data = {"masonry":true};
+  </script>
+    
+    <!--- Fontawesome Part-->
+    <link rel="stylesheet" href="//evan.beee.top/projects/hexo-theme-redefine@2.6.1/source/fontawesome/fontawesome.min.css">
+    <link rel="stylesheet" href="//evan.beee.top/projects/hexo-theme-redefine@2.6.1/source/fontawesome/brands.min.css">
+    <link rel="stylesheet" href="//evan.beee.top/projects/hexo-theme-redefine@2.6.1/source/fontawesome/solid.min.css">
+    <link rel="stylesheet" href="//evan.beee.top/projects/hexo-theme-redefine@2.6.1/source/fontawesome/regular.min.css">
+    
+    
+    
+    
+<meta name="generator" content="Hexo 6.3.0"><link rel="alternate" href="/atom.xml" title="Charles's Castle" type="application/atom+xml">
+<link rel="stylesheet" href="/css/prism-tomorrow.css" type="text/css"></head>
+
+
+<body>
+<div class="progress-bar-container">
+    
+        <span class="scroll-progress-bar"></span>
+    
+
+    
+        <span class="pjax-progress-bar"></span>
+<!--        <span class="swup-progress-icon">-->
+<!--            <i class="fa-solid fa-circle-notch fa-spin"></i>-->
+<!--        </span>-->
+    
+</div>
+
+
+<main class="page-container" id="swup">
+
+    
+
+    <div class="main-content-container">
+
+
+        <div class="main-content-header">
+            <header class="navbar-container px-6 md:px-12">
+
+    <div class="navbar-content ">
+        <div class="left">
+            
+                <a class="logo-image" href="/">
+                    <img src="https://charles2530.github.io/image/background/logo.jpg">
+                </a>
+            
+            <a class="logo-title" href="/">
+                
+                Charles&#39;s Castle
+                
+            </a>
+        </div>
+
+        <div class="right">
+            <!-- PC -->
+            <div class="desktop">
+                <ul class="navbar-list">
+                    
+                        
+                            
+
+                            <li class="navbar-item">
+                                <!-- Menu -->
+                                <a class=""
+                                   href="/"
+                                        >
+                                    <i class="fa-regular fa-house fa-fw"></i>
+                                    HOME
+                                    
+                                </a>
+
+                                <!-- Submenu -->
+                                
+                            </li>
+                    
+                        
+                            
+
+                            <li class="navbar-item">
+                                <!-- Menu -->
+                                <a class=""
+                                   href="/categories"
+                                        >
+                                    <i class="fas fa-bookmark fa-fw"></i>
+                                    CATEGORIES
+                                    
+                                </a>
+
+                                <!-- Submenu -->
+                                
+                            </li>
+                    
+                        
+                            
+
+                            <li class="navbar-item">
+                                <!-- Menu -->
+                                <a class=""
+                                   href="/tags"
+                                        >
+                                    <i class="fas fa-tags fa-fw"></i>
+                                    TAGS
+                                    
+                                </a>
+
+                                <!-- Submenu -->
+                                
+                            </li>
+                    
+                        
+                            
+
+                            <li class="navbar-item">
+                                <!-- Menu -->
+                                <a class="has-dropdown"
+                                   href="#"
+                                        onClick=&#34;return false;&#34;>
+                                    <i class="fa-regular fa-user fa-fw"></i>
+                                    ABOUT
+                                    <i class="fa-solid fa-chevron-down fa-fw"></i>
+                                </a>
+
+                                <!-- Submenu -->
+                                
+                                    <ul class="sub-menu">
+                                        
+                                            <li>
+                                                <a href="/about">
+                                                    ME
+                                                </a>
+                                            </li>
+                                        
+                                            <li>
+                                                <a target="_blank" rel="noopener" href="https://github.com/Charles2530/">
+                                                    GITHUB
+                                                </a>
+                                            </li>
+                                        
+                                            <li>
+                                                <a href="https://charles2530.github.io">
+                                                    BLOG
+                                                </a>
+                                            </li>
+                                        
+                                            <li>
+                                                <a target="_blank" rel="noopener" href="https://tongji.baidu.com/">
+                                                    STATISTICS
+                                                </a>
+                                            </li>
+                                        
+                                    </ul>
+                                
+                            </li>
+                    
+                        
+                            
+
+                            <li class="navbar-item">
+                                <!-- Menu -->
+                                <a class=""
+                                   href="/ai-notes"
+                                        >
+                                    <i class="fas fa-brain fa-fw"></i>
+                                    AI NOTES
+                                    
+                                </a>
+
+                                <!-- Submenu -->
+                                
+                            </li>
+                    
+                    
+                        <li class="navbar-item search search-popup-trigger">
+                            <i class="fa-solid fa-magnifying-glass"></i>
+                        </li>
+                    
+                </ul>
+            </div>
+            <!-- Mobile -->
+            <div class="mobile">
+                
+                    <div class="icon-item search search-popup-trigger"><i class="fa-solid fa-magnifying-glass"></i>
+                    </div>
+                
+                <div class="icon-item navbar-bar">
+                    <div class="navbar-bar-middle"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Mobile sheet -->
+    <div class="navbar-drawer h-screen w-full absolute top-0 left-0 bg-background-color flex flex-col justify-between">
+        <ul class="drawer-navbar-list flex flex-col px-4 justify-center items-start">
+            
+                
+                    
+
+                    <li class="drawer-navbar-item text-base my-1.5 flex flex-col w-full">
+                        
+                        <a class="py-1.5 px-2 flex flex-row items-center justify-between gap-1 hover:!text-primary active:!text-primary text-2xl font-semibold group border-b border-border-color hover:border-primary w-full "
+                           href="/"
+                        >
+                            <span>
+                                HOME
+                            </span>
+                            
+                                <i class="fa-regular fa-house fa-sm fa-fw"></i>
+                            
+                        </a>
+                        
+
+                        
+                    </li>
+            
+                
+                    
+
+                    <li class="drawer-navbar-item text-base my-1.5 flex flex-col w-full">
+                        
+                        <a class="py-1.5 px-2 flex flex-row items-center justify-between gap-1 hover:!text-primary active:!text-primary text-2xl font-semibold group border-b border-border-color hover:border-primary w-full "
+                           href="/categories"
+                        >
+                            <span>
+                                CATEGORIES
+                            </span>
+                            
+                                <i class="fas fa-bookmark fa-sm fa-fw"></i>
+                            
+                        </a>
+                        
+
+                        
+                    </li>
+            
+                
+                    
+
+                    <li class="drawer-navbar-item text-base my-1.5 flex flex-col w-full">
+                        
+                        <a class="py-1.5 px-2 flex flex-row items-center justify-between gap-1 hover:!text-primary active:!text-primary text-2xl font-semibold group border-b border-border-color hover:border-primary w-full "
+                           href="/tags"
+                        >
+                            <span>
+                                TAGS
+                            </span>
+                            
+                                <i class="fas fa-tags fa-sm fa-fw"></i>
+                            
+                        </a>
+                        
+
+                        
+                    </li>
+            
+                
+                    
+
+                    <li class="drawer-navbar-item-sub text-base my-1.5 flex flex-col w-full">
+                        
+                        <div class="py-1.5 px-2 flex flex-row items-center justify-between gap-1 hover:!text-primary active:!text-primary cursor-pointer text-2xl font-semibold group border-b border-border-color hover:border-primary w-full "
+                             navbar-data-toggle="submenu-About"
+                        >
+                            <span>
+                                ABOUT
+                            </span>
+                            
+                                <i class="fa-solid fa-chevron-right fa-sm fa-fw transition-all"></i>
+                            
+                        </div>
+                        
+
+                        
+                            <div class="flex-col items-start px-2 py-2 hidden" data-target="submenu-About">
+                                
+                                    <div class="drawer-navbar-item text-base flex flex-col justify-center items-start hover:underline active:underline hover:underline-offset-1 rounded-3xl">
+                                        <a class=" text-third-text-color text-xl"
+                                           href="/about">ME</a>
+                                    </div>
+                                
+                                    <div class="drawer-navbar-item text-base flex flex-col justify-center items-start hover:underline active:underline hover:underline-offset-1 rounded-3xl">
+                                        <a class=" text-third-text-color text-xl"
+                                           target="_blank" rel="noopener" href="https://github.com/Charles2530/">GITHUB</a>
+                                    </div>
+                                
+                                    <div class="drawer-navbar-item text-base flex flex-col justify-center items-start hover:underline active:underline hover:underline-offset-1 rounded-3xl">
+                                        <a class=" text-third-text-color text-xl"
+                                           href="https://charles2530.github.io">BLOG</a>
+                                    </div>
+                                
+                                    <div class="drawer-navbar-item text-base flex flex-col justify-center items-start hover:underline active:underline hover:underline-offset-1 rounded-3xl">
+                                        <a class=" text-third-text-color text-xl"
+                                           target="_blank" rel="noopener" href="https://tongji.baidu.com/">STATISTICS</a>
+                                    </div>
+                                
+                            </div>
+                        
+                    </li>
+            
+                
+                    
+
+                    <li class="drawer-navbar-item text-base my-1.5 flex flex-col w-full">
+                        
+                        <a class="py-1.5 px-2 flex flex-row items-center justify-between gap-1 hover:!text-primary active:!text-primary text-2xl font-semibold group border-b border-border-color hover:border-primary w-full "
+                           href="/ai-notes"
+                        >
+                            <span>
+                                AI NOTES
+                            </span>
+                            
+                                <i class="fas fa-brain fa-sm fa-fw"></i>
+                            
+                        </a>
+                        
+
+                        
+                    </li>
+            
+
+            
+            
+                
+                    
+                    <li class="drawer-navbar-item text-base my-1.5 flex flex-col w-full">
+                        <a class="py-1.5 px-2 flex flex-row items-center justify-between gap-1 hover:!text-primary active:!text-primary text-2xl font-semibold group border-b border-border-color hover:border-primary w-full active"
+                           href="/archives"
+                        >
+                            <span>Archives</span>
+                            <i class="fa-regular fa-archive fa-sm fa-fw"></i>
+                        </a>
+                    </li>
+                
+                    
+                    <li class="drawer-navbar-item text-base my-1.5 flex flex-col w-full">
+                        <a class="py-1.5 px-2 flex flex-row items-center justify-between gap-1 hover:!text-primary active:!text-primary text-2xl font-semibold group border-b border-border-color hover:border-primary w-full active"
+                           href="/masonry/"
+                        >
+                            <span>Photos</span>
+                            <i class="fa-solid fa-image fa-sm fa-fw"></i>
+                        </a>
+                    </li>
+                
+                    
+                    <li class="drawer-navbar-item text-base my-1.5 flex flex-col w-full">
+                        <a class="py-1.5 px-2 flex flex-row items-center justify-between gap-1 hover:!text-primary active:!text-primary text-2xl font-semibold group border-b border-border-color hover:border-primary w-full active"
+                           href="/essay/"
+                        >
+                            <span>Essays</span>
+                            <i class="fa-solid fa-message-lines fa-sm fa-fw"></i>
+                        </a>
+                    </li>
+                
+                    
+                    <li class="drawer-navbar-item text-base my-1.5 flex flex-col w-full">
+                        <a class="py-1.5 px-2 flex flex-row items-center justify-between gap-1 hover:!text-primary active:!text-primary text-2xl font-semibold group border-b border-border-color hover:border-primary w-full active"
+                           href="/friends/"
+                        >
+                            <span>Friends</span>
+                            <i class="fa-solid fa-user-group fa-sm fa-fw"></i>
+                        </a>
+                    </li>
+                
+            
+        </ul>
+
+        <div class="statistics flex justify-around my-2.5">
+    <a class="item tag-count-item flex flex-col justify-center items-center w-20" href="/tags">
+        <div class="number text-2xl sm:text-xl text-second-text-color font-semibold">44</div>
+        <div class="label text-third-text-color text-sm">Tags</div>
+    </a>
+    <a class="item tag-count-item flex flex-col justify-center items-center w-20" href="/categories">
+        <div class="number text-2xl sm:text-xl text-second-text-color font-semibold">96</div>
+        <div class="label text-third-text-color text-sm">Categories</div>
+    </a>
+    <a class="item tag-count-item flex flex-col justify-center items-center w-20" href="/archives">
+        <div class="number text-2xl sm:text-xl text-second-text-color font-semibold">479</div>
+        <div class="label text-third-text-color text-sm">Posts</div>
+    </a>
+</div>
+    </div>
+
+    <div class="window-mask"></div>
+
+</header>
+
+
+        </div>
+
+        <div class="main-content-body">
+
+            
+
+            <div class="main-content">
+
+                
+                    <div class="post-page-container flex relative justify-between box-border w-full h-full">
+    <div class="article-content-container">
+
+        <div class="article-title relative w-full">
+            
+                <div class="w-full flex items-center pt-6 justify-start">
+                    <h1 class="article-title-regular text-second-text-color text-4xl md:text-6xl font-bold px-2 sm:px-6 md:px-8 py-3">量化运行时与框架：vLLM、LightLLM、SGLang、TensorRT-LLM 与 ONNX Runtime</h1>
+                </div>
+            
+            </div>
+
+        
+            <div class="article-header flex flex-row gap-2 items-center px-2 sm:px-6 md:px-8">
+                <div class="avatar w-[46px] h-[46px] flex-shrink-0 rounded-medium border border-border-color p-[1px]">
+                    <img src="https://charles2530.github.io/image/background/logo2.jpg">
+                </div>
+                <div class="info flex flex-col justify-between">
+                    <div class="author flex items-center">
+                        <span class="name text-default-text-color text-lg font-semibold">Charles</span>
+                        
+                            <span class="author-label ml-1.5 text-xs px-2 py-0.5 rounded-small text-third-text-color border border-shadow-color-1">Lv7</span>
+                        
+                    </div>
+                    <div class="meta-info">
+                        <div class="article-meta-info">
+    <span class="article-date article-meta-item">
+        <i class="fa-regular fa-pen-fancy"></i>&nbsp;
+        <span class="desktop">2026-05-11 10:55</span>
+        <span class="mobile">2026-05-11 10:55</span>
+        <span class="hover-info">Created</span>
+    </span>
+    
+        <span class="article-date article-meta-item">
+            <i class="fa-regular fa-wrench"></i>&nbsp;
+            <span class="desktop">2026-05-11 10:55</span>
+            <span class="mobile">2026-05-11 10:55</span>
+            <span class="hover-info">Updated</span>
+        </span>
+    
+
+    
+        <span class="article-categories article-meta-item">
+            <i class="fa-regular fa-folders"></i>&nbsp;
+            <ul>
+                
+                
+                    
+                        
+                        <li>
+                            <a href="/categories/AI-Notes/">AI Notes</a>&nbsp;
+                        </li>
+                    
+                    
+                
+                    
+                        
+                            <li>></li>
+                        
+                        <li>
+                            <a href="/categories/AI-Notes/Quantization/">Quantization</a>&nbsp;
+                        </li>
+                    
+                    
+                
+            </ul>
+        </span>
+    
+    
+        <span class="article-tags article-meta-item">
+            <i class="fa-regular fa-tags"></i>&nbsp;
+            <ul>
+                
+                    <li>
+                        <a href="/tags/AI-Notes/">AI Notes</a>&nbsp;
+                    </li>
+                
+                    <li>
+                        | <a href="/tags/Training/">Training</a>&nbsp;
+                    </li>
+                
+                    <li>
+                        | <a href="/tags/GPU-Systems/">GPU Systems</a>&nbsp;
+                    </li>
+                
+                    <li>
+                        | <a href="/tags/Inference/">Inference</a>&nbsp;
+                    </li>
+                
+                    <li>
+                        | <a href="/tags/Quantization/">Quantization</a>&nbsp;
+                    </li>
+                
+            </ul>
+        </span>
+    
+
+    
+    
+        <span class="article-wordcount article-meta-item">
+            <i class="fa-regular fa-typewriter"></i>&nbsp;<span>4.1k Words</span>
+        </span>
+    
+    
+        <span class="article-min2read article-meta-item">
+            <i class="fa-regular fa-clock"></i>&nbsp;<span>15 Mins</span>
+        </span>
+    
+    
+        <span class="article-pv article-meta-item">
+            <i class="fa-regular fa-eye"></i>&nbsp;<span id="busuanzi_value_page_pv"></span>
+        </span>
+    
+</div>
+
+                    </div>
+                </div>
+            </div>
+        
+
+        
+
+
+        <div class="article-content markdown-body px-2 sm:px-6 md:px-8 pb-8">
+            <p>量化真正落地时，不能只看“模型被压到几 bit”。<br />
+更关键的问题是：<strong>目标运行时是否真的支持这种量化格式，并且能把显存、带宽或吞吐收益兑现出来</strong>。</p>
+<p>这一页把常见量化运行框架放到同一张工程地图里，重点回答：</p>
+<ol>
+<li>这些框架各自适合什么场景；</li>
+<li>支持的量化格式大致属于哪一类；</li>
+<li>ONNX Runtime 和 ONNX 量化应该怎么理解；</li>
+<li>真实上线时应该按什么顺序选型和验证。</li>
+</ol>
+<p><img  
+                     lazyload
+                     src="/images/loading.svg"
+                     data-src="/ai-notes-assets/images/paper-figures/quantization/smoothquant-figure-6-precision-mapping.png"
+                      alt="SmoothQuant precision mapping" 
+                ></p>
+<p><small>图源：<a class="link"   target="_blank" rel="noopener" href="https://arxiv.org/abs/2211.10438" >SmoothQuant: Accurate and Efficient Post-Training Quantization for Large Language Models <i class="fa-regular fa-arrow-up-right-from-square fa-sm"></i></a>，Figure 6。原论文图意：在 Transformer block 中，部分算子可以走 INT8 路径，LayerNorm、Softmax、残差加法等敏感或不适合低精度的算子仍保留 FP16。</small></p>
+
+  <div class="note p-4 mb-4 rounded-small info">
+    <p><strong>图解：SmoothQuant 精度映射图在提醒什么</strong></p>
+<p>图里不是所有算子都被强行压成 INT8：GEMM/BMM 等主要计算热点可以低精度执行，LayerNorm、Softmax、残差加法和某些敏感路径仍保留 FP16。量化收益不是“模型文件变小”就结束，而是要穿过算子精度划分、runtime、kernel 和硬件五层才会兑现。实际系统通常是混合精度：重算子尽量低精度，数值敏感或 kernel 不合适的位置保守处理。</p>
+
+  </div>
+
+  <div class="note p-4 mb-4 rounded-small info">
+    <p><strong>难点解释：为什么 runtime 比算法名更关键</strong></p>
+<p>论文里说某层可量化，不等于 serving stack 就会更快。runtime 必须知道哪些算子能低精度执行、哪些要保留高精度、scale 如何传递、dequant 是否能融合进 kernel。只要其中一环需要频繁反量化或落回普通 GEMM，端到端 TTFT/TPOT 就可能没有改善。</p>
+
+  </div>
+
+  <div class="note p-4 mb-4 rounded-small info">
+    <p><strong>初学者先抓住</strong></p>
+<p>量化算法、权重格式、运行时和硬件是四件不同的事。论文里说“支持 INT4”，不代表你的 serving runtime 能用 INT4 kernel 跑得更快。</p>
+
+  </div>
+
+  <div class="note p-4 mb-4 rounded-small default">
+    <p><strong>有趣例子：买了省油发动机但车架不兼容</strong></p>
+<p>发动机本身省油，但装不进你的车，或者变速箱不匹配，最终路上跑不出收益。量化也是这样：算法好、格式对、runtime 支持、硬件有指令，收益才会落地。</p>
+
+  </div>
+<h2 id="1-先分清量化算法-模型格式-运行时不是一回事"><a class="markdownIt-Anchor" href="#1-先分清量化算法-模型格式-运行时不是一回事"></a> 1. 先分清：量化算法、模型格式、运行时不是一回事</h2>
+<p>很多量化讨论会把三件事混在一起：</p>
+<table>
+<thead>
+<tr>
+<th>层级</th>
+<th>它回答的问题</th>
+<th>例子</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>量化算法</td>
+<td>怎么得到低精度权重、激活或 KV cache</td>
+<td>GPTQ、AWQ、SmoothQuant、RTN、HQQ、FP8 calibration</td>
+</tr>
+<tr>
+<td>模型格式</td>
+<td>量化后的权重和 scale 怎么保存</td>
+<td>Hugging Face checkpoint、GGUF、ONNX、TensorRT engine</td>
+</tr>
+<tr>
+<td>运行时</td>
+<td>实际用什么 kernel、cache、scheduler 跑起来</td>
+<td>vLLM、LightLLM、SGLang、TensorRT-LLM、ONNX Runtime</td>
+</tr>
+</tbody>
+</table>
+<p><strong>一个常见坑</strong>是：算法报告里精度很好，但你的运行时没有对应 kernel，最后只能先反量化再算，吞吐收益就没了。<br />
+所以量化上线的正确顺序通常是：</p>
+<ol>
+<li>先定服务目标：放得下、跑得快、降成本、上端侧，还是长上下文；</li>
+<li>再定运行时：它决定可用的 kernel、cache 和并发策略；</li>
+<li>再定量化格式：格式必须被运行时原生支持；</li>
+<li>最后定量化算法和校准集：它决定质量损失和尾部风险。</li>
+</ol>
+<h2 id="2-常见框架对照"><a class="markdownIt-Anchor" href="#2-常见框架对照"></a> 2. 常见框架对照</h2>
+<table>
+<thead>
+<tr>
+<th>框架</th>
+<th>更适合的场景</th>
+<th>量化相关重点</th>
+<th>使用时最该确认</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>vLLM</code></td>
+<td>通用 LLM 在线服务、高吞吐、PagedAttention、OpenAI API 兼容服务</td>
+<td>支持多种量化路径，如 AWQ、GPTQ、bitsandbytes、GGUF、INT4、INT8、FP8、TorchAO、量化 KV cache 等</td>
+<td>量化方法和目标 GPU 架构是否匹配，真实流量下 TTFT/TPOT 是否改善</td>
+</tr>
+<tr>
+<td><code>LightLLM</code></td>
+<td>研究型和高性能服务栈、轻量 Python 架构、token 级 KV 管理</td>
+<td>常作为高性能 serving backend；可结合 <code>LightCompress/LLMC</code> 导出 LightLLM 可用的量化权重</td>
+<td>具体模型和量化格式是否已有 backend 支持，是否需要转换格式</td>
+</tr>
+<tr>
+<td><code>SGLang</code></td>
+<td>LLM/VLM serving、结构化输出、prefix cache、agentic workload</td>
+<td>支持离线量化和在线动态量化；也支持 TorchAO 配置路径</td>
+<td>不要把预量化模型和在线 <code>--quantization</code> 同时叠加；按文档确认当前方法状态</td>
+</tr>
+<tr>
+<td><code>TensorRT-LLM</code></td>
+<td>NVIDIA GPU 上的生产级低延迟/高吞吐服务</td>
+<td>FP8、FP4、GPTQ/AWQ、FP8 KV cache 等和 NVIDIA kernel/engine 深度绑定</td>
+<td>是否愿意进入 engine 构建、版本锁定和 NVIDIA 生态优化路径</td>
+</tr>
+<tr>
+<td><code>ONNX Runtime</code></td>
+<td>传统模型、跨平台部署、CPU/边缘/EP 生态、非纯 LLM 图推理</td>
+<td>ONNX 图级 INT8 量化、QDQ/QOperator、动态/静态量化、TensorRT EP、部分 INT4/UInt4 权重量化</td>
+<td>模型图能否被 ONNX 表达，目标 EP 是否真正支持量化算子</td>
+</tr>
+<tr>
+<td><code>Transformers + bitsandbytes</code></td>
+<td>单机实验、快速加载 8bit/4bit、QLoRA 微调</td>
+<td>使用门槛低，适合研究和微调入口</td>
+<td>不等于生产 serving 最优路径，吞吐和并发通常还要看 vLLM/SGLang 等 runtime</td>
+</tr>
+</tbody>
+</table>
+<h2 id="3-vllm最常见的通用-llm-serving-入口"><a class="markdownIt-Anchor" href="#3-vllm最常见的通用-llm-serving-入口"></a> 3. vLLM：最常见的通用 LLM serving 入口</h2>
+<p><code>vLLM</code> 的量化能力适合从“服务系统”视角理解。它不只是加载一个低比特权重，而是要把量化权重、attention kernel、PagedAttention、KV cache、batching 和调度一起跑起来。</p>
+<p>官方量化文档列出的常见路径包括：</p>
+<ol>
+<li><code>AutoAWQ</code></li>
+<li><code>BitsAndBytes</code></li>
+<li><code>GGUF</code></li>
+<li><code>GPTQModel</code></li>
+<li><code>Intel Neural Compressor</code></li>
+<li><code>INT4 W4A16</code></li>
+<li><code>INT8 W8A8</code></li>
+<li><code>FP8 W8A8</code></li>
+<li><code>NVIDIA Model Optimizer</code></li>
+<li><code>Online Quantization</code></li>
+<li><code>AMD Quark</code></li>
+<li><code>Quantized KV Cache</code></li>
+<li><code>TorchAO</code></li>
+</ol>
+<p>这说明 <code>vLLM</code> 更像一个<strong>量化格式和服务 kernel 的汇合点</strong>。<br />
+如果你的目标是 LLM 在线服务，通常可以先问：</p>
+<ol>
+<li>这个模型是否已经有可用的 AWQ/GPTQ/FP8/INT4 checkpoint；</li>
+<li>目标 GPU 是 Ampere、Ada、Hopper、Blackwell，还是 CPU/Intel/AMD；</li>
+<li>vLLM 当前硬件兼容表是否支持这个组合；</li>
+<li>真实请求是 prefill-heavy 还是 decode-heavy；</li>
+<li>长上下文下是否需要量化 KV cache。</li>
+</ol>
+<h3 id="31-vllm-里的-kv-cache-量化要单独看"><a class="markdownIt-Anchor" href="#31-vllm-里的-kv-cache-量化要单独看"></a> 3.1 vLLM 里的 KV cache 量化要单独看</h3>
+<p>长上下文场景里，权重显存不一定是最大瓶颈，KV cache 可能才是。<br />
+因此只做权重量化可能不够，还要单独评估：</p>
+<ol>
+<li>KV cache 是否占主导；</li>
+<li><code>--kv-cache-dtype</code> 这类路径是否支持目标硬件；</li>
+<li>精度是否需要 calibration scale；</li>
+<li>长上下文、推理任务和 reasoning 任务是否有专项回归。</li>
+</ol>
+<p>一个实用判断是：如果短上下文吞吐改善明显，但长上下文并发仍然上不去，下一步通常不是继续压权重，而是看 KV cache、prefix cache、paged cache 和上下文裁剪。</p>
+<h2 id="4-lightllm更偏轻量高性能-serving-backend"><a class="markdownIt-Anchor" href="#4-lightllm更偏轻量高性能-serving-backend"></a> 4. LightLLM：更偏轻量高性能 serving backend</h2>
+<p><code>LightLLM</code> 是一个 Python-based LLM inference/serving framework，强调轻量、易扩展和高性能。官方仓库说明里也提到它借鉴和结合了 FasterTransformer、TGI、vLLM、FlashAttention 等开源实现，并且其纯 Python 设计和 token-level KV cache 管理适合研究项目使用。</p>
+<p>在量化主题里，<code>LightLLM</code> 更适合作为<strong>运行 backend</strong> 来理解，而不是把它当成一个单独量化算法。常见链路是：</p>
+<ol>
+<li>用量化工具生成可服务的低精权重；</li>
+<li>导出到 LightLLM 支持的保存格式或 backend 格式；</li>
+<li>用 LightLLM 的调度、KV 管理和 kernel 路径实际服务。</li>
+</ol>
+<p><code>LightCompress/LLMC</code> 这类 ModelTC 生态工具提供了面向多 backend 的压缩和量化能力，文档和仓库说明里提到支持导出到 <code>VLLM</code>、<code>LightLLM</code>、<code>SGLang</code>、<code>MLC-LLM</code>、<code>AutoAWQ</code> 等 backend，也覆盖 AWQ、GPTQ、SmoothQuant、Quarot、HQQ 等多种算法。</p>
+<h3 id="41-什么时候考虑-lightllm"><a class="markdownIt-Anchor" href="#41-什么时候考虑-lightllm"></a> 4.1 什么时候考虑 LightLLM</h3>
+<p>更值得看 LightLLM 的场景：</p>
+<ol>
+<li>团队想深入改 serving 内部调度、KV 管理或 kernel；</li>
+<li>目标模型或研究项目需要比较灵活的 Python 服务栈；</li>
+<li>已经使用 ModelTC/LLMC 生态做压缩和 backend 导出；</li>
+<li>要对 DeepSeek、MoE 或高吞吐场景做专项服务优化。</li>
+</ol>
+<p>需要注意的是：LightLLM 的“能跑”与“量化收益可兑现”仍然取决于具体模型、量化格式、kernel 和硬件组合。上线前仍要做和全精度路径的质量、吞吐和尾延迟对照。</p>
+<h2 id="5-sglang离线量化-在线量化和-torchao-路径"><a class="markdownIt-Anchor" href="#5-sglang离线量化-在线量化和-torchao-路径"></a> 5. SGLang：离线量化、在线量化和 TorchAO 路径</h2>
+<p><code>SGLang</code> 的官方量化文档把量化分成两类：</p>
+<ol>
+<li><strong>离线量化</strong>：直接加载预量化权重，例如 GPTQ、AWQ 这类通常需要校准或预计算统计量的方法；</li>
+<li><strong>在线动态量化</strong>：运行时动态计算 scaling 参数，把高精权重转成低精格式。</li>
+</ol>
+<p>官方文档也明确建议：为了性能、可用性和便利性，通常优先推荐离线量化。<br />
+如果使用预量化模型，不应再同时添加 <code>--quantization</code> 去叠加在线量化。</p>
+<p>SGLang 还支持 TorchAO 配置路径，例如通过 <code>--torchao-config</code> 使用 <code>int4wo-128</code> 等配置；文档中列出的 TorchAO 方法包括 <code>int8dq</code>、<code>int8wo</code>、<code>fp8wo</code>、<code>fp8dq-per_tensor</code>、<code>fp8dq-per_row</code>、<code>int4wo-32/64/128/256</code> 等。</p>
+<h3 id="51-sglang-的实用判断"><a class="markdownIt-Anchor" href="#51-sglang-的实用判断"></a> 5.1 SGLang 的实用判断</h3>
+<p>适合 SGLang 的量化问题通常不是“能不能压低比特”，而是：</p>
+<ol>
+<li>结构化输出、agent 流程、prefix cache 是否是主需求；</li>
+<li>离线量化模型是否已经可用；</li>
+<li>online quant 是否只是临时试验，而不是最终生产方案；</li>
+<li>CUDA graph、TorchAO 配置、batching 和服务调度是否互相兼容。</li>
+</ol>
+<h2 id="6-tensorrt-llmnvidia-栈里的深度优化路线"><a class="markdownIt-Anchor" href="#6-tensorrt-llmnvidia-栈里的深度优化路线"></a> 6. TensorRT-LLM：NVIDIA 栈里的深度优化路线</h2>
+<p><code>TensorRT-LLM</code> 更像一条<strong>强硬件绑定的高性能路线</strong>。它通过 TensorRT engine、plugin、kernel 和 runtime，把模型推理优化到 NVIDIA GPU 的能力边界附近。</p>
+<p>官方量化文档列出的量化 recipe 包括：</p>
+<ol>
+<li><code>FP4</code></li>
+<li><code>FP8 Per Tensor</code></li>
+<li><code>FP8 Block Scaling</code></li>
+<li><code>FP8 Rowwise</code></li>
+<li><code>FP8 KV Cache</code></li>
+<li><code>W4A16 GPTQ</code></li>
+<li><code>W4A8 GPTQ</code></li>
+<li><code>W4A16 AWQ</code></li>
+<li><code>W4A8 AWQ</code></li>
+</ol>
+<p>这类路线的优势是性能上限高、NVIDIA 硬件适配强。<br />
+代价是部署链路更重，通常要接受：</p>
+<ol>
+<li>engine 构建和版本管理；</li>
+<li>更强的硬件/驱动/CUDA/TensorRT 绑定；</li>
+<li>模型结构和算子路径更严格；</li>
+<li>升级和回滚流程需要更完整的工程治理。</li>
+</ol>
+<p>如果你在 NVIDIA Hopper、Blackwell 或数据中心 GPU 上做大规模生产服务，TensorRT-LLM 很值得评估；如果你仍在快速实验、频繁换模型或多硬件混部，vLLM/SGLang 可能更灵活。</p>
+<h2 id="7-onnx-runtime-与-onnx-量化"><a class="markdownIt-Anchor" href="#7-onnx-runtime-与-onnx-量化"></a> 7. ONNX Runtime 与 ONNX 量化</h2>
+<p><code>ONNX Runtime</code> 和前面的 LLM serving 框架定位不完全一样。<br />
+它更适合从“通用模型图部署”和“跨硬件 Execution Provider”角度理解，尤其适合传统 CV/NLP 模型、边缘端、CPU、移动端、TensorRT EP、OpenVINO、DirectML、QNN 等场景。</p>
+<h3 id="71-onnx-量化表示qoperator-与-qdq"><a class="markdownIt-Anchor" href="#71-onnx-量化表示qoperator-与-qdq"></a> 7.1 ONNX 量化表示：QOperator 与 QDQ</h3>
+<p>ONNX Runtime 文档里把量化表示分成两类：</p>
+<table>
+<thead>
+<tr>
+<th>表示</th>
+<th>直观理解</th>
+<th>适合关注点</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>QOperator</code></td>
+<td>把算子替换成量化算子，例如 <code>QLinearConv</code>、<code>MatMulInteger</code></td>
+<td>runtime 是否有对应量化 op kernel</td>
+</tr>
+<tr>
+<td><code>QDQ</code></td>
+<td>在原图算子周围插入 <code>QuantizeLinear</code> / <code>DequantizeLinear</code></td>
+<td>保留原图结构，便于 EP 识别和融合</td>
+</tr>
+</tbody>
+</table>
+<p>工程上，<code>QDQ</code> 常更利于调试和后端融合，因为它能显式标出哪些 tensor 被量化、scale 和 zero-point 在哪里。<br />
+但最终选哪种表示，要看目标 EP 和硬件对哪条路径支持更好。</p>
+<h3 id="72-动态量化与静态量化"><a class="markdownIt-Anchor" href="#72-动态量化与静态量化"></a> 7.2 动态量化与静态量化</h3>
+<table>
+<thead>
+<tr>
+<th>类型</th>
+<th>量化参数何时确定</th>
+<th>优点</th>
+<th>代价</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>动态量化</td>
+<td>推理时按输入动态计算 activation scale</td>
+<td>通常精度更稳，适合 RNN/Transformer 类模型入口</td>
+<td>有额外 runtime 计算开销</td>
+</tr>
+<tr>
+<td>静态量化</td>
+<td>用校准集提前确定 activation scale</td>
+<td>推理路径更固定，更利于性能</td>
+<td>强依赖代表性 calibration data</td>
+</tr>
+</tbody>
+</table>
+<p>ONNX Runtime 文档中给出的经验是：动态量化通常推荐给 RNN 和 transformer-based models，静态量化常用于 CNN 类模型。实际项目中仍要以目标 EP、算子支持和任务回归为准。</p>
+<h3 id="73-onnx-runtime-的-int4-uint4-权重量化"><a class="markdownIt-Anchor" href="#73-onnx-runtime-的-int4-uint4-权重量化"></a> 7.3 ONNX Runtime 的 INT4 / UInt4 权重量化</h3>
+<p>ONNX Runtime 也支持对部分算子做 4bit integer quantization。文档中说明这是 block-wise weight-only quantization，典型支持：</p>
+<ol>
+<li><code>MatMul</code>：当输入 <code>B</code> 是常量时可量化；可走 QOperator 或 QDQ；</li>
+<li><code>Gather</code>：当输入 <code>data</code> 是常量时可量化；可走 QOperator。</li>
+</ol>
+<p><code>MatMul</code> 的 QOperator 路径会转换成 <code>MatMulNBits</code>，并支持 RTN、GPTQ、HQQ 等算法。<br />
+这更接近“权重只读、块量化、运行时反量化/专用算子”的思路。</p>
+<h3 id="74-onnx-量化的典型流程"><a class="markdownIt-Anchor" href="#74-onnx-量化的典型流程"></a> 7.4 ONNX 量化的典型流程</h3>
+<div class="highlight-container" data-rel="Python"><figure class="iseeu highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">from</span> onnxruntime.quantization <span class="keyword">import</span> quantize_dynamic, QuantType</span><br><span class="line"></span><br><span class="line">model_fp32 = <span class="string">&quot;model.onnx&quot;</span></span><br><span class="line">model_int8 = <span class="string">&quot;model.int8.onnx&quot;</span></span><br><span class="line"></span><br><span class="line">quantize_dynamic(</span><br><span class="line">    model_input=model_fp32,</span><br><span class="line">    model_output=model_int8,</span><br><span class="line">    weight_type=QuantType.QInt8,</span><br><span class="line">)</span><br></pre></td></tr></table></figure></div>
+<p>静态量化还需要 calibration data reader。更稳妥的流程通常是：</p>
+<ol>
+<li>先导出 FP32 / FP16 ONNX；</li>
+<li>做 shape inference，必要时做 symbolic shape inference；</li>
+<li>做图优化，但尽量把优化放在量化前，便于 debug；</li>
+<li>选择 QDQ 或 QOperator；</li>
+<li>动态量化或静态量化；</li>
+<li>对照 FP 模型做逐任务桶、逐层或逐 tensor debug；</li>
+<li>按目标 EP 重新测性能。</li>
+</ol>
+<h2 id="8-框架选型建议"><a class="markdownIt-Anchor" href="#8-框架选型建议"></a> 8. 框架选型建议</h2>
+<h3 id="81-llm-在线服务"><a class="markdownIt-Anchor" href="#81-llm-在线服务"></a> 8.1 LLM 在线服务</h3>
+<p>优先看：</p>
+<ol>
+<li><code>vLLM</code></li>
+<li><code>SGLang</code></li>
+<li><code>TensorRT-LLM</code></li>
+<li><code>LightLLM</code></li>
+</ol>
+<p>如果目标是快速上线和生态兼容，先看 <code>vLLM</code>。<br />
+如果需要结构化输出、prefix cache、agent 工作负载，可以重点看 <code>SGLang</code>。<br />
+如果硬件明确是 NVIDIA 数据中心 GPU，且追求极限性能，可以评估 <code>TensorRT-LLM</code>。<br />
+如果团队要深度改 runtime 或使用 ModelTC 生态，可以看 <code>LightLLM</code>。</p>
+<h3 id="82-传统模型-边缘端和跨平台部署"><a class="markdownIt-Anchor" href="#82-传统模型-边缘端和跨平台部署"></a> 8.2 传统模型、边缘端和跨平台部署</h3>
+<p>优先看：</p>
+<ol>
+<li><code>ONNX Runtime</code></li>
+<li><code>OpenVINO</code></li>
+<li><code>TensorRT</code></li>
+<li>设备厂商 NPU / DSP runtime</li>
+</ol>
+<p>这类场景通常更关心图优化、EP 支持、端侧内存、模型包大小和算子覆盖，而不是 LLM 专用 KV cache 调度。</p>
+<h3 id="83-研究与微调"><a class="markdownIt-Anchor" href="#83-研究与微调"></a> 8.3 研究与微调</h3>
+<p>优先看：</p>
+<ol>
+<li><code>Transformers + bitsandbytes</code></li>
+<li><code>AutoAWQ</code></li>
+<li><code>GPTQModel</code></li>
+<li><code>LLM Compressor</code></li>
+<li><code>LightCompress/LLMC</code></li>
+</ol>
+<p>研究阶段可以先用这些工具快速得到量化模型；进入部署阶段，再确认目标 runtime 是否能直接消费这些格式。</p>
+<h2 id="9-量化框架上线检查清单"><a class="markdownIt-Anchor" href="#9-量化框架上线检查清单"></a> 9. 量化框架上线检查清单</h2>
+<p>上线前至少回答下面问题：</p>
+<ol>
+<li>量化格式是否被目标 runtime 原生支持；</li>
+<li>对应 kernel 是否覆盖目标 GPU/CPU/EP；</li>
+<li>是否真的减少 TTFT、TPOT、显存或单位 token 成本；</li>
+<li>是否有长上下文、工具调用、多模态、代码、数学等高风险桶回归；</li>
+<li>是否有全精度回退、复杂请求路由或混合精度保护；</li>
+<li>是否记录了校准集、量化参数、runtime 版本和硬件版本；</li>
+<li>是否对 KV cache、LoRA、多模型混部和 batch 调度做过专项压测。</li>
+</ol>
+<p><strong>一句话判断</strong>：量化框架选型不是“哪个支持的格式最多”，而是“哪个在你的模型、硬件、请求分布和质量门槛下，能把收益稳定兑现出来”。</p>
+<h2 id="10-结合低比特-llm-综述的选型补充"><a class="markdownIt-Anchor" href="#10-结合低比特-llm-综述的选型补充"></a> 10. 结合低比特 LLM 综述的选型补充</h2>
+<p>arXiv:2409.16694 把低比特 LLM 量化放在“基础、系统、算法”三个视角下统一整理，其中系统视角尤其提醒我们：量化不是只改变 checkpoint，而是会改变 runtime、kernel、硬件和部署流程的协同关系。</p>
+<p>对运行框架选型来说，可以把这篇综述里的思路落成四个问题：</p>
+<ol>
+<li><strong>基础格式是否合适</strong>：<code>INT4</code>、<code>INT8</code>、<code>FP8</code>、<code>NF4</code>、block-wise scale、group-wise scale 的误差形态和硬件路径不同；</li>
+<li><strong>系统是否支持</strong>：格式能保存不等于能高效执行，必须确认 runtime 和 kernel 是否原生支持；</li>
+<li><strong>训练阶段是否参与</strong>：如果需要 <code>QAT</code>、<code>QLoRA</code> 或量化友好继续训练，就不能只评估推理 runtime；</li>
+<li><strong>推理瓶颈在哪里</strong>：短上下文常先看权重和 GEMM，长上下文常要把 KV cache、prefix cache 和调度一起评估。</li>
+</ol>
+<h3 id="101-一个更实用的决策顺序"><a class="markdownIt-Anchor" href="#101-一个更实用的决策顺序"></a> 10.1 一个更实用的决策顺序</h3>
+<p>如果你只需要一个可执行顺序，可以按下面走：</p>
+<ol>
+<li>先用真实请求确认瓶颈：权重显存、activation、KV cache、prefill、decode、还是调度；</li>
+<li>再选 runtime：<code>vLLM</code> / <code>SGLang</code> / <code>LightLLM</code> / <code>TensorRT-LLM</code> / <code>ONNX Runtime</code>；</li>
+<li>再选格式：<code>AWQ</code>、<code>GPTQ</code>、<code>FP8</code>、<code>INT8</code>、<code>INT4</code>、<code>ONNX QDQ</code> 等必须被 runtime 支持；</li>
+<li>再选算法：校准、二阶补偿、激活平滑、QAT 或 KV cache quant；</li>
+<li>最后固定回归桶：长上下文、代码、数学、多轮工具、RAG、多模态和高价值业务样本要分开看。</li>
+</ol>
+<p>这套顺序的核心是：先把“能不能跑快”确定下来，再优化“怎么量得更准”。如果顺序反过来，团队很容易先得到一个漂亮的离线量化结果，最后发现目标 serving stack 根本吃不到收益。</p>
+<h2 id="11-参考资料"><a class="markdownIt-Anchor" href="#11-参考资料"></a> 11. 参考资料</h2>
+<ol>
+<li>vLLM Quantization：<a class="link"   target="_blank" rel="noopener" href="https://docs.vllm.ai/en/latest/features/quantization/index.html" >https://docs.vllm.ai/en/latest/features/quantization/index.html <i class="fa-regular fa-arrow-up-right-from-square fa-sm"></i></a></li>
+<li>vLLM FP8 KV Cache Blog：<a class="link"   target="_blank" rel="noopener" href="https://vllm.ai/blog/fp8-kvcache" >https://vllm.ai/blog/fp8-kvcache <i class="fa-regular fa-arrow-up-right-from-square fa-sm"></i></a></li>
+<li>LightLLM GitHub：<a class="link"   target="_blank" rel="noopener" href="https://github.com/ModelTC/lightllm" >https://github.com/ModelTC/lightllm <i class="fa-regular fa-arrow-up-right-from-square fa-sm"></i></a></li>
+<li>LightCompress / LLMC GitHub：<a class="link"   target="_blank" rel="noopener" href="https://github.com/ModelTC/LightCompress" >https://github.com/ModelTC/LightCompress <i class="fa-regular fa-arrow-up-right-from-square fa-sm"></i></a></li>
+<li>SGLang Quantization：<a class="link"   target="_blank" rel="noopener" href="https://docs.sglang.io/docs/advanced_features/quantization" >https://docs.sglang.io/docs/advanced_features/quantization <i class="fa-regular fa-arrow-up-right-from-square fa-sm"></i></a></li>
+<li>TensorRT-LLM Quantization：<a class="link"   target="_blank" rel="noopener" href="https://nvidia.github.io/TensorRT-LLM/1.2.0rc5/features/quantization.html" >https://nvidia.github.io/TensorRT-LLM/1.2.0rc5/features/quantization.html <i class="fa-regular fa-arrow-up-right-from-square fa-sm"></i></a></li>
+<li>ONNX Runtime Quantize ONNX Models：<a class="link"   target="_blank" rel="noopener" href="https://onnxruntime.ai/docs/performance/model-optimizations/quantization.html" >https://onnxruntime.ai/docs/performance/model-optimizations/quantization.html <i class="fa-regular fa-arrow-up-right-from-square fa-sm"></i></a></li>
+<li><em>A Survey of Low-bit Large Language Models: Basics, Systems, and Algorithms</em>：<a class="link"   target="_blank" rel="noopener" href="https://arxiv.org/abs/2409.16694" >https://arxiv.org/abs/2409.16694 <i class="fa-regular fa-arrow-up-right-from-square fa-sm"></i></a></li>
+</ol>
+
+        </div>
+
+        
+            <div class="post-copyright-info w-full my-8 px-2 sm:px-6 md:px-8">
+                <div class="article-copyright-info-container">
+    <ul>
+        <li><strong>Title:</strong> 量化运行时与框架：vLLM、LightLLM、SGLang、TensorRT-LLM 与 ONNX Runtime</li>
+        <li><strong>Author:</strong> Charles</li>
+        <li><strong>Created at
+                :</strong> 2026-05-11 10:55:00</li>
+        
+            <li>
+                <strong>Updated at
+                    :</strong> 2026-05-11 10:55:00
+            </li>
+        
+        <li>
+            <strong>Link:</strong> https://charles2530.github.io/2026/05/11/ai-notes/files-quantization-quantization-runtimes-and-frameworks/
+        </li>
+        <li>
+            <strong>
+                License:
+            </strong>
+            
+
+            
+                This work is licensed under <a class="license" target="_blank" rel="noopener" href="https://creativecommons.org/licenses/by-nc-sa/4.0">CC BY-NC-SA 4.0</a>.
+            
+        </li>
+    </ul>
+</div>
+
+            </div>
+        
+
+        
+            <ul class="post-tags-box text-lg mt-1.5 flex-wrap justify-center flex md:hidden">
+                
+                    <li class="tag-item mx-0.5">
+                        <a href="/tags/AI-Notes/">#AI Notes</a>&nbsp;
+                    </li>
+                
+                    <li class="tag-item mx-0.5">
+                        <a href="/tags/Training/">#Training</a>&nbsp;
+                    </li>
+                
+                    <li class="tag-item mx-0.5">
+                        <a href="/tags/GPU-Systems/">#GPU Systems</a>&nbsp;
+                    </li>
+                
+                    <li class="tag-item mx-0.5">
+                        <a href="/tags/Inference/">#Inference</a>&nbsp;
+                    </li>
+                
+                    <li class="tag-item mx-0.5">
+                        <a href="/tags/Quantization/">#Quantization</a>&nbsp;
+                    </li>
+                
+            </ul>
+        
+
+        
+  <div class="recommended-article px-2 sm:px-6 md:px-8">
+   <div class="recommended-desktop">
+    <div class="recommended-article-header text-xl md:text-3xl font-bold mt-10">
+     <i aria-hidden="true"></i><span>recommend_articles</span>
+    </div>
+    <div class="recommended-article-group"><a class="recommended-article-item" href="/2023/05/14/photoshop-note/" title="photoshop-note" rel="bookmark">
+  <img src="https://charles2530.github.io/image/background/p1.jfif" alt="photoshop-note" class="!max-w-none">
+  <span class="title">photoshop-note</span>
+</a><a class="recommended-article-item" href="/2023/08/11/string-matching-algorithm/" title="String-Matching-Algorithm" rel="bookmark">
+  <img src="https://charles2530.github.io/image/background/p1.jfif" alt="String-Matching-Algorithm" class="!max-w-none">
+  <span class="title">String-Matching-Algorithm</span>
+</a><a class="recommended-article-item" href="/2023/02/01/latex-note-1/" title="Latex_note_1" rel="bookmark">
+  <img src="https://charles2530.github.io/image/background/p3.jpg" alt="Latex_note_1" class="!max-w-none">
+  <span class="title">Latex_note_1</span>
+</a></div>
+   </div>
+   <div class="recommended-mobile">
+   <div class="recommended-article-header text-xl md:text-3xl font-bold mt-10">
+     <i aria-hidden="true"></i><span>recommend_articles</span>
+   </div>
+   <div class="recommended-article-group"><a class="recommended-article-item" href="/2023/05/14/photoshop-note/" title="photoshop-note" rel="bookmark">
+  <img src="https://charles2530.github.io/image/background/p1.jfif" alt="photoshop-note" class="!max-w-none">
+  <span class="title">photoshop-note</span>
+</a><a class="recommended-article-item" href="/2023/08/11/string-matching-algorithm/" title="String-Matching-Algorithm" rel="bookmark">
+  <img src="https://charles2530.github.io/image/background/p1.jfif" alt="String-Matching-Algorithm" class="!max-w-none">
+  <span class="title">String-Matching-Algorithm</span>
+</a></div>
+   </div>
+  </div>
+
+        
+            <div class="article-nav my-8 flex justify-between items-center px-2 sm:px-6 md:px-8">
+                
+                    <div class="article-prev border-border-color shadow-redefine-flat shadow-shadow-color-2 rounded-medium px-4 py-2 hover:shadow-redefine-flat-hover hover:shadow-shadow-color-2">
+                        <a class="prev"
+                        rel="prev"
+                        href="/2026/05/11/ai-notes/files-quantization-serving-stacks-and-hardware-tradeoffs/"
+                        >
+                            <span class="left arrow-icon flex justify-center items-center">
+                                <i class="fa-solid fa-chevron-left"></i>
+                            </span>
+                            <span class="title flex justify-center items-center">
+                                <span class="post-nav-title-item">服务栈与硬件权衡</span>
+                                <span class="post-nav-item">Prev posts</span>
+                            </span>
+                        </a>
+                    </div>
+                
+                
+                    <div class="article-next border-border-color shadow-redefine-flat shadow-shadow-color-2 rounded-medium px-4 py-2 hover:shadow-redefine-flat-hover hover:shadow-shadow-color-2">
+                        <a class="next"
+                        rel="next"
+                        href="/2026/05/11/ai-notes/files-quantization-quantization-for-multimodal-and-vla-models/"
+                        >
+                            <span class="title flex justify-center items-center">
+                                <span class="post-nav-title-item">多模态与 VLA 模型量化</span>
+                                <span class="post-nav-item">Next posts</span>
+                            </span>
+                            <span class="right arrow-icon flex justify-center items-center">
+                                <i class="fa-solid fa-chevron-right"></i>
+                            </span>
+                        </a>
+                    </div>
+                
+            </div>
+        
+
+
+        
+            <div class="comment-container px-2 sm:px-6 md:px-8 pb-8">
+                <div class="comments-container mt-10 w-full ">
+    <div id="comment-anchor" class="w-full h-2.5"></div>
+    <div class="comment-area-title w-full my-1.5 md:my-2.5 text-xl md:text-3xl font-bold">
+        Comments
+    </div>
+    
+
+        <!-- 
+            
+    <div id="gitalk-container"></div>
+    <script data-swup-reload-script
+            src="//cdn.staticfile.org/gitalk/1.8.0/gitalk.min.js"></script>
+    <script data-swup-reload-script>
+
+        function loadGitalk() {
+            let __gitalk__pathname = decodeURI(location.pathname);
+            const __gitalk__pathnameLength = __gitalk__pathname.length;
+            const __gitalk__pathnameMaxLength = 50;
+            if (__gitalk__pathnameLength > __gitalk__pathnameMaxLength) {
+                __gitalk__pathname = __gitalk__pathname.substring(0, __gitalk__pathnameMaxLength - 3) + '...';
+            }
+
+            try {
+                Gitalk && new Gitalk({
+                    clientID: '8083299a8ee2aaf23879',
+                    clientSecret: 'a8161e81d4872181e884fdb69f7be24916b6a9d0',
+                    repo: 'charles2530_issues',
+                    owner: 'Charles2530',
+                    admin: ['Charles2530'],
+                    id: __gitalk__pathname,
+                    language: 'en',
+                    proxy: 'https://github.com/login/oauth/access_token'
+                }).render('gitalk-container');
+
+            } catch (e) {
+                window.Gitalk = null;
+            }
+        }
+
+        if ('true') {
+            const loadGitalkTimeout = setTimeout(() => {
+                loadGitalk();
+                clearTimeout(loadGitalkTimeout);
+            }, 1000);
+        } else {
+            window.addEventListener('DOMContentLoaded', loadGitalk);
+        }
+    </script>
+
+
+
+         -->
+        <script src="https://utteranc.es/client.js" repo="Charles2530/Charles2530.github.io" issue-term="pathname"
+            label="Comment" theme="preferred-color-scheme" crossorigin="anonymous" async>
+            </script>
+    
+</div>
+
+            </div>
+        
+    </div>
+
+    
+        <div class="toc-content-container">
+            <div class="post-toc-wrap">
+    <div class="post-toc">
+        <div class="toc-title">On this page</div>
+        <div class="page-title">量化运行时与框架：vLLM、LightLLM、SGLang、TensorRT-LLM 与 ONNX Runtime</div>
+        <ol class="nav"><li class="nav-item nav-level-2"><a class="nav-link" href="#1-%E5%85%88%E5%88%86%E6%B8%85%E9%87%8F%E5%8C%96%E7%AE%97%E6%B3%95-%E6%A8%A1%E5%9E%8B%E6%A0%BC%E5%BC%8F-%E8%BF%90%E8%A1%8C%E6%97%B6%E4%B8%8D%E6%98%AF%E4%B8%80%E5%9B%9E%E4%BA%8B"><span class="nav-text"> 1. 先分清：量化算法、模型格式、运行时不是一回事</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#2-%E5%B8%B8%E8%A7%81%E6%A1%86%E6%9E%B6%E5%AF%B9%E7%85%A7"><span class="nav-text"> 2. 常见框架对照</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#3-vllm%E6%9C%80%E5%B8%B8%E8%A7%81%E7%9A%84%E9%80%9A%E7%94%A8-llm-serving-%E5%85%A5%E5%8F%A3"><span class="nav-text"> 3. vLLM：最常见的通用 LLM serving 入口</span></a><ol class="nav-child"><li class="nav-item nav-level-3"><a class="nav-link" href="#31-vllm-%E9%87%8C%E7%9A%84-kv-cache-%E9%87%8F%E5%8C%96%E8%A6%81%E5%8D%95%E7%8B%AC%E7%9C%8B"><span class="nav-text"> 3.1 vLLM 里的 KV cache 量化要单独看</span></a></li></ol></li><li class="nav-item nav-level-2"><a class="nav-link" href="#4-lightllm%E6%9B%B4%E5%81%8F%E8%BD%BB%E9%87%8F%E9%AB%98%E6%80%A7%E8%83%BD-serving-backend"><span class="nav-text"> 4. LightLLM：更偏轻量高性能 serving backend</span></a><ol class="nav-child"><li class="nav-item nav-level-3"><a class="nav-link" href="#41-%E4%BB%80%E4%B9%88%E6%97%B6%E5%80%99%E8%80%83%E8%99%91-lightllm"><span class="nav-text"> 4.1 什么时候考虑 LightLLM</span></a></li></ol></li><li class="nav-item nav-level-2"><a class="nav-link" href="#5-sglang%E7%A6%BB%E7%BA%BF%E9%87%8F%E5%8C%96-%E5%9C%A8%E7%BA%BF%E9%87%8F%E5%8C%96%E5%92%8C-torchao-%E8%B7%AF%E5%BE%84"><span class="nav-text"> 5. SGLang：离线量化、在线量化和 TorchAO 路径</span></a><ol class="nav-child"><li class="nav-item nav-level-3"><a class="nav-link" href="#51-sglang-%E7%9A%84%E5%AE%9E%E7%94%A8%E5%88%A4%E6%96%AD"><span class="nav-text"> 5.1 SGLang 的实用判断</span></a></li></ol></li><li class="nav-item nav-level-2"><a class="nav-link" href="#6-tensorrt-llmnvidia-%E6%A0%88%E9%87%8C%E7%9A%84%E6%B7%B1%E5%BA%A6%E4%BC%98%E5%8C%96%E8%B7%AF%E7%BA%BF"><span class="nav-text"> 6. TensorRT-LLM：NVIDIA 栈里的深度优化路线</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#7-onnx-runtime-%E4%B8%8E-onnx-%E9%87%8F%E5%8C%96"><span class="nav-text"> 7. ONNX Runtime 与 ONNX 量化</span></a><ol class="nav-child"><li class="nav-item nav-level-3"><a class="nav-link" href="#71-onnx-%E9%87%8F%E5%8C%96%E8%A1%A8%E7%A4%BAqoperator-%E4%B8%8E-qdq"><span class="nav-text"> 7.1 ONNX 量化表示：QOperator 与 QDQ</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#72-%E5%8A%A8%E6%80%81%E9%87%8F%E5%8C%96%E4%B8%8E%E9%9D%99%E6%80%81%E9%87%8F%E5%8C%96"><span class="nav-text"> 7.2 动态量化与静态量化</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#73-onnx-runtime-%E7%9A%84-int4-uint4-%E6%9D%83%E9%87%8D%E9%87%8F%E5%8C%96"><span class="nav-text"> 7.3 ONNX Runtime 的 INT4 &#x2F; UInt4 权重量化</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#74-onnx-%E9%87%8F%E5%8C%96%E7%9A%84%E5%85%B8%E5%9E%8B%E6%B5%81%E7%A8%8B"><span class="nav-text"> 7.4 ONNX 量化的典型流程</span></a></li></ol></li><li class="nav-item nav-level-2"><a class="nav-link" href="#8-%E6%A1%86%E6%9E%B6%E9%80%89%E5%9E%8B%E5%BB%BA%E8%AE%AE"><span class="nav-text"> 8. 框架选型建议</span></a><ol class="nav-child"><li class="nav-item nav-level-3"><a class="nav-link" href="#81-llm-%E5%9C%A8%E7%BA%BF%E6%9C%8D%E5%8A%A1"><span class="nav-text"> 8.1 LLM 在线服务</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#82-%E4%BC%A0%E7%BB%9F%E6%A8%A1%E5%9E%8B-%E8%BE%B9%E7%BC%98%E7%AB%AF%E5%92%8C%E8%B7%A8%E5%B9%B3%E5%8F%B0%E9%83%A8%E7%BD%B2"><span class="nav-text"> 8.2 传统模型、边缘端和跨平台部署</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#83-%E7%A0%94%E7%A9%B6%E4%B8%8E%E5%BE%AE%E8%B0%83"><span class="nav-text"> 8.3 研究与微调</span></a></li></ol></li><li class="nav-item nav-level-2"><a class="nav-link" href="#9-%E9%87%8F%E5%8C%96%E6%A1%86%E6%9E%B6%E4%B8%8A%E7%BA%BF%E6%A3%80%E6%9F%A5%E6%B8%85%E5%8D%95"><span class="nav-text"> 9. 量化框架上线检查清单</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#10-%E7%BB%93%E5%90%88%E4%BD%8E%E6%AF%94%E7%89%B9-llm-%E7%BB%BC%E8%BF%B0%E7%9A%84%E9%80%89%E5%9E%8B%E8%A1%A5%E5%85%85"><span class="nav-text"> 10. 结合低比特 LLM 综述的选型补充</span></a><ol class="nav-child"><li class="nav-item nav-level-3"><a class="nav-link" href="#101-%E4%B8%80%E4%B8%AA%E6%9B%B4%E5%AE%9E%E7%94%A8%E7%9A%84%E5%86%B3%E7%AD%96%E9%A1%BA%E5%BA%8F"><span class="nav-text"> 10.1 一个更实用的决策顺序</span></a></li></ol></li><li class="nav-item nav-level-2"><a class="nav-link" href="#11-%E5%8F%82%E8%80%83%E8%B5%84%E6%96%99"><span class="nav-text"> 11. 参考资料</span></a></li></ol>
+
+    </div>
+</div>
+        </div>
+    
+</div>
+
+
+
+                
+
+            </div>
+
+            
+
+        </div>
+
+        <div class="main-content-footer">
+            <footer class="footer mt-5 py-5 h-auto text-base text-third-text-color relative border-t-2 border-t-border-color">
+    <div class="info-container py-3 text-center">
+        
+        <div class="text-center">
+            &copy;
+            
+              <span>2022</span>
+              -
+            
+            2026&nbsp;&nbsp;<i class="fa-solid fa-heart fa-beat" style="--fa-animation-duration: 0.5s; color: #f54545"></i>&nbsp;&nbsp;<a href="/">Charles</a>
+            
+                
+                <p class="post-count space-x-0.5">
+                    <span>
+                        479 posts in total
+                    </span>
+                    
+                        <span>
+                            1896.7k words in total
+                        </span>
+                    
+                </p>
+            
+        </div>
+        
+            <script data-swup-reload-script src="https://cn.vercount.one/js"></script>
+            <div class="relative text-center lg:absolute lg:right-[20px] lg:top-1/2 lg:-translate-y-1/2 lg:text-right">
+                
+                    <span id="busuanzi_container_site_uv" class="lg:!block">
+                        <span class="text-sm">Visitor Count</span>
+                        <span id="busuanzi_value_site_uv"></span>
+                    </span>
+                
+                
+                    <span id="busuanzi_container_site_pv" class="lg:!block">
+                        <span class="text-sm">Total Page Views</span>
+                        <span id="busuanzi_value_site_pv"></span>
+                    </span>
+                
+            </div>
+        
+        <div class="relative text-center lg:absolute lg:left-[20px] lg:top-1/2 lg:-translate-y-1/2 lg:text-left">
+            <span class="lg:block text-sm">Powered by Charles</span>
+            <span class="text-sm lg:block">Theme&nbsp;<a class="text-base" target="_blank" href="https://github.com/EvanNotFound/hexo-theme-redefine">Redefine v2.6.1</a></span>
+        </div>
+        
+        
+            <div>
+                Blog up for <span class="odometer" id="runtime_days" ></span> days <span class="odometer" id="runtime_hours"></span> hrs <span class="odometer" id="runtime_minutes"></span> Min <span class="odometer" id="runtime_seconds"></span> Sec
+            </div>
+        
+        
+            <script data-swup-reload-script>
+                try {
+                    function odometer_init() {
+                    const elements = document.querySelectorAll('.odometer');
+                    elements.forEach(el => {
+                        new Odometer({
+                            el,
+                            format: '( ddd).dd',
+                            duration: 200
+                        });
+                    });
+                    }
+                    odometer_init();
+                } catch (error) {}
+            </script>
+        
+        
+            
+                
+        
+                
+        
+        
+    </div>  
+</footer>
+        </div>
+    </div>
+
+    
+        <div class="post-tools">
+            <div class="post-tools-container">
+    <ul class="article-tools-list">
+        <!-- TOC aside toggle -->
+        
+            <li class="right-bottom-tools page-aside-toggle">
+                <i class="fa-regular fa-outdent"></i>
+            </li>
+        
+
+        <!-- go comment -->
+        
+            <li class="go-comment">
+                <i class="fa-regular fa-comments"></i>
+            </li>
+        
+    </ul>
+</div>
+
+        </div>
+    
+
+    <div class="right-side-tools-container">
+        <div class="side-tools-container">
+    <ul class="hidden-tools-list">
+        <li class="right-bottom-tools tool-font-adjust-plus flex justify-center items-center">
+            <i class="fa-regular fa-magnifying-glass-plus"></i>
+        </li>
+
+        <li class="right-bottom-tools tool-font-adjust-minus flex justify-center items-center">
+            <i class="fa-regular fa-magnifying-glass-minus"></i>
+        </li>
+
+        <li class="right-bottom-tools tool-dark-light-toggle flex justify-center items-center">
+            <i class="fa-regular fa-moon"></i>
+        </li>
+
+        <!-- rss -->
+        
+            <li class="right-bottom-tools rss flex justify-center items-center">
+                <a class="flex justify-center items-center"
+                   href="/atom.xml"
+                   target="_blank"
+                >
+                <i class="fa-regular fa-rss"></i>
+                </a>
+            </li>
+        
+
+        
+
+        <li class="right-bottom-tools tool-scroll-to-bottom flex justify-center items-center">
+            <i class="fa-regular fa-arrow-down"></i>
+        </li>
+    </ul>
+
+    <ul class="visible-tools-list">
+        <li class="right-bottom-tools toggle-tools-list flex justify-center items-center">
+            <i class="fa-regular fa-cog fa-spin"></i>
+        </li>
+        
+            <li class="right-bottom-tools tool-scroll-to-top flex justify-center items-center">
+                <i class="arrow-up fas fa-arrow-up"></i>
+                <span class="percent"></span>
+            </li>
+        
+        
+    </ul>
+</div>
+
+    </div>
+
+    <div class="image-viewer-container">
+    <img src="">
+</div>
+
+
+    
+        <div class="search-pop-overlay">
+    <div class="popup search-popup">
+        <div class="search-header">
+          <span class="search-input-field-pre">
+            <i class="fa-solid fa-keyboard"></i>
+          </span>
+            <div class="search-input-container">
+                <input autocomplete="off"
+                       autocorrect="off"
+                       autocapitalize="off"
+                       placeholder="Search..."
+                       spellcheck="false"
+                       type="search"
+                       class="search-input"
+                >
+            </div>
+            <span class="popup-btn-close">
+                <i class="fa-solid fa-times"></i>
+            </span>
+        </div>
+        <div id="search-result">
+            <div id="no-result">
+                <i class="fa-solid fa-spinner fa-spin-pulse fa-5x fa-fw"></i>
+            </div>
+        </div>
+    </div>
+</div>
+
+    
+
+</main>
+
+
+    <script src="https://evan.beee.top/projects/hexo-theme-redefine@2.6.1/source/js/libs/Swup.min.js"></script><script src="https://evan.beee.top/projects/hexo-theme-redefine@2.6.1/source/js/libs/SwupSlideTheme.min.js"></script><script src="https://evan.beee.top/projects/hexo-theme-redefine@2.6.1/source/js/libs/SwupScriptsPlugin.min.js"></script><script src="https://evan.beee.top/projects/hexo-theme-redefine@2.6.1/source/js/libs/SwupProgressPlugin.min.js"></script><script src="https://evan.beee.top/projects/hexo-theme-redefine@2.6.1/source/js/libs/SwupScrollPlugin.min.js"></script><script src="https://evan.beee.top/projects/hexo-theme-redefine@2.6.1/source/js/libs/SwupPreloadPlugin.min.js"></script>
+<script>
+    const swup = new Swup({
+        plugins: [
+            new SwupScriptsPlugin({
+                optin: true,
+            }),
+            new SwupProgressPlugin(),
+            new SwupScrollPlugin({
+                offset: 80,
+            }),
+            new SwupSlideTheme({
+                mainElement: ".main-content-body",
+            }),
+            new SwupPreloadPlugin(),
+        ],
+        containers: ["#swup"],
+    });
+</script>
+
+
+
+
+
+
+<script type="module" src="https://evan.beee.top/projects/hexo-theme-redefine@2.6.1/source/js/tools/imageViewer.js"></script><script type="module" src="https://evan.beee.top/projects/hexo-theme-redefine@2.6.1/source/js/utils.js"></script><script type="module" src="https://evan.beee.top/projects/hexo-theme-redefine@2.6.1/source/js/main.js"></script><script type="module" src="https://evan.beee.top/projects/hexo-theme-redefine@2.6.1/source/js/layouts/navbarShrink.js"></script><script type="module" src="https://evan.beee.top/projects/hexo-theme-redefine@2.6.1/source/js/tools/scrollTopBottom.js"></script><script type="module" src="https://evan.beee.top/projects/hexo-theme-redefine@2.6.1/source/js/tools/lightDarkSwitch.js"></script><script type="module" src="https://evan.beee.top/projects/hexo-theme-redefine@2.6.1/source/js/layouts/categoryList.js"></script>
+
+
+    <script type="module" src="https://evan.beee.top/projects/hexo-theme-redefine@2.6.1/source/js/tools/localSearch.js"></script>
+
+
+
+    <script type="module" src="https://evan.beee.top/projects/hexo-theme-redefine@2.6.1/source/js/tools/codeBlock.js"></script>
+
+
+
+    <script type="module" src="https://evan.beee.top/projects/hexo-theme-redefine@2.6.1/source/js/layouts/lazyload.js"></script>
+
+
+
+    <script src="https://evan.beee.top/projects/hexo-theme-redefine@2.6.1/source/js/tools/runtime.js"></script>
+    <script src="https://evan.beee.top/projects/hexo-theme-redefine@2.6.1/source/js/libs/odometer.min.js"></script>
+    <link rel="stylesheet" href="//evan.beee.top/projects/hexo-theme-redefine@2.6.1/source/assets/odometer-theme-minimal.css">
+
+
+
+  <script src="https://evan.beee.top/projects/hexo-theme-redefine@2.6.1/source/js/libs/Typed.min.js"></script>
+  <script type="module" src="https://evan.beee.top/projects/hexo-theme-redefine@2.6.1/source/js/plugins/typed.js"></script>
+
+
+
+    <script src="https://evan.beee.top/projects/hexo-theme-redefine@2.6.1/source/js/libs/mermaid.min.js"></script>
+    <script src="https://evan.beee.top/projects/hexo-theme-redefine@2.6.1/source/js/plugins/mermaid.js"></script>
+
+
+
+    <script src="https://evan.beee.top/projects/hexo-theme-redefine@2.6.1/source/js/libs/minimasonry.min.js"></script>
+    <script type="module" src="https://evan.beee.top/projects/hexo-theme-redefine@2.6.1/source/js/plugins/masonry.js"></script>
+
+
+
+
+<div class="post-scripts" data-swup-reload-script>
+    
+        <script type="module" src="https://evan.beee.top/projects/hexo-theme-redefine@2.6.1/source/js/tools/tocToggle.js"></script><script type="module" src="https://evan.beee.top/projects/hexo-theme-redefine@2.6.1/source/js/layouts/toc.js"></script><script type="module" src="https://evan.beee.top/projects/hexo-theme-redefine@2.6.1/source/js/plugins/tabs.js"></script>
+    
+</div>
+
+
+</body>
+</html>
+<!-- 页面点击小红心 -->
+<script type="text/javascript" src="/js/love.js"></script>
