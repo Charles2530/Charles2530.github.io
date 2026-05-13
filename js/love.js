@@ -8,28 +8,28 @@
   }
 
   function r() {
-    for (var e = 0; e < d.length; e += 1) {
-      if (d[e].alpha <= 0) {
-        t.body.removeChild(d[e].el);
-        d.splice(e, 1);
-        e -= 1;
+    for (var index = 0; index < d.length; index += 1) {
+      if (d[index].alpha <= 0) {
+        t.body.removeChild(d[index].el);
+        d.splice(index, 1);
+        index -= 1;
       } else {
-        d[e].y -= 1;
-        d[e].scale += 0.004;
-        d[e].alpha -= 0.013;
-        d[e].el.style.cssText =
+        d[index].y -= 1;
+        d[index].scale += 0.004;
+        d[index].alpha -= 0.013;
+        d[index].el.style.cssText =
           "left:" +
-          d[e].x +
+          d[index].x +
           "px;top:" +
-          d[e].y +
+          d[index].y +
           "px;opacity:" +
-          d[e].alpha +
+          d[index].alpha +
           ";transform:scale(" +
-          d[e].scale +
+          d[index].scale +
           "," +
-          d[e].scale +
+          d[index].scale +
           ") rotate(45deg);background:" +
-          d[e].color +
+          d[index].color +
           ";z-index:99999;pointer-events:none";
       }
     }
