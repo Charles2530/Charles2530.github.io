@@ -83,7 +83,7 @@
         
         <meta name="description" content="This is Charles&#39;s Castle.">
 <meta property="og:type" content="article">
-<meta property="og:title" content="算子与编译器：FP8 与优化器 Kernel">
+<meta property="og:title" content="算子与编译器：FP8 训练与优化器 Kernel">
 <meta property="og:url" content="https://charles2530.github.io/2026/05/11/ai-files-operators-fp8-training-and-optimizer-kernels/index.html">
 <meta property="og:site_name" content="Charles&#39;s Castle">
 <meta property="og:description" content="This is Charles&#39;s Castle.">
@@ -110,7 +110,7 @@
     
     <title>
         
-            算子与编译器：FP8 与优化器 Kernel | Charles&#39;s Castle
+            算子与编译器：FP8 训练与优化器 Kernel | Charles&#39;s Castle
         
     </title>
 
@@ -681,7 +681,7 @@
         <div class="label text-third-text-color text-sm">Categories</div>
     </a>
     <a class="item tag-count-item flex flex-col justify-center items-center w-20" href="/archives">
-        <div class="number text-2xl sm:text-xl text-second-text-color font-semibold">478</div>
+        <div class="number text-2xl sm:text-xl text-second-text-color font-semibold">485</div>
         <div class="label text-third-text-color text-sm">Posts</div>
     </a>
 </div>
@@ -705,10 +705,10 @@
 			
 			
 			
-			<img src="https://charles2530.github.io/image/background/p1.png" alt="算子与编译器：FP8 与优化器 Kernel" class="w-full h-60 sm:h-72 md:h-80 object-cover sm:rounded-t-large dark:brightness-75" />
+			<img src="https://charles2530.github.io/image/background/p1.png" alt="算子与编译器：FP8 训练与优化器 Kernel" class="w-full h-60 sm:h-72 md:h-80 object-cover sm:rounded-t-large dark:brightness-75" />
 			
 			<div class="w-full flex items-center absolute bottom-0 justify-start">
-				<h1 class="article-title-cover text-center mx-6 my-6 text-second-text-color bg-background-color-transparent px-4 py-3 text-3xl sm:text-4xl md:text-5xl font-semibold backdrop-blur-lg rounded-xl border border-border-color ">算子与编译器：FP8 与优化器 Kernel</h1>
+				<h1 class="article-title-cover text-center mx-6 my-6 text-second-text-color bg-background-color-transparent px-4 py-3 text-3xl sm:text-4xl md:text-5xl font-semibold backdrop-blur-lg rounded-xl border border-border-color ">算子与编译器：FP8 训练与优化器 Kernel</h1>
 			</div>
 			
 		</div>
@@ -801,12 +801,12 @@
     
     
         <span class="article-wordcount article-meta-item">
-            <i class="fa-regular fa-typewriter"></i>&nbsp;<span>2.2k Words</span>
+            <i class="fa-regular fa-typewriter"></i>&nbsp;<span>1.4k Words</span>
         </span>
     
     
         <span class="article-min2read article-meta-item">
-            <i class="fa-regular fa-clock"></i>&nbsp;<span>7 Mins</span>
+            <i class="fa-regular fa-clock"></i>&nbsp;<span>5 Mins</span>
         </span>
     
     
@@ -826,151 +826,42 @@
 
 		<div class="article-content markdown-body px-2 sm:px-6 md:px-8 pb-8">
 			<p>低精度话题里，<code>FP8</code> 和优化器 kernel 值得单独拿出来讲，因为它们主要影响的是训练主路径，而不是单纯的推理压缩。权重量化更多关注部署态显存和带宽；而 <code>FP8</code> 训练与 fused optimizer kernel 关心的是：在大规模训练中，如何把前向、反向、梯度、主权重、优化器状态和数值缩放组织成一套既快又稳的执行路径。</p>
+<p>这页建议和 <a href="/2026/05/11/ai-files-training-low-bit-training-and-numerics/">低比特训练与数值格式</a>、<a href="/2026/05/11/ai-files-training-distributed-training-and-checkpointing/">分布式训练与 Checkpoint</a>、<a href="/2026/05/11/ai-files-operators-low-precision-and-quantized-kernels/">低精度与量化 Kernel</a> 一起读。训练页解释数值格式和稳定性边界，分布式页解释状态切分与恢复，本页则关注这些约束落到 kernel、scale metadata 和 optimizer step 时会怎样影响吞吐。</p>
 <div class="callout callout--titled info mb-4 rounded-small shadow-redefine-flat bg-(--callout-bg-color) p-3 pl-1 relative flex flex-row gap-2"><div role="none" class="rounded-full self-stretch w-0.5 bg-(--callout-primary-color) shrink-0 opacity-60"></div><div class="flex flex-col gap-2"><div class="callout__title flex items-center gap-2 font-semibold tracking-tight">初学者先抓住</div><div class="callout__content markdown-body flex-1 min-w-0"><p>FP8 训练不是把 dtype 改小，而是重写训练主路径里的数值契约。前向、反向、scale、梯度、optimizer state、主权重和 checkpoint 都要配合，否则省下的带宽可能换来不稳定的更新。</p></div></div></div>
 <div class="callout callout--titled info mb-4 rounded-small shadow-redefine-flat bg-(--callout-bg-color) p-3 pl-1 relative flex flex-row gap-2"><div role="none" class="rounded-full self-stretch w-0.5 bg-(--callout-primary-color) shrink-0 opacity-60"></div><div class="flex flex-col gap-2"><div class="callout__title flex items-center gap-2 font-semibold tracking-tight">难点解释：为什么优化器 kernel 也重要</div><div class="callout__content markdown-body flex-1 min-w-0"><p>大模型训练里 AdamW 等优化器会频繁读写参数、一阶动量、二阶动量和梯度。若这些更新分散成很多小 kernel，会浪费带宽和 launch；fused optimizer kernel 能把多次读写合并，但也要小心数值精度和状态恢复。</p></div></div></div>
 <h2 id="1-为什么-fp8-训练和推理量化不是一回事"><a class="markdownIt-Anchor" href="#1-为什么-fp8-训练和推理量化不是一回事"></a> 1. 为什么 FP8 训练和推理量化不是一回事</h2>
 <p>推理量化更多是在“压缩已有模型”；<br />
 FP8 训练则是在“用更低精度直接完成学习过程”。<br />
-<strong>这意味着它要同时面对</strong>：</p>
-<ol>
-<li>前向数值范围；</li>
-<li>反向梯度范围；</li>
-<li>累加精度；</li>
-<li>scale 更新；</li>
-<li>optimizer state 的保存格式。</li>
-</ol>
+这意味着它要同时面对前向数值范围、反向梯度范围、累加精度、scale 更新和 optimizer state 的保存格式。</p>
 <p>也就是说，FP8 训练不是只换一个 dtype，而是整条训练 pipeline 的重构。</p>
 <h2 id="2-fp8-训练真正依赖什么"><a class="markdownIt-Anchor" href="#2-fp8-训练真正依赖什么"></a> 2. FP8 训练真正依赖什么</h2>
-<p>要让 FP8 训练可用，通常至少需要：</p>
-<ol>
-<li>合适的 per-tensor 或更细粒度 scaling；</li>
-<li>某些路径保留更高精度累加；</li>
-<li>稳定的 cast / dequant / requant kernel；</li>
-<li>对异常值和 outlier 有合理处理；</li>
-<li>训练框架、kernel、optimizer 路径配套。</li>
-</ol>
+<p>要让 FP8 训练可用，通常至少需要合适的 per-tensor 或更细粒度 scaling，某些路径保留更高精度累加，稳定的 cast / dequant / requant kernel，对异常值和 outlier 有合理处理，并让训练框架、kernel、optimizer 路径配套。</p>
 <p>因此 FP8 更像系统级能力，而不是某个局部技巧。</p>
 <h2 id="3-scale-元数据为什么是训练的一部分"><a class="markdownIt-Anchor" href="#3-scale-元数据为什么是训练的一部分"></a> 3. Scale 元数据为什么是训练的一部分</h2>
-<p>在 FP8 路径里，真正参与计算的并不只是张量本身，还包括：</p>
-<ol>
-<li>scale；</li>
-<li>history 或统计量；</li>
-<li>cast 策略；</li>
-<li>溢出检测或 guard。</li>
-</ol>
-<p><strong>这些额外元数据会影响</strong>：</p>
-<ol>
-<li>kernel 输入输出格式；</li>
-<li>张量布局；</li>
-<li>fused path 设计；</li>
-<li>checkpoint 状态。</li>
-</ol>
+<p>在 FP8 路径里，真正参与计算的并不只是张量本身，还包括 scale、history 或统计量、cast 策略、溢出检测或 guard。这些额外元数据会影响 kernel 输入输出格式、张量布局、fused path 设计和 checkpoint 状态。</p>
 <p>所以 FP8 训练 kernel 的核心不只是低精度乘法，而是“低精度张量 + 缩放元数据”的联合管理。</p>
 <h2 id="4-为什么优化器-kernel-也是主战场"><a class="markdownIt-Anchor" href="#4-为什么优化器-kernel-也是主战场"></a> 4. 为什么优化器 kernel 也是主战场</h2>
-<p>在大模型训练里，优化器 step 的成本不容忽视，尤其是：</p>
-<ol>
-<li>参数很多；</li>
-<li>optimizer state 很大；</li>
-<li>每步都要更新；</li>
-<li>常与 ZeRO / FSDP 分片状态耦合。</li>
-</ol>
-<p><strong>如果优化器实现仍然是</strong>：</p>
-<ol>
-<li>多次读写参数；</li>
-<li>多次读写动量和方差；</li>
-<li>分散的 elementwise kernel；</li>
-</ol>
-<p>那训练吞吐会被明显拖慢。</p>
+<p>在大模型训练里，优化器 step 的成本不容忽视，因为参数很多、optimizer state 很大、每步都要更新，还常与 ZeRO / FSDP 分片状态耦合。</p>
+<p>如果优化器实现仍然是多次读写参数、动量和方差，并拆成分散的 elementwise kernel，训练吞吐就会被明显拖慢。</p>
 <h2 id="5-fused-optimizer-的意义"><a class="markdownIt-Anchor" href="#5-fused-optimizer-的意义"></a> 5. Fused Optimizer 的意义</h2>
-<p>Fused optimizer kernel 的核心，是把原本分散的多步 elementwise 操作合并起来，例如：</p>
-<ol>
-<li>读梯度；</li>
-<li>更新一阶矩；</li>
-<li>更新二阶矩；</li>
-<li>计算校正；</li>
-<li>应用权重衰减；</li>
-<li>更新参数。</li>
-</ol>
+<p>Fused optimizer kernel 的核心，是把原本分散的多步 elementwise 操作合并起来，例如读梯度、更新一阶矩和二阶矩、计算校正、应用权重衰减、更新参数。</p>
 <h3 id="51-为什么这比看起来更重要"><a class="markdownIt-Anchor" href="#51-为什么这比看起来更重要"></a> 5.1 为什么这比看起来更重要</h3>
 <p>因为这些步骤本质上都是内存带宽敏感的 elementwise 操作。<br />
-<strong>如果拆成多个 kernel</strong>：</p>
-<ol>
-<li>同一组参数和状态会被反复读写；</li>
-<li>launch 次数多；</li>
-<li>大模型下总时间会很可观。</li>
-</ol>
+如果拆成多个 kernel，同一组参数和状态会被反复读写，launch 次数也会增加，大模型下总时间会很可观。</p>
 <h2 id="6-fp8-与优化器之间的精度分层"><a class="markdownIt-Anchor" href="#6-fp8-与优化器之间的精度分层"></a> 6. FP8 与优化器之间的精度分层</h2>
 <p><strong>一个很现实的问题是</strong>：<br />
 即使前向和反向更多地走 FP8，优化器状态也未必适合全面降到同样精度。</p>
-<p><strong>常见原因包括</strong>：</p>
-<ol>
-<li>moment 累积对精度敏感；</li>
-<li>长时间训练误差会积累；</li>
-<li>不同参数组的动态范围差异很大。</li>
-</ol>
-<p>因此实际系统常采用更复杂的精度分层：</p>
-<ol>
-<li>前向低精度；</li>
-<li>累加更高精度；</li>
-<li>optimizer state 保留更稳定格式；</li>
-<li>最终参数更新路径再做折中。</li>
-</ol>
+<p>常见原因是 moment 累积对精度敏感，长时间训练误差会积累，不同参数组的动态范围差异也很大。</p>
+<p>因此实际系统常采用更复杂的精度分层：前向低精度，累加更高精度，optimizer state 保留更稳定格式，最终参数更新路径再做折中。</p>
 <h2 id="7-训练态低精度-kernel-的常见热点"><a class="markdownIt-Anchor" href="#7-训练态低精度-kernel-的常见热点"></a> 7. 训练态低精度 kernel 的常见热点</h2>
-<ol>
-<li>FP8 GEMM；</li>
-<li>cast / scale 相关 kernel；</li>
-<li>gradient unscale / clip；</li>
-<li>optimizer step；</li>
-<li>master weight 更新；</li>
-<li>分布式梯度聚合前后的数据格式转换。</li>
-</ol>
-<p>这些路径如果彼此不协调，就会让理论上的 FP8 收益被大量格式转换吃掉。</p>
+<p>常见热点包括 FP8 GEMM、cast / scale 相关 kernel、gradient unscale / clip、optimizer step、master weight 更新，以及分布式梯度聚合前后的数据格式转换。这些路径如果彼此不协调，就会让理论上的 FP8 收益被大量格式转换吃掉。</p>
 <h2 id="8-一个形象比喻"><a class="markdownIt-Anchor" href="#8-一个形象比喻"></a> 8. 一个形象比喻</h2>
 <p>如果把训练看成一条长期运转的工厂流水线，那么 FP8 训练不只是把原材料改成更轻的包装，而是要求整个仓储、计量、称重和装配流程都能适应更轻、更敏感的零件。优化器 kernel 则像最后的总装和校准工位，如果这一步仍然非常笨重，前面节省下来的吞吐也会被吃掉。</p>
 <h2 id="9-小结"><a class="markdownIt-Anchor" href="#9-小结"></a> 9. 小结</h2>
 <p>FP8 与优化器 kernel 的主题，核心不是“更低精度”，而是“训练主路径是否能以更低精度仍然稳定运行”。这要求 kernel、scale、优化器状态、mixed precision 策略和分布式训练框架一起工作。<br />
 因此它是训练系统能力的一部分，而不只是单个算子技巧。</p>
-<h2 id="实践补充与检查"><a class="markdownIt-Anchor" href="#实践补充与检查"></a> 实践补充与检查</h2>
-<h3 id="把-fp8-与优化器-kernel-放回真实系统里理解"><a class="markdownIt-Anchor" href="#把-fp8-与优化器-kernel-放回真实系统里理解"></a> 把 <strong>FP8 与优化器 Kernel</strong> 放回真实系统里理解</h3>
-<p>很多页面在介绍算子或排查方法时，读者最容易获得的是一组术语，但真正落地时更关键的是：<strong>这个主题究竟在训练、推理、编译器、运行时和硬件拓扑之间扮演什么角色</strong>。围绕 <strong>FP8 与优化器 Kernel</strong>，更实用的切入方式不是先记定义，而是先把问题拆成几个稳定坐标：</p>
-<ol>
-<li><strong>scale 管理、累加精度、统计同步、优化器状态、回退路径</strong>。</li>
-</ol>
-<p>之所以要先做这一步，是因为大量“优化失败”并不是实现不够努力，而是一开始就把问题建模错了。比如明明是 <strong>shape family</strong> 失控，却去盯某个单一 kernel；明明是 <strong>拓扑或缓存生命周期</strong> 在拖后腿，却把矛头指向单步 FLOPs；明明应该在 <strong>运行时</strong> 解决，却试图把所有复杂度压进一个更重的 fused kernel。只要坐标系没建立，后续 benchmark、profile、灰度和上线都容易失真。</p>
-<h3 id="更像工程手册的排查顺序"><a class="markdownIt-Anchor" href="#更像工程手册的排查顺序"></a> 更像工程手册的排查顺序</h3>
-<p>针对 <strong>FP8 与优化器 Kernel</strong>，一个更稳妥的工程排查顺序通常是：</p>
-<ol>
-<li><strong>先确认真实工作负载</strong>。不要只拿一个热 shape 或论文默认配置来代表全系统；</li>
-<li><strong>再确认瓶颈层级</strong>。区分是算子本身、调度路径、拓扑链路、还是缓存/内存生命周期在主导；</li>
-<li><strong>然后才进入 microbenchmark</strong>。只有当端到端关键路径已被确认，单算子基准才有解释力；</li>
-<li><strong>把热路径和尾路径分开</strong>。很多主题在平均值上看起来很好，但在尾部 shape、极端长度或混合流量上完全是另一回事；</li>
-<li><strong>最后写清回退条件</strong>。没有回退条件的优化，就不算真正可上线的优化。</li>
-</ol>
-<p>如果团队把这套顺序固化下来，<strong>FP8 与优化器 Kernel</strong> 就不再只是“某个高手会调的点”，而会逐渐变成组织可继承的能力。</p>
-<h3 id="最常见的误判与失败模式"><a class="markdownIt-Anchor" href="#最常见的误判与失败模式"></a> 最常见的误判与失败模式</h3>
-<p>围绕 <strong>FP8 与优化器 Kernel</strong>，最常见的误判往往不是“完全不知道问题”，而是知道一半：</p>
-<ol>
-<li><strong>只看显存下降</strong>。</li>
-<li><strong>忽略 scale 漂移</strong>。</li>
-<li><strong>训练和推理 FP8 路径不一致</strong>。</li>
-</ol>
-<p>这些误判之所以反复出现，是因为算子工程天然跨层。一个现象可能同时带着 <strong>kernel</strong>、<strong>runtime</strong>、<strong>拓扑</strong>、<strong>数据布局</strong> 和 <strong>服务负载</strong> 五层因素。若团队只盯其中一层，很容易做出“局部更优、全局更差”的决策。因此，这类主题最需要的往往不是更多零碎技巧，而是<strong>把失败模式写成制度化案例</strong>：什么情况下该怀疑布局，什么情况下该怀疑 cache，什么情况下应先改 dispatch，什么情况下必须回到硬件日志与链路测量。</p>
-<h3 id="验收-回归与长期维护"><a class="markdownIt-Anchor" href="#验收-回归与长期维护"></a> 验收、回归与长期维护</h3>
-<p>真正让 <strong>FP8 与优化器 Kernel</strong> 站得住，不是一次 benchmark 跑得漂亮，而是它能否进入长期维护循环。更成熟的验收方式通常包括：</p>
-<ol>
-<li><strong>按层验证 FP8 可承受度</strong>。</li>
-<li><strong>保留 BF16 回退</strong>。</li>
-<li><strong>监控 scale 分布</strong>。</li>
-<li><strong>做长跑数值回归</strong>。</li>
-</ol>
-<p>除此之外，还建议把 <strong>FP8 与优化器 Kernel</strong> 相关改动长期绑定四类材料：</p>
-<ol>
-<li><strong>代表性 probe</strong>，用于快速复验是否退化；</li>
-<li><strong>端到端案例</strong>，用于防止只赢 microbenchmark；</li>
-<li><strong>已知黑名单 shape / 路径</strong>，避免后来人重复踩坑；</li>
-<li><strong>升级对照记录</strong>，包括驱动、编译器、框架、运行时变化前后的差异。</li>
-</ol>
-<p>做到这一步后，<strong>FP8 与优化器 Kernel</strong> 才会真正从“概念页”变成“方法页”，再从“方法页”变成“平台资产页”。</p>
+<h2 id="工程收束"><a class="markdownIt-Anchor" href="#工程收束"></a> 工程收束</h2>
+<p>FP8 训练与优化器 kernel 要围绕 scale 管理、累加精度、统计同步、优化器状态和回退路径来验收。只看显存下降会漏掉 scale 漂移、训练/推理 FP8 路径不一致等问题；上线前应按层验证 FP8 可承受度，保留 BF16 回退，监控 scale 分布，并做长跑数值回归。</p>
 
 		</div>
 
@@ -978,7 +869,7 @@ FP8 训练则是在“用更低精度直接完成学习过程”。<br />
 		<div class="post-copyright-info w-full my-8 px-2 sm:px-6 md:px-8">
 			<div class="article-copyright-info-container">
     <ul>
-        <li><strong>Title:</strong> 算子与编译器：FP8 与优化器 Kernel</li>
+        <li><strong>Title:</strong> 算子与编译器：FP8 训练与优化器 Kernel</li>
         <li><strong>Author:</strong> Charles</li>
         <li><strong>Created at
                 :</strong> 2026-05-11 09:56:00</li>
@@ -1054,7 +945,7 @@ FP8 训练则是在“用更低精度直接完成学习过程”。<br />
 			<div class="article-next border-border-color shadow-redefine-flat shadow-shadow-color-2 rounded-medium px-4 py-2 hover:shadow-redefine-flat-hover hover:shadow-shadow-color-2">
 				<a class="next" rel="next" href="/2026/05/11/ai-files-operators-deepgemm-source-and-integration/">
 					<span class="title flex justify-center items-center">
-						<span class="post-nav-title-item truncate max-w-48">算子与编译器：DeepGEMM 源码与接入附录</span>
+						<span class="post-nav-title-item truncate max-w-48">算子与编译器：DeepGEMM 源码与接入</span>
 						<span class="post-nav-item">Next posts</span>
 					</span>
 					<span class="right arrow-icon flex justify-center items-center">
@@ -1144,8 +1035,8 @@ FP8 训练则是在“用更低精度直接完成学习过程”。<br />
 		<div class="post-toc-wrap">
 	<div class="post-toc">
 		<div class="toc-title">On this page</div>
-		<div class="page-title">算子与编译器：FP8 与优化器 Kernel</div>
-		<ol class="nav"><li class="nav-item nav-level-2"><a class="nav-link" href="#1-%E4%B8%BA%E4%BB%80%E4%B9%88-fp8-%E8%AE%AD%E7%BB%83%E5%92%8C%E6%8E%A8%E7%90%86%E9%87%8F%E5%8C%96%E4%B8%8D%E6%98%AF%E4%B8%80%E5%9B%9E%E4%BA%8B"><span class="nav-text"> 1. 为什么 FP8 训练和推理量化不是一回事</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#2-fp8-%E8%AE%AD%E7%BB%83%E7%9C%9F%E6%AD%A3%E4%BE%9D%E8%B5%96%E4%BB%80%E4%B9%88"><span class="nav-text"> 2. FP8 训练真正依赖什么</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#3-scale-%E5%85%83%E6%95%B0%E6%8D%AE%E4%B8%BA%E4%BB%80%E4%B9%88%E6%98%AF%E8%AE%AD%E7%BB%83%E7%9A%84%E4%B8%80%E9%83%A8%E5%88%86"><span class="nav-text"> 3. Scale 元数据为什么是训练的一部分</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#4-%E4%B8%BA%E4%BB%80%E4%B9%88%E4%BC%98%E5%8C%96%E5%99%A8-kernel-%E4%B9%9F%E6%98%AF%E4%B8%BB%E6%88%98%E5%9C%BA"><span class="nav-text"> 4. 为什么优化器 kernel 也是主战场</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#5-fused-optimizer-%E7%9A%84%E6%84%8F%E4%B9%89"><span class="nav-text"> 5. Fused Optimizer 的意义</span></a><ol class="nav-child"><li class="nav-item nav-level-3"><a class="nav-link" href="#51-%E4%B8%BA%E4%BB%80%E4%B9%88%E8%BF%99%E6%AF%94%E7%9C%8B%E8%B5%B7%E6%9D%A5%E6%9B%B4%E9%87%8D%E8%A6%81"><span class="nav-text"> 5.1 为什么这比看起来更重要</span></a></li></ol></li><li class="nav-item nav-level-2"><a class="nav-link" href="#6-fp8-%E4%B8%8E%E4%BC%98%E5%8C%96%E5%99%A8%E4%B9%8B%E9%97%B4%E7%9A%84%E7%B2%BE%E5%BA%A6%E5%88%86%E5%B1%82"><span class="nav-text"> 6. FP8 与优化器之间的精度分层</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#7-%E8%AE%AD%E7%BB%83%E6%80%81%E4%BD%8E%E7%B2%BE%E5%BA%A6-kernel-%E7%9A%84%E5%B8%B8%E8%A7%81%E7%83%AD%E7%82%B9"><span class="nav-text"> 7. 训练态低精度 kernel 的常见热点</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#8-%E4%B8%80%E4%B8%AA%E5%BD%A2%E8%B1%A1%E6%AF%94%E5%96%BB"><span class="nav-text"> 8. 一个形象比喻</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#9-%E5%B0%8F%E7%BB%93"><span class="nav-text"> 9. 小结</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#%E5%AE%9E%E8%B7%B5%E8%A1%A5%E5%85%85%E4%B8%8E%E6%A3%80%E6%9F%A5"><span class="nav-text"> 实践补充与检查</span></a><ol class="nav-child"><li class="nav-item nav-level-3"><a class="nav-link" href="#%E6%8A%8A-fp8-%E4%B8%8E%E4%BC%98%E5%8C%96%E5%99%A8-kernel-%E6%94%BE%E5%9B%9E%E7%9C%9F%E5%AE%9E%E7%B3%BB%E7%BB%9F%E9%87%8C%E7%90%86%E8%A7%A3"><span class="nav-text"> 把 FP8 与优化器 Kernel 放回真实系统里理解</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#%E6%9B%B4%E5%83%8F%E5%B7%A5%E7%A8%8B%E6%89%8B%E5%86%8C%E7%9A%84%E6%8E%92%E6%9F%A5%E9%A1%BA%E5%BA%8F"><span class="nav-text"> 更像工程手册的排查顺序</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#%E6%9C%80%E5%B8%B8%E8%A7%81%E7%9A%84%E8%AF%AF%E5%88%A4%E4%B8%8E%E5%A4%B1%E8%B4%A5%E6%A8%A1%E5%BC%8F"><span class="nav-text"> 最常见的误判与失败模式</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#%E9%AA%8C%E6%94%B6-%E5%9B%9E%E5%BD%92%E4%B8%8E%E9%95%BF%E6%9C%9F%E7%BB%B4%E6%8A%A4"><span class="nav-text"> 验收、回归与长期维护</span></a></li></ol></li></ol>
+		<div class="page-title">算子与编译器：FP8 训练与优化器 Kernel</div>
+		<ol class="nav"><li class="nav-item nav-level-2"><a class="nav-link" href="#1-%E4%B8%BA%E4%BB%80%E4%B9%88-fp8-%E8%AE%AD%E7%BB%83%E5%92%8C%E6%8E%A8%E7%90%86%E9%87%8F%E5%8C%96%E4%B8%8D%E6%98%AF%E4%B8%80%E5%9B%9E%E4%BA%8B"><span class="nav-text"> 1. 为什么 FP8 训练和推理量化不是一回事</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#2-fp8-%E8%AE%AD%E7%BB%83%E7%9C%9F%E6%AD%A3%E4%BE%9D%E8%B5%96%E4%BB%80%E4%B9%88"><span class="nav-text"> 2. FP8 训练真正依赖什么</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#3-scale-%E5%85%83%E6%95%B0%E6%8D%AE%E4%B8%BA%E4%BB%80%E4%B9%88%E6%98%AF%E8%AE%AD%E7%BB%83%E7%9A%84%E4%B8%80%E9%83%A8%E5%88%86"><span class="nav-text"> 3. Scale 元数据为什么是训练的一部分</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#4-%E4%B8%BA%E4%BB%80%E4%B9%88%E4%BC%98%E5%8C%96%E5%99%A8-kernel-%E4%B9%9F%E6%98%AF%E4%B8%BB%E6%88%98%E5%9C%BA"><span class="nav-text"> 4. 为什么优化器 kernel 也是主战场</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#5-fused-optimizer-%E7%9A%84%E6%84%8F%E4%B9%89"><span class="nav-text"> 5. Fused Optimizer 的意义</span></a><ol class="nav-child"><li class="nav-item nav-level-3"><a class="nav-link" href="#51-%E4%B8%BA%E4%BB%80%E4%B9%88%E8%BF%99%E6%AF%94%E7%9C%8B%E8%B5%B7%E6%9D%A5%E6%9B%B4%E9%87%8D%E8%A6%81"><span class="nav-text"> 5.1 为什么这比看起来更重要</span></a></li></ol></li><li class="nav-item nav-level-2"><a class="nav-link" href="#6-fp8-%E4%B8%8E%E4%BC%98%E5%8C%96%E5%99%A8%E4%B9%8B%E9%97%B4%E7%9A%84%E7%B2%BE%E5%BA%A6%E5%88%86%E5%B1%82"><span class="nav-text"> 6. FP8 与优化器之间的精度分层</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#7-%E8%AE%AD%E7%BB%83%E6%80%81%E4%BD%8E%E7%B2%BE%E5%BA%A6-kernel-%E7%9A%84%E5%B8%B8%E8%A7%81%E7%83%AD%E7%82%B9"><span class="nav-text"> 7. 训练态低精度 kernel 的常见热点</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#8-%E4%B8%80%E4%B8%AA%E5%BD%A2%E8%B1%A1%E6%AF%94%E5%96%BB"><span class="nav-text"> 8. 一个形象比喻</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#9-%E5%B0%8F%E7%BB%93"><span class="nav-text"> 9. 小结</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#%E5%B7%A5%E7%A8%8B%E6%94%B6%E6%9D%9F"><span class="nav-text"> 工程收束</span></a></li></ol>
 
 	</div>
 </div>
@@ -1173,11 +1064,11 @@ FP8 训练则是在“用更低精度直接完成学习过程”。<br />
                 
                 <p class="post-count space-x-0.5">
                     <span>
-                        478 posts in total
+                        485 posts in total
                     </span>
                     
                         <span>
-                            1906.5k words in total
+                            1869.1k words in total
                         </span>
                     
                 </p>

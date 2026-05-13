@@ -83,7 +83,7 @@
         
         <meta name="description" content="This is Charles&#39;s Castle.">
 <meta property="og:type" content="article">
-<meta property="og:title" content="算子与编译器：Workload 建模与 Shape Bucket">
+<meta property="og:title" content="算子与编译器：Workload 建模与 Shape Bucketing">
 <meta property="og:url" content="https://charles2530.github.io/2026/05/11/ai-files-operators-workload-modeling-and-shape-buckets/index.html">
 <meta property="og:site_name" content="Charles&#39;s Castle">
 <meta property="og:description" content="This is Charles&#39;s Castle.">
@@ -108,7 +108,7 @@
     
     <title>
         
-            算子与编译器：Workload 建模与 Shape Bucket | Charles&#39;s Castle
+            算子与编译器：Workload 建模与 Shape Bucketing | Charles&#39;s Castle
         
     </title>
 
@@ -679,7 +679,7 @@
         <div class="label text-third-text-color text-sm">Categories</div>
     </a>
     <a class="item tag-count-item flex flex-col justify-center items-center w-20" href="/archives">
-        <div class="number text-2xl sm:text-xl text-second-text-color font-semibold">478</div>
+        <div class="number text-2xl sm:text-xl text-second-text-color font-semibold">485</div>
         <div class="label text-third-text-color text-sm">Posts</div>
     </a>
 </div>
@@ -703,10 +703,10 @@
 			
 			
 			
-			<img src="https://charles2530.github.io/image/background/p4.jpg" alt="算子与编译器：Workload 建模与 Shape Bucket" class="w-full h-60 sm:h-72 md:h-80 object-cover sm:rounded-t-large dark:brightness-75" />
+			<img src="https://charles2530.github.io/image/background/p4.jpg" alt="算子与编译器：Workload 建模与 Shape Bucketing" class="w-full h-60 sm:h-72 md:h-80 object-cover sm:rounded-t-large dark:brightness-75" />
 			
 			<div class="w-full flex items-center absolute bottom-0 justify-start">
-				<h1 class="article-title-cover text-center mx-6 my-6 text-second-text-color bg-background-color-transparent px-4 py-3 text-3xl sm:text-4xl md:text-5xl font-semibold backdrop-blur-lg rounded-xl border border-border-color ">算子与编译器：Workload 建模与 Shape Bucket</h1>
+				<h1 class="article-title-cover text-center mx-6 my-6 text-second-text-color bg-background-color-transparent px-4 py-3 text-3xl sm:text-4xl md:text-5xl font-semibold backdrop-blur-lg rounded-xl border border-border-color ">算子与编译器：Workload 建模与 Shape Bucketing</h1>
 			</div>
 			
 		</div>
@@ -791,12 +791,12 @@
     
     
         <span class="article-wordcount article-meta-item">
-            <i class="fa-regular fa-typewriter"></i>&nbsp;<span>1.6k Words</span>
+            <i class="fa-regular fa-typewriter"></i>&nbsp;<span>1.7k Words</span>
         </span>
     
     
         <span class="article-min2read article-meta-item">
-            <i class="fa-regular fa-clock"></i>&nbsp;<span>5 Mins</span>
+            <i class="fa-regular fa-clock"></i>&nbsp;<span>6 Mins</span>
         </span>
     
     
@@ -846,51 +846,31 @@
 <li>dispatch 逻辑需要围绕 bucket 组织。</li>
 </ol>
 <p>换句话说，workload 建模是特化内核、调度系统和基准设计的共同前提。</p>
+<h3 id="31-采集-shape-时不要只记维度"><a class="markdownIt-Anchor" href="#31-采集-shape-时不要只记维度"></a> 3.1 采集 shape 时不要只记维度</h3>
+<p>一个可用的 workload 画像，通常不只记录 <code>M/N/K</code>、batch size 或序列长度，还要记录它们出现的频率、贡献的 token 数、消耗的端到端时间、是否命中 cache、是否走量化路径、是否属于 prefill 或 decode。否则一个低频但极贵的长上下文请求，可能被“出现次数”掩盖；一个高频但很便宜的小请求，又可能被“总耗时”掩盖。</p>
+<p>更稳的做法是同时看两种占比：<strong>流量占比</strong>和<strong>成本占比</strong>。前者告诉你哪些 bucket 最常见，后者告诉你哪些 bucket 最值得优化。只有这两者都清楚，shape specialization 才不会只服务漂亮的 benchmark。</p>
+<h3 id="32-bucket-边界要能被-dispatch-使用"><a class="markdownIt-Anchor" href="#32-bucket-边界要能被-dispatch-使用"></a> 3.2 bucket 边界要能被 dispatch 使用</h3>
+<p>分桶不是为了画图，而是为了让 runtime 能据此选择 kernel。边界太细，dispatch 规则会碎，编译缓存和 autotune 版本会膨胀；边界太粗，热点 shape 又无法得到足够特化。一个实用口径是：先保留少数覆盖率最高的热桶，再为尾部 shape 准备保守通用路径，并在灰度期记录每个桶的命中率和回退率。</p>
+<p>在 LLM serving 里，还要把 prefill 和 decode 分开建模。prefill 更接近长序列大矩阵，decode 更接近 small-M、KV 读取和 page lookup；把两者混在一个平均 shape 里，会让优化方向变得含糊。训练场景也类似：micro-batch、sequence packing、activation checkpointing 和并行策略都会改变真实 shape 家族。</p>
+<h3 id="33-什么时候该重算-bucket"><a class="markdownIt-Anchor" href="#33-什么时候该重算-bucket"></a> 3.3 什么时候该重算 bucket</h3>
+<p>只要模型版本、tokenizer、上下文窗口、流量来源、LoRA 租户或量化策略发生明显变化，旧 bucket 就可能失效。比较成熟的系统会把 bucket 统计做成周期性任务，并把“热桶变化”接进性能回归：如果热桶迁移了，原来的特化 kernel 可能不再值得维护，新的热点则需要进入 benchmark 和 dispatch 规则。</p>
 <h2 id="4-一个形象比喻"><a class="markdownIt-Anchor" href="#4-一个形象比喻"></a> 4. 一个形象比喻</h2>
 <p>可以把 shape bucket 想成工厂的订单画像。不是每种尺寸的零件都值得单独开一条专用产线，只有那些真正高频、长期出现的规格，才值得配专用模具。kernel 特化也是一样：先知道订单分布，再决定哪里值得投入特化成本。</p>
 <h2 id="5-小结"><a class="markdownIt-Anchor" href="#5-小结"></a> 5. 小结</h2>
 <p>Workload 建模与 shape bucket 的价值，在于把“我能优化什么”转化成“我最应该优化什么”。没有这一步，很多高性能算子开发都会陷入局部最优；有了这一步，特化、autotune、dispatch 和回归测试才会真正围绕真实系统收益展开。</p>
-<h2 id="实践补充与检查"><a class="markdownIt-Anchor" href="#实践补充与检查"></a> 实践补充与检查</h2>
-<h3 id="把-workload-建模与-shape-bucket-放回真实系统里理解"><a class="markdownIt-Anchor" href="#把-workload-建模与-shape-bucket-放回真实系统里理解"></a> 把 <strong>Workload 建模与 Shape Bucket</strong> 放回真实系统里理解</h3>
-<p>很多页面在介绍算子或排查方法时，读者最容易获得的是一组术语，但真正落地时更关键的是：<strong>这个主题究竟在训练、推理、编译器、运行时和硬件拓扑之间扮演什么角色</strong>。围绕 <strong>Workload 建模与 Shape Bucket</strong>，更实用的切入方式不是先记定义，而是先把问题拆成几个稳定坐标：</p>
-<ol>
-<li><strong>长度桶、批量桶、head 维、expert 分布、请求混合比</strong>。</li>
-</ol>
-<p>之所以要先做这一步，是因为大量“优化失败”并不是实现不够努力，而是一开始就把问题建模错了。比如明明是 <strong>shape family</strong> 失控，却去盯某个单一 kernel；明明是 <strong>拓扑或缓存生命周期</strong> 在拖后腿，却把矛头指向单步 FLOPs；明明应该在 <strong>运行时</strong> 解决，却试图把所有复杂度压进一个更重的 fused kernel。只要坐标系没建立，后续 benchmark、profile、灰度和上线都容易失真。</p>
-<h3 id="更像工程手册的排查顺序"><a class="markdownIt-Anchor" href="#更像工程手册的排查顺序"></a> 更像工程手册的排查顺序</h3>
-<p>针对 <strong>Workload 建模与 Shape Bucket</strong>，一个更稳妥的工程排查顺序通常是：</p>
-<ol>
-<li><strong>先确认真实工作负载</strong>。不要只拿一个热 shape 或论文默认配置来代表全系统；</li>
-<li><strong>再确认瓶颈层级</strong>。区分是算子本身、调度路径、拓扑链路、还是缓存/内存生命周期在主导；</li>
-<li><strong>然后才进入 microbenchmark</strong>。只有当端到端关键路径已被确认，单算子基准才有解释力；</li>
-<li><strong>把热路径和尾路径分开</strong>。很多主题在平均值上看起来很好，但在尾部 shape、极端长度或混合流量上完全是另一回事；</li>
-<li><strong>最后写清回退条件</strong>。没有回退条件的优化，就不算真正可上线的优化。</li>
-</ol>
-<p>如果团队把这套顺序固化下来，<strong>Workload 建模与 Shape Bucket</strong> 就不再只是“某个高手会调的点”，而会逐渐变成组织可继承的能力。</p>
-<h3 id="最常见的误判与失败模式"><a class="markdownIt-Anchor" href="#最常见的误判与失败模式"></a> 最常见的误判与失败模式</h3>
-<p>围绕 <strong>Workload 建模与 Shape Bucket</strong>，最常见的误判往往不是“完全不知道问题”，而是知道一半：</p>
-<ol>
-<li><strong>桶太细导致碎片化</strong>。</li>
-<li><strong>桶太粗导致性能浪费</strong>。</li>
-<li><strong>只看均值不看尾部</strong>。</li>
-</ol>
-<p>这些误判之所以反复出现，是因为算子工程天然跨层。一个现象可能同时带着 <strong>kernel</strong>、<strong>runtime</strong>、<strong>拓扑</strong>、<strong>数据布局</strong> 和 <strong>服务负载</strong> 五层因素。若团队只盯其中一层，很容易做出“局部更优、全局更差”的决策。因此，这类主题最需要的往往不是更多零碎技巧，而是<strong>把失败模式写成制度化案例</strong>：什么情况下该怀疑布局，什么情况下该怀疑 cache，什么情况下应先改 dispatch，什么情况下必须回到硬件日志与链路测量。</p>
-<h3 id="验收-回归与长期维护"><a class="markdownIt-Anchor" href="#验收-回归与长期维护"></a> 验收、回归与长期维护</h3>
-<p>真正让 <strong>Workload 建模与 Shape Bucket</strong> 站得住，不是一次 benchmark 跑得漂亮，而是它能否进入长期维护循环。更成熟的验收方式通常包括：</p>
-<ol>
-<li><strong>把 shape 分桶和线上流量对齐</strong>。</li>
-<li><strong>保留热桶统计</strong>。</li>
-<li><strong>灰度期重点看尾桶</strong>。</li>
-<li><strong>定期重算桶边界</strong>。</li>
-</ol>
-<p>除此之外，还建议把 <strong>Workload 建模与 Shape Bucket</strong> 相关改动长期绑定四类材料：</p>
-<ol>
-<li><strong>代表性 probe</strong>，用于快速复验是否退化；</li>
-<li><strong>端到端案例</strong>，用于防止只赢 microbenchmark；</li>
-<li><strong>已知黑名单 shape / 路径</strong>，避免后来人重复踩坑；</li>
-<li><strong>升级对照记录</strong>，包括驱动、编译器、框架、运行时变化前后的差异。</li>
-</ol>
-<p>做到这一步后，<strong>Workload 建模与 Shape Bucket</strong> 才会真正从“概念页”变成“方法页”，再从“方法页”变成“平台资产页”。</p>
+<h2 id="工程收束"><a class="markdownIt-Anchor" href="#工程收束"></a> 工程收束</h2>
+<p>Workload 建模要把长度桶、批量桶、head 维、expert 分布和请求混合比放在一起看。桶太细会碎片化，桶太粗会浪费性能，只看均值会漏掉尾部；上线前应让 shape 分桶和线上流量对齐，保留热桶统计，并在灰度期重点看尾桶。</p>
+<p>分桶策略还要定期重算，因为线上请求、模型版本和产品入口都会改变 shape 分布。一个曾经合理的 bucket，过一段时间可能就会变成吞吐浪费或 P99 抖动来源。</p>
+<p>因此 bucket 配置最好和流量快照、模型版本、kernel 版本绑定，避免调度策略和真实 workload 悄悄脱节。</p>
+<p>一旦入口流量变化，先复查桶命中率和尾桶延迟，通常比直接换 kernel 更快定位问题。</p>
+<p>这一步很朴素，却经常省掉大量误调。</p>
+<h2 id="真实排查案例平均长度没变p99-却变差"><a class="markdownIt-Anchor" href="#真实排查案例平均长度没变p99-却变差"></a> 真实排查案例：平均长度没变，P99 却变差</h2>
+<p><strong>输入症状</strong>：线上平均输入长度从 3.8k 到 4.1k，看起来变化很小，但推理 P99 从 5.2s 涨到 8.7s，GPU 利用率和请求量都没有明显异常。</p>
+<p><strong>关键指标</strong>：按请求数统计，短请求仍占多数；按 GPU 时间统计，32k 以上长上下文请求从 6% 成本占比涨到 28%；prefix cache 命中率从 71% 降到 43%；尾桶 KV 占用长期贴近水位。</p>
+<p><strong>Nsight / trace 观察</strong>：trace 中 prefill 阶段出现更多长条块，decode 阶段频繁等待 KV page 分配；kernel 本身没有明显退化，但 scheduler 中长请求和短请求混排后，短请求被长 prefill 挤压。</p>
+<p><strong>判断</strong>：平均长度掩盖了长尾迁移。真实变化不是“模型变慢”，而是新产品入口引入了少量长文档请求，它们改变了成本占比和 KV 生命周期。</p>
+<p><strong>修复</strong>：重算 shape bucket，把请求数占比和 GPU 时间占比分开看；长文档请求进入单独队列，prefill 分离并限制最大并发；为 16k/32k/64k bucket 单独记录 cache 命中、KV 水位和 P99。</p>
+<p><strong>反例</strong>：如果所有 bucket 的 P99 都同步上涨，且 queue time 明显升高，问题更可能是整体容量不足；如果只有某个 kernel 的时间上涨，才回到 kernel 版本或 dtype 路径排查。</p>
 
 		</div>
 
@@ -898,7 +878,7 @@
 		<div class="post-copyright-info w-full my-8 px-2 sm:px-6 md:px-8">
 			<div class="article-copyright-info-container">
     <ul>
-        <li><strong>Title:</strong> 算子与编译器：Workload 建模与 Shape Bucket</li>
+        <li><strong>Title:</strong> 算子与编译器：Workload 建模与 Shape Bucketing</li>
         <li><strong>Author:</strong> Charles</li>
         <li><strong>Created at
                 :</strong> 2026-05-11 10:13:00</li>
@@ -956,7 +936,7 @@
 						<i class="fa-solid fa-chevron-left"></i>
 					</span>
 					<span class="title flex justify-center items-center">
-						<span class="post-nav-title-item truncate max-w-48">论文专题讲解：CausVid：把双向视频 DiT 蒸馏成流式自回归视频扩散模型</span>
+						<span class="post-nav-title-item truncate max-w-48">论文专题讲解：CausVid：流式自回归视频扩散</span>
 						<span class="post-nav-item">Prev posts</span>
 					</span>
 				</a>
@@ -1056,8 +1036,8 @@
 		<div class="post-toc-wrap">
 	<div class="post-toc">
 		<div class="toc-title">On this page</div>
-		<div class="page-title">算子与编译器：Workload 建模与 Shape Bucket</div>
-		<ol class="nav"><li class="nav-item nav-level-2"><a class="nav-link" href="#1-%E4%B8%BA%E4%BB%80%E4%B9%88-shape-bucket-%E9%87%8D%E8%A6%81"><span class="nav-text"> 1. 为什么 shape bucket 重要</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#2-workload-%E5%BB%BA%E6%A8%A1%E5%9C%A8%E5%9B%9E%E7%AD%94%E4%BB%80%E4%B9%88"><span class="nav-text"> 2. Workload 建模在回答什么</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#3-%E4%B8%BA%E4%BB%80%E4%B9%88%E8%BF%99%E4%BC%9A%E5%BD%B1%E5%93%8D-kernel-%E8%AE%BE%E8%AE%A1"><span class="nav-text"> 3. 为什么这会影响 kernel 设计</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#4-%E4%B8%80%E4%B8%AA%E5%BD%A2%E8%B1%A1%E6%AF%94%E5%96%BB"><span class="nav-text"> 4. 一个形象比喻</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#5-%E5%B0%8F%E7%BB%93"><span class="nav-text"> 5. 小结</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#%E5%AE%9E%E8%B7%B5%E8%A1%A5%E5%85%85%E4%B8%8E%E6%A3%80%E6%9F%A5"><span class="nav-text"> 实践补充与检查</span></a><ol class="nav-child"><li class="nav-item nav-level-3"><a class="nav-link" href="#%E6%8A%8A-workload-%E5%BB%BA%E6%A8%A1%E4%B8%8E-shape-bucket-%E6%94%BE%E5%9B%9E%E7%9C%9F%E5%AE%9E%E7%B3%BB%E7%BB%9F%E9%87%8C%E7%90%86%E8%A7%A3"><span class="nav-text"> 把 Workload 建模与 Shape Bucket 放回真实系统里理解</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#%E6%9B%B4%E5%83%8F%E5%B7%A5%E7%A8%8B%E6%89%8B%E5%86%8C%E7%9A%84%E6%8E%92%E6%9F%A5%E9%A1%BA%E5%BA%8F"><span class="nav-text"> 更像工程手册的排查顺序</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#%E6%9C%80%E5%B8%B8%E8%A7%81%E7%9A%84%E8%AF%AF%E5%88%A4%E4%B8%8E%E5%A4%B1%E8%B4%A5%E6%A8%A1%E5%BC%8F"><span class="nav-text"> 最常见的误判与失败模式</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#%E9%AA%8C%E6%94%B6-%E5%9B%9E%E5%BD%92%E4%B8%8E%E9%95%BF%E6%9C%9F%E7%BB%B4%E6%8A%A4"><span class="nav-text"> 验收、回归与长期维护</span></a></li></ol></li></ol>
+		<div class="page-title">算子与编译器：Workload 建模与 Shape Bucketing</div>
+		<ol class="nav"><li class="nav-item nav-level-2"><a class="nav-link" href="#1-%E4%B8%BA%E4%BB%80%E4%B9%88-shape-bucket-%E9%87%8D%E8%A6%81"><span class="nav-text"> 1. 为什么 shape bucket 重要</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#2-workload-%E5%BB%BA%E6%A8%A1%E5%9C%A8%E5%9B%9E%E7%AD%94%E4%BB%80%E4%B9%88"><span class="nav-text"> 2. Workload 建模在回答什么</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#3-%E4%B8%BA%E4%BB%80%E4%B9%88%E8%BF%99%E4%BC%9A%E5%BD%B1%E5%93%8D-kernel-%E8%AE%BE%E8%AE%A1"><span class="nav-text"> 3. 为什么这会影响 kernel 设计</span></a><ol class="nav-child"><li class="nav-item nav-level-3"><a class="nav-link" href="#31-%E9%87%87%E9%9B%86-shape-%E6%97%B6%E4%B8%8D%E8%A6%81%E5%8F%AA%E8%AE%B0%E7%BB%B4%E5%BA%A6"><span class="nav-text"> 3.1 采集 shape 时不要只记维度</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#32-bucket-%E8%BE%B9%E7%95%8C%E8%A6%81%E8%83%BD%E8%A2%AB-dispatch-%E4%BD%BF%E7%94%A8"><span class="nav-text"> 3.2 bucket 边界要能被 dispatch 使用</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#33-%E4%BB%80%E4%B9%88%E6%97%B6%E5%80%99%E8%AF%A5%E9%87%8D%E7%AE%97-bucket"><span class="nav-text"> 3.3 什么时候该重算 bucket</span></a></li></ol></li><li class="nav-item nav-level-2"><a class="nav-link" href="#4-%E4%B8%80%E4%B8%AA%E5%BD%A2%E8%B1%A1%E6%AF%94%E5%96%BB"><span class="nav-text"> 4. 一个形象比喻</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#5-%E5%B0%8F%E7%BB%93"><span class="nav-text"> 5. 小结</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#%E5%B7%A5%E7%A8%8B%E6%94%B6%E6%9D%9F"><span class="nav-text"> 工程收束</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#%E7%9C%9F%E5%AE%9E%E6%8E%92%E6%9F%A5%E6%A1%88%E4%BE%8B%E5%B9%B3%E5%9D%87%E9%95%BF%E5%BA%A6%E6%B2%A1%E5%8F%98p99-%E5%8D%B4%E5%8F%98%E5%B7%AE"><span class="nav-text"> 真实排查案例：平均长度没变，P99 却变差</span></a></li></ol>
 
 	</div>
 </div>
@@ -1085,11 +1065,11 @@
                 
                 <p class="post-count space-x-0.5">
                     <span>
-                        478 posts in total
+                        485 posts in total
                     </span>
                     
                         <span>
-                            1906.5k words in total
+                            1869.1k words in total
                         </span>
                     
                 </p>

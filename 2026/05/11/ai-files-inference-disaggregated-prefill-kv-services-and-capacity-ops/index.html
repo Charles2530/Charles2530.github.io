@@ -83,7 +83,7 @@
         
         <meta name="description" content="This is Charles&#39;s Castle.">
 <meta property="og:type" content="article">
-<meta property="og:title" content="推理：解耦式 Prefill、KV 服务与推理容量运维">
+<meta property="og:title" content="推理：解耦 Prefill 与 KV 服务">
 <meta property="og:url" content="https://charles2530.github.io/2026/05/11/ai-files-inference-disaggregated-prefill-kv-services-and-capacity-ops/index.html">
 <meta property="og:site_name" content="Charles&#39;s Castle">
 <meta property="og:description" content="This is Charles&#39;s Castle.">
@@ -108,7 +108,7 @@
     
     <title>
         
-            推理：解耦式 Prefill、KV 服务与推理容量运维 | Charles&#39;s Castle
+            推理：解耦 Prefill 与 KV 服务 | Charles&#39;s Castle
         
     </title>
 
@@ -679,7 +679,7 @@
         <div class="label text-third-text-color text-sm">Categories</div>
     </a>
     <a class="item tag-count-item flex flex-col justify-center items-center w-20" href="/archives">
-        <div class="number text-2xl sm:text-xl text-second-text-color font-semibold">478</div>
+        <div class="number text-2xl sm:text-xl text-second-text-color font-semibold">485</div>
         <div class="label text-third-text-color text-sm">Posts</div>
     </a>
 </div>
@@ -703,10 +703,10 @@
 			
 			
 			
-			<img src="https://charles2530.github.io/image/background/p3.png" alt="推理：解耦式 Prefill、KV 服务与推理容量运维" class="w-full h-60 sm:h-72 md:h-80 object-cover sm:rounded-t-large dark:brightness-75" />
+			<img src="https://charles2530.github.io/image/background/p3.png" alt="推理：解耦 Prefill 与 KV 服务" class="w-full h-60 sm:h-72 md:h-80 object-cover sm:rounded-t-large dark:brightness-75" />
 			
 			<div class="w-full flex items-center absolute bottom-0 justify-start">
-				<h1 class="article-title-cover text-center mx-6 my-6 text-second-text-color bg-background-color-transparent px-4 py-3 text-3xl sm:text-4xl md:text-5xl font-semibold backdrop-blur-lg rounded-xl border border-border-color ">推理：解耦式 Prefill、KV 服务与推理容量运维</h1>
+				<h1 class="article-title-cover text-center mx-6 my-6 text-second-text-color bg-background-color-transparent px-4 py-3 text-3xl sm:text-4xl md:text-5xl font-semibold backdrop-blur-lg rounded-xl border border-border-color ">推理：解耦 Prefill 与 KV 服务</h1>
 			</div>
 			
 		</div>
@@ -791,12 +791,12 @@
     
     
         <span class="article-wordcount article-meta-item">
-            <i class="fa-regular fa-typewriter"></i>&nbsp;<span>1.5k Words</span>
+            <i class="fa-regular fa-typewriter"></i>&nbsp;<span>1.8k Words</span>
         </span>
     
     
         <span class="article-min2read article-meta-item">
-            <i class="fa-regular fa-clock"></i>&nbsp;<span>5 Mins</span>
+            <i class="fa-regular fa-clock"></i>&nbsp;<span>6 Mins</span>
         </span>
     
     
@@ -943,6 +943,13 @@
 <p>落地时还要避免把“KV 服务化”做成过早抽象。更务实的路径通常是先在单 runtime 内做好 prefix/KV 生命周期，再扩展到同节点共享，最后才考虑跨节点 KV 服务。每一步都应有明确收益指标，否则复杂度会先于收益到来。</p>
 <p>如果没有明确收益，保持单体 runtime 并强化调度和缓存，通常是更稳的选择。</p>
 <p>解耦式 prefill 的价值不在架构本身，而在于它是否让异质请求的容量、延迟和显存治理变得更可控。</p>
+<h2 id="真实排查案例解耦后-ttft-好了tpot-变差"><a class="markdownIt-Anchor" href="#真实排查案例解耦后-ttft-好了tpot-变差"></a> 真实排查案例：解耦后 TTFT 好了，TPOT 变差</h2>
+<p><strong>输入症状</strong>：长文档问答接入解耦式 prefill 后，TTFT 从 3.4s 降到 2.1s，但生成阶段 TPOT 从 45ms/token 增到 68ms/token，用户看到首 token 更快，后续流式输出变卡。</p>
+<p><strong>关键指标</strong>：prefill tier 利用率下降，decode tier queue depth 上升；KV 转移耗时 P95 达到 180ms；decode tier 上 KV page miss 增多；网络出入流量与长上下文请求峰值高度相关。</p>
+<p><strong>Nsight / trace 观察</strong>：trace 中 prefill 结束后不是立刻 decode，而是出现 KV transfer gap；decode kernel 本身没有退化，但 paged attention 前的 KV metadata 同步和 page lookup 时间增加。</p>
+<p><strong>判断</strong>：解耦收益被 KV 转移与 page locality 侵蚀。系统只优化了 prefill 计算，没有保证 KV 落在 decode 最合适的位置。</p>
+<p><strong>修复</strong>：把长上下文请求按 session 粘到固定 decode pool；限制跨节点 KV 转移，优先同节点共享；KV metadata 做批量同步；按请求桶记录 <code>prefill_saved_ms - kv_transfer_ms - decode_extra_ms</code> 的净收益。</p>
+<p><strong>反例</strong>：如果 prefill 占比极高、prefix 复用稳定、KV 转移在同节点内完成，解耦通常会明显改善 TTFT。反过来，短请求和低复用请求不该默认进入复杂解耦路径。</p>
 
 		</div>
 
@@ -950,7 +957,7 @@
 		<div class="post-copyright-info w-full my-8 px-2 sm:px-6 md:px-8">
 			<div class="article-copyright-info-container">
     <ul>
-        <li><strong>Title:</strong> 推理：解耦式 Prefill、KV 服务与推理容量运维</li>
+        <li><strong>Title:</strong> 推理：解耦 Prefill 与 KV 服务</li>
         <li><strong>Author:</strong> Charles</li>
         <li><strong>Created at
                 :</strong> 2026-05-11 09:41:00</li>
@@ -1008,7 +1015,7 @@
 						<i class="fa-solid fa-chevron-left"></i>
 					</span>
 					<span class="title flex justify-center items-center">
-						<span class="post-nav-title-item truncate max-w-48">推理：GPU Kernel、Batching 与内存系统</span>
+						<span class="post-nav-title-item truncate max-w-48">推理：GPU Kernel、Batching 与显存</span>
 						<span class="post-nav-item">Prev posts</span>
 					</span>
 				</a>
@@ -1108,8 +1115,8 @@
 		<div class="post-toc-wrap">
 	<div class="post-toc">
 		<div class="toc-title">On this page</div>
-		<div class="page-title">推理：解耦式 Prefill、KV 服务与推理容量运维</div>
-		<ol class="nav"><li class="nav-item nav-level-2"><a class="nav-link" href="#%E4%B8%BA%E4%BB%80%E4%B9%88%E6%8B%86%E5%88%86-prefill-%E5%92%8C-decode"><span class="nav-text"> 为什么拆分 Prefill 和 Decode</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#%E5%9F%BA%E6%9C%AC%E6%9E%B6%E6%9E%84"><span class="nav-text"> 基本架构</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#kv-%E4%B8%BA%E4%BB%80%E4%B9%88%E5%83%8F%E7%8B%AC%E7%AB%8B%E6%9C%8D%E5%8A%A1%E5%B1%82"><span class="nav-text"> KV 为什么像独立服务层</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#%E7%BD%91%E7%BB%9C%E4%B8%8E%E6%8B%93%E6%89%91%E7%BA%A6%E6%9D%9F"><span class="nav-text"> 网络与拓扑约束</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#%E5%AE%B9%E9%87%8F%E8%A7%84%E5%88%92"><span class="nav-text"> 容量规划</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#%E9%A3%8E%E9%99%A9%E4%B8%8E%E5%A4%B1%E6%95%88%E6%A8%A1%E5%BC%8F"><span class="nav-text"> 风险与失效模式</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#%E9%AA%8C%E6%94%B6%E6%B8%85%E5%8D%95"><span class="nav-text"> 验收清单</span></a></li></ol>
+		<div class="page-title">推理：解耦 Prefill 与 KV 服务</div>
+		<ol class="nav"><li class="nav-item nav-level-2"><a class="nav-link" href="#%E4%B8%BA%E4%BB%80%E4%B9%88%E6%8B%86%E5%88%86-prefill-%E5%92%8C-decode"><span class="nav-text"> 为什么拆分 Prefill 和 Decode</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#%E5%9F%BA%E6%9C%AC%E6%9E%B6%E6%9E%84"><span class="nav-text"> 基本架构</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#kv-%E4%B8%BA%E4%BB%80%E4%B9%88%E5%83%8F%E7%8B%AC%E7%AB%8B%E6%9C%8D%E5%8A%A1%E5%B1%82"><span class="nav-text"> KV 为什么像独立服务层</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#%E7%BD%91%E7%BB%9C%E4%B8%8E%E6%8B%93%E6%89%91%E7%BA%A6%E6%9D%9F"><span class="nav-text"> 网络与拓扑约束</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#%E5%AE%B9%E9%87%8F%E8%A7%84%E5%88%92"><span class="nav-text"> 容量规划</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#%E9%A3%8E%E9%99%A9%E4%B8%8E%E5%A4%B1%E6%95%88%E6%A8%A1%E5%BC%8F"><span class="nav-text"> 风险与失效模式</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#%E9%AA%8C%E6%94%B6%E6%B8%85%E5%8D%95"><span class="nav-text"> 验收清单</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#%E7%9C%9F%E5%AE%9E%E6%8E%92%E6%9F%A5%E6%A1%88%E4%BE%8B%E8%A7%A3%E8%80%A6%E5%90%8E-ttft-%E5%A5%BD%E4%BA%86tpot-%E5%8F%98%E5%B7%AE"><span class="nav-text"> 真实排查案例：解耦后 TTFT 好了，TPOT 变差</span></a></li></ol>
 
 	</div>
 </div>
@@ -1137,11 +1144,11 @@
                 
                 <p class="post-count space-x-0.5">
                     <span>
-                        478 posts in total
+                        485 posts in total
                     </span>
                     
                         <span>
-                            1906.5k words in total
+                            1869.1k words in total
                         </span>
                     
                 </p>
