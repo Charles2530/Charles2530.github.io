@@ -1,0 +1,2492 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="keywords" content="Charles">
+    
+    
+    <meta name="author" content="Charles">
+    
+    <!-- Completely eliminate flash of wrong theme -->
+    <script>
+        (function() {
+            const THEME_KEY = "REDEFINE-THEME-STATUS";
+            const DARK = "dark", LIGHT = "light";
+            
+            // Get preferred theme
+            function getTheme() {
+                try {
+                    const saved = localStorage.getItem(THEME_KEY);
+                    if (saved) {
+                        const { isDark } = JSON.parse(saved);
+                        return isDark ? DARK : LIGHT;
+                    }
+                } catch (e) {}
+                
+                return matchMedia("(prefers-color-scheme: dark)").matches ? DARK : LIGHT;
+            }
+            
+            // Apply theme to document
+            function applyTheme(theme) {
+                const isDark = theme === DARK;
+                const root = document.documentElement;
+                
+                // Set classes for compatibility
+                root.classList.add(theme);
+                root.classList.remove(isDark ? LIGHT : DARK);
+                root.style.colorScheme = theme;
+            }
+            
+            // Initial application
+            const theme = getTheme();
+            applyTheme(theme);
+            
+            // Listen for system preference changes
+            matchMedia("(prefers-color-scheme: dark)").addEventListener("change", ({ matches }) => {
+                // Only update if using system preference (no localStorage entry)
+                if (!localStorage.getItem(THEME_KEY)) {
+                    applyTheme(matches ? DARK : LIGHT);
+                }
+            });
+            
+            // Set body classes ASAP (before DOMContentLoaded)
+            (function() {
+                const addBodyClass = () => {
+                    const b = document.body;
+                    if (!b) return false;
+                    b.classList.add(theme + "-mode");
+                    return true;
+                };
+
+                // Try immediately
+                if (addBodyClass()) return;
+
+                // Observe until body exists
+                const mo = new MutationObserver(() => {
+                    if (addBodyClass()) mo.disconnect();
+                });
+                mo.observe(document.documentElement, { childList: true, subtree: true });
+            })();
+        })();
+    </script>
+    
+    <!-- preconnect -->
+<!--- Seo Part-->
+    
+    <link rel="canonical" href="https://charles2530.github.io/2025/12/08/ai-files-paper-deep-dives-technical-reports-nemotron-3-super/"/>
+    <meta name="robots" content="index,follow">
+    <meta name="googlebot" content="index,follow">
+    <meta name="revisit-after" content="1 days">
+    
+    
+        
+        <meta name="description" content="This is Charles&#39;s Castle.">
+<meta property="og:type" content="article">
+<meta property="og:title" content="论文专题讲解：Nemotron 3 Super：Mamba-MoE 与异步多环境 RL">
+<meta property="og:url" content="https://charles2530.github.io/2025/12/08/ai-files-paper-deep-dives-technical-reports-nemotron-3-super/index.html">
+<meta property="og:site_name" content="Charles&#39;s Castle">
+<meta property="og:description" content="This is Charles&#39;s Castle.">
+<meta property="og:locale" content="en_US">
+<meta property="og:image" content="https://charles2530.github.io/image/background/logo.jpg">
+<meta property="article:published_time" content="2025-12-08T01:00:00.000Z">
+<meta property="article:modified_time" content="2025-12-08T01:00:00.000Z">
+<meta property="article:author" content="Du Jinyang">
+<meta property="article:tag" content="AI">
+<meta property="article:tag" content="论文专题">
+<meta property="article:tag" content="强化学习">
+<meta property="article:tag" content="技术报告">
+<meta name="twitter:card" content="summary">
+<meta name="twitter:image" content="https://charles2530.github.io/image/background/logo.jpg">
+    
+    
+    <!--- Icon Part-->
+    <link rel="icon" type="image/png" href="https://charles2530.github.io/image/background/favicon.png" sizes="192x192">
+    <link rel="apple-touch-icon" sizes="180x180" href="https://charles2530.github.io/image/background/favicon.png">
+    <meta name="theme-color" content="#A31F34">
+    <link rel="shortcut icon" href="https://charles2530.github.io/image/background/favicon.png">
+    <!--- Page Info-->
+    
+    <title>
+        
+            论文专题讲解：Nemotron 3 Super：Mamba-MoE 与异步多环境 RL | Charles&#39;s Castle
+        
+    </title>
+
+    
+<link rel="stylesheet" href="/fonts/Chillax/chillax.css">
+
+
+    <!--- Inject Part-->
+    
+        
+            
+    
+            
+    
+            
+                
+                    <link rel="stylesheet" href="/katex/katex.min.css">
+                
+    
+            
+                
+                    <link rel="stylesheet" href="/css/site-polish-v2.css">
+                
+    
+            
+                
+                    <script data-swup-reload-script>
+(function() {
+  function loadBaiduAnalytics() {
+    if (window.__baiduAnalyticsLoaded) return;
+    window.__baiduAnalyticsLoaded = true;
+    window._hmt = window._hmt || [];
+    var hm = document.createElement("script");
+    hm.async = true;
+    hm.src = "https://hm.baidu.com/hm.js?8e0e5f382d14d87cbeadc33a36e71e86";
+    document.head.appendChild(hm);
+  }
+  if ("requestIdleCallback" in window) {
+    requestIdleCallback(loadBaiduAnalytics, { timeout: 3000 });
+  } else {
+    window.addEventListener("load", function() {
+      setTimeout(loadBaiduAnalytics, 1500);
+    });
+  }
+})();
+</script>
+
+                
+    
+
+    
+<link rel="stylesheet" href="/css/style.css">
+
+
+    
+        
+<link rel="stylesheet" href="/css/build/tailwind.css">
+
+    
+
+    
+<link rel="stylesheet" href="/fonts/GeistMono/geist-mono.css">
+
+    
+<link rel="stylesheet" href="/fonts/Geist/geist.css">
+
+    <!--- Font Part-->
+    
+    
+    
+    
+    
+    
+        
+<script src="/js/build/libs/anime.min.js"></script>
+
+    
+
+    <script id="hexo-configurations">
+    window.config = {"hostname":"charles2530.github.io","root":"/","language":"en","path":"search.xml"};
+    window.theme = {"articles":{"style":{"font_size":"16px","line_height":1.5,"image_border_radius":"14px","image_alignment":"center","image_caption":false,"link_icon":true,"delete_mask":false,"title_alignment":"left","headings_top_spacing":{"h1":"5rem","h2":"4rem","h3":"2.8rem","h4":"2.5rem","h5":"2.2rem","h6":"2rem"}},"word_count":{"enable":true,"count":true,"min2read":true},"author_label":{"enable":true,"auto":true,"list":["lol","Neo","God"]},"code_block":{"copy":true,"style":"mac","highlight_theme":{"light":"github","dark":"vs2015"},"font":{"enable":false,"family":null,"url":null}},"toc":{"enable":true,"max_depth":6,"number":false,"expand":true,"init_open":true},"copyright":{"enable":true,"default":"cc_by_nc_sa"},"lazyload":true,"pangu_js":false,"recommendation":{"enable":false,"title":"recommend_articles","limit":3,"mobile_limit":2,"placeholder":"https://charles2530.github.io/image/background/p3.jfif","skip_dirs":[]}},"colors":{"primary":"#A31F34","secondary":"#1890ff","default_mode":"light"},"global":{"fonts":{"chinese":{"enable":false,"family":null,"url":null},"english":{"enable":false,"family":null,"url":null},"title":{"enable":false,"family":null,"url":null}},"content_max_width":"1000px","sidebar_width":"210px","hover":{"shadow":true,"scale":true},"scroll_progress":{"bar":true,"percentage":true},"website_counter":{"url":"https://cn.vercount.one/js","enable":true,"site_pv":true,"site_uv":true,"post_pv":true},"single_page":true,"preloader":{"enable":true,"custom_message":null},"side_tools":{"gear_rotation":true,"auto_expand":false},"open_graph":{"enable":true,"image":"https://charles2530.github.io/image/background/logo.jpg","description":"This is Charles's Castle."},"google_analytics":{"enable":false,"id":null}},"home_banner":{"enable":true,"style":"fixed","image":{"light":"https://charles2530.github.io/image/background/background-light1.jpg","dark":"https://charles2530.github.io/image/background/background-dark1.jpg"},"title":"Charles's Castle","subtitle":{"text":["Happiness is best!","Never give up!","Everyday is a gift!"],"hitokoto":{"enable":false,"show_author":false,"api":"https://v1.hitokoto.cn"},"typing_speed":100,"backing_speed":80,"starting_delay":500,"backing_delay":1500,"loop":true,"smart_backspace":true},"text_color":{"light":"#000000","dark":"#d1d1b6"},"text_style":{"title_size":"3.2rem","subtitle_size":"1.5rem","line_height":1.2},"custom_font":{"enable":false,"family":null,"url":null},"social_links":{"enable":true,"style":"center","links":[{"icon":"fa-brands fa-github","url":"https://github.com/Charles2530/"},{"icon":"fa-brands fa-zhihu","url":"https://www.zhihu.com/people/yang-guang-xiao-zi-55-55"},{"icon":"fa-solid fa-at","url":"mailto:charles2530@163.com"},{"icon":"fa-brands fa-telegram","url":null},{"icon":"/images/custom-icon.svg","url":null}],"qrs":[{"icon":"fa-brands fa-weixin","qr":"https://charles2530.github.io/image/background/Wechat_icon.png"},{"icon":"/images/custom-icon.svg","qr":null}]}},"plugins":{"feed":{"enable":true},"aplayer":{"enable":false,"type":"fixed","audios":[{"name":null,"artist":null,"url":null,"cover":null,"lrc":null}]},"mermaid":{"enable":false,"version":"11.4.1","theme":{"light":"default","dark":"dark"}}},"version":"2.9.0","navbar":{"auto_hide":true,"color":{"left":"#f78736","right":"#367df7","transparency":35},"width":{"home":"1200px","pages":"1000px"},"links":{"Home":{"path":"/","icon":"fa-regular fa-house"},"Categories":{"path":"/categories","icon":"fas fa-bookmark"},"Tags":{"path":"/tags","icon":"fas fa-tags"},"About":{"icon":"fa-regular fa-user","submenus":{"Me":"https://jinyang-du.github.io/","Github":"https://github.com/Charles2530/","Blog":"https://charles2530.github.io","Statistics":"https://tongji.baidu.com/"}}},"search":{"enable":true,"preload":false}},"page_templates":{"friends_column":2,"tags_style":"blur","masonry":{"batch_size":12,"initial_batch_size":24}},"home":{"sidebar":{"enable":true,"position":"left","first_item":"menu","announcement":"This is Charles's Castle","show_on_mobile":true,"links":{"Archives":{"path":"/archives","icon":"fa-regular fa-archive"},"Photos":{"icon":"fa-solid fa-image","path":"/masonry/"},"Essays":{"icon":"fa-solid fa-message-lines","path":"/essay/"},"Friends":{"icon":"fa-solid fa-user-group","path":"/friends/"}}},"article_date_format":"auto","excerpt_length":200,"categories":{"enable":true,"limit":3},"tags":{"enable":true,"limit":3}},"footer":{"runtime":true,"icon":"<i class=\"fa-solid fa-heart fa-beat\" style=\"--fa-animation-duration: 0.5s; color: #f54545\"></i>","start":"2022/12/27 00:00:00","statistics":true,"customize":null,"icp":{"enable":false,"number":null,"url":null}},"footerStart":"2022/12/27 00:00:00","mermaid":{"style":{"light":"default","dark":"dark"}}};
+    window.lang_ago = {"second":"%s seconds ago","minute":"%s minutes ago","hour":"%s hours ago","day":"%s days ago","week":"%s weeks ago","month":"%s months ago","year":"%s years ago"};
+    window.i18n = {"search":"Search...","toc":"On this page","prev":"Prev","next":"Next","prev_posts":"Prev posts","next_posts":"Next posts","page":"Page %d","recent_posts":"Recent Posts","share":"Share","powered_by":"POWERED BY %s","theme":"THEME","rss_feed":"RSS Feed","category":"Category","categories":"Categories","tag":"Tag","tags":"Tags","post":"Post","posts":"Posts","tagcloud":"Tag Cloud","comment":"Comment","comments":"Comments","home":"Home","archive":"Archive","archives":"Archives","top":"TOP","sticky":"Sticky","go-back-home":"Go Back Home","masonry_loading":"Loading photos...","image_viewer":"Image viewer","close":"Close","exif":{"title":"EXIF","cards":{"camera":"Camera","lens":"Lens","exposure":"Exposure","other":"Other"},"fields":{"make":"Brand","model":"Model","date_taken":"Date taken","lens_model":"Lens","focal_length":"Focal length","focus_mode":"Focus mode","shutter":"Shutter","aperture":"Aperture","iso":"ISO","exposure_program":"Exposure program","exposure_compensation":"Exposure compensation","metering_mode":"Metering mode","flash":"Flash","white_balance":"White balance","latitude":"Latitude","longitude":"Longitude","altitude":"Altitude"},"status":{"loading":"Loading...","no_exif":"No EXIF available","library_missing":"EXIF library not loaded","image_source_missing":"Image source unavailable","unavailable":"EXIF unavailable (blocked by CORS or missing metadata)","flag_unavailable":"EXIF unavailable"}},"about":"About","changelog":"Changelog","links":"Links","link":"Link","friends":"Friends","friend":"Friend","timeline":"Timeline","shuoshuo":"Shuoshuo","bookmarks":"Bookmarks","site_uv":"VISITOR COUNT","site_pv":"TOTAL PAGE VIEWS","read_more":"Read more","wordcount":"Words","min2read":"Mins","status":"Status","runtime":"Blog up for","days":"days","hours":"hrs","minutes":"Min","seconds":"Sec","optimized_by":"and Optimized by Evan","rights":"All Rights Reserved","site_posts":"%s posts in total","site_wordcount":"%s words in total","copyright":{"author":"Author","title":"Title","link":"Link","create_time":"Created at","update_time":"Updated at","license_title":"License","license_content":"This work is licensed under %s.","all_rights_reserved":"All Rights Reserved &#169; %s","public_domain":"This work is in the public domain."},"ago":{"second":"%s seconds ago","minute":"%s minutes ago","hour":"%s hours ago","day":"%s days ago","week":"%s weeks ago","month":"%s months ago","year":"%s years ago"},"create_time":"Created","update_time":"Updated","expired":"This post is written %s days ago, and the content may not be up to date."};
+    window.data = {"masonry":true};
+  </script>
+    
+    <!--- Fontawesome Part-->
+    
+<link rel="stylesheet" href="/fontawesome/fontawesome.min.css">
+
+    
+<link rel="stylesheet" href="/fontawesome/brands.min.css">
+
+    
+<link rel="stylesheet" href="/fontawesome/solid.min.css">
+
+    
+<link rel="stylesheet" href="/fontawesome/regular.min.css">
+
+    
+    
+    
+    
+<meta name="generator" content="Hexo 6.3.0"><link rel="alternate" href="/atom.xml" title="Charles's Castle" type="application/atom+xml">
+<link rel="stylesheet" href="/css/prism-tomorrow.css" type="text/css"></head>
+
+
+<body>
+	<div class="progress-bar-container">
+	
+	<span class="scroll-progress-bar"></span>
+	
+
+	
+	<span class="pjax-progress-bar"></span>
+	<!--        <span class="swup-progress-icon">-->
+	<!--            <i class="fa-solid fa-circle-notch fa-spin"></i>-->
+	<!--        </span>-->
+	
+</div>
+
+<style>
+    :root {
+        --preloader-background-color: #fff;
+        --preloader-text-color: #000;
+    }
+
+    @media (prefers-color-scheme: dark) {
+        :root {
+            --preloader-background-color: #202124;
+            --preloader-text-color: #fff;
+        }
+    }
+
+    @media (prefers-color-scheme: light) {
+        :root {
+            --preloader-background-color: #fff;
+            --preloader-text-color: #000;
+        }
+    }
+
+    @media (max-width: 600px) {
+        .ml13 {
+            font-size: 2.6rem !important; /* Adjust this value as needed */
+        }
+    }
+
+    .preloader {
+        display: flex;
+        flex-direction: column;
+        gap: 1rem; /* Tailwind 'gap-4' is 1rem */
+        align-items: center;
+        justify-content: center;
+        position: fixed;
+        padding: 12px;
+        top: 0;
+        right: 0;
+        bottom: 0;
+        left: 0;
+        width: 100vw;
+        height: 100vh; /* 'h-screen' is 100% of the viewport height */
+        background-color: var(--preloader-background-color);
+        z-index: 1100; /* 'z-[1100]' sets the z-index */
+        transition: opacity 0.2s ease-in-out;
+    }
+
+    .ml13 {
+        font-size: 3.2rem;
+        /* text-transform: uppercase; */
+        color: var(--preloader-text-color);
+        letter-spacing: -1px;
+        font-weight: 500;
+        font-family: 'Chillax-Variable', sans-serif;
+        text-align: center;
+    }
+
+    .ml13 .word {
+        display: inline-flex;
+        flex-wrap: wrap;
+        white-space: nowrap;
+    }
+
+    .ml13 .letter {
+        display: inline-block;
+        line-height: 1em;
+    }
+</style>
+
+<div class="preloader">
+    <h2 class="ml13">
+        Charles&#39;s Castle
+    </h2>
+    <script>
+        var textWrapper = document.querySelector('.ml13');
+        // Split text into words
+        var words = textWrapper.textContent.trim().split(' ');
+
+        // Clear the existing content
+        textWrapper.innerHTML = '';
+
+        // Wrap each word and its letters in spans
+        words.forEach(function(word) {
+            var wordSpan = document.createElement('span');
+            wordSpan.classList.add('word');
+            wordSpan.innerHTML = word.replace(/\S/g, "<span class='letter'>$&</span>");
+            textWrapper.appendChild(wordSpan);
+            textWrapper.appendChild(document.createTextNode(' ')); // Add space between words
+        });
+
+        var animation = anime.timeline({ loop: true })
+            .add({
+                targets: '.ml13 .letter',
+                translateY: [20, 0],
+                translateZ: 0,
+                opacity: [0, 1],
+                filter: ['blur(5px)', 'blur(0px)'],
+                easing: "easeOutExpo",
+                duration: 1200,
+                delay: (el, i) => 300 + 20 * i,
+            })
+            .add({
+                targets: '.ml13 .letter',
+                translateY: [0, -20],
+                opacity: [1, 0],
+                filter: ['blur(0px)', 'blur(5px)'],
+                easing: "easeInExpo",
+                duration: 1000,
+                delay: (el, i) => 15 * i,
+                complete: function() {
+                    hidePreloader();
+                }
+            }, '-=700');
+
+
+        let themeStatus = JSON.parse(localStorage.getItem('REDEFINE-THEME-STATUS'))?.isDark;
+
+        // If the theme status is not found in local storage, check the preferred color scheme
+        if (themeStatus === undefined || themeStatus === null) {
+            if (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) {
+                themeStatus = 'dark';
+            } else {
+                themeStatus = 'light';
+            }
+        }
+
+        // Now you can use the themeStatus variable in your code
+        if (themeStatus) {
+            document.documentElement.style.setProperty('--preloader-background-color', '#202124');
+            document.documentElement.style.setProperty('--preloader-text-color', '#fff');
+        } else {
+            document.documentElement.style.setProperty('--preloader-background-color', '#fff');
+            document.documentElement.style.setProperty('--preloader-text-color', '#000');
+        }
+
+        window.addEventListener('load', function () {
+            setTimeout(hidePreloader, 5000); // Call hidePreloader after 5000 milliseconds if not already called by animation
+        });
+
+        function hidePreloader() {
+            var preloader = document.querySelector('.preloader');
+            preloader.style.opacity = '0';
+            setTimeout(function () {
+                preloader.style.display = 'none';
+            }, 200);
+        }
+    </script>
+</div>
+
+<main class="page-container" id="swup">
+
+	
+
+	<div class="main-content-container flex flex-col justify-between min-h-dvh">
+		<div class="main-content-header">
+			<header class="navbar-container px-6 md:px-12">
+    <div class="navbar-content transition-navbar ">
+        <div class="left">
+            
+                <a class="logo-image h-8 w-8 sm:w-10 sm:h-10 mr-3" href="/">
+                    <img src="https://charles2530.github.io/image/background/logo.jpg" class="w-full h-full rounded-xs">
+                </a>
+            
+            <a class="logo-title" href="/">
+                
+                Charles&#39;s Castle
+                
+            </a>
+        </div>
+
+        <div class="right">
+            <!-- PC -->
+            <div class="desktop">
+                <ul class="navbar-list">
+                    
+                        
+                            
+
+                            <li class="navbar-item">
+                                <!-- Menu -->
+                                <a class=""
+                                   href="/"
+                                        >
+                                    <i class="fa-regular fa-house fa-fw"></i>
+                                    HOME
+                                    
+                                </a>
+
+                                <!-- Submenu -->
+                                
+                            </li>
+                    
+                        
+                            
+
+                            <li class="navbar-item">
+                                <!-- Menu -->
+                                <a class=""
+                                   href="/categories"
+                                        >
+                                    <i class="fas fa-bookmark fa-fw"></i>
+                                    CATEGORIES
+                                    
+                                </a>
+
+                                <!-- Submenu -->
+                                
+                            </li>
+                    
+                        
+                            
+
+                            <li class="navbar-item">
+                                <!-- Menu -->
+                                <a class=""
+                                   href="/tags"
+                                        >
+                                    <i class="fas fa-tags fa-fw"></i>
+                                    TAGS
+                                    
+                                </a>
+
+                                <!-- Submenu -->
+                                
+                            </li>
+                    
+                        
+                            
+
+                            <li class="navbar-item">
+                                <!-- Menu -->
+                                <a class="has-dropdown"
+                                   href="#"
+                                        onClick=&#34;return false;&#34;>
+                                    <i class="fa-regular fa-user fa-fw"></i>
+                                    ABOUT
+                                    <i class="fa-solid fa-chevron-down fa-fw"></i>
+                                </a>
+
+                                <!-- Submenu -->
+                                
+                                    <ul class="sub-menu">
+                                        
+                                            <li>
+                                                <a target="_blank" rel="noopener" href="https://jinyang-du.github.io/">
+                                                    ME
+                                                </a>
+                                            </li>
+                                        
+                                            <li>
+                                                <a target="_blank" rel="noopener" href="https://github.com/Charles2530/">
+                                                    GITHUB
+                                                </a>
+                                            </li>
+                                        
+                                            <li>
+                                                <a href="https://charles2530.github.io">
+                                                    BLOG
+                                                </a>
+                                            </li>
+                                        
+                                            <li>
+                                                <a target="_blank" rel="noopener" href="https://tongji.baidu.com/">
+                                                    STATISTICS
+                                                </a>
+                                            </li>
+                                        
+                                    </ul>
+                                
+                            </li>
+                    
+                    
+                        <li class="navbar-item search search-popup-trigger">
+                            <i class="fa-solid fa-magnifying-glass"></i>
+                        </li>
+                    
+                </ul>
+            </div>
+            <!-- Mobile -->
+            <div class="mobile">
+                
+                    <div class="icon-item search search-popup-trigger"><i class="fa-solid fa-magnifying-glass"></i>
+                    </div>
+                
+                <div class="icon-item navbar-bar">
+                    <div class="navbar-bar-middle"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Mobile sheet -->
+    <div class="navbar-drawer h-dvh w-full absolute top-0 left-0 bg-background-color flex flex-col justify-between">
+        <ul class="drawer-navbar-list flex flex-col px-4 justify-center items-start">
+            
+                
+                    
+
+                    <li class="drawer-navbar-item text-base my-1.5 flex flex-col w-full">
+                        
+                        <a class="py-1.5 px-2 flex flex-row items-center justify-between gap-1 hover:!text-primary active:!text-primary text-2xl font-semibold group border-b border-border-color hover:border-primary w-full "
+                           href="/"
+                        >
+                            <span>
+                                HOME
+                            </span>
+                            
+                                <i class="fa-regular fa-house fa-sm fa-fw"></i>
+                            
+                        </a>
+                        
+
+                        
+                    </li>
+            
+                
+                    
+
+                    <li class="drawer-navbar-item text-base my-1.5 flex flex-col w-full">
+                        
+                        <a class="py-1.5 px-2 flex flex-row items-center justify-between gap-1 hover:!text-primary active:!text-primary text-2xl font-semibold group border-b border-border-color hover:border-primary w-full "
+                           href="/categories"
+                        >
+                            <span>
+                                CATEGORIES
+                            </span>
+                            
+                                <i class="fas fa-bookmark fa-sm fa-fw"></i>
+                            
+                        </a>
+                        
+
+                        
+                    </li>
+            
+                
+                    
+
+                    <li class="drawer-navbar-item text-base my-1.5 flex flex-col w-full">
+                        
+                        <a class="py-1.5 px-2 flex flex-row items-center justify-between gap-1 hover:!text-primary active:!text-primary text-2xl font-semibold group border-b border-border-color hover:border-primary w-full "
+                           href="/tags"
+                        >
+                            <span>
+                                TAGS
+                            </span>
+                            
+                                <i class="fas fa-tags fa-sm fa-fw"></i>
+                            
+                        </a>
+                        
+
+                        
+                    </li>
+            
+                
+                    
+
+                    <li class="drawer-navbar-item-sub text-base my-1.5 flex flex-col w-full">
+                        
+                        <div class="py-1.5 px-2 flex flex-row items-center justify-between gap-1 hover:!text-primary active:!text-primary cursor-pointer text-2xl font-semibold group border-b border-border-color hover:border-primary w-full "
+                             navbar-data-toggle="submenu-About"
+                        >
+                            <span>
+                                ABOUT
+                            </span>
+                            
+                                <i class="fa-solid fa-chevron-right fa-sm fa-fw transition-all"></i>
+                            
+                        </div>
+                        
+
+                        
+                            <div class="flex-col items-start px-2 py-2 hidden" data-target="submenu-About">
+                                
+                                    <div class="drawer-navbar-item text-base flex flex-col justify-center items-start hover:underline active:underline hover:underline-offset-1 rounded-3xl">
+                                        <a class=" text-third-text-color text-xl"
+                                           target="_blank" rel="noopener" href="https://jinyang-du.github.io/">ME</a>
+                                    </div>
+                                
+                                    <div class="drawer-navbar-item text-base flex flex-col justify-center items-start hover:underline active:underline hover:underline-offset-1 rounded-3xl">
+                                        <a class=" text-third-text-color text-xl"
+                                           target="_blank" rel="noopener" href="https://github.com/Charles2530/">GITHUB</a>
+                                    </div>
+                                
+                                    <div class="drawer-navbar-item text-base flex flex-col justify-center items-start hover:underline active:underline hover:underline-offset-1 rounded-3xl">
+                                        <a class=" text-third-text-color text-xl"
+                                           href="https://charles2530.github.io">BLOG</a>
+                                    </div>
+                                
+                                    <div class="drawer-navbar-item text-base flex flex-col justify-center items-start hover:underline active:underline hover:underline-offset-1 rounded-3xl">
+                                        <a class=" text-third-text-color text-xl"
+                                           target="_blank" rel="noopener" href="https://tongji.baidu.com/">STATISTICS</a>
+                                    </div>
+                                
+                            </div>
+                        
+                    </li>
+            
+
+            
+            
+                
+                    
+                    <li class="drawer-navbar-item text-base my-1.5 flex flex-col w-full">
+                        <a class="py-1.5 px-2 flex flex-row items-center justify-between gap-1 hover:!text-primary active:!text-primary text-2xl font-semibold group border-b border-border-color hover:border-primary w-full active"
+                           href="/archives"
+                        >
+                            <span>Archives</span>
+                            <i class="fa-regular fa-archive fa-sm fa-fw"></i>
+                        </a>
+                    </li>
+                
+                    
+                    <li class="drawer-navbar-item text-base my-1.5 flex flex-col w-full">
+                        <a class="py-1.5 px-2 flex flex-row items-center justify-between gap-1 hover:!text-primary active:!text-primary text-2xl font-semibold group border-b border-border-color hover:border-primary w-full active"
+                           href="/masonry/"
+                        >
+                            <span>Photos</span>
+                            <i class="fa-solid fa-image fa-sm fa-fw"></i>
+                        </a>
+                    </li>
+                
+                    
+                    <li class="drawer-navbar-item text-base my-1.5 flex flex-col w-full">
+                        <a class="py-1.5 px-2 flex flex-row items-center justify-between gap-1 hover:!text-primary active:!text-primary text-2xl font-semibold group border-b border-border-color hover:border-primary w-full active"
+                           href="/essay/"
+                        >
+                            <span>Essays</span>
+                            <i class="fa-solid fa-message-lines fa-sm fa-fw"></i>
+                        </a>
+                    </li>
+                
+                    
+                    <li class="drawer-navbar-item text-base my-1.5 flex flex-col w-full">
+                        <a class="py-1.5 px-2 flex flex-row items-center justify-between gap-1 hover:!text-primary active:!text-primary text-2xl font-semibold group border-b border-border-color hover:border-primary w-full active"
+                           href="/friends/"
+                        >
+                            <span>Friends</span>
+                            <i class="fa-solid fa-user-group fa-sm fa-fw"></i>
+                        </a>
+                    </li>
+                
+            
+        </ul>
+
+        <div class="statistics flex justify-around my-2.5">
+    <a class="item tag-count-item flex flex-col justify-center items-center w-20" href="/tags">
+        <div class="number text-2xl sm:text-xl text-second-text-color font-semibold">45</div>
+        <div class="label text-third-text-color text-sm">Tags</div>
+    </a>
+    <a class="item tag-count-item flex flex-col justify-center items-center w-20" href="/categories">
+        <div class="number text-2xl sm:text-xl text-second-text-color font-semibold">93</div>
+        <div class="label text-third-text-color text-sm">Categories</div>
+    </a>
+    <a class="item tag-count-item flex flex-col justify-center items-center w-20" href="/archives">
+        <div class="number text-2xl sm:text-xl text-second-text-color font-semibold">501</div>
+        <div class="label text-third-text-color text-sm">Posts</div>
+    </a>
+</div>
+    </div>
+
+    <div class="window-mask"></div>
+
+</header>
+
+
+		</div>
+
+		<div class="main-content-body transition-fade-up">
+			
+
+			<div class="main-content">
+				<div class="post-page-container flex relative justify-between box-border w-full h-full">
+	<div class="article-content-container">
+
+		<div class="article-title relative w-full">
+			
+			
+			
+			<img src="https://charles2530.github.io/image/background/p3.png" alt="论文专题讲解：Nemotron 3 Super：Mamba-MoE 与异步多环境 RL" class="w-full h-60 sm:h-72 md:h-80 object-cover sm:rounded-t-large dark:brightness-75" />
+			
+			<div class="w-full flex items-center absolute bottom-0 justify-start">
+				<h1 class="article-title-cover text-center mx-6 my-6 text-second-text-color bg-background-color-transparent px-4 py-3 text-3xl sm:text-4xl md:text-5xl font-semibold backdrop-blur-lg rounded-xl border border-border-color ">论文专题讲解：Nemotron 3 Super：Mamba-MoE 与异步多环境 RL</h1>
+			</div>
+			
+		</div>
+
+		
+		<div class="article-header flex flex-row gap-2 items-center px-2 sm:px-6 md:px-8">
+			<div class="avatar w-[46px] h-[46px] shrink-0 rounded-medium border border-border-color p-px">
+				<img src="https://charles2530.github.io/image/background/logo2.jpg">
+			</div>
+			<div class="info flex flex-col justify-between">
+				<div class="author flex items-center">
+					<span class="name text-default-text-color text-lg font-semibold">Charles</span>
+					
+					<span class="author-label ml-1.5 text-xs px-2 py-0.5 rounded-small text-third-text-color border border-shadow-color-1">Lv7</span>
+					
+				</div>
+				<div class="meta-info">
+					<div class="article-meta-info">
+    <span class="article-date article-meta-item">
+        <i class="fa-regular fa-pen-fancy"></i>&nbsp;
+        <span class="desktop">2025-12-08 09:00</span>
+        <span class="mobile">2025-12-08 09:00</span>
+        <span class="hover-info">Created</span>
+    </span>
+    
+        <span class="article-date article-meta-item">
+            <i class="fa-regular fa-wrench"></i>&nbsp;
+            <span class="desktop">2025-12-08 09:00</span>
+            <span class="mobile">2025-12-08 09:00</span>
+            <span class="hover-info">Updated</span>
+        </span>
+    
+
+    
+        <span class="article-categories article-meta-item">
+            <i class="fa-regular fa-folders"></i>&nbsp;
+            <ul>
+                
+                
+                    
+                        
+                        <li>
+                            <a href="/categories/AI/">AI</a>&nbsp;
+                        </li>
+                    
+                    
+                
+                    
+                        
+                            <li>></li>
+                        
+                        <li>
+                            <a href="/categories/AI/%E8%AE%BA%E6%96%87%E4%B8%93%E9%A2%98%E8%AE%B2%E8%A7%A3/">论文专题讲解</a>&nbsp;
+                        </li>
+                    
+                    
+                
+            </ul>
+        </span>
+    
+    
+        <span class="article-tags article-meta-item">
+            <i class="fa-regular fa-tags"></i>&nbsp;
+            <ul>
+                
+                    <li>
+                        <a href="/tags/AI/">AI</a>&nbsp;
+                    </li>
+                
+                    <li>
+                        | <a href="/tags/%E8%AE%BA%E6%96%87%E4%B8%93%E9%A2%98/">论文专题</a>&nbsp;
+                    </li>
+                
+                    <li>
+                        | <a href="/tags/%E5%BC%BA%E5%8C%96%E5%AD%A6%E4%B9%A0/">强化学习</a>&nbsp;
+                    </li>
+                
+                    <li>
+                        | <a href="/tags/%E6%8A%80%E6%9C%AF%E6%8A%A5%E5%91%8A/">技术报告</a>&nbsp;
+                    </li>
+                
+            </ul>
+        </span>
+    
+
+    
+    
+        <span class="article-wordcount article-meta-item">
+            <i class="fa-regular fa-typewriter"></i>&nbsp;<span>5.8k Words</span>
+        </span>
+    
+    
+        <span class="article-min2read article-meta-item">
+            <i class="fa-regular fa-clock"></i>&nbsp;<span>27 Mins</span>
+        </span>
+    
+    
+        <span class="article-pv article-meta-item">
+            <i class="fa-regular fa-eye"></i>&nbsp;<span id="busuanzi_value_page_pv"></span>
+        </span>
+    
+</div>
+
+				</div>
+			</div>
+		</div>
+		
+
+		
+
+
+		<div class="article-content markdown-body px-2 sm:px-6 md:px-8 pb-8">
+			<div class="callout callout--titled info mb-4 rounded-small shadow-redefine-flat bg-(--callout-bg-color) p-3 pl-1 relative flex flex-row gap-2"><div role="none" class="rounded-full self-stretch w-0.5 bg-(--callout-primary-color) shrink-0 opacity-60"></div><div class="flex flex-col gap-2"><div class="callout__title flex items-center gap-2 font-semibold tracking-tight">报告信息</div><div class="callout__content markdown-body flex-1 min-w-0"><ul>
+<li>技术报告：<code>Nemotron 3 Super: Open, Efficient Mixture-of-Experts Hybrid Mamba-Transformer Model for Agentic Reasoning</code></li>
+<li>模型：<code>NVIDIA-Nemotron-3-Super-120B-A12B</code></li>
+<li>链接：<a class="link"   target="_blank" rel="noopener" href="https://research.nvidia.com/labs/nemotron/files/NVIDIA-Nemotron-3-Super-Technical-Report.pdf" >NVIDIA Research PDF<i class="fa-solid fa-arrow-up-right ml-[0.2em] font-light align-text-top text-[0.7em] link-icon"></i></a></li>
+<li>模型与数据集合：<a class="link"   target="_blank" rel="noopener" href="https://huggingface.co/collections/nvidia/nvidia-nemotron-v3" >Hugging Face: NVIDIA Nemotron v3<i class="fa-solid fa-arrow-up-right ml-[0.2em] font-light align-text-top text-[0.7em] link-icon"></i></a></li>
+<li>代码与训练配方：<a class="link"   target="_blank" rel="noopener" href="https://github.com/NVIDIA-NeMo/Nemotron" >NVIDIA-NeMo/Nemotron<i class="fa-solid fa-arrow-up-right ml-[0.2em] font-light align-text-top text-[0.7em] link-icon"></i></a></li>
+<li>关键词：Hybrid Mamba-Transformer、LatentMoE、MTP、NVFP4、1M context、asynchronous GRPO、FP8/NVFP4 PTQ</li>
+</ul></div></div></div>
+<p>Nemotron 3 Super 最值得抓住三条主线：<strong>MoE 架构、MTP 方式、强化学习范式</strong>。</p>
+<table>
+<thead>
+<tr>
+<th>主线</th>
+<th>报告里的具体做法</th>
+<th>解决的问题</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>创新的 MoE 架构</td>
+<td>Hybrid Mamba-Attention + LatentMoE；120.6B total、12.7B active；512 experts、top-22 routing</td>
+<td>用 MoE 扩容量，用 Mamba 降长上下文生成成本，用 latent space 降 expert 权重读取和 all-to-all 流量</td>
+</tr>
+<tr>
+<td>创新的 MTP 方式</td>
+<td>两层 shared-weight MTP head；训练时跨 offset 共享参数，推理时递归做 autoregressive drafting</td>
+<td>避免独立 MTP head 在长 draft 下的 train-test mismatch，提高 speculative decoding 接受率</td>
+</tr>
+<tr>
+<td>创新的 RL 范式</td>
+<td>SFT 后做多环境 RLVR、SWE-RL、RLHF、MTP healing；异步 GRPO、masked importance ratio、in-flight weight updates</td>
+<td>避免单任务 RL 互相拉扯，让数学、代码、工具、终端、SWE、长上下文等能力同步提升</td>
+</tr>
+</tbody>
+</table>
+<p>报告日期是 <code>2026-04-03</code>。它主讲 <code>Nemotron 3 Super 120B-A12B</code>，即 120B 总参数、约 12B active 的 Super 版本；官方同时放出 BF16、FP8、NVFP4、Base BF16、Nano 和 GenRM。</p>
+<p><img  
+                     lazyload
+                     src="/images/loading.svg"
+                     data-src="/image/ai-notes/images/paper-deep-dives/technical-reports/nemotron-3-super/figure-1-benchmark-throughput.png"
+                      alt="Nemotron 3 Super benchmark and throughput" 
+                ></p>
+<p><small>图源：<code>Nemotron 3 Super Technical Report</code>，Figure 1。原图比较 Nemotron 3 Super、GPT-OSS-120B 和 Qwen3.5-122B 在 IFBench、HMMT、SWE-Bench、HLE、Terminal Bench、Tau Bench、RULER 1M 与 8k/64k 生成吞吐上的表现。</small></p>
+<div class="callout callout--titled info mb-4 rounded-small shadow-redefine-flat bg-(--callout-bg-color) p-3 pl-1 relative flex flex-row gap-2"><div role="none" class="rounded-full self-stretch w-0.5 bg-(--callout-primary-color) shrink-0 opacity-60"></div><div class="flex flex-col gap-2"><div class="callout__title flex items-center gap-2 font-semibold tracking-tight">Figure 1 怎么读</div><div class="callout__content markdown-body flex-1 min-w-0"><p>这张图不是说 Super 每项都最高，而是说它在接近 GPT-OSS-120B / Qwen3.5-122B 的能力区间里，把长上下文和长输出吞吐做得更高。报告口径下，在 <code>8k</code> 输入、<code>64k</code> 输出设置中，Super 相比 GPT-OSS-120B 和 Qwen3.5-122B 分别达到最高 <code>2.2x</code> 和 <code>7.5x</code> 吞吐提升。</p></div></div></div>
+<h2 id="论文位置"><a class="markdownIt-Anchor" href="#论文位置"></a> 论文位置</h2>
+<p>Nemotron 3 Super 可以放在 DeepSeek-V3、Qwen3、Kimi K2 和 DeepSeek-V4 这几条技术报告线旁边看：</p>
+<table>
+<thead>
+<tr>
+<th>Report</th>
+<th>Core emphasis</th>
+<th>Nemotron 3 Super 的差异</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>DeepSeek-V3</td>
+<td>MLA、DeepSeekMoE、FP8、DualPipe、MTP</td>
+<td>仍是 Transformer MoE 主干，重点是低成本训练和 KV cache 压缩</td>
+</tr>
+<tr>
+<td>Qwen3</td>
+<td>thinking / non-thinking、GRPO、强到弱蒸馏</td>
+<td>重点是统一推理模式和模型家族蒸馏</td>
+</tr>
+<tr>
+<td>Kimi K2</td>
+<td>1T sparse MoE、MuonClip、agentic data / RL</td>
+<td>重点是 agentic non-thinking 模型和 Muon 稳定训练</td>
+</tr>
+<tr>
+<td>Nemotron 3 Super</td>
+<td>Hybrid Mamba-MoE、LatentMoE、NVFP4、MTP、异步多环境 RL</td>
+<td>把长上下文吞吐、MoE 通信/带宽、低精度训练和 agent 后训练放到同一个系统里</td>
+</tr>
+</tbody>
+</table>
+<p>它不是只做一个更大的 MoE，而是把每 token 计算、长序列状态、expert 通信、speculative decoding、低精度路径和 RL rollout 成本一起优化。</p>
+<h2 id="模型家族"><a class="markdownIt-Anchor" href="#模型家族"></a> 模型家族</h2>
+<p>报告公开了 Super 120B-A12B 的 NVFP4、FP8、BF16、Base BF16 版本，也公开了 GenRM、pretraining specialized data 和 Super post-training data。官方集合还包括 Nano 30B-A3B、Nano Omni / 4B 等变体；本文只按报告主线解析 Super 120B-A12B。</p>
+<h2 id="总体架构"><a class="markdownIt-Anchor" href="#总体架构"></a> 总体架构</h2>
+<p>Nemotron 3 Super 是 88 层 hybrid Mamba-Attention MoE。它沿用 Nemotron 3 Nano 的混合 Mamba-Attention 思路，但把稀疏扩展从 standard MoE 换成 LatentMoE。</p>
+<p><img  
+                     lazyload
+                     src="/images/loading.svg"
+                     data-src="/image/ai-notes/images/paper-deep-dives/technical-reports/nemotron-3-super/figure-2-layer-pattern.png"
+                      alt="Nemotron 3 Super layer pattern" 
+                ></p>
+<p><small>图源：<code>Nemotron 3 Super Technical Report</code>，Figure 2。原图展示 Nemotron 3 Super 的 Mamba-2、Attention 和 Latent MoE 周期性交错层 pattern。</small></p>
+<p>报告 Table 1 的架构配置如下，保留英文原格式：</p>
+<table>
+<thead>
+<tr>
+<th>Configuration</th>
+<th style="text-align:right">Nemotron 3 Super 120B-A12B Base</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Total Layers</td>
+<td style="text-align:right">88</td>
+</tr>
+<tr>
+<td>Model Dimension</td>
+<td style="text-align:right">4096</td>
+</tr>
+<tr>
+<td>Q-Heads</td>
+<td style="text-align:right">32</td>
+</tr>
+<tr>
+<td>KV-Heads</td>
+<td style="text-align:right">2</td>
+</tr>
+<tr>
+<td>Head Dimension</td>
+<td style="text-align:right">128</td>
+</tr>
+<tr>
+<td>Mamba State Dimension</td>
+<td style="text-align:right">128</td>
+</tr>
+<tr>
+<td>Mamba Groups</td>
+<td style="text-align:right">8</td>
+</tr>
+<tr>
+<td>Mamba Heads</td>
+<td style="text-align:right">128</td>
+</tr>
+<tr>
+<td>Mamba Head Dimension</td>
+<td style="text-align:right">64</td>
+</tr>
+<tr>
+<td>Expert Hidden Dimension</td>
+<td style="text-align:right">2688</td>
+</tr>
+<tr>
+<td>Shared Expert Intermediate Size</td>
+<td style="text-align:right">5376</td>
+</tr>
+<tr>
+<td>Total Experts per Layer</td>
+<td style="text-align:right">512</td>
+</tr>
+<tr>
+<td>Top-k (Activated Experts)</td>
+<td style="text-align:right">22</td>
+</tr>
+<tr>
+<td>MoE Latent Size</td>
+<td style="text-align:right">1024</td>
+</tr>
+<tr>
+<td>MTP layers (shared weight)</td>
+<td style="text-align:right">2</td>
+</tr>
+</tbody>
+</table>
+<p>几个数字要一起看：</p>
+<ol>
+<li><code>120.6B total parameters</code>，但每次 forward 约 <code>12.7B active parameters</code>，不含 embedding 约 <code>12.1B</code>。</li>
+<li>注意力层使用 GQA，<code>32</code> 个 query heads、<code>2</code> 个 KV heads，降低 KV cache 压力。</li>
+<li>报告写明模型省略 positional embeddings、dropout 和 linear bias，使用 RMSNorm，embedding 和 output weights 不 tied。</li>
+<li>大部分层是 Mamba-2 + LatentMoE，少量 attention 层作为 global anchors，负责全局 token 交互和长程信息路由。</li>
+</ol>
+<p>这就是它和纯 Transformer MoE 的核心差别：长上下文生成时，纯 self-attention 的 KV cache 会随序列长度增长；Mamba-2 的 recurrent state 是固定大小。少量 attention anchor 补足 SSM 在全局交互上的短板，但主体计算和状态维护交给更适合长序列的 Mamba。</p>
+<h2 id="latentmoe"><a class="markdownIt-Anchor" href="#latentmoe"></a> LatentMoE</h2>
+<p>普通 MoE 的 expert 计算在 hidden dimension <code>d</code> 上完成。LatentMoE 先把 token 从 <code>d</code> 投影到更小的 latent dimension <code>l</code>，再在 latent space 里路由和执行 expert 计算，最后投影回 <code>d</code>。</p>
+<p><img  
+                     lazyload
+                     src="/images/loading.svg"
+                     data-src="/image/ai-notes/images/paper-deep-dives/technical-reports/nemotron-3-super/figure-3-latent-moe.png"
+                      alt="Standard MoE vs LatentMoE" 
+                ></p>
+<p><small>图源：<code>Nemotron 3 Super Technical Report</code>，Figure 3。原图比较 standard MoE 与 LatentMoE；LatentMoE 在 latent dimension 内做 expert routing / computation，以降低 routed parameter loads 和 all-to-all traffic。</small></p>
+<p>可以把它写成：</p>
+<div class="code-container" data-rel="Text"><figure class="iseeu highlight text"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br></pre></td><td class="code"><pre><span class="line">Standard MoE:</span><br><span class="line">  hidden d -&gt; router -&gt; experts in d -&gt; combine</span><br><span class="line"></span><br><span class="line">LatentMoE:</span><br><span class="line">  hidden d -&gt; latent down-proj l -&gt; router / experts in l -&gt; latent up-proj d</span><br></pre></td></tr></table></figure></div>
+<p>报告给出的设计逻辑很清楚：</p>
+<table>
+<thead>
+<tr>
+<th>Bottleneck</th>
+<th>Standard MoE 中的问题</th>
+<th>LatentMoE 的处理</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Low-latency serving</td>
+<td>读取 expert weights 常被 memory bandwidth 支配</td>
+<td>降低 expert 计算维度，从 <code>d</code> 压到 <code>l</code></td>
+</tr>
+<tr>
+<td>Throughput serving</td>
+<td>distributed MoE 受 all-to-all routing volume 支配</td>
+<td>routing payload 也在 latent space 中传输</td>
+</tr>
+<tr>
+<td>Quality</td>
+<td>不能简单削减 FFN 的有效非线性预算</td>
+<td>保持有效预算，并用节省的成本增加 total experts 和 top-k</td>
+</tr>
+<tr>
+<td>Specialist diversity</td>
+<td>expert 组合空间越大，模型可表达的专家组合越多</td>
+<td>同时增加 experts 总数和每 token 激活 experts 数</td>
+</tr>
+</tbody>
+</table>
+<p>报告里的关键句可以概括为：把 routed expert computation 和 all-to-all traffic 移到 latent space 后，成本大约降低 <code>d/l</code> 倍；这些节省被拿来扩大 total experts 和 top-k active experts，从而在近似固定推理成本下提高质量。</p>
+<p>在 Nemotron 3 Super 中，<code>d=4096</code>，MoE latent size 是 <code>1024</code>，也就是 4:1 压缩。直观上，这让模型可以有 <code>512</code> 个 experts、每 token 激活 <code>22</code> 个 routed experts，但仍保持约 12B active 的推理预算。</p>
+<div class="callout callout--titled info mb-4 rounded-small shadow-redefine-flat bg-(--callout-bg-color) p-3 pl-1 relative flex flex-row gap-2"><div role="none" class="rounded-full self-stretch w-0.5 bg-(--callout-primary-color) shrink-0 opacity-60"></div><div class="flex flex-col gap-2"><div class="callout__title flex items-center gap-2 font-semibold tracking-tight">LatentMoE 和 MLA 不是一回事</div><div class="callout__content markdown-body flex-1 min-w-0"><p>DeepSeek 系列的 MLA 压的是 attention KV 表示，主要目标是 KV cache 和 attention memory。LatentMoE 压的是 MoE expert 路由和计算维度，主要目标是 expert weight bandwidth 和 all-to-all communication。</p>
+<p>两者都用了 latent 表示，但它们改的是不同系统瓶颈。Nemotron 3 Super 的 attention 侧靠 Mamba-heavy 混合架构和少量 GQA attention anchor；MoE 侧靠 LatentMoE。</p></div></div></div>
+<h2 id="mtp共享参数的递归草稿头"><a class="markdownIt-Anchor" href="#mtp共享参数的递归草稿头"></a> MTP：共享参数的递归草稿头</h2>
+<p>Nemotron 3 Super 的 MTP 不只是“多接几个未来 token head”。报告强调它针对 speculative decoding 的 autoregressive drafting 做了共享参数设计。</p>
+<p>标准 MTP 常见做法是训练 <code>D</code> 个独立 head，每个 head 预测固定 offset，例如第一个 head 预测 <code>n+2</code>，第二个 head 预测 <code>n+3</code>。这个做法在训练时没问题，因为 head 看到的是 ground-truth hidden states；但推理时如果递归复用某个 head 生成更长 draft，它就会基于自己刚生成的隐藏状态继续预测，出现明显 train-test mismatch。</p>
+<p>Nemotron 3 Super 的处理是：<strong>训练时让多个 MTP heads 共享参数，形成一个统一 prediction head</strong>。这个 head 在训练阶段接触多个 offset，相当于被迫学会跨预测 horizon 的鲁棒性。推理时同一个 head 可以递归应用，生成比固定 offset 更长的 draft，并且 acceptance rate 掉得更慢。</p>
+<p><img  
+                     lazyload
+                     src="/images/loading.svg"
+                     data-src="/image/ai-notes/images/paper-deep-dives/technical-reports/nemotron-3-super/figure-4-mtp-acceptance.png"
+                      alt="MTP acceptance rate by draft index" 
+                ></p>
+<p><small>图源：<code>Nemotron 3 Super Technical Report</code>，Figure 4。原图展示 SPEED-Bench 上 draft length = 7 时，不同 draft token index 的 acceptance rate。</small></p>
+<p>报告 Table 2 的 average acceptance length 里，最能代表差异的几行如下：</p>
+<table>
+<thead>
+<tr>
+<th>Category</th>
+<th style="text-align:right">DSR1</th>
+<th style="text-align:right">Qwen3 Next</th>
+<th style="text-align:right">Nemotron3 Super</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Coding</td>
+<td style="text-align:right">2.99</td>
+<td style="text-align:right"><strong>4.32</strong></td>
+<td style="text-align:right">3.78</td>
+</tr>
+<tr>
+<td>Math</td>
+<td style="text-align:right">2.98</td>
+<td style="text-align:right"><strong>3.89</strong></td>
+<td style="text-align:right">3.73</td>
+</tr>
+<tr>
+<td>Multilingual</td>
+<td style="text-align:right">2.83</td>
+<td style="text-align:right">3.97</td>
+<td style="text-align:right"><strong>4.05</strong></td>
+</tr>
+<tr>
+<td>RAG</td>
+<td style="text-align:right">2.79</td>
+<td style="text-align:right">3.53</td>
+<td style="text-align:right"><strong>3.78</strong></td>
+</tr>
+<tr>
+<td>Reasoning</td>
+<td style="text-align:right">2.80</td>
+<td style="text-align:right">3.47</td>
+<td style="text-align:right"><strong>3.59</strong></td>
+</tr>
+<tr>
+<td>Average</td>
+<td style="text-align:right">2.70</td>
+<td style="text-align:right">3.33</td>
+<td style="text-align:right"><strong>3.45</strong></td>
+</tr>
+</tbody>
+</table>
+<p><img  
+                     lazyload
+                     src="/images/loading.svg"
+                     data-src="/image/ai-notes/images/paper-deep-dives/technical-reports/nemotron-3-super/figure-5-mtp-throughput.png"
+                      alt="MTP throughput frontier" 
+                ></p>
+<p><small>图源：<code>Nemotron 3 Super Technical Report</code>，Figure 5。原图展示 NVFP4 checkpoint 在 TRT-LLM、TP=1、B300 GPU 上，MTP off、MTP D=1、MTP D=3 的 total throughput 与 median user throughput Pareto frontier。</small></p>
+<p>MTP 同时是训练目标和推理接口：训练时给模型更密集的未来 token 信号，推理时变成内置 draft model。Super 的重点是 shared-weight MTP，把递归 drafting 的分布偏移纳入训练设计。</p>
+<h2 id="nvfp4-预训练"><a class="markdownIt-Anchor" href="#nvfp4-预训练"></a> NVFP4 预训练</h2>
+<p>Nemotron 3 Super 是报告声称的 Nemotron 3 系列中首个使用 NVFP4 预训练的 Super 模型。它不是所有层都粗暴 FP4，而是混合精度：</p>
+<table>
+<thead>
+<tr>
+<th>Layer Type</th>
+<th>Format</th>
+<th>Rationale</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>All Linear Layers Unless Otherwise Noted</td>
+<td>NVFP4</td>
+<td></td>
+</tr>
+<tr>
+<td>Final 15% of Network</td>
+<td>BF16</td>
+<td>Promote training stability at scale</td>
+</tr>
+<tr>
+<td>Latent Projections</td>
+<td>BF16</td>
+<td>Strategically kept in BF16 as step-time impact is negligible</td>
+</tr>
+<tr>
+<td>MTP Layers</td>
+<td>BF16</td>
+<td>Preserves multi-token prediction capabilities</td>
+</tr>
+<tr>
+<td>QKV &amp; Attention Projections</td>
+<td>BF16</td>
+<td>Maintain fidelity of few attention layers</td>
+</tr>
+<tr>
+<td>Mamba Output Projection</td>
+<td>MXFP8</td>
+<td>Mitigates high incidence of underflows observed when quantizing this layer to NVFP4 at smaller scales</td>
+</tr>
+<tr>
+<td>Embedding Layers</td>
+<td>BF16</td>
+<td></td>
+</tr>
+</tbody>
+</table>
+<p>低精度细节也很具体：</p>
+<table>
+<thead>
+<tr>
+<th>Tensor / Operation</th>
+<th>NVFP4 Recipe</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Weights</td>
+<td>NVFP4 with two-dimensional block scaling</td>
+</tr>
+<tr>
+<td>Gradients and activations</td>
+<td>NVFP4 with one-dimensional blocks along GEMM reduction axis</td>
+</tr>
+<tr>
+<td>wgrad inputs</td>
+<td>Random Hadamard Transforms</td>
+</tr>
+<tr>
+<td>gradients</td>
+<td>stochastic rounding</td>
+</tr>
+<tr>
+<td>element format</td>
+<td>E2M1</td>
+</tr>
+<tr>
+<td>micro-block size</td>
+<td>16 elements</td>
+</tr>
+<tr>
+<td>micro-block scale</td>
+<td>E4M3</td>
+</tr>
+<tr>
+<td>second-level scale</td>
+<td>FP32 global scale</td>
+</tr>
+</tbody>
+</table>
+<p>这部分最有价值的是报告没有只说“NVFP4 很快”，而是分析了 underflow 和 zero-valued gradients：到预训练结束，zero-valued weight gradient elements 约占总参数 <code>7%</code>，并且和 routed expert 的 FC1/FC2 低范数通道相关。作者认为 NVFP4 会让 BF16/MXFP8 中仍可表达的小梯度更容易 underflow 成 true zero，但这并不直接等同于训练失败。</p>
+<p><img  
+                     lazyload
+                     src="/images/loading.svg"
+                     data-src="/image/ai-notes/images/paper-deep-dives/technical-reports/nemotron-3-super/figure-7-zero-gradients.png"
+                      alt="Zero-valued gradients" 
+                ></p>
+<p><small>图源：<code>Nemotron 3 Super Technical Report</code>，Figure 7。原图比较 Nemotron 3 Nano 的 BF16 与 NVFP4 recipe 下 zero-valued weight gradient elements 的增长。</small></p>
+<p>工程结论是两层：</p>
+<ol>
+<li>NVFP4 的确会更早、更明显地产生 zero-valued gradients，尤其在 routed expert 的某些通道上；</li>
+<li>但把 19T 后模型切到 MXFP8 虽然改善 loss trajectory，却没有带来持续下游 accuracy 提升，所以最终 Super 仍按 NVFP4 recipe 跑完整 25T token horizon。</li>
+</ol>
+<p>低精度训练不能只看 loss 是否更平滑，还要看最终任务指标是否真正变好。报告的结论是：MXFP8 healing 没有兑现成下游收益。</p>
+<h2 id="预训练数据与超参"><a class="markdownIt-Anchor" href="#预训练数据与超参"></a> 预训练数据与超参</h2>
+<p>Nemotron 3 Super 预训练总量是 <code>25T</code> text tokens，分两阶段：</p>
+<table>
+<thead>
+<tr>
+<th>Phase</th>
+<th style="text-align:right">Tokens</th>
+<th>Main Goal</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Phase 1</td>
+<td style="text-align:right">20T</td>
+<td>diversity and broad coverage</td>
+</tr>
+<tr>
+<td>Phase 2</td>
+<td style="text-align:right">5T</td>
+<td>high-quality data and benchmark accuracy</td>
+</tr>
+</tbody>
+</table>
+<p><img  
+                     lazyload
+                     src="/images/loading.svg"
+                     data-src="/image/ai-notes/images/paper-deep-dives/technical-reports/nemotron-3-super/figure-10-pretraining-mixtures.png"
+                      alt="Pretraining data mixtures" 
+                ></p>
+<p><small>图源：<code>Nemotron 3 Super Technical Report</code>，Figure 10。原图展示 Phase 1 与 Phase 2 的 pre-training data mixture。</small></p>
+<p>报告新增或强调的 specialized synthetic data 可以概括为：</p>
+<table>
+<thead>
+<tr>
+<th>Dataset</th>
+<th>Construction Detail</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Synthetic Code Concepts</td>
+<td>91 个 HumanEval 高层编程概念；约 14M problems；清洗后约 15M problems</td>
+</tr>
+<tr>
+<td>Synthetic Unconditional Algorithmic</td>
+<td>Qwen3-235B-A22B Base + GPT-OSS-120B 生成算法题；约 0.2B tokens；做 benchmark 去污染</td>
+</tr>
+<tr>
+<td>Synthetic Economics / Formal Logic</td>
+<td>覆盖经济学 MCQ、自然语言逻辑、谓词/命题逻辑、真值表等任务</td>
+</tr>
+<tr>
+<td>Synthetic Multiple Choice</td>
+<td>从 MMLU auxiliary training set 扩展；DeepSeek-V3 解题与 majority voting；约 3.5M samples / 1.6B tokens</td>
+</tr>
+</tbody>
+</table>
+<p>核心预训练超参如下：</p>
+<table>
+<thead>
+<tr>
+<th>Setup</th>
+<th>Value</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>LR schedule</td>
+<td>Warmup-Stable-Decay；200B warmup；final 5T minus-sqrt decay</td>
+</tr>
+<tr>
+<td>LR range</td>
+<td>peak <code>4.5e-4</code> -&gt; minimum <code>4.5e-6</code></td>
+</tr>
+<tr>
+<td>Optimizer</td>
+<td>AdamW；weight decay 0.1；<code>beta1=0.9</code>, <code>beta2=0.95</code></td>
+</tr>
+<tr>
+<td>Sequence length</td>
+<td>8,192</td>
+</tr>
+<tr>
+<td>Batch</td>
+<td>3,072 sequences；about 25.17M tokens per batch</td>
+</tr>
+<tr>
+<td>MoE routing</td>
+<td>512 experts, top-22；sigmoid router score + expert biasing</td>
+</tr>
+<tr>
+<td>Load balancing</td>
+<td>auxiliary-loss-free update rate <code>1e-3</code> + load balancing loss coefficient <code>1e-4</code></td>
+</tr>
+<tr>
+<td>MTP loss scale</td>
+<td>0.3</td>
+</tr>
+<tr>
+<td>Precision</td>
+<td>BF16 + NVFP4</td>
+</tr>
+</tbody>
+</table>
+<h3 id="checkpoint-merging"><a class="markdownIt-Anchor" href="#checkpoint-merging"></a> Checkpoint merging</h3>
+<p>WSD stable phase 中，单个 checkpoint 的 benchmark 可能噪声较大；报告用滑动窗口对近邻 checkpoint 做 weighted averaging，作为更便宜的质量 readout。</p>
+<p><img  
+                     lazyload
+                     src="/images/loading.svg"
+                     data-src="/image/ai-notes/images/paper-deep-dives/technical-reports/nemotron-3-super/figure-11-checkpoint-merge.png"
+                      alt="Checkpoint merge evaluation" 
+                ></p>
+<p><small>图源：<code>Nemotron 3 Super Technical Report</code>，Figure 11。原图比较 trained checkpoints 与 best offline checkpoint merge 在 25T pretraining 中的 12 benchmark average accuracy。</small></p>
+<p>经验是：stable LR phase 中，best merge 比对应 trained checkpoint 平均高 <code>2-4</code> 分；最后 5T LR decay 后，实际 decay checkpoint 逐渐追平。最终 base model checkpoint 本身是一个 <code>500B</code> merge。报告估计该流程可节省约 <code>4T</code> tokens 的 compute readout 成本，约占总 pretraining FLOP 预算的 <code>16%</code>。</p>
+<h3 id="long-context-extension"><a class="markdownIt-Anchor" href="#long-context-extension"></a> Long-context extension</h3>
+<p>长上下文阶段在预训练末尾进行：</p>
+<table>
+<thead>
+<tr>
+<th>Long-context Detail</th>
+<th>Value</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Learning rate</td>
+<td>constant <code>4.5e-6</code></td>
+</tr>
+<tr>
+<td>Global batch size</td>
+<td>16</td>
+</tr>
+<tr>
+<td>Hardware</td>
+<td>GB200 GPUs</td>
+</tr>
+<tr>
+<td>Context parallelism</td>
+<td>64-way</td>
+</tr>
+<tr>
+<td>Tensor parallelism</td>
+<td>2-way</td>
+</tr>
+<tr>
+<td>Expert parallelism</td>
+<td>64-way</td>
+</tr>
+<tr>
+<td>Stage 1</td>
+<td>1,048,576 context length for 34B tokens</td>
+</tr>
+<tr>
+<td>Stage 2</td>
+<td>alternating 1M and 4K sequences for 17B tokens</td>
+</tr>
+<tr>
+<td>Data blend</td>
+<td>20% long-context document QA, 80% downscaled Phase 2 data</td>
+</tr>
+</tbody>
+</table>
+<p>这解释了为什么 RULER 1M 能成为主打指标：模型不是只靠位置外推，而是在 1M context 上做 continuous pretraining，并用 1M/4K 交替训练缓解数学 benchmark 的轻微回退。</p>
+<h2 id="base-model-结果"><a class="markdownIt-Anchor" href="#base-model-结果"></a> Base Model 结果</h2>
+<p>报告 Table 4 对 Base model 和 Ling-flash-base-2.0、GLM-4.5-Air-Base 做比较。下面摘录关键行，保留英文列名：</p>
+<table>
+<thead>
+<tr>
+<th>Task</th>
+<th>Metric</th>
+<th style="text-align:right">N-3-Super 120B-A12B-Base</th>
+<th style="text-align:right">Ling-flash base-2.0</th>
+<th style="text-align:right">GLM-4.5 Air-Base</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>MMLU</td>
+<td>5-shot, acc</td>
+<td style="text-align:right">86.01</td>
+<td style="text-align:right">81.00</td>
+<td style="text-align:right">81.00</td>
+</tr>
+<tr>
+<td>MMLU-Pro</td>
+<td>5-shot, CoT EM</td>
+<td style="text-align:right">75.65</td>
+<td style="text-align:right">62.10</td>
+<td style="text-align:right">58.20</td>
+</tr>
+<tr>
+<td>GPQA-Diamond</td>
+<td>5-shot, CoT EM</td>
+<td style="text-align:right">60.00</td>
+<td style="text-align:right">36.00</td>
+<td style="text-align:right">23.20</td>
+</tr>
+<tr>
+<td>GSM8K</td>
+<td>8-shot, EM</td>
+<td style="text-align:right">90.67</td>
+<td style="text-align:right">90.75</td>
+<td style="text-align:right">82.60</td>
+</tr>
+<tr>
+<td>MATH</td>
+<td>4-shot, EM</td>
+<td style="text-align:right">84.84</td>
+<td style="text-align:right">63.80</td>
+<td style="text-align:right">50.36</td>
+</tr>
+<tr>
+<td>MATH Level 5</td>
+<td>4-shot, EM</td>
+<td style="text-align:right">70.00</td>
+<td style="text-align:right">39.80</td>
+<td style="text-align:right">26.30</td>
+</tr>
+<tr>
+<td>AIME2024</td>
+<td>pass@32</td>
+<td style="text-align:right">53.33</td>
+<td style="text-align:right">30.00</td>
+<td style="text-align:right">20.00</td>
+</tr>
+<tr>
+<td>HumanEval</td>
+<td>0-shot, pass@1 n=32</td>
+<td style="text-align:right">79.40</td>
+<td style="text-align:right">70.10</td>
+<td style="text-align:right">76.30</td>
+</tr>
+<tr>
+<td>MBPP-Sanitized</td>
+<td>3-shot, pass@1 n=32</td>
+<td style="text-align:right">78.38</td>
+<td style="text-align:right">77.30</td>
+<td style="text-align:right">77.50</td>
+</tr>
+<tr>
+<td>MMLU Global Lite</td>
+<td>5-shot, avg</td>
+<td style="text-align:right">85.72</td>
+<td style="text-align:right">74.94</td>
+<td style="text-align:right">79.25</td>
+</tr>
+<tr>
+<td>MGSM</td>
+<td>8-shot, avg</td>
+<td style="text-align:right">87.47</td>
+<td style="text-align:right">82.73</td>
+<td style="text-align:right">80.33</td>
+</tr>
+<tr>
+<td>RULER64K</td>
+<td>0-shot</td>
+<td style="text-align:right">92.26</td>
+<td style="text-align:right">72.12</td>
+<td style="text-align:right">80.26</td>
+</tr>
+<tr>
+<td>RULER128K</td>
+<td>0-shot</td>
+<td style="text-align:right">88.26</td>
+<td style="text-align:right">52.03</td>
+<td style="text-align:right">61.70</td>
+</tr>
+<tr>
+<td>RULER256K</td>
+<td>0-shot</td>
+<td style="text-align:right">84.56</td>
+<td style="text-align:right">-</td>
+<td style="text-align:right">-</td>
+</tr>
+<tr>
+<td>RULER512K</td>
+<td>0-shot</td>
+<td style="text-align:right">82.49</td>
+<td style="text-align:right">-</td>
+<td style="text-align:right">-</td>
+</tr>
+<tr>
+<td>RULER1M</td>
+<td>0-shot</td>
+<td style="text-align:right">71.00</td>
+<td style="text-align:right">-</td>
+<td style="text-align:right">-</td>
+</tr>
+</tbody>
+</table>
+<p>Base 阶段最能说明架构和预训练本身的价值：Super 不是只靠后训练刷 agent 分，而是在 MMLU-Pro、GPQA、MATH Level 5、AIME、RULER 等 base evaluations 上已经拉开明显差距。</p>
+<h2 id="后大模型训练路线图"><a class="markdownIt-Anchor" href="#后大模型训练路线图"></a> 后大模型训练路线图</h2>
+<p>Nemotron 3 Super 的后训练分四段：SFT、RLVR、SWE-RL、RLHF，最后补一个 MTP healing。</p>
+<p><img  
+                     lazyload
+                     src="/images/loading.svg"
+                     data-src="/image/ai-notes/images/paper-deep-dives/technical-reports/nemotron-3-super/figure-12-posttraining-pipeline.png"
+                      alt="Post-training pipeline" 
+                ></p>
+<p><small>图源：<code>Nemotron 3 Super Technical Report</code>，Figure 12。原图展示 Nemotron 3 Super 的 post-training pipeline：Base -&gt; SFT -&gt; RLVR round 1/2/3 -&gt; SWE-RL -&gt; RLHF -&gt; MTP healing -&gt; Nemotron 3 Super。</small></p>
+<p>图中几个数字很关键：</p>
+<table>
+<thead>
+<tr>
+<th>Stage</th>
+<th>Report Figure Detail</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Base</td>
+<td>1M Context</td>
+</tr>
+<tr>
+<td>SFT</td>
+<td>7M samples, 88B tokens</td>
+</tr>
+<tr>
+<td>RLVR Round 1</td>
+<td>25 env types</td>
+</tr>
+<tr>
+<td>RLVR Round 2</td>
+<td>30 env types, with low effort</td>
+</tr>
+<tr>
+<td>RLVR Round 3</td>
+<td>26 env types, with low effort, agentic focused</td>
+</tr>
+<tr>
+<td>RLVR scale</td>
+<td>37 environment types, up to 4,000 environment instances per batch</td>
+</tr>
+<tr>
+<td>SWE-RL</td>
+<td>20B tokens</td>
+</tr>
+<tr>
+<td>RLHF</td>
+<td>18B tokens</td>
+</tr>
+<tr>
+<td>MTP healing</td>
+<td>train MTP heads, freeze rest of weights</td>
+</tr>
+</tbody>
+</table>
+<p>报告正文还写到，RLVR setting 包含 <code>21 environments</code> 和 <code>37 RL datasets</code>。这里不要把图里的 environment types 和正文里的 environments / datasets 混成同一个数，它们是不同统计口径。</p>
+<h2 id="sft两阶段损失和-agentic-数据扩容"><a class="markdownIt-Anchor" href="#sft两阶段损失和-agentic-数据扩容"></a> SFT：两阶段损失和 agentic 数据扩容</h2>
+<p>SFT 采用两阶段设计，核心是处理长输出 reasoning 与 long-input-short-output 任务之间的 loss 权重冲突。</p>
+<table>
+<thead>
+<tr>
+<th>SFT Stage</th>
+<th>Loss Normalization</th>
+<th>Setup</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Stage 1</td>
+<td>token-level global average</td>
+<td>256K sequence length packing, global batch size 64, constant LR <code>1e-5</code>, 30K warmup samples</td>
+</tr>
+<tr>
+<td>Stage 2</td>
+<td>sample-level average</td>
+<td>512K sequence length packing, includes long context data up to 512K, global batch size 32, constant LR <code>1e-5</code></td>
+</tr>
+</tbody>
+</table>
+<p>Stage 1 让长输出样本获得更高权重，适合吸收 reasoning、代码和 agent 轨迹；Stage 2 先按每个 conversation 自身输出 token 数归一化，再对 conversation 平均，避免短输出任务被超长输出淹没。MTP 在 SFT 中继续训练：两层 shared-parameter MTP，per-token auxiliary loss，scale 仍是 <code>0.3</code>。</p>
+<h3 id="agentic-与工具数据"><a class="markdownIt-Anchor" href="#agentic-与工具数据"></a> Agentic 与工具数据</h3>
+<p>报告把 Agentic Command Line Interface 数据管线单独画出来，说明他们不是只做普通对话 SFT，而是在模拟 Codex/OpenCode/Qwen Code CLI 这类多步工具环境。</p>
+<p><img  
+                     lazyload
+                     src="/images/loading.svg"
+                     data-src="/image/ai-notes/images/paper-deep-dives/technical-reports/nemotron-3-super/figure-13-agentic-cli-data.png"
+                      alt="Agentic CLI dataset pipeline" 
+                ></p>
+<p><small>图源：<code>Nemotron 3 Super Technical Report</code>，Figure 13。原图展示 Agentic Command Line Interface Dataset Construction &amp; Training Pipeline。</small></p>
+<p>关键数据构造可以合并成下面几类：</p>
+<table>
+<thead>
+<tr>
+<th>Data block</th>
+<th>Scale / construction</th>
+<th>Training intent</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Agentic CLI</td>
+<td>20K seed；15K synthesis；3K SWE；10K Node.js web dev</td>
+<td>训练 CLI 规划、文件操作、工具调用、失败恢复</td>
+</tr>
+<tr>
+<td>Long Context</td>
+<td>128K/256K/512K 样本；多条 traces + semantic majority voting</td>
+<td>补 long-input-short-output 和跨文档推理</td>
+</tr>
+<tr>
+<td>Financial Reasoning</td>
+<td>从 565 个 SecQue seed 扩展到 S&amp;P500 公司和 2019-2024 年；最终 366,243 Q&amp;A pairs</td>
+<td>强化结构化金融问答与证据定位</td>
+</tr>
+<tr>
+<td>CUDA</td>
+<td>100K synthetic CUDA samples，含 kernel generation、repair、optimization、Nsight Compute log</td>
+<td>覆盖工程型代码优化任务</td>
+</tr>
+<tr>
+<td>Search / Terminal / Tool Use</td>
+<td>conversational tool-use、general-purpose tool-calling、Terminal-Task-Gen</td>
+<td>让模型学习工具 schema、环境反馈和多步轨迹</td>
+</tr>
+</tbody>
+</table>
+<p>工具调用数据分两条管线：specialized conversational tool-use 产生 <code>279,116</code> conversations、覆盖 <code>838</code> domains；general-purpose tool-calling 从 ToolEyes、API-Bank、UltraTools、xLAM 和自写工具构造 <code>144</code> toolsets，并生成约 <code>1.5M</code> diverse trajectories。</p>
+<p>SFT blend 的整体比例如下：</p>
+<p><img  
+                     lazyload
+                     src="/images/loading.svg"
+                     data-src="/image/ai-notes/images/paper-deep-dives/technical-reports/nemotron-3-super/figure-16-sft-blend.png"
+                      alt="SFT data blend" 
+                ></p>
+<p><small>图源：<code>Nemotron 3 Super Technical Report</code>，Figure 16。原图展示 Nemotron 3 Super 的 SFT data blend：Agent、Reasoning、Chat、Long Context、Misc。</small></p>
+<table>
+<thead>
+<tr>
+<th>SFT Blend</th>
+<th style="text-align:right">Share</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Agent</td>
+<td style="text-align:right">36.0%</td>
+</tr>
+<tr>
+<td>Reasoning</td>
+<td style="text-align:right">31.0%</td>
+</tr>
+<tr>
+<td>Chat</td>
+<td style="text-align:right">23.0%</td>
+</tr>
+<tr>
+<td>Long Context</td>
+<td style="text-align:right">8.0%</td>
+</tr>
+<tr>
+<td>Misc.</td>
+<td style="text-align:right">2.0%</td>
+</tr>
+</tbody>
+</table>
+<p>Agent 占比最高，说明工具与 CLI 不是后训练末尾的附加项，而是 Super 的主要能力面之一。</p>
+<h2 id="强化学习多环境同步训练"><a class="markdownIt-Anchor" href="#强化学习多环境同步训练"></a> 强化学习：多环境同步训练</h2>
+<p>Nemotron 3 Super 的 RL 不是逐个任务串行强化，而是 Stage 1 使用 unified RLVR 同步训练多类环境，避免 single-environment training 造成能力回退。</p>
+<p>RLVR 环境覆盖：</p>
+<table>
+<thead>
+<tr>
+<th>RLVR Domain</th>
+<th>Detail</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Math / STEM / Reasoning</td>
+<td>competitive math, Python tool use, formal proof, harder STEM and reasoning gym</td>
+</tr>
+<tr>
+<td>Code / SWE prep</td>
+<td>competition-style code and single-step patch generation</td>
+</tr>
+<tr>
+<td>Instruction / Safety</td>
+<td>rubric rewards, over-refusal reduction, jailbreak robustness</td>
+</tr>
+<tr>
+<td>Long Context / Agentic Tool Use</td>
+<td>long-context environment, conversational tool use, terminal use</td>
+</tr>
+</tbody>
+</table>
+<p>低努力推理也在 RL 中优化：一小部分 prompt 被转为 low-effort mode，reward 同时考虑 correctness 和 generated tokens 数。初期 Math、STEM QA、competitive coding 约占所有 RL prompts 的 <code>2%</code>，后来缩到 Math 和 STEM QA 的 <code>1%</code>。这相当于把长度成本显式放进训练目标。</p>
+<h3 id="异步-grpo"><a class="markdownIt-Anchor" href="#异步-grpo"></a> 异步 GRPO</h3>
+<p>报告的 RL 算法部分非常值得单独看。它使用 asynchronous GRPO：</p>
+<table>
+<thead>
+<tr>
+<th>Algorithm Detail</th>
+<th>Nemotron 3 Super Setup</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Training / inference</td>
+<td>decoupled across separate GPU devices</td>
+</tr>
+<tr>
+<td>Rollout</td>
+<td>workers continuously fill rollout buffer; updated weights pushed once available</td>
+</tr>
+<tr>
+<td>In-flight updates</td>
+<td>one trajectory may contain tokens from different model versions; KV cache not recomputed</td>
+</tr>
+<tr>
+<td>Policy lag / off-policy fix</td>
+<td>workers at most one step behind; masked importance sampling ratio</td>
+</tr>
+<tr>
+<td>RLVR batch</td>
+<td>256 prompts x 16 responses = 4096 samples</td>
+</tr>
+<tr>
+<td>Generation</td>
+<td>one gradient update per rollout; max generation length from 49K to 64K</td>
+</tr>
+</tbody>
+</table>
+<p>异步 rollout 会带来 policy lag 和 off-policy 问题；报告用 masked importance sampling ratio 控制训练/rollout 策略不一致，同时限制 worker 至多落后一步，避免 rollout 数据太旧。</p>
+<h3 id="swe-rl-和-pivotrl"><a class="markdownIt-Anchor" href="#swe-rl-和-pivotrl"></a> SWE-RL 和 PivotRL</h3>
+<p>Stage 2 单独做 SWE-RL，因为软件工程 rollout 慢、上下文长，和短 horizon 任务混训会拖慢吞吐。每个 rollout 会启动 Apptainer container，加载目标仓库，运行 OpenHands agent loop 生成 patch，再跑 ground-truth tests 给 binary reward。为了工具多样性，报告还在 OpenHands 中实现 OpenCode 和 Codex agent classes，匹配 Claude Code / Codex CLI 的工具格式。</p>
+<p>PivotRL 用于 Agentic Programming、Search、Terminal Use、Conversational Tool Use。它复用 offline SFT expert trajectories，不对整条长轨迹做昂贵在线 RL，而是在策略对下一步 action 有不确定性的 assistant turns 上做 RL，并用 domain-appropriate reward 给相似动作 credit。这是控制 agentic RL 成本的关键设计。</p>
+<h3 id="rlhf"><a class="markdownIt-Anchor" href="#rlhf"></a> RLHF</h3>
+<p>RLHF 使用 GenRM。报告写到 GenRM 以 <code>Qwen3-235B-A22B-Thinking-2507</code> 初始化，并使用 Helpsteer 3、商业友好的 lmarena-140k 子集和近期 human preference data。Super 在 multi-environment RL stage 中也使用 GenRM，并在最后额外做 RLHF-only stage，以改善 instruction following、robustness 和交互质量。</p>
+<h2 id="post-trained-结果"><a class="markdownIt-Anchor" href="#post-trained-结果"></a> Post-trained 结果</h2>
+<p>报告 Table 5 覆盖 general knowledge、reasoning、agentic、instruction following、long context 和 multilingual。下面保留最能说明模型取舍的关键行：</p>
+<table>
+<thead>
+<tr>
+<th>Benchmark</th>
+<th style="text-align:right">N-3-Super</th>
+<th style="text-align:right">Qwen3.5-122B-A10B</th>
+<th style="text-align:right">GPT-OSS-120B</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>MMLU-Pro</td>
+<td style="text-align:right">83.73</td>
+<td style="text-align:right">86.70</td>
+<td style="text-align:right">81.00</td>
+</tr>
+<tr>
+<td>AIME25 (no tools)</td>
+<td style="text-align:right">90.21</td>
+<td style="text-align:right">90.36</td>
+<td style="text-align:right">92.50</td>
+</tr>
+<tr>
+<td>HMMT Feb25 (no tools)</td>
+<td style="text-align:right">93.67</td>
+<td style="text-align:right">91.40</td>
+<td style="text-align:right">90.00</td>
+</tr>
+<tr>
+<td>HMMT Feb25 (with tools)</td>
+<td style="text-align:right">94.73</td>
+<td style="text-align:right">89.55</td>
+<td style="text-align:right">-</td>
+</tr>
+<tr>
+<td>GPQA (no tools)</td>
+<td style="text-align:right">79.23</td>
+<td style="text-align:right">86.60</td>
+<td style="text-align:right">80.10</td>
+</tr>
+<tr>
+<td>LiveCodeBench (v5 2024-07 -&gt; 2024-12)</td>
+<td style="text-align:right">81.19</td>
+<td style="text-align:right">78.93</td>
+<td style="text-align:right">88.00</td>
+</tr>
+<tr>
+<td>HLE (no tools)</td>
+<td style="text-align:right">18.26</td>
+<td style="text-align:right">25.30</td>
+<td style="text-align:right">14.90</td>
+</tr>
+<tr>
+<td>Terminal Bench (hard subset)</td>
+<td style="text-align:right">25.78</td>
+<td style="text-align:right">26.80</td>
+<td style="text-align:right">24.00</td>
+</tr>
+<tr>
+<td>SWE-Bench (OpenHands)</td>
+<td style="text-align:right">60.47</td>
+<td style="text-align:right">66.40</td>
+<td style="text-align:right">41.9</td>
+</tr>
+<tr>
+<td>TauBench V2 Average</td>
+<td style="text-align:right">61.15</td>
+<td style="text-align:right">74.53</td>
+<td style="text-align:right">61.0</td>
+</tr>
+<tr>
+<td>RULER1M</td>
+<td style="text-align:right">91.64</td>
+<td style="text-align:right">91.33</td>
+<td style="text-align:right">22.30</td>
+</tr>
+<tr>
+<td>MMLU-ProX (avg over langs)</td>
+<td style="text-align:right">79.36</td>
+<td style="text-align:right">85.06</td>
+<td style="text-align:right">76.59</td>
+</tr>
+</tbody>
+</table>
+<p>这张表说明 Super 的优势不是平均碾压 Qwen3.5-122B，而是几个能力点叠加：</p>
+<ol>
+<li><strong>长上下文强</strong>：RULER 256K/512K/1M 基本与 Qwen3.5 持平，远超 GPT-OSS-120B；</li>
+<li><strong>工具和终端能力有竞争力</strong>：Terminal Bench hard、TauBench average 与 GPT-OSS 接近或略优，但 Telecom 项明显落后 Qwen3.5；</li>
+<li><strong>SWE-Bench 仍落后 Qwen3.5</strong>：OpenHands 60.47 vs 66.40，但远高于 GPT-OSS-120B 的 41.9；</li>
+<li><strong>科学/HLE 不是最强项</strong>：HLE no tools 明显低于 Qwen3.5，但 with tools 后超过 GPT-OSS；</li>
+<li><strong>吞吐是核心差异</strong>：很多能力项接近时，Super 主要凭架构和量化拿到 serving efficiency。</li>
+</ol>
+<h2 id="推理量化"><a class="markdownIt-Anchor" href="#推理量化"></a> 推理量化</h2>
+<p>报告最后一部分讲 FP8 和 NVFP4 PTQ。要区分三件事：</p>
+<ol>
+<li><strong>NVFP4 pretraining</strong>：训练阶段大量 GEMM 用 NVFP4；</li>
+<li><strong>FP8 checkpoint</strong>：面向 Hopper 的 W8A8 部署版本；</li>
+<li><strong>NVFP4 checkpoint</strong>：面向 Blackwell 的 W4A4 部署版本。</li>
+</ol>
+<h3 id="fp8-与-nvfp4-checkpoint"><a class="markdownIt-Anchor" href="#fp8-与-nvfp4-checkpoint"></a> FP8 与 NVFP4 checkpoint</h3>
+<p>FP8 PTQ 使用 <code>256</code> 个 post-training SFT samples，context length <code>65536</code>。核心选择是：Embedding、attention projection、attention BMM2、MoE latent projection、1D conv 和 output 保持 BF16；KV cache + attention BMM1、MoE GEMM、Mamba GEMM 用 FP8；Mamba SSM cache 用 FP16。</p>
+<p>NVFP4 PTQ 面向 Blackwell W4A4。naive NVFP4 PTQ 会有 accuracy loss，所以最终 recipe 组合三件事：</p>
+<table>
+<thead>
+<tr>
+<th>Component</th>
+<th>Role</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>calibrated per-block weight scaling that minimizes MSE</td>
+<td>weight quantization offline search, no runtime cost</td>
+</tr>
+<tr>
+<td>dynamic per-block max-based activation scaling</td>
+<td>activation quantization must be runtime efficient</td>
+</tr>
+<tr>
+<td>selective promotion through Model-Optimizer AutoQuantize</td>
+<td>sensitive layers promoted to FP8 or BF16</td>
+</tr>
+</tbody>
+</table>
+<p>AutoQuantize 在 <code>&#123;NVFP4, FP8, BF16&#125;</code> 中搜索 per-operator assignment，约束 effective precision budget 为 <code>4.75 bits</code>。最终保留 BF16 的主要是 embedding、attention QKV、attention BMM2、Mamba 1D conv、output；保留 FP32 的是 router；可搜索 promotion 的主要是 attention output、shared experts、MoE latent projection 和 Mamba projection；routed sparse expert GEMM 主要落在 NVFP4。完整 mixed-precision PTQ 在单个 <code>8 x B200</code> node 上少于 2 小时完成，校准使用 <code>512</code> 个 SFT samples、sequence length <code>4096</code>，最终 NVFP4 模型达到 BF16 baseline 的 <code>99.8%</code> median accuracy。</p>
+<p>Table 8 关键行如下：</p>
+<table>
+<thead>
+<tr>
+<th>Benchmark</th>
+<th style="text-align:right">N-3-Super</th>
+<th style="text-align:right">N-3-Super FP8</th>
+<th style="text-align:right">N-3-Super NVFP4</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>MMLU-Pro</td>
+<td style="text-align:right">83.73</td>
+<td style="text-align:right">83.63</td>
+<td style="text-align:right">83.33</td>
+</tr>
+<tr>
+<td>HMMT Feb25 (with tools)</td>
+<td style="text-align:right">94.73</td>
+<td style="text-align:right">94.38</td>
+<td style="text-align:right">95.36</td>
+</tr>
+<tr>
+<td>GPQA (no tools)</td>
+<td style="text-align:right">79.23</td>
+<td style="text-align:right">79.36</td>
+<td style="text-align:right">79.42</td>
+</tr>
+<tr>
+<td>LiveCodeBench</td>
+<td style="text-align:right">81.19</td>
+<td style="text-align:right">80.99</td>
+<td style="text-align:right">80.56</td>
+</tr>
+<tr>
+<td>Terminal Bench hard</td>
+<td style="text-align:right">25.78</td>
+<td style="text-align:right">26.04</td>
+<td style="text-align:right">24.48</td>
+</tr>
+<tr>
+<td>SWE-Bench (OpenCode)</td>
+<td style="text-align:right">60.47</td>
+<td style="text-align:right">-</td>
+<td style="text-align:right">59.90</td>
+</tr>
+<tr>
+<td>RULER1M</td>
+<td style="text-align:right">91.64</td>
+<td style="text-align:right">91.43</td>
+<td style="text-align:right">91.60</td>
+</tr>
+<tr>
+<td>MMLU-ProX avg</td>
+<td style="text-align:right">79.35</td>
+<td style="text-align:right">79.21</td>
+<td style="text-align:right">79.37</td>
+</tr>
+</tbody>
+</table>
+<p>这张表支撑了报告的关键部署主张：NVFP4 不是只压小模型，而是在 120B-A12B Super 上也能基本保持 BF16 精度，同时给 Blackwell 推理吞吐留出空间。</p>
+<h3 id="mamba-state-cache"><a class="markdownIt-Anchor" href="#mamba-state-cache"></a> Mamba state cache</h3>
+<p>Mamba 的 SSM cache 默认 FP32。报告尝试把 SSM cache 存成 FP16，以减少 memory-bound decoding 的 DRAM read，但发现 naive FP16 cache 会显著增加 verbosity：</p>
+<table>
+<thead>
+<tr>
+<th>Precision</th>
+<th>SSM cache recipe</th>
+<th>Key observation</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>W16A16</td>
+<td>FP32</td>
+<td>baseline verbosity</td>
+</tr>
+<tr>
+<td>W16A16</td>
+<td>FP16</td>
+<td>livecodebench verbosity +36.95%</td>
+</tr>
+<tr>
+<td>W16A16</td>
+<td>FP16+SR (Philox 5)</td>
+<td>verbosity drops back near baseline</td>
+</tr>
+<tr>
+<td>W8A8</td>
+<td>FP16</td>
+<td>livecodebench verbosity +40.27%</td>
+</tr>
+<tr>
+<td>W8A8</td>
+<td>FP16+SR (Philox 5)</td>
+<td>verbosity increase only +1.79% / +1.08%</td>
+</tr>
+</tbody>
+</table>
+<p>原因是 Mamba decoding 是 recurrent：cache quantization error 不会只影响当前 step，而会沿 recurrent transition 传播并累积。普通 FP16 cast 的 RTNE rounding 会产生系统性 bias；stochastic rounding 在期望上无偏，能把系统性漂移变成零均值噪声。最终报告选择 <code>FP16+SR (Philox 5)</code>，因为它不需要额外 block scale，Blackwell 有 stochastic rounding 的专用 PTX 指令，也支持 Philox PRNG。</p>
+<h2 id="工程启发"><a class="markdownIt-Anchor" href="#工程启发"></a> 工程启发</h2>
+<p>这篇报告最值得复用的不是某个单点 trick，而是系统协同：</p>
+<table>
+<thead>
+<tr>
+<th>Theme</th>
+<th>Takeaway</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Long context</td>
+<td>Mamba-heavy 主干让大多数层在生成阶段只维护固定状态，少量 attention anchor 保留全局交互</td>
+</tr>
+<tr>
+<td>MoE serving</td>
+<td>LatentMoE 瞄准 expert weight bandwidth 和 all-to-all，而不只看每 token FLOPs</td>
+</tr>
+<tr>
+<td>MTP</td>
+<td>shared-weight MTP 把递归 drafting 的分布偏移提前暴露给训练</td>
+</tr>
+<tr>
+<td>Low precision</td>
+<td>NVFP4 要看 underflow、zero gradients 和下游指标，不只看 loss</td>
+</tr>
+<tr>
+<td>Agent RL</td>
+<td>多环境 RLVR 避免能力跷跷板，异步 GRPO 保证 rollout/training 吞吐</td>
+</tr>
+<tr>
+<td>Quantization</td>
+<td>Mamba SSM cache 量化会改变 verbosity，recurrent state 误差要单独处理</td>
+</tr>
+</tbody>
+</table>
+<h2 id="边界与风险"><a class="markdownIt-Anchor" href="#边界与风险"></a> 边界与风险</h2>
+<p>几个边界要记住：benchmark 绑定 Nemo Evaluator / harness / prompt / judge；吞吐结论绑定 B200/B300、vLLM/TRT-LLM 和具体 TP 设置；SWE-Bench 仍落后 Qwen3.5-122B；LatentMoE 与异步 RL 都依赖并行策略、kernel、runtime 和训练平台配合，复现门槛很高。</p>
+<h2 id="读法总结"><a class="markdownIt-Anchor" href="#读法总结"></a> 读法总结</h2>
+<p>Nemotron 3 Super 的核心不是“120B MoE 又多强”，而是一个完整工程命题：</p>
+<div class="code-container" data-rel="Text"><figure class="iseeu highlight text"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br></pre></td><td class="code"><pre><span class="line">如何让一个 120B total / 12B active 的开源模型，</span><br><span class="line">在 1M context、长输出、工具调用、终端、SWE 和多环境 RL 上可用，</span><br><span class="line">同时让训练和推理都落到 NVFP4 / FP8 / Blackwell / Hopper 的现实硬件路径上。</span><br></pre></td></tr></table></figure></div>
+<p>真正值得学习的是组合拳：Mamba 解决长序列状态，LatentMoE 解决 expert bandwidth / communication，MTP 解决 speculative decoding，NVFP4 解决训练吞吐，异步多环境 RL 解决 agent 能力协同，PTQ 和 SSM cache recipe 解决部署落地。</p>
+
+		</div>
+
+		
+		<div class="post-copyright-info w-full my-8 px-2 sm:px-6 md:px-8">
+			<div class="article-copyright-info-container">
+    <ul>
+        <li><strong>Title:</strong> 论文专题讲解：Nemotron 3 Super：Mamba-MoE 与异步多环境 RL</li>
+        <li><strong>Author:</strong> Charles</li>
+        <li><strong>Created at
+                :</strong> 2025-12-08 09:00:00</li>
+        
+            <li>
+                <strong>Updated at
+                    :</strong> 2025-12-08 09:00:00
+            </li>
+        
+        <li>
+            <strong>Link:</strong> https://charles2530.github.io/2025/12/08/ai-files-paper-deep-dives-technical-reports-nemotron-3-super/
+        </li>
+        <li>
+            <strong>
+                License:
+            </strong>
+            
+
+            
+                This work is licensed under <a class="license" target="_blank" rel="noopener" href="https://creativecommons.org/licenses/by-nc-sa/4.0">CC BY-NC-SA 4.0</a>.
+            
+        </li>
+    </ul>
+</div>
+
+		</div>
+		
+
+		
+		<ul class="post-tags-box text-lg mt-1.5 flex-wrap justify-center flex md:hidden">
+			
+			<li class="tag-item mx-0.5">
+				<a href="/tags/AI/">#AI</a>&nbsp;
+			</li>
+			
+			<li class="tag-item mx-0.5">
+				<a href="/tags/%E8%AE%BA%E6%96%87%E4%B8%93%E9%A2%98/">#论文专题</a>&nbsp;
+			</li>
+			
+			<li class="tag-item mx-0.5">
+				<a href="/tags/%E5%BC%BA%E5%8C%96%E5%AD%A6%E4%B9%A0/">#强化学习</a>&nbsp;
+			</li>
+			
+			<li class="tag-item mx-0.5">
+				<a href="/tags/%E6%8A%80%E6%9C%AF%E6%8A%A5%E5%91%8A/">#技术报告</a>&nbsp;
+			</li>
+			
+		</ul>
+		
+
+		
+
+		
+		<div class="article-nav my-8 flex justify-between items-center px-2 sm:px-6 md:px-8">
+			
+			<div class="article-prev border-border-color shadow-redefine-flat shadow-shadow-color-2 rounded-medium px-4 py-2 hover:shadow-redefine-flat-hover hover:shadow-shadow-color-2">
+				<a class="prev" rel="prev" href="/2025/12/10/ai-files-paper-deep-dives-technical-reports-qwen3/">
+					<span class="left arrow-icon flex justify-center items-center">
+						<i class="fa-solid fa-chevron-left"></i>
+					</span>
+					<span class="title flex justify-center items-center">
+						<span class="post-nav-title-item truncate max-w-48">论文专题讲解：Qwen3：Thinking 模式、36T 预训练与蒸馏</span>
+						<span class="post-nav-item">Prev posts</span>
+					</span>
+				</a>
+			</div>
+			
+			
+			<div class="article-next border-border-color shadow-redefine-flat shadow-shadow-color-2 rounded-medium px-4 py-2 hover:shadow-redefine-flat-hover hover:shadow-shadow-color-2">
+				<a class="next" rel="next" href="/2025/12/06/ai-files-paper-deep-dives-technical-reports-kimi-k2/">
+					<span class="title flex justify-center items-center">
+						<span class="post-nav-title-item truncate max-w-48">论文专题讲解：Kimi K2：MuonClip、万亿 MoE 与 Agent 数据</span>
+						<span class="post-nav-item">Next posts</span>
+					</span>
+					<span class="right arrow-icon flex justify-center items-center">
+						<i class="fa-solid fa-chevron-right"></i>
+					</span>
+				</a>
+			</div>
+			
+		</div>
+		
+
+
+		
+		<div class="comment-container px-2 sm:px-6 md:px-8 pb-8">
+			<div class="comments-container mt-10 w-full ">
+    <div id="comment-anchor" class="w-full h-2.5"></div>
+    <div class="comment-area-title w-full my-1.5 md:my-2.5 text-xl md:text-3xl font-bold">
+        Comments
+    </div>
+    
+
+        
+            
+    <div id="gitalk-container"></div>
+    <script data-swup-reload-script
+            src="https://cdnjs.cloudflare.com/ajax/libs/gitalk/1.8.0/gitalk.min.js"></script>
+    <script data-swup-reload-script>
+        (function() {
+            const startPath = location.pathname;
+            const startTime = Date.now();
+            const retryDelay = 200;
+            const retryLimit = 5000;
+
+            const runGitalk = () => {
+                if (location.pathname !== startPath) {
+                    return;
+                }
+
+                const container = document.getElementById('gitalk-container');
+                if (!container || typeof Gitalk === 'undefined') {
+                    if (Date.now() - startTime < retryLimit) {
+                        setTimeout(runGitalk, retryDelay);
+                    }
+                    return;
+                }
+
+                container.innerHTML = '';
+
+                let pageKey = decodeURI(location.pathname);
+                const maxLength = 50;
+                if (pageKey.length > maxLength) {
+                    pageKey = pageKey.substring(0, maxLength - 3) + '...';
+                }
+
+                try {
+                    new Gitalk({
+                        clientID: '8083299a8ee2aaf23879',
+                        clientSecret: 'a8161e81d4872181e884fdb69f7be24916b6a9d0',
+                        repo: 'Charles2530.github.io',
+                        owner: 'Charles2530',
+                        admin: ['Charles2530'],
+                        id: pageKey,
+                        language: 'en',
+                        proxy: 'https://github.com/login/oauth/access_token'
+                    }).render(container);
+                } catch (e) {
+                    window.Gitalk = null;
+                }
+            };
+
+            runGitalk();
+        })();
+    </script>
+
+
+
+        
+    
+</div>
+
+		</div>
+		
+	</div>
+
+	
+	<div class="toc-content-container">
+		<div class="post-toc-wrap">
+	<div class="post-toc">
+		<div class="toc-title">On this page</div>
+		<div class="page-title">论文专题讲解：Nemotron 3 Super：Mamba-MoE 与异步多环境 RL</div>
+		<ol class="nav"><li class="nav-item nav-level-2"><a class="nav-link" href="#%E8%AE%BA%E6%96%87%E4%BD%8D%E7%BD%AE"><span class="nav-text"> 论文位置</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#%E6%A8%A1%E5%9E%8B%E5%AE%B6%E6%97%8F"><span class="nav-text"> 模型家族</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#%E6%80%BB%E4%BD%93%E6%9E%B6%E6%9E%84"><span class="nav-text"> 总体架构</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#latentmoe"><span class="nav-text"> LatentMoE</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#mtp%E5%85%B1%E4%BA%AB%E5%8F%82%E6%95%B0%E7%9A%84%E9%80%92%E5%BD%92%E8%8D%89%E7%A8%BF%E5%A4%B4"><span class="nav-text"> MTP：共享参数的递归草稿头</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#nvfp4-%E9%A2%84%E8%AE%AD%E7%BB%83"><span class="nav-text"> NVFP4 预训练</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#%E9%A2%84%E8%AE%AD%E7%BB%83%E6%95%B0%E6%8D%AE%E4%B8%8E%E8%B6%85%E5%8F%82"><span class="nav-text"> 预训练数据与超参</span></a><ol class="nav-child"><li class="nav-item nav-level-3"><a class="nav-link" href="#checkpoint-merging"><span class="nav-text"> Checkpoint merging</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#long-context-extension"><span class="nav-text"> Long-context extension</span></a></li></ol></li><li class="nav-item nav-level-2"><a class="nav-link" href="#base-model-%E7%BB%93%E6%9E%9C"><span class="nav-text"> Base Model 结果</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#%E5%90%8E%E5%A4%A7%E6%A8%A1%E5%9E%8B%E8%AE%AD%E7%BB%83%E8%B7%AF%E7%BA%BF%E5%9B%BE"><span class="nav-text"> 后大模型训练路线图</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#sft%E4%B8%A4%E9%98%B6%E6%AE%B5%E6%8D%9F%E5%A4%B1%E5%92%8C-agentic-%E6%95%B0%E6%8D%AE%E6%89%A9%E5%AE%B9"><span class="nav-text"> SFT：两阶段损失和 agentic 数据扩容</span></a><ol class="nav-child"><li class="nav-item nav-level-3"><a class="nav-link" href="#agentic-%E4%B8%8E%E5%B7%A5%E5%85%B7%E6%95%B0%E6%8D%AE"><span class="nav-text"> Agentic 与工具数据</span></a></li></ol></li><li class="nav-item nav-level-2"><a class="nav-link" href="#%E5%BC%BA%E5%8C%96%E5%AD%A6%E4%B9%A0%E5%A4%9A%E7%8E%AF%E5%A2%83%E5%90%8C%E6%AD%A5%E8%AE%AD%E7%BB%83"><span class="nav-text"> 强化学习：多环境同步训练</span></a><ol class="nav-child"><li class="nav-item nav-level-3"><a class="nav-link" href="#%E5%BC%82%E6%AD%A5-grpo"><span class="nav-text"> 异步 GRPO</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#swe-rl-%E5%92%8C-pivotrl"><span class="nav-text"> SWE-RL 和 PivotRL</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#rlhf"><span class="nav-text"> RLHF</span></a></li></ol></li><li class="nav-item nav-level-2"><a class="nav-link" href="#post-trained-%E7%BB%93%E6%9E%9C"><span class="nav-text"> Post-trained 结果</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#%E6%8E%A8%E7%90%86%E9%87%8F%E5%8C%96"><span class="nav-text"> 推理量化</span></a><ol class="nav-child"><li class="nav-item nav-level-3"><a class="nav-link" href="#fp8-%E4%B8%8E-nvfp4-checkpoint"><span class="nav-text"> FP8 与 NVFP4 checkpoint</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#mamba-state-cache"><span class="nav-text"> Mamba state cache</span></a></li></ol></li><li class="nav-item nav-level-2"><a class="nav-link" href="#%E5%B7%A5%E7%A8%8B%E5%90%AF%E5%8F%91"><span class="nav-text"> 工程启发</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#%E8%BE%B9%E7%95%8C%E4%B8%8E%E9%A3%8E%E9%99%A9"><span class="nav-text"> 边界与风险</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#%E8%AF%BB%E6%B3%95%E6%80%BB%E7%BB%93"><span class="nav-text"> 读法总结</span></a></li></ol>
+
+	</div>
+</div>
+	</div>
+	
+</div>
+
+			</div>
+
+			
+		</div>
+
+		<div class="main-content-footer">
+			<footer class="footer mt-5 py-5 h-auto text-base text-third-text-color relative border-t-2 border-t-border-color">
+    <div class="info-container py-3 text-center">
+        
+        <div class="text-center">
+            &copy;
+            
+              <span>2022</span>
+              -
+            
+            2026&nbsp;&nbsp;<i class="fa-solid fa-heart fa-beat" style="--fa-animation-duration: 0.5s; color: #f54545"></i>&nbsp;&nbsp;<a href="/">Charles</a>
+            
+                
+                <p class="post-count space-x-0.5">
+                    <span>
+                        501 posts in total
+                    </span>
+                    
+                        <span>
+                            1992.2k words in total
+                        </span>
+                    
+                </p>
+            
+        </div>
+        
+            <script data-swup-reload-script src="https://cn.vercount.one/js"></script>
+            <div class="relative text-center lg:absolute lg:right-[20px] lg:top-1/2 lg:-translate-y-1/2 lg:text-right">
+                
+                    <span id="busuanzi_container_site_uv" class="lg:!block">
+                        <span class="text-sm">VISITOR COUNT</span>
+                        <span id="busuanzi_value_site_uv"></span>
+                    </span>
+                
+                
+                    <span id="busuanzi_container_site_pv" class="lg:!block">
+                        <span class="text-sm">TOTAL PAGE VIEWS</span>
+                        <span id="busuanzi_value_site_pv"></span>
+                    </span>
+                
+            </div>
+        
+        <div class="relative text-center lg:absolute lg:left-[20px] lg:top-1/2 lg:-translate-y-1/2 lg:text-left">
+            <span class="lg:block text-sm">POWERED BY <?xml version="1.0" encoding="utf-8"?><!DOCTYPE svg PUBLIC "-//W3C//DTD SVG 1.1//EN" "http://www.w3.org/Graphics/SVG/1.1/DTD/svg11.dtd"><svg class="relative top-[2px] inline-block align-baseline" version="1.1" id="圖層_1" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" x="0px" y="0px" width="1rem" height="1rem" viewBox="0 0 512 512" enable-background="new 0 0 512 512" xml:space="preserve"><path fill="#0E83CD" d="M256.4,25.8l-200,115.5L56,371.5l199.6,114.7l200-115.5l0.4-230.2L256.4,25.8z M349,354.6l-18.4,10.7l-18.6-11V275H200v79.6l-18.4,10.7l-18.6-11v-197l18.5-10.6l18.5,10.8V237h112v-79.6l18.5-10.6l18.5,10.8V354.6z"/></svg><a target="_blank" class="text-base" href="https://hexo.io">Hexo</a></span>
+            <span class="text-sm lg:block">THEME&nbsp;<a class="text-base" target="_blank" href="https://github.com/EvanNotFound/hexo-theme-redefine">Redefine v2.9.0</a></span>
+        </div>
+        
+        
+            <div>
+                Blog up for <span class="odometer" id="runtime_days" ></span> days <span class="odometer" id="runtime_hours"></span> hrs <span class="odometer" id="runtime_minutes"></span> Min <span class="odometer" id="runtime_seconds"></span> Sec
+            </div>
+        
+        
+            <script data-swup-reload-script>
+                try {
+                    function odometer_init() {
+                    const elements = document.querySelectorAll('.odometer');
+                    elements.forEach(el => {
+                        new Odometer({
+                            el,
+                            format: '( ddd).dd',
+                            duration: 200
+                        });
+                    });
+                    }
+                    odometer_init();
+                } catch (error) {}
+            </script>
+        
+        
+            
+                
+        
+                
+        
+                
+
+                    
+                        <script data-swup-reload-script type="text/javascript" src="/js/love.js"></script>
+                    
+        
+        
+    </div>  
+</footer>
+		</div>
+	</div>
+
+	
+	<div class="post-tools">
+		<div class="post-tools-container">
+	<ul class="article-tools-list">
+		<!-- TOC aside toggle -->
+		
+		<li class="right-bottom-tools page-aside-toggle">
+			<i class="fa-regular fa-outdent"></i>
+		</li>
+		
+
+		<!-- go comment -->
+		
+		<li class="go-comment">
+			<i class="fa-regular fa-comments"></i>
+		</li>
+		
+	</ul>
+</div>
+	</div>
+	
+
+	<div class="right-side-tools-container">
+		<div class="side-tools-container">
+	<ul class="hidden-tools-list">
+		<li class="right-bottom-tools tool-font-adjust-plus flex justify-center items-center">
+			<i class="fa-regular fa-magnifying-glass-plus"></i>
+		</li>
+
+		<li class="right-bottom-tools tool-font-adjust-minus flex justify-center items-center">
+			<i class="fa-regular fa-magnifying-glass-minus"></i>
+		</li>
+
+		<li class="right-bottom-tools tool-dark-light-toggle flex justify-center items-center">
+			<i class="fa-regular fa-moon"></i>
+		</li>
+
+		<!-- rss -->
+		
+		<li class="right-bottom-tools rss flex justify-center items-center">
+			<a class="flex justify-center items-center" href="/atom.xml" target="_blank">
+				<i class="fa-regular fa-rss"></i>
+			</a>
+		</li>
+		
+
+		
+
+		<li class="right-bottom-tools tool-scroll-to-bottom flex justify-center items-center">
+			<i class="fa-regular fa-arrow-down"></i>
+		</li>
+	</ul>
+
+	<ul class="visible-tools-list">
+		<li class="right-bottom-tools toggle-tools-list flex justify-center items-center">
+			<i class="fa-regular fa-cog fa-spin"></i>
+		</li>
+		
+		<li class="right-bottom-tools tool-scroll-to-top flex justify-center items-center">
+			<i class="arrow-up fas fa-arrow-up"></i>
+			<span class="percent"></span>
+		</li>
+		
+		
+	</ul>
+</div>
+	</div>
+
+	<div class="image-viewer-container" role="dialog" aria-modal="true" aria-label="Image viewer">
+	<button class="image-viewer-close" type="button" aria-label="Close">
+		<i class="fa-solid fa-xmark"></i>
+	</button>
+	<button class="image-viewer-prev" type="button" aria-label="Prev">
+		<i class="fa-solid fa-chevron-left"></i>
+	</button>
+	<div class="image-viewer-frame">
+		<img src="" alt="">
+	</div>
+	<div class="image-viewer-exif-panel hidden absolute left-1/2 bottom-20 -translate-x-1/2 w-[min(92vw,420px)] max-h-[60vh] overflow-hidden rounded-2xl bg-background-color-transparent-80 p-4 text-left shadow-redefine-flat backdrop-blur-md" role="dialog" aria-label="EXIF" aria-hidden="true">
+		<div class="flex items-center justify-between mb-3">
+			<span class="text-sm font-semibold text-first-text-color">EXIF</span>
+			<button class="image-viewer-exif-close flex h-8 w-8 items-center justify-center rounded-full bg-background-color-transparent-80 text-first-text-color transition hover:bg-background-color-transparent-40" type="button" aria-label="Close">
+				<i class="fa-solid fa-xmark text-[0.65rem]"></i>
+			</button>
+		</div>
+		<div class="image-viewer-exif-cards grid grid-cols-1 sm:grid-cols-2 gap-3 max-h-[50vh] overflow-y-auto pr-1 scrollbar-hide"></div>
+		<template class="image-viewer-exif-card-template">
+			<div class="rounded-lg bg-background-color-transparent-40 px-3 py-2">
+				<div class="image-viewer-exif-card-header flex items-center gap-2 mb-1">
+					<i class="image-viewer-exif-card-icon fa-solid fa-circle-info text-xs text-third-text-color"></i>
+					<div class="image-viewer-exif-card-title text-xs font-semibold text-first-text-color"></div>
+				</div>
+				<div class="image-viewer-exif-card-items flex flex-col gap-1"></div>
+			</div>
+		</template>
+	</div>
+	<button class="image-viewer-exif-toggle flex items-center gap-2 hidden absolute left-1/2 bottom-6 -translate-x-1/2 rounded-full border border-border-color bg-background-color-transparent-80 px-4 py-2 text-first-text-color backdrop-blur-md transition hover:bg-background-color-transparent-40" type="button" aria-label="EXIF" aria-expanded="false">
+		<i class="fa-solid fa-circle-info text-xs"></i>
+		<span class="text-xs font-semibold uppercase tracking-wider">EXIF</span>
+	</button>
+	<button class="image-viewer-next" type="button" aria-label="Next">
+		<i class="fa-solid fa-chevron-right"></i>
+	</button>
+</div>
+
+
+	
+	<div class="search-pop-overlay">
+	<div class="popup search-popup">
+		<div class="search-header">
+			<span class="search-input-field-pre">
+				<i class="fa-solid fa-keyboard"></i>
+			</span>
+			<div class="search-input-container">
+				<input autocomplete="off" autocorrect="off" autocapitalize="off" placeholder="Search..." spellcheck="false" type="search" class="search-input">
+			</div>
+			<span class="popup-btn-close">
+				<i class="fa-solid fa-times"></i>
+			</span>
+		</div>
+		<div id="search-result">
+			<div id="no-result">
+				<i class="fa-solid fa-spinner fa-spin-pulse fa-5x fa-fw"></i>
+			</div>
+		</div>
+	</div>
+</div>
+	
+
+</main>
+
+
+
+<script src="/js/build/libs/Swup.min.js"></script>
+
+<script src="/js/build/libs/SwupSlideTheme.min.js"></script>
+
+<script src="/js/build/libs/SwupScriptsPlugin.min.js"></script>
+
+<script src="/js/build/libs/SwupProgressPlugin.min.js"></script>
+
+<script src="/js/build/libs/SwupScrollPlugin.min.js"></script>
+
+<script src="/js/build/libs/SwupPreloadPlugin.min.js"></script>
+
+<script>
+    window.swup = new Swup({
+        plugins: [
+            new SwupScriptsPlugin({
+                optin: true,
+            }),
+            new SwupProgressPlugin(),
+            new SwupScrollPlugin({
+                offset: 80,
+            }),
+            new SwupSlideTheme({
+                mainElement: ".main-content-body",
+            }),
+            new SwupPreloadPlugin(),
+        ],
+        containers: ["#swup"],
+    });
+
+    window.dispatchEvent(
+        new CustomEvent("redefine:swup:ready", {
+            detail: {
+                swup: window.swup,
+            },
+        }),
+    );
+</script>
+
+
+
+
+	
+<script src="/js/build/main.js" type="module"></script>
+
+
+
+    
+<script src="/js/build/libs/odometer.min.js"></script>
+
+    
+<link rel="stylesheet" href="/assets/odometer-theme-minimal.css">
+
+
+
+
+
+
+
+  
+<script src="/js/build/libs/Typed.min.js"></script>
+<script src="/js/build/libs/minimasonry.min.js" data-swup-reload-script=""></script>
+
+
+
+
+<script src="/js/build/libs/moment-with-locales.min.js" data-swup-reload-script=""></script>
+
+
+
+	
+</body>
+
+</html>
