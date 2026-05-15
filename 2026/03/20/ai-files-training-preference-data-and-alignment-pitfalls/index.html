@@ -1,0 +1,1481 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="keywords" content="Charles">
+    
+    
+    <meta name="author" content="Charles">
+    
+    <!-- Completely eliminate flash of wrong theme -->
+    <script>
+        (function() {
+            const THEME_KEY = "REDEFINE-THEME-STATUS";
+            const DARK = "dark", LIGHT = "light";
+            
+            // Get preferred theme
+            function getTheme() {
+                try {
+                    const saved = localStorage.getItem(THEME_KEY);
+                    if (saved) {
+                        const { isDark } = JSON.parse(saved);
+                        return isDark ? DARK : LIGHT;
+                    }
+                } catch (e) {}
+                
+                return matchMedia("(prefers-color-scheme: dark)").matches ? DARK : LIGHT;
+            }
+            
+            // Apply theme to document
+            function applyTheme(theme) {
+                const isDark = theme === DARK;
+                const root = document.documentElement;
+                
+                // Set classes for compatibility
+                root.classList.add(theme);
+                root.classList.remove(isDark ? LIGHT : DARK);
+                root.style.colorScheme = theme;
+            }
+            
+            // Initial application
+            const theme = getTheme();
+            applyTheme(theme);
+            
+            // Listen for system preference changes
+            matchMedia("(prefers-color-scheme: dark)").addEventListener("change", ({ matches }) => {
+                // Only update if using system preference (no localStorage entry)
+                if (!localStorage.getItem(THEME_KEY)) {
+                    applyTheme(matches ? DARK : LIGHT);
+                }
+            });
+            
+            // Set body classes ASAP (before DOMContentLoaded)
+            (function() {
+                const addBodyClass = () => {
+                    const b = document.body;
+                    if (!b) return false;
+                    b.classList.add(theme + "-mode");
+                    return true;
+                };
+
+                // Try immediately
+                if (addBodyClass()) return;
+
+                // Observe until body exists
+                const mo = new MutationObserver(() => {
+                    if (addBodyClass()) mo.disconnect();
+                });
+                mo.observe(document.documentElement, { childList: true, subtree: true });
+            })();
+        })();
+    </script>
+    
+    <!-- preconnect -->
+<!--- Seo Part-->
+    
+    <link rel="canonical" href="https://charles2530.github.io/2026/03/20/ai-files-training-preference-data-and-alignment-pitfalls/"/>
+    <meta name="robots" content="index,follow">
+    <meta name="googlebot" content="index,follow">
+    <meta name="revisit-after" content="1 days">
+    
+    
+        
+        <meta name="description" content="This is Charles&#39;s Castle.">
+<meta property="og:type" content="article">
+<meta property="og:title" content="训练：偏好数据与对齐失效">
+<meta property="og:url" content="https://charles2530.github.io/2026/03/20/ai-files-training-preference-data-and-alignment-pitfalls/index.html">
+<meta property="og:site_name" content="Charles&#39;s Castle">
+<meta property="og:description" content="This is Charles&#39;s Castle.">
+<meta property="og:locale" content="en_US">
+<meta property="og:image" content="https://charles2530.github.io/image/background/logo.jpg">
+<meta property="article:published_time" content="2026-03-20T01:00:00.000Z">
+<meta property="article:modified_time" content="2026-03-20T01:00:00.000Z">
+<meta property="article:author" content="Du Jinyang">
+<meta property="article:tag" content="AI">
+<meta property="article:tag" content="训练">
+<meta property="article:tag" content="数据与评测">
+<meta name="twitter:card" content="summary">
+<meta name="twitter:image" content="https://charles2530.github.io/image/background/logo.jpg">
+    
+    
+    <!--- Icon Part-->
+    <link rel="icon" type="image/png" href="https://charles2530.github.io/image/background/favicon.png" sizes="192x192">
+    <link rel="apple-touch-icon" sizes="180x180" href="https://charles2530.github.io/image/background/favicon.png">
+    <meta name="theme-color" content="#A31F34">
+    <link rel="shortcut icon" href="https://charles2530.github.io/image/background/favicon.png">
+    <!--- Page Info-->
+    
+    <title>
+        
+            训练：偏好数据与对齐失效 | Charles&#39;s Castle
+        
+    </title>
+
+    
+<link rel="stylesheet" href="/fonts/Chillax/chillax.css">
+
+
+    <!--- Inject Part-->
+    
+        
+            
+    
+            
+    
+            
+                
+                    <link rel="stylesheet" href="/katex/katex.min.css">
+                
+    
+            
+                
+                    <link rel="stylesheet" href="/css/site-polish-v2.css">
+                
+    
+            
+                
+                    <script data-swup-reload-script>
+(function() {
+  function loadBaiduAnalytics() {
+    if (window.__baiduAnalyticsLoaded) return;
+    window.__baiduAnalyticsLoaded = true;
+    window._hmt = window._hmt || [];
+    var hm = document.createElement("script");
+    hm.async = true;
+    hm.src = "https://hm.baidu.com/hm.js?8e0e5f382d14d87cbeadc33a36e71e86";
+    document.head.appendChild(hm);
+  }
+  if ("requestIdleCallback" in window) {
+    requestIdleCallback(loadBaiduAnalytics, { timeout: 3000 });
+  } else {
+    window.addEventListener("load", function() {
+      setTimeout(loadBaiduAnalytics, 1500);
+    });
+  }
+})();
+</script>
+
+                
+    
+
+    
+<link rel="stylesheet" href="/css/style.css">
+
+
+    
+        
+<link rel="stylesheet" href="/css/build/tailwind.css">
+
+    
+
+    
+<link rel="stylesheet" href="/fonts/GeistMono/geist-mono.css">
+
+    
+<link rel="stylesheet" href="/fonts/Geist/geist.css">
+
+    <!--- Font Part-->
+    
+    
+    
+    
+    
+    
+        
+<script src="/js/build/libs/anime.min.js"></script>
+
+    
+
+    <script id="hexo-configurations">
+    window.config = {"hostname":"charles2530.github.io","root":"/","language":"en","path":"search.xml"};
+    window.theme = {"articles":{"style":{"font_size":"16px","line_height":1.5,"image_border_radius":"14px","image_alignment":"center","image_caption":false,"link_icon":true,"delete_mask":false,"title_alignment":"left","headings_top_spacing":{"h1":"5rem","h2":"4rem","h3":"2.8rem","h4":"2.5rem","h5":"2.2rem","h6":"2rem"}},"word_count":{"enable":true,"count":true,"min2read":true},"author_label":{"enable":true,"auto":true,"list":["lol","Neo","God"]},"code_block":{"copy":true,"style":"mac","highlight_theme":{"light":"github","dark":"vs2015"},"font":{"enable":false,"family":null,"url":null}},"toc":{"enable":true,"max_depth":6,"number":false,"expand":true,"init_open":true},"copyright":{"enable":true,"default":"cc_by_nc_sa"},"lazyload":true,"pangu_js":false,"recommendation":{"enable":false,"title":"recommend_articles","limit":3,"mobile_limit":2,"placeholder":"https://charles2530.github.io/image/background/p3.jfif","skip_dirs":[]}},"colors":{"primary":"#A31F34","secondary":"#1890ff","default_mode":"light"},"global":{"fonts":{"chinese":{"enable":false,"family":null,"url":null},"english":{"enable":false,"family":null,"url":null},"title":{"enable":false,"family":null,"url":null}},"content_max_width":"1000px","sidebar_width":"210px","hover":{"shadow":true,"scale":true},"scroll_progress":{"bar":true,"percentage":true},"website_counter":{"url":"https://cn.vercount.one/js","enable":true,"site_pv":true,"site_uv":true,"post_pv":true},"single_page":true,"preloader":{"enable":true,"custom_message":null},"side_tools":{"gear_rotation":true,"auto_expand":false},"open_graph":{"enable":true,"image":"https://charles2530.github.io/image/background/logo.jpg","description":"This is Charles's Castle."},"google_analytics":{"enable":false,"id":null}},"home_banner":{"enable":true,"style":"fixed","image":{"light":"https://charles2530.github.io/image/background/background-light1.jpg","dark":"https://charles2530.github.io/image/background/background-dark1.jpg"},"title":"Charles's Castle","subtitle":{"text":["Happiness is best!","Never give up!","Everyday is a gift!"],"hitokoto":{"enable":false,"show_author":false,"api":"https://v1.hitokoto.cn"},"typing_speed":100,"backing_speed":80,"starting_delay":500,"backing_delay":1500,"loop":true,"smart_backspace":true},"text_color":{"light":"#000000","dark":"#d1d1b6"},"text_style":{"title_size":"3.2rem","subtitle_size":"1.5rem","line_height":1.2},"custom_font":{"enable":false,"family":null,"url":null},"social_links":{"enable":true,"style":"center","links":[{"icon":"fa-brands fa-github","url":"https://github.com/Charles2530/"},{"icon":"fa-brands fa-zhihu","url":"https://www.zhihu.com/people/yang-guang-xiao-zi-55-55"},{"icon":"fa-solid fa-at","url":"mailto:charles2530@163.com"},{"icon":"fa-brands fa-telegram","url":null},{"icon":"/images/custom-icon.svg","url":null}],"qrs":[{"icon":"fa-brands fa-weixin","qr":"https://charles2530.github.io/image/background/Wechat_icon.png"},{"icon":"/images/custom-icon.svg","qr":null}]}},"plugins":{"feed":{"enable":true},"aplayer":{"enable":false,"type":"fixed","audios":[{"name":null,"artist":null,"url":null,"cover":null,"lrc":null}]},"mermaid":{"enable":false,"version":"11.4.1","theme":{"light":"default","dark":"dark"}}},"version":"2.9.0","navbar":{"auto_hide":true,"color":{"left":"#f78736","right":"#367df7","transparency":35},"width":{"home":"1200px","pages":"1000px"},"links":{"Home":{"path":"/","icon":"fa-regular fa-house"},"Categories":{"path":"/categories","icon":"fas fa-bookmark"},"Tags":{"path":"/tags","icon":"fas fa-tags"},"About":{"icon":"fa-regular fa-user","submenus":{"Me":"https://jinyang-du.github.io/","Github":"https://github.com/Charles2530/","Blog":"https://charles2530.github.io","Statistics":"https://tongji.baidu.com/"}}},"search":{"enable":true,"preload":false}},"page_templates":{"friends_column":2,"tags_style":"blur","masonry":{"batch_size":12,"initial_batch_size":24}},"home":{"sidebar":{"enable":true,"position":"left","first_item":"menu","announcement":"This is Charles's Castle","show_on_mobile":true,"links":{"Archives":{"path":"/archives","icon":"fa-regular fa-archive"},"Photos":{"icon":"fa-solid fa-image","path":"/masonry/"},"Essays":{"icon":"fa-solid fa-message-lines","path":"/essay/"},"Friends":{"icon":"fa-solid fa-user-group","path":"/friends/"}}},"article_date_format":"auto","excerpt_length":200,"categories":{"enable":true,"limit":3},"tags":{"enable":true,"limit":3}},"footer":{"runtime":true,"icon":"<i class=\"fa-solid fa-heart fa-beat\" style=\"--fa-animation-duration: 0.5s; color: #f54545\"></i>","start":"2022/12/27 00:00:00","statistics":true,"customize":null,"icp":{"enable":false,"number":null,"url":null}},"footerStart":"2022/12/27 00:00:00","mermaid":{"style":{"light":"default","dark":"dark"}}};
+    window.lang_ago = {"second":"%s seconds ago","minute":"%s minutes ago","hour":"%s hours ago","day":"%s days ago","week":"%s weeks ago","month":"%s months ago","year":"%s years ago"};
+    window.i18n = {"search":"Search...","toc":"On this page","prev":"Prev","next":"Next","prev_posts":"Prev posts","next_posts":"Next posts","page":"Page %d","recent_posts":"Recent Posts","share":"Share","powered_by":"POWERED BY %s","theme":"THEME","rss_feed":"RSS Feed","category":"Category","categories":"Categories","tag":"Tag","tags":"Tags","post":"Post","posts":"Posts","tagcloud":"Tag Cloud","comment":"Comment","comments":"Comments","home":"Home","archive":"Archive","archives":"Archives","top":"TOP","sticky":"Sticky","go-back-home":"Go Back Home","masonry_loading":"Loading photos...","image_viewer":"Image viewer","close":"Close","exif":{"title":"EXIF","cards":{"camera":"Camera","lens":"Lens","exposure":"Exposure","other":"Other"},"fields":{"make":"Brand","model":"Model","date_taken":"Date taken","lens_model":"Lens","focal_length":"Focal length","focus_mode":"Focus mode","shutter":"Shutter","aperture":"Aperture","iso":"ISO","exposure_program":"Exposure program","exposure_compensation":"Exposure compensation","metering_mode":"Metering mode","flash":"Flash","white_balance":"White balance","latitude":"Latitude","longitude":"Longitude","altitude":"Altitude"},"status":{"loading":"Loading...","no_exif":"No EXIF available","library_missing":"EXIF library not loaded","image_source_missing":"Image source unavailable","unavailable":"EXIF unavailable (blocked by CORS or missing metadata)","flag_unavailable":"EXIF unavailable"}},"about":"About","changelog":"Changelog","links":"Links","link":"Link","friends":"Friends","friend":"Friend","timeline":"Timeline","shuoshuo":"Shuoshuo","bookmarks":"Bookmarks","site_uv":"VISITOR COUNT","site_pv":"TOTAL PAGE VIEWS","read_more":"Read more","wordcount":"Words","min2read":"Mins","status":"Status","runtime":"Blog up for","days":"days","hours":"hrs","minutes":"Min","seconds":"Sec","optimized_by":"and Optimized by Evan","rights":"All Rights Reserved","site_posts":"%s posts in total","site_wordcount":"%s words in total","copyright":{"author":"Author","title":"Title","link":"Link","create_time":"Created at","update_time":"Updated at","license_title":"License","license_content":"This work is licensed under %s.","all_rights_reserved":"All Rights Reserved &#169; %s","public_domain":"This work is in the public domain."},"ago":{"second":"%s seconds ago","minute":"%s minutes ago","hour":"%s hours ago","day":"%s days ago","week":"%s weeks ago","month":"%s months ago","year":"%s years ago"},"create_time":"Created","update_time":"Updated","expired":"This post is written %s days ago, and the content may not be up to date."};
+    window.data = {"masonry":true};
+  </script>
+    
+    <!--- Fontawesome Part-->
+    
+<link rel="stylesheet" href="/fontawesome/fontawesome.min.css">
+
+    
+<link rel="stylesheet" href="/fontawesome/brands.min.css">
+
+    
+<link rel="stylesheet" href="/fontawesome/solid.min.css">
+
+    
+<link rel="stylesheet" href="/fontawesome/regular.min.css">
+
+    
+    
+    
+    
+<meta name="generator" content="Hexo 6.3.0"><link rel="alternate" href="/atom.xml" title="Charles's Castle" type="application/atom+xml">
+<link rel="stylesheet" href="/css/prism-tomorrow.css" type="text/css"></head>
+
+
+<body>
+	<div class="progress-bar-container">
+	
+	<span class="scroll-progress-bar"></span>
+	
+
+	
+	<span class="pjax-progress-bar"></span>
+	<!--        <span class="swup-progress-icon">-->
+	<!--            <i class="fa-solid fa-circle-notch fa-spin"></i>-->
+	<!--        </span>-->
+	
+</div>
+
+<style>
+    :root {
+        --preloader-background-color: #fff;
+        --preloader-text-color: #000;
+    }
+
+    @media (prefers-color-scheme: dark) {
+        :root {
+            --preloader-background-color: #202124;
+            --preloader-text-color: #fff;
+        }
+    }
+
+    @media (prefers-color-scheme: light) {
+        :root {
+            --preloader-background-color: #fff;
+            --preloader-text-color: #000;
+        }
+    }
+
+    @media (max-width: 600px) {
+        .ml13 {
+            font-size: 2.6rem !important; /* Adjust this value as needed */
+        }
+    }
+
+    .preloader {
+        display: flex;
+        flex-direction: column;
+        gap: 1rem; /* Tailwind 'gap-4' is 1rem */
+        align-items: center;
+        justify-content: center;
+        position: fixed;
+        padding: 12px;
+        top: 0;
+        right: 0;
+        bottom: 0;
+        left: 0;
+        width: 100vw;
+        height: 100vh; /* 'h-screen' is 100% of the viewport height */
+        background-color: var(--preloader-background-color);
+        z-index: 1100; /* 'z-[1100]' sets the z-index */
+        transition: opacity 0.2s ease-in-out;
+    }
+
+    .ml13 {
+        font-size: 3.2rem;
+        /* text-transform: uppercase; */
+        color: var(--preloader-text-color);
+        letter-spacing: -1px;
+        font-weight: 500;
+        font-family: 'Chillax-Variable', sans-serif;
+        text-align: center;
+    }
+
+    .ml13 .word {
+        display: inline-flex;
+        flex-wrap: wrap;
+        white-space: nowrap;
+    }
+
+    .ml13 .letter {
+        display: inline-block;
+        line-height: 1em;
+    }
+</style>
+
+<div class="preloader">
+    <h2 class="ml13">
+        Charles&#39;s Castle
+    </h2>
+    <script>
+        var textWrapper = document.querySelector('.ml13');
+        // Split text into words
+        var words = textWrapper.textContent.trim().split(' ');
+
+        // Clear the existing content
+        textWrapper.innerHTML = '';
+
+        // Wrap each word and its letters in spans
+        words.forEach(function(word) {
+            var wordSpan = document.createElement('span');
+            wordSpan.classList.add('word');
+            wordSpan.innerHTML = word.replace(/\S/g, "<span class='letter'>$&</span>");
+            textWrapper.appendChild(wordSpan);
+            textWrapper.appendChild(document.createTextNode(' ')); // Add space between words
+        });
+
+        var animation = anime.timeline({ loop: true })
+            .add({
+                targets: '.ml13 .letter',
+                translateY: [20, 0],
+                translateZ: 0,
+                opacity: [0, 1],
+                filter: ['blur(5px)', 'blur(0px)'],
+                easing: "easeOutExpo",
+                duration: 1200,
+                delay: (el, i) => 300 + 20 * i,
+            })
+            .add({
+                targets: '.ml13 .letter',
+                translateY: [0, -20],
+                opacity: [1, 0],
+                filter: ['blur(0px)', 'blur(5px)'],
+                easing: "easeInExpo",
+                duration: 1000,
+                delay: (el, i) => 15 * i,
+                complete: function() {
+                    hidePreloader();
+                }
+            }, '-=700');
+
+
+        let themeStatus = JSON.parse(localStorage.getItem('REDEFINE-THEME-STATUS'))?.isDark;
+
+        // If the theme status is not found in local storage, check the preferred color scheme
+        if (themeStatus === undefined || themeStatus === null) {
+            if (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) {
+                themeStatus = 'dark';
+            } else {
+                themeStatus = 'light';
+            }
+        }
+
+        // Now you can use the themeStatus variable in your code
+        if (themeStatus) {
+            document.documentElement.style.setProperty('--preloader-background-color', '#202124');
+            document.documentElement.style.setProperty('--preloader-text-color', '#fff');
+        } else {
+            document.documentElement.style.setProperty('--preloader-background-color', '#fff');
+            document.documentElement.style.setProperty('--preloader-text-color', '#000');
+        }
+
+        window.addEventListener('load', function () {
+            setTimeout(hidePreloader, 5000); // Call hidePreloader after 5000 milliseconds if not already called by animation
+        });
+
+        function hidePreloader() {
+            var preloader = document.querySelector('.preloader');
+            preloader.style.opacity = '0';
+            setTimeout(function () {
+                preloader.style.display = 'none';
+            }, 200);
+        }
+    </script>
+</div>
+
+<main class="page-container" id="swup">
+
+	
+
+	<div class="main-content-container flex flex-col justify-between min-h-dvh">
+		<div class="main-content-header">
+			<header class="navbar-container px-6 md:px-12">
+    <div class="navbar-content transition-navbar ">
+        <div class="left">
+            
+                <a class="logo-image h-8 w-8 sm:w-10 sm:h-10 mr-3" href="/">
+                    <img src="https://charles2530.github.io/image/background/logo.jpg" class="w-full h-full rounded-xs">
+                </a>
+            
+            <a class="logo-title" href="/">
+                
+                Charles&#39;s Castle
+                
+            </a>
+        </div>
+
+        <div class="right">
+            <!-- PC -->
+            <div class="desktop">
+                <ul class="navbar-list">
+                    
+                        
+                            
+
+                            <li class="navbar-item">
+                                <!-- Menu -->
+                                <a class=""
+                                   href="/"
+                                        >
+                                    <i class="fa-regular fa-house fa-fw"></i>
+                                    HOME
+                                    
+                                </a>
+
+                                <!-- Submenu -->
+                                
+                            </li>
+                    
+                        
+                            
+
+                            <li class="navbar-item">
+                                <!-- Menu -->
+                                <a class=""
+                                   href="/categories"
+                                        >
+                                    <i class="fas fa-bookmark fa-fw"></i>
+                                    CATEGORIES
+                                    
+                                </a>
+
+                                <!-- Submenu -->
+                                
+                            </li>
+                    
+                        
+                            
+
+                            <li class="navbar-item">
+                                <!-- Menu -->
+                                <a class=""
+                                   href="/tags"
+                                        >
+                                    <i class="fas fa-tags fa-fw"></i>
+                                    TAGS
+                                    
+                                </a>
+
+                                <!-- Submenu -->
+                                
+                            </li>
+                    
+                        
+                            
+
+                            <li class="navbar-item">
+                                <!-- Menu -->
+                                <a class="has-dropdown"
+                                   href="#"
+                                        onClick=&#34;return false;&#34;>
+                                    <i class="fa-regular fa-user fa-fw"></i>
+                                    ABOUT
+                                    <i class="fa-solid fa-chevron-down fa-fw"></i>
+                                </a>
+
+                                <!-- Submenu -->
+                                
+                                    <ul class="sub-menu">
+                                        
+                                            <li>
+                                                <a target="_blank" rel="noopener" href="https://jinyang-du.github.io/">
+                                                    ME
+                                                </a>
+                                            </li>
+                                        
+                                            <li>
+                                                <a target="_blank" rel="noopener" href="https://github.com/Charles2530/">
+                                                    GITHUB
+                                                </a>
+                                            </li>
+                                        
+                                            <li>
+                                                <a href="https://charles2530.github.io">
+                                                    BLOG
+                                                </a>
+                                            </li>
+                                        
+                                            <li>
+                                                <a target="_blank" rel="noopener" href="https://tongji.baidu.com/">
+                                                    STATISTICS
+                                                </a>
+                                            </li>
+                                        
+                                    </ul>
+                                
+                            </li>
+                    
+                    
+                        <li class="navbar-item search search-popup-trigger">
+                            <i class="fa-solid fa-magnifying-glass"></i>
+                        </li>
+                    
+                </ul>
+            </div>
+            <!-- Mobile -->
+            <div class="mobile">
+                
+                    <div class="icon-item search search-popup-trigger"><i class="fa-solid fa-magnifying-glass"></i>
+                    </div>
+                
+                <div class="icon-item navbar-bar">
+                    <div class="navbar-bar-middle"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Mobile sheet -->
+    <div class="navbar-drawer h-dvh w-full absolute top-0 left-0 bg-background-color flex flex-col justify-between">
+        <ul class="drawer-navbar-list flex flex-col px-4 justify-center items-start">
+            
+                
+                    
+
+                    <li class="drawer-navbar-item text-base my-1.5 flex flex-col w-full">
+                        
+                        <a class="py-1.5 px-2 flex flex-row items-center justify-between gap-1 hover:!text-primary active:!text-primary text-2xl font-semibold group border-b border-border-color hover:border-primary w-full "
+                           href="/"
+                        >
+                            <span>
+                                HOME
+                            </span>
+                            
+                                <i class="fa-regular fa-house fa-sm fa-fw"></i>
+                            
+                        </a>
+                        
+
+                        
+                    </li>
+            
+                
+                    
+
+                    <li class="drawer-navbar-item text-base my-1.5 flex flex-col w-full">
+                        
+                        <a class="py-1.5 px-2 flex flex-row items-center justify-between gap-1 hover:!text-primary active:!text-primary text-2xl font-semibold group border-b border-border-color hover:border-primary w-full "
+                           href="/categories"
+                        >
+                            <span>
+                                CATEGORIES
+                            </span>
+                            
+                                <i class="fas fa-bookmark fa-sm fa-fw"></i>
+                            
+                        </a>
+                        
+
+                        
+                    </li>
+            
+                
+                    
+
+                    <li class="drawer-navbar-item text-base my-1.5 flex flex-col w-full">
+                        
+                        <a class="py-1.5 px-2 flex flex-row items-center justify-between gap-1 hover:!text-primary active:!text-primary text-2xl font-semibold group border-b border-border-color hover:border-primary w-full "
+                           href="/tags"
+                        >
+                            <span>
+                                TAGS
+                            </span>
+                            
+                                <i class="fas fa-tags fa-sm fa-fw"></i>
+                            
+                        </a>
+                        
+
+                        
+                    </li>
+            
+                
+                    
+
+                    <li class="drawer-navbar-item-sub text-base my-1.5 flex flex-col w-full">
+                        
+                        <div class="py-1.5 px-2 flex flex-row items-center justify-between gap-1 hover:!text-primary active:!text-primary cursor-pointer text-2xl font-semibold group border-b border-border-color hover:border-primary w-full "
+                             navbar-data-toggle="submenu-About"
+                        >
+                            <span>
+                                ABOUT
+                            </span>
+                            
+                                <i class="fa-solid fa-chevron-right fa-sm fa-fw transition-all"></i>
+                            
+                        </div>
+                        
+
+                        
+                            <div class="flex-col items-start px-2 py-2 hidden" data-target="submenu-About">
+                                
+                                    <div class="drawer-navbar-item text-base flex flex-col justify-center items-start hover:underline active:underline hover:underline-offset-1 rounded-3xl">
+                                        <a class=" text-third-text-color text-xl"
+                                           target="_blank" rel="noopener" href="https://jinyang-du.github.io/">ME</a>
+                                    </div>
+                                
+                                    <div class="drawer-navbar-item text-base flex flex-col justify-center items-start hover:underline active:underline hover:underline-offset-1 rounded-3xl">
+                                        <a class=" text-third-text-color text-xl"
+                                           target="_blank" rel="noopener" href="https://github.com/Charles2530/">GITHUB</a>
+                                    </div>
+                                
+                                    <div class="drawer-navbar-item text-base flex flex-col justify-center items-start hover:underline active:underline hover:underline-offset-1 rounded-3xl">
+                                        <a class=" text-third-text-color text-xl"
+                                           href="https://charles2530.github.io">BLOG</a>
+                                    </div>
+                                
+                                    <div class="drawer-navbar-item text-base flex flex-col justify-center items-start hover:underline active:underline hover:underline-offset-1 rounded-3xl">
+                                        <a class=" text-third-text-color text-xl"
+                                           target="_blank" rel="noopener" href="https://tongji.baidu.com/">STATISTICS</a>
+                                    </div>
+                                
+                            </div>
+                        
+                    </li>
+            
+
+            
+            
+                
+                    
+                    <li class="drawer-navbar-item text-base my-1.5 flex flex-col w-full">
+                        <a class="py-1.5 px-2 flex flex-row items-center justify-between gap-1 hover:!text-primary active:!text-primary text-2xl font-semibold group border-b border-border-color hover:border-primary w-full active"
+                           href="/archives"
+                        >
+                            <span>Archives</span>
+                            <i class="fa-regular fa-archive fa-sm fa-fw"></i>
+                        </a>
+                    </li>
+                
+                    
+                    <li class="drawer-navbar-item text-base my-1.5 flex flex-col w-full">
+                        <a class="py-1.5 px-2 flex flex-row items-center justify-between gap-1 hover:!text-primary active:!text-primary text-2xl font-semibold group border-b border-border-color hover:border-primary w-full active"
+                           href="/masonry/"
+                        >
+                            <span>Photos</span>
+                            <i class="fa-solid fa-image fa-sm fa-fw"></i>
+                        </a>
+                    </li>
+                
+                    
+                    <li class="drawer-navbar-item text-base my-1.5 flex flex-col w-full">
+                        <a class="py-1.5 px-2 flex flex-row items-center justify-between gap-1 hover:!text-primary active:!text-primary text-2xl font-semibold group border-b border-border-color hover:border-primary w-full active"
+                           href="/essay/"
+                        >
+                            <span>Essays</span>
+                            <i class="fa-solid fa-message-lines fa-sm fa-fw"></i>
+                        </a>
+                    </li>
+                
+                    
+                    <li class="drawer-navbar-item text-base my-1.5 flex flex-col w-full">
+                        <a class="py-1.5 px-2 flex flex-row items-center justify-between gap-1 hover:!text-primary active:!text-primary text-2xl font-semibold group border-b border-border-color hover:border-primary w-full active"
+                           href="/friends/"
+                        >
+                            <span>Friends</span>
+                            <i class="fa-solid fa-user-group fa-sm fa-fw"></i>
+                        </a>
+                    </li>
+                
+            
+        </ul>
+
+        <div class="statistics flex justify-around my-2.5">
+    <a class="item tag-count-item flex flex-col justify-center items-center w-20" href="/tags">
+        <div class="number text-2xl sm:text-xl text-second-text-color font-semibold">45</div>
+        <div class="label text-third-text-color text-sm">Tags</div>
+    </a>
+    <a class="item tag-count-item flex flex-col justify-center items-center w-20" href="/categories">
+        <div class="number text-2xl sm:text-xl text-second-text-color font-semibold">93</div>
+        <div class="label text-third-text-color text-sm">Categories</div>
+    </a>
+    <a class="item tag-count-item flex flex-col justify-center items-center w-20" href="/archives">
+        <div class="number text-2xl sm:text-xl text-second-text-color font-semibold">504</div>
+        <div class="label text-third-text-color text-sm">Posts</div>
+    </a>
+</div>
+    </div>
+
+    <div class="window-mask"></div>
+
+</header>
+
+
+		</div>
+
+		<div class="main-content-body transition-fade-up">
+			
+
+			<div class="main-content">
+				<div class="post-page-container flex relative justify-between box-border w-full h-full">
+	<div class="article-content-container">
+
+		<div class="article-title relative w-full">
+			
+			
+			
+			<img src="https://charles2530.github.io/image/background/p2.png" alt="训练：偏好数据与对齐失效" class="w-full h-60 sm:h-72 md:h-80 object-cover sm:rounded-t-large dark:brightness-75" />
+			
+			<div class="w-full flex items-center absolute bottom-0 justify-start">
+				<h1 class="article-title-cover text-center mx-6 my-6 text-second-text-color bg-background-color-transparent px-4 py-3 text-3xl sm:text-4xl md:text-5xl font-semibold backdrop-blur-lg rounded-xl border border-border-color ">训练：偏好数据与对齐失效</h1>
+			</div>
+			
+		</div>
+
+		
+		<div class="article-header flex flex-row gap-2 items-center px-2 sm:px-6 md:px-8">
+			<div class="avatar w-[46px] h-[46px] shrink-0 rounded-medium border border-border-color p-px">
+				<img src="https://charles2530.github.io/image/background/logo2.jpg">
+			</div>
+			<div class="info flex flex-col justify-between">
+				<div class="author flex items-center">
+					<span class="name text-default-text-color text-lg font-semibold">Charles</span>
+					
+					<span class="author-label ml-1.5 text-xs px-2 py-0.5 rounded-small text-third-text-color border border-shadow-color-1">Lv7</span>
+					
+				</div>
+				<div class="meta-info">
+					<div class="article-meta-info">
+    <span class="article-date article-meta-item">
+        <i class="fa-regular fa-pen-fancy"></i>&nbsp;
+        <span class="desktop">2026-03-20 09:00</span>
+        <span class="mobile">2026-03-20 09:00</span>
+        <span class="hover-info">Created</span>
+    </span>
+    
+        <span class="article-date article-meta-item">
+            <i class="fa-regular fa-wrench"></i>&nbsp;
+            <span class="desktop">2026-03-20 09:00</span>
+            <span class="mobile">2026-03-20 09:00</span>
+            <span class="hover-info">Updated</span>
+        </span>
+    
+
+    
+        <span class="article-categories article-meta-item">
+            <i class="fa-regular fa-folders"></i>&nbsp;
+            <ul>
+                
+                
+                    
+                        
+                        <li>
+                            <a href="/categories/AI/">AI</a>&nbsp;
+                        </li>
+                    
+                    
+                
+                    
+                        
+                            <li>></li>
+                        
+                        <li>
+                            <a href="/categories/AI/%E8%AE%AD%E7%BB%83/">训练</a>&nbsp;
+                        </li>
+                    
+                    
+                
+            </ul>
+        </span>
+    
+    
+        <span class="article-tags article-meta-item">
+            <i class="fa-regular fa-tags"></i>&nbsp;
+            <ul>
+                
+                    <li>
+                        <a href="/tags/AI/">AI</a>&nbsp;
+                    </li>
+                
+                    <li>
+                        | <a href="/tags/%E8%AE%AD%E7%BB%83/">训练</a>&nbsp;
+                    </li>
+                
+                    <li>
+                        | <a href="/tags/%E6%95%B0%E6%8D%AE%E4%B8%8E%E8%AF%84%E6%B5%8B/">数据与评测</a>&nbsp;
+                    </li>
+                
+            </ul>
+        </span>
+    
+
+    
+    
+        <span class="article-wordcount article-meta-item">
+            <i class="fa-regular fa-typewriter"></i>&nbsp;<span>4.8k Words</span>
+        </span>
+    
+    
+        <span class="article-min2read article-meta-item">
+            <i class="fa-regular fa-clock"></i>&nbsp;<span>17 Mins</span>
+        </span>
+    
+    
+        <span class="article-pv article-meta-item">
+            <i class="fa-regular fa-eye"></i>&nbsp;<span id="busuanzi_value_page_pv"></span>
+        </span>
+    
+</div>
+
+				</div>
+			</div>
+		</div>
+		
+
+		
+
+
+		<div class="article-content markdown-body px-2 sm:px-6 md:px-8 pb-8">
+			<p>很多团队在做对齐时，会把注意力集中在 <code>RLHF</code>、<code>DPO</code>、<code>IPO</code>、<code>ORPO</code> 这样的算法名字上。<br />
+但现实里更决定结果的，往往是偏好数据长什么样、偏好标签是否一致、对齐目标是否和真实业务一致，以及奖励或偏好目标到底在塑造什么行为。</p>
+<p>这页重点讨论偏好数据本身，以及对齐过程中最常见的失效模式。<br />
+<strong>核心观点很简单</strong>：</p>
+<p><strong>对齐首先是数据设计问题，其次才是优化算法问题。</strong></p>
+<div class="callout callout--titled info mb-4 rounded-small shadow-redefine-flat bg-(--callout-bg-color) p-3 pl-1 relative flex flex-row gap-2"><div role="none" class="rounded-full self-stretch w-0.5 bg-(--callout-primary-color) shrink-0 opacity-60"></div><div class="flex flex-col gap-2"><div class="callout__title flex items-center gap-2 font-semibold tracking-tight">初学者先抓住</div><div class="callout__content markdown-body flex-1 min-w-0"><p>偏好对齐不是给模型灌新知识，而是在已有能力上调整“更应该怎么回答”。如果底座不会解题，偏好数据很难凭空造出数学能力；如果底座会解题但风格、风险边界和格式不好，偏好数据才更容易发挥作用。</p></div></div></div>
+<div class="callout callout--titled default mb-4 rounded-small shadow-redefine-flat bg-(--callout-bg-color) p-3 pl-1 relative flex flex-row gap-2"><div role="none" class="rounded-full self-stretch w-0.5 bg-(--callout-primary-color) shrink-0 opacity-60"></div><div class="flex flex-col gap-2"><div class="callout__title flex items-center gap-2 font-semibold tracking-tight">有趣例子：两个都对的客服回答</div><div class="callout__content markdown-body flex-1 min-w-0"><p>“可以退款”和“我理解你的困扰，下面按三步帮你发起退款”可能事实都对。偏好数据要决定的是哪种语气、步骤、风险承诺和业务边界更符合产品目标，而不是只判断真假。</p></div></div></div>
+<h2 id="0-先用-instructgpt-图建立全局流程"><a class="markdownIt-Anchor" href="#0-先用-instructgpt-图建立全局流程"></a> 0. 先用 InstructGPT 图建立全局流程</h2>
+<p>如果你没有强化学习基础，先不要从 PPO 公式开始。先看 InstructGPT 原论文这张流程图：它把 RLHF 拆成三件相对朴素的事。</p>
+<p><img  
+                     lazyload
+                     src="/images/loading.svg"
+                     data-src="/image/ai-notes/images/paper-figures/training/instructgpt-rlhf-pipeline.png"
+                      alt="InstructGPT RLHF pipeline 原论文图" 
+                ></p>
+<p><small>图源：<a class="link"   target="_blank" rel="noopener" href="https://arxiv.org/abs/2203.02155" >Training language models to follow instructions with human feedback<i class="fa-solid fa-arrow-up-right ml-[0.2em] font-light align-text-top text-[0.7em] link-icon"></i></a>，Figure 2。原论文图意：展示 InstructGPT 的三步训练流程：收集 demonstration data 做 SFT，收集模型输出排序训练 reward model，再用 PPO 按 reward model 优化 policy。</small></p>
+<div class="callout callout--titled info mb-4 rounded-small shadow-redefine-flat bg-(--callout-bg-color) p-3 pl-1 relative flex flex-row gap-2"><div role="none" class="rounded-full self-stretch w-0.5 bg-(--callout-primary-color) shrink-0 opacity-60"></div><div class="flex flex-col gap-2"><div class="callout__title flex items-center gap-2 font-semibold tracking-tight">图解：这张图要按数据流读</div><div class="callout__content markdown-body flex-1 min-w-0"><p>左栏是 SFT：人类写示范回答，模型学会基本指令跟随。中栏是 reward model：同一个 prompt 下生成多个候选，标注者把 A/B/C/D 排序，reward model 学会预测“哪个更像人类偏好”。右栏才是 PPO：新 prompt 输入当前 policy，policy 生成回答，reward model 给分，PPO 用这个分数更新 policy。强化学习部分不是凭空出现的，它吃的是前两步做出来的 SFT 初始策略和 reward model。</p></div></div></div>
+<p>InstructGPT 论文还给了标注界面的截图。它们很适合理解“偏好数据”到底长什么样，而不是把它想成一个抽象公式。</p>
+<p><img  
+                     lazyload
+                     src="/images/loading.svg"
+                     data-src="/image/ai-notes/images/paper-figures/training/instructgpt-labeler-likert.png"
+                      alt="InstructGPT labeler Likert interface 原论文图" 
+                ></p>
+<p><small>图源：<a class="link"   target="_blank" rel="noopener" href="https://arxiv.org/abs/2203.02155" >Training language models to follow instructions with human feedback<i class="fa-solid fa-arrow-up-right ml-[0.2em] font-light align-text-top text-[0.7em] link-icon"></i></a>，Appendix Figure 19(a)。原论文图意：标注者先对单个模型输出做 Likert 质量评分，并标注输出是否有帮助、真实、无害、是否遵循指令等元信息。</small></p>
+<div class="callout callout--titled info mb-4 rounded-small shadow-redefine-flat bg-(--callout-bg-color) p-3 pl-1 relative flex flex-row gap-2"><div role="none" class="rounded-full self-stretch w-0.5 bg-(--callout-primary-color) shrink-0 opacity-60"></div><div class="flex flex-col gap-2"><div class="callout__title flex items-center gap-2 font-semibold tracking-tight">图解：单条评分用于拆解质量维度</div><div class="callout__content markdown-body flex-1 min-w-0"><p>这张界面不是简单问“好不好”，而是把 helpfulness、truthfulness、harmlessness、instruction following 等维度拆开。这样做的价值是：当模型变差时，你能知道是事实性下降、拒答过度、格式错误，还是安全边界问题。偏好数据如果只保留一个总分，后续排查会非常困难。</p></div></div></div>
+<p><img  
+                     lazyload
+                     src="/images/loading.svg"
+                     data-src="/image/ai-notes/images/paper-figures/training/instructgpt-labeler-ranking.png"
+                      alt="InstructGPT labeler ranking interface 原论文图" 
+                ></p>
+<p><small>图源：<a class="link"   target="_blank" rel="noopener" href="https://arxiv.org/abs/2203.02155" >Training language models to follow instructions with human feedback<i class="fa-solid fa-arrow-up-right ml-[0.2em] font-light align-text-top text-[0.7em] link-icon"></i></a>，Appendix Figure 19(b)。原论文图意：标注者在同一个 prompt 下比较多个模型输出，并把它们从最好到最差排序；这种排序数据用于训练 reward model。</small></p>
+<div class="callout callout--titled info mb-4 rounded-small shadow-redefine-flat bg-(--callout-bg-color) p-3 pl-1 relative flex flex-row gap-2"><div role="none" class="rounded-full self-stretch w-0.5 bg-(--callout-primary-color) shrink-0 opacity-60"></div><div class="flex flex-col gap-2"><div class="callout__title flex items-center gap-2 font-semibold tracking-tight">图解：reward model 学的是相对偏好</div><div class="callout__content markdown-body flex-1 min-w-0"><p>排序界面的关键是“同题多答”。它不要求标注者发明一个绝对完美答案，而是比较几个候选谁更好。reward model 因此学到的是相对顺序：在同一个输入下，什么特征让一个回答比另一个更值得偏好。DPO、RLHF、RLAIF 的许多差别都在优化形式上，但它们共同依赖这类偏好关系是否稳定、可解释、覆盖真实失败模式。</p></div></div></div>
+<p>最终，论文用人类偏好胜率来验证后训练是否真的改变了用户侧体验。</p>
+<p><img  
+                     lazyload
+                     src="/images/loading.svg"
+                     data-src="/image/ai-notes/images/paper-figures/training/instructgpt-main-preference.png"
+                      alt="InstructGPT human preference result 原论文图" 
+                ></p>
+<p><small>图源：<a class="link"   target="_blank" rel="noopener" href="https://arxiv.org/abs/2203.02155" >Training language models to follow instructions with human feedback<i class="fa-solid fa-arrow-up-right ml-[0.2em] font-light align-text-top text-[0.7em] link-icon"></i></a>，Figure 1。原论文图意：在 API prompt 分布上比较不同模型输出相对 175B SFT baseline 的人类偏好胜率，展示 InstructGPT/RLHF 后训练相对 GPT-3 和 SFT baseline 的偏好提升。</small></p>
+<div class="callout callout--titled info mb-4 rounded-small shadow-redefine-flat bg-(--callout-bg-color) p-3 pl-1 relative flex flex-row gap-2"><div role="none" class="rounded-full self-stretch w-0.5 bg-(--callout-primary-color) shrink-0 opacity-60"></div><div class="flex flex-col gap-2"><div class="callout__title flex items-center gap-2 font-semibold tracking-tight">图解：偏好胜率不是训练 loss</div><div class="callout__content markdown-body flex-1 min-w-0"><p>这张图的纵轴是人类更喜欢哪个输出，而不是 reward model loss 或 next-token loss。它提醒你：对齐训练的最终证据应该来自人类偏好、任务成功率和关键风险桶，而不是只看优化目标下降。一个 reward model 可以在验证集上看起来不错，但如果标注指南、候选分布或线上任务变了，真实偏好胜率仍可能不升反降。</p></div></div></div>
+<p><img  
+                     lazyload
+                     src="/images/loading.svg"
+                     data-src="/image/ai-notes/images/paper-figures/training/instructgpt-preference-facetted.png"
+                      alt="InstructGPT facetted preference result 原论文图" 
+                ></p>
+<p><small>图源：<a class="link"   target="_blank" rel="noopener" href="https://arxiv.org/abs/2203.02155" >Training language models to follow instructions with human feedback<i class="fa-solid fa-arrow-up-right ml-[0.2em] font-light align-text-top text-[0.7em] link-icon"></i></a>，Figure 4。原论文图意：按 prompt 来源和 labeler 分组比较不同模型相对 175B SFT baseline 的偏好胜率，用来检查偏好提升是否跨分布稳定。</small></p>
+<div class="callout callout--titled info mb-4 rounded-small shadow-redefine-flat bg-(--callout-bg-color) p-3 pl-1 relative flex flex-row gap-2"><div role="none" class="rounded-full self-stretch w-0.5 bg-(--callout-primary-color) shrink-0 opacity-60"></div><div class="flex flex-col gap-2"><div class="callout__title flex items-center gap-2 font-semibold tracking-tight">图解：偏好结果也要分桶</div><div class="callout__content markdown-body flex-1 min-w-0"><p>这张图比单个总胜率更接近真实评测习惯：同样是 InstructGPT，不同 prompt 分布、训练标注者和 held-out 标注者的偏好结果都要看。如果只看一个平均胜率，可能掩盖“训练标注者喜欢、held-out 标注者不喜欢”或“某类 prompt 有提升、另一类 prompt 退化”的问题。偏好对齐上线前，也应该按任务类型、风险等级、语言、长度和用户群体做类似分桶。</p></div></div></div>
+<h2 id="1-偏好数据在塑造什么"><a class="markdownIt-Anchor" href="#1-偏好数据在塑造什么"></a> 1. 偏好数据在塑造什么</h2>
+<p>设输入为 <span class="katex"><span class="katex-mathml"><math><semantics><mrow><mi>x</mi></mrow><annotation encoding="application/x-tex">x</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.43056em;vertical-align:0em;"></span><span class="mord mathdefault">x</span></span></span></span>，两个候选回答为 <span class="katex"><span class="katex-mathml"><math><semantics><mrow><msup><mi>y</mi><mo>+</mo></msup><mo separator="true">,</mo><msup><mi>y</mi><mo>−</mo></msup></mrow><annotation encoding="application/x-tex">y^+, y^-</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.9657709999999999em;vertical-align:-0.19444em;"></span><span class="mord"><span class="mord mathdefault" style="margin-right:0.03588em;">y</span><span class="msupsub"><span class="vlist-t"><span class="vlist-r"><span class="vlist" style="height:0.771331em;"><span style="top:-3.063em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mbin mtight">+</span></span></span></span></span></span></span></span><span class="mpunct">,</span><span class="mspace" style="margin-right:0.16666666666666666em;"></span><span class="mord"><span class="mord mathdefault" style="margin-right:0.03588em;">y</span><span class="msupsub"><span class="vlist-t"><span class="vlist-r"><span class="vlist" style="height:0.771331em;"><span style="top:-3.063em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mbin mtight">−</span></span></span></span></span></span></span></span></span></span></span>。<br />
+偏好数据告诉模型的不是世界真理，而是哪种风格更好、哪种风险更可接受、哪种答法更符合人类期望、哪些边界绝不能越过。</p>
+<p><strong>所以偏好数据本质上是在塑造</strong>：</p>
+<p><span class="katex-display"><span class="katex"><span class="katex-mathml"><math><semantics><mrow><mtext>style</mtext><mo>+</mo><mtext>risk preference</mtext><mo>+</mo><mtext>helpfulness boundary</mtext><mo separator="true">,</mo></mrow><annotation encoding="application/x-tex">\text{style} + \text{risk preference} + \text{helpfulness boundary},
+</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.8888799999999999em;vertical-align:-0.19444em;"></span><span class="mord text"><span class="mord">style</span></span><span class="mspace" style="margin-right:0.2222222222222222em;"></span><span class="mbin">+</span><span class="mspace" style="margin-right:0.2222222222222222em;"></span></span><span class="base"><span class="strut" style="height:0.8888799999999999em;vertical-align:-0.19444em;"></span><span class="mord text"><span class="mord">risk preference</span></span><span class="mspace" style="margin-right:0.2222222222222222em;"></span><span class="mbin">+</span><span class="mspace" style="margin-right:0.2222222222222222em;"></span></span><span class="base"><span class="strut" style="height:0.8888799999999999em;vertical-align:-0.19444em;"></span><span class="mord text"><span class="mord">helpfulness boundary</span></span><span class="mpunct">,</span></span></span></span></span></p>
+<p>而不是直接注入知识。</p>
+<p>这一点非常关键。<br />
+如果一个底座模型根本不会做微积分、不会阅读合同、不会多步代码修复，那么再多偏好数据也很难“对齐出”这种能力。<br />
+偏好对齐更像是在已有能力之上塑形，而不是凭空造能力。</p>
+<h2 id="2-一个更形式化的直觉偏好在学习排序"><a class="markdownIt-Anchor" href="#2-一个更形式化的直觉偏好在学习排序"></a> 2. 一个更形式化的直觉：偏好在学习排序</h2>
+<p>以 DPO 风格目标为例，常见形式可以写成：</p>
+<p><span class="katex-display"><span class="katex"><span class="katex-mathml"><math><semantics><mrow><msub><mi mathvariant="script">L</mi><mtext>DPO</mtext></msub><mo>=</mo><mo>−</mo><mi>log</mi><mo>⁡</mo><mi>σ</mi><mo fence="false">(</mo><mi>β</mi><mo fence="false">[</mo><mi>log</mi><mo>⁡</mo><msub><mi>π</mi><mi>θ</mi></msub><mo stretchy="false">(</mo><msup><mi>y</mi><mo>+</mo></msup><mi mathvariant="normal">∣</mi><mi>x</mi><mo stretchy="false">)</mo><mo>−</mo><mi>log</mi><mo>⁡</mo><msub><mi>π</mi><mi>θ</mi></msub><mo stretchy="false">(</mo><msup><mi>y</mi><mo>−</mo></msup><mi mathvariant="normal">∣</mi><mi>x</mi><mo stretchy="false">)</mo><mo>−</mo><mi>log</mi><mo>⁡</mo><msub><mi>π</mi><mtext>ref</mtext></msub><mo stretchy="false">(</mo><msup><mi>y</mi><mo>+</mo></msup><mi mathvariant="normal">∣</mi><mi>x</mi><mo stretchy="false">)</mo><mo>+</mo><mi>log</mi><mo>⁡</mo><msub><mi>π</mi><mtext>ref</mtext></msub><mo stretchy="false">(</mo><msup><mi>y</mi><mo>−</mo></msup><mi mathvariant="normal">∣</mi><mi>x</mi><mo stretchy="false">)</mo><mo fence="false">]</mo><mo fence="false">)</mo><mi mathvariant="normal">.</mi></mrow><annotation encoding="application/x-tex">\mathcal{L}_{\text{DPO}}
+=
+- \log \sigma
+\Big(
+\beta
+\big[
+\log \pi_\theta(y^+|x) - \log \pi_\theta(y^-|x)
+- \log \pi_{\text{ref}}(y^+|x) + \log \pi_{\text{ref}}(y^-|x)
+\big]
+\Big).
+</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.83333em;vertical-align:-0.15em;"></span><span class="mord"><span class="mord"><span class="mord mathcal">L</span></span><span class="msupsub"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height:0.32833099999999993em;"><span style="top:-2.5500000000000003em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mtight"><span class="mord text mtight"><span class="mord mtight">DPO</span></span></span></span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height:0.15em;"><span></span></span></span></span></span></span><span class="mspace" style="margin-right:0.2777777777777778em;"></span><span class="mrel">=</span><span class="mspace" style="margin-right:0.2777777777777778em;"></span></span><span class="base"><span class="strut" style="height:1.80002em;vertical-align:-0.65002em;"></span><span class="mord">−</span><span class="mspace" style="margin-right:0.16666666666666666em;"></span><span class="mop">lo<span style="margin-right:0.01389em;">g</span></span><span class="mspace" style="margin-right:0.16666666666666666em;"></span><span class="mord mathdefault" style="margin-right:0.03588em;">σ</span><span class="mord"><span class="delimsizing size2">(</span></span><span class="mord mathdefault" style="margin-right:0.05278em;">β</span><span class="mord"><span class="delimsizing size1">[</span></span><span class="mspace" style="margin-right:0.16666666666666666em;"></span><span class="mop">lo<span style="margin-right:0.01389em;">g</span></span><span class="mspace" style="margin-right:0.16666666666666666em;"></span><span class="mord"><span class="mord mathdefault" style="margin-right:0.03588em;">π</span><span class="msupsub"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height:0.33610799999999996em;"><span style="top:-2.5500000000000003em;margin-left:-0.03588em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mathdefault mtight" style="margin-right:0.02778em;">θ</span></span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height:0.15em;"><span></span></span></span></span></span></span><span class="mopen">(</span><span class="mord"><span class="mord mathdefault" style="margin-right:0.03588em;">y</span><span class="msupsub"><span class="vlist-t"><span class="vlist-r"><span class="vlist" style="height:0.821331em;"><span style="top:-3.113em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mbin mtight">+</span></span></span></span></span></span></span></span><span class="mord">∣</span><span class="mord mathdefault">x</span><span class="mclose">)</span><span class="mspace" style="margin-right:0.2222222222222222em;"></span><span class="mbin">−</span><span class="mspace" style="margin-right:0.2222222222222222em;"></span></span><span class="base"><span class="strut" style="height:1.071331em;vertical-align:-0.25em;"></span><span class="mop">lo<span style="margin-right:0.01389em;">g</span></span><span class="mspace" style="margin-right:0.16666666666666666em;"></span><span class="mord"><span class="mord mathdefault" style="margin-right:0.03588em;">π</span><span class="msupsub"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height:0.33610799999999996em;"><span style="top:-2.5500000000000003em;margin-left:-0.03588em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mathdefault mtight" style="margin-right:0.02778em;">θ</span></span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height:0.15em;"><span></span></span></span></span></span></span><span class="mopen">(</span><span class="mord"><span class="mord mathdefault" style="margin-right:0.03588em;">y</span><span class="msupsub"><span class="vlist-t"><span class="vlist-r"><span class="vlist" style="height:0.821331em;"><span style="top:-3.113em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mbin mtight">−</span></span></span></span></span></span></span></span><span class="mord">∣</span><span class="mord mathdefault">x</span><span class="mclose">)</span><span class="mspace" style="margin-right:0.2222222222222222em;"></span><span class="mbin">−</span><span class="mspace" style="margin-right:0.2222222222222222em;"></span></span><span class="base"><span class="strut" style="height:1.071331em;vertical-align:-0.25em;"></span><span class="mop">lo<span style="margin-right:0.01389em;">g</span></span><span class="mspace" style="margin-right:0.16666666666666666em;"></span><span class="mord"><span class="mord mathdefault" style="margin-right:0.03588em;">π</span><span class="msupsub"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height:0.33610799999999996em;"><span style="top:-2.5500000000000003em;margin-left:-0.03588em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mtight"><span class="mord text mtight"><span class="mord mtight">ref</span></span></span></span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height:0.15em;"><span></span></span></span></span></span></span><span class="mopen">(</span><span class="mord"><span class="mord mathdefault" style="margin-right:0.03588em;">y</span><span class="msupsub"><span class="vlist-t"><span class="vlist-r"><span class="vlist" style="height:0.821331em;"><span style="top:-3.113em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mbin mtight">+</span></span></span></span></span></span></span></span><span class="mord">∣</span><span class="mord mathdefault">x</span><span class="mclose">)</span><span class="mspace" style="margin-right:0.2222222222222222em;"></span><span class="mbin">+</span><span class="mspace" style="margin-right:0.2222222222222222em;"></span></span><span class="base"><span class="strut" style="height:1.80002em;vertical-align:-0.65002em;"></span><span class="mop">lo<span style="margin-right:0.01389em;">g</span></span><span class="mspace" style="margin-right:0.16666666666666666em;"></span><span class="mord"><span class="mord mathdefault" style="margin-right:0.03588em;">π</span><span class="msupsub"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height:0.33610799999999996em;"><span style="top:-2.5500000000000003em;margin-left:-0.03588em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mtight"><span class="mord text mtight"><span class="mord mtight">ref</span></span></span></span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height:0.15em;"><span></span></span></span></span></span></span><span class="mopen">(</span><span class="mord"><span class="mord mathdefault" style="margin-right:0.03588em;">y</span><span class="msupsub"><span class="vlist-t"><span class="vlist-r"><span class="vlist" style="height:0.821331em;"><span style="top:-3.113em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mbin mtight">−</span></span></span></span></span></span></span></span><span class="mord">∣</span><span class="mord mathdefault">x</span><span class="mclose">)</span><span class="mord"><span class="delimsizing size1">]</span></span><span class="mord"><span class="delimsizing size2">)</span></span><span class="mord">.</span></span></span></span></span></p>
+<p>这里真正被学到的是：在给定输入 <span class="katex"><span class="katex-mathml"><math><semantics><mrow><mi>x</mi></mrow><annotation encoding="application/x-tex">x</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.43056em;vertical-align:0em;"></span><span class="mord mathdefault">x</span></span></span></span> 时，模型应该更偏向哪一类输出，以及这种偏向相对于参考模型要加强多少。</p>
+<p>所以偏好优化的核心对象是<strong>排序关系</strong>，不是绝对真值。<br />
+这也解释了为什么偏好数据一旦带着系统性偏差，模型就会很稳定地学偏。</p>
+<h3 id="21-rlhf-和-dpo-的区别先这样记"><a class="markdownIt-Anchor" href="#21-rlhf-和-dpo-的区别先这样记"></a> 2.1 RLHF 和 DPO 的区别先这样记</h3>
+<p><code>RLHF + PPO</code> 是显式两段式：先用排序数据训练 reward model，再让 policy 生成回答并由 reward model 打分，最后由 PPO 根据 reward、value、advantage 和 KL 约束更新 policy。</p>
+<p><code>DPO</code> 则把 reward model 和 PPO 更新压缩成一个偏好优化目标：直接用 <span class="katex"><span class="katex-mathml"><math><semantics><mrow><mo stretchy="false">(</mo><mi>x</mi><mo separator="true">,</mo><msup><mi>y</mi><mo>+</mo></msup><mo separator="true">,</mo><msup><mi>y</mi><mo>−</mo></msup><mo stretchy="false">)</mo></mrow><annotation encoding="application/x-tex">(x,y^+,y^-)</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:1.021331em;vertical-align:-0.25em;"></span><span class="mopen">(</span><span class="mord mathdefault">x</span><span class="mpunct">,</span><span class="mspace" style="margin-right:0.16666666666666666em;"></span><span class="mord"><span class="mord mathdefault" style="margin-right:0.03588em;">y</span><span class="msupsub"><span class="vlist-t"><span class="vlist-r"><span class="vlist" style="height:0.771331em;"><span style="top:-3.063em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mbin mtight">+</span></span></span></span></span></span></span></span><span class="mpunct">,</span><span class="mspace" style="margin-right:0.16666666666666666em;"></span><span class="mord"><span class="mord mathdefault" style="margin-right:0.03588em;">y</span><span class="msupsub"><span class="vlist-t"><span class="vlist-r"><span class="vlist" style="height:0.771331em;"><span style="top:-3.063em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mbin mtight">−</span></span></span></span></span></span></span></span><span class="mclose">)</span></span></span></span> 更新 policy，让优选回答相对 reference model 更可能，劣选回答相对更不可能。</p>
+<p>两者不是“一个有偏好数据，一个没有偏好数据”。它们都依赖偏好数据。区别在于：RLHF 显式学一个可复用的 reward model，再做强化学习；DPO 不显式训练 reward model，训练流程更直接，但同样会受 reference model、<span class="katex"><span class="katex-mathml"><math><semantics><mrow><mi>β</mi></mrow><annotation encoding="application/x-tex">\beta</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.8888799999999999em;vertical-align:-0.19444em;"></span><span class="mord mathdefault" style="margin-right:0.05278em;">β</span></span></span></span>、偏好噪声和候选分布影响。</p>
+<div class="callout callout--titled info mb-4 rounded-small shadow-redefine-flat bg-(--callout-bg-color) p-3 pl-1 relative flex flex-row gap-2"><div role="none" class="rounded-full self-stretch w-0.5 bg-(--callout-primary-color) shrink-0 opacity-60"></div><div class="flex flex-col gap-2"><div class="callout__title flex items-center gap-2 font-semibold tracking-tight">难点解释：为什么 RLHF 需要 KL，DPO 也需要 reference</div><div class="callout__content markdown-body flex-1 min-w-0"><p>偏好信号只告诉模型某些回答更受欢迎，不保证这些回答保持底座全部能力。KL 或 reference 项相当于“不要离原模型太远”的约束。没有这个约束，模型可能为了赢偏好样本而牺牲事实性、多样性、长上下文能力或代码能力；约束太强，又学不到足够偏好变化。因此对齐不是单纯追高 reward，而是在偏好收益和能力保持之间找平衡。</p></div></div></div>
+<h2 id="3-好的偏好数据长什么样"><a class="markdownIt-Anchor" href="#3-好的偏好数据长什么样"></a> 3. 好的偏好数据长什么样</h2>
+<p>理想偏好数据至少要区分度明确、标注标准一致、与真实任务接近、覆盖关键失败模式，并对安全、帮助性和风格有可分解定义。</p>
+<p>如果偏好对差异太模糊，模型很难学到稳定方向。</p>
+<h3 id="31-区分度明确"><a class="markdownIt-Anchor" href="#31-区分度明确"></a> 3.1 区分度明确</h3>
+<p>最好能回答“为什么 A 比 B 好”。<br />
+如果标注者自己都只能说“感觉这个更顺眼”，那么模型学到的往往是高噪声风格偏好。</p>
+<h3 id="32-标注标准一致"><a class="markdownIt-Anchor" href="#32-标注标准一致"></a> 3.2 标注标准一致</h3>
+<p>同类任务如果今天重准确、明天重礼貌、后天重篇幅，模型最终会学成一种折中但不稳定的行为。</p>
+<h3 id="33-与真实任务接近"><a class="markdownIt-Anchor" href="#33-与真实任务接近"></a> 3.3 与真实任务接近</h3>
+<p>如果偏好样本大多来自人工构造的“教材式问题”，但线上真实流量充满上下文缺失、模糊需求、长文档和工具调用，那么离线偏好再漂亮，线上也很可能错位。</p>
+<h3 id="34-覆盖关键失败模式"><a class="markdownIt-Anchor" href="#34-覆盖关键失败模式"></a> 3.4 覆盖关键失败模式</h3>
+<p>真正有价值的偏好样本，不只是“普通问题的两个回答谁更好”，而是容易产生幻觉、容易过度拒答、容易啰嗦、高风险领域边界不清、需要结构化输出的复杂问题。</p>
+<h2 id="4-一个直观例子客服场景"><a class="markdownIt-Anchor" href="#4-一个直观例子客服场景"></a> 4. 一个直观例子：客服场景</h2>
+<p>对于用户投诉退款，两个回答可能都是“对的”，但偏好数据会告诉模型：更礼貌、更直接给出解决路径、更少绕圈和说教、更能安抚情绪但不夸大承诺的回答更优。</p>
+<p>这说明偏好对齐的价值常常体现在“体验层”，而不是“会不会”。</p>
+<p>如果把同一个问题放在不同业务目标下，偏好顺序甚至会发生变化：高端客服更重礼貌和解释充分，紧急故障处理更重直接步骤，高风险金融投诉更重合规措辞和准确边界。</p>
+<p><strong>这再次说明</strong>：<br />
+偏好不是普世真理，而是任务化、业务化的选择。</p>
+<h2 id="5-偏好数据最常见的噪声来源"><a class="markdownIt-Anchor" href="#5-偏好数据最常见的噪声来源"></a> 5. 偏好数据最常见的噪声来源</h2>
+<h3 id="51-标注员偏好不一致"><a class="markdownIt-Anchor" href="#51-标注员偏好不一致"></a> 5.1 标注员偏好不一致</h3>
+<p>有人偏爱简洁，有人偏爱详尽；<br />
+有人认为“保守更安全”，有人认为“给出尽量多可行信息更有帮助”。</p>
+<p>如果没有细化指南，模型最后学到的是标注团队的平均人格，而不是产品想要的人格。</p>
+<h3 id="52-标注准则过于模糊"><a class="markdownIt-Anchor" href="#52-标注准则过于模糊"></a> 5.2 标注准则过于模糊</h3>
+<p>例如只写“选更好的回答”，但没有具体定义什么叫更好，准确性和礼貌冲突时谁优先，简洁和完整冲突时谁优先，什么时候应拒答、什么时候应部分回答。</p>
+<p>这会导致同类样本打标风格漂移。</p>
+<h3 id="53-偏好数据与业务目标错位"><a class="markdownIt-Anchor" href="#53-偏好数据与业务目标错位"></a> 5.3 偏好数据与业务目标错位</h3>
+<p>例如标注强调礼貌，但真实业务更需要准确和结构化。<br />
+或者标注数据大多是英文开发者问答，而线上核心用户是中文企业客服。</p>
+<h3 id="54-候选回答分布太单一"><a class="markdownIt-Anchor" href="#54-候选回答分布太单一"></a> 5.4 候选回答分布太单一</h3>
+<p>如果偏好数据里的两个候选都来自同一种模型、同一种 prompt 模板，差异会很窄。<br />
+模型最后学到的也许只是微弱措辞偏好，而不是对严重错误的识别能力。</p>
+<h3 id="55-奖励黑客式样本不足"><a class="markdownIt-Anchor" href="#55-奖励黑客式样本不足"></a> 5.5 奖励黑客式样本不足</h3>
+<p>如果数据里缺少“看起来很安全但其实没帮助”“看起来很专业但实际上是幻觉”的样本，模型很容易学会表面最优策略。</p>
+<h2 id="6-对齐失效模式总览"><a class="markdownIt-Anchor" href="#6-对齐失效模式总览"></a> 6. 对齐失效模式总览</h2>
+<p>下面这些失效模式在真实系统里非常常见，而且经常不是算法单独导致的。</p>
+<h3 id="失效-1过度保守"><a class="markdownIt-Anchor" href="#失效-1过度保守"></a> 失效 1：过度保守</h3>
+<p>模型会拒答本该回答的问题，输出很安全但很空，遇到稍微不确定的问题就回避。</p>
+<p>这种失效在医疗、法律、金融等高风险场景尤其常见。<br />
+团队为了压低风险，偏好数据大量奖励“保守表达”，结果模型把“谨慎”学成了“缩手缩脚”。</p>
+<h3 id="失效-2模板化严重"><a class="markdownIt-Anchor" href="#失效-2模板化严重"></a> 失效 2：模板化严重</h3>
+<p>模型学会一种“看起来很对齐”的风格，例如先道歉、再提醒风险、再给笼统建议、最后建议咨询专业人士。</p>
+<p>这种模板在单条样本上看似不错，但一旦频繁出现，帮助性会快速下降。</p>
+<h3 id="失效-3能力被压制"><a class="markdownIt-Anchor" href="#失效-3能力被压制"></a> 失效 3：能力被压制</h3>
+<p>过强对齐可能让原本的推理和探索能力变弱。<br />
+典型表现包括复杂问题回答开始缩短，模型不愿进行假设分析，代码修复更保守，多步推理中途提前收手。</p>
+<h3 id="失效-4只在离线偏好集上好看"><a class="markdownIt-Anchor" href="#失效-4只在离线偏好集上好看"></a> 失效 4：只在离线偏好集上好看</h3>
+<p>真实用户流量中，问题类型和容错边界并不相同。<br />
+离线偏好集若过于干净、短小和可控，就会造成明显的 offline-online gap。</p>
+<h3 id="失效-5风格变好了事实性变差了"><a class="markdownIt-Anchor" href="#失效-5风格变好了事实性变差了"></a> 失效 5：风格变好了，事实性变差了</h3>
+<p>有些偏好训练会让模型更礼貌、更像“好助手”，但却更容易在事实不确定时编出完整答案。<br />
+因为偏好数据奖励了“像样的回答”，却没有足够惩罚“漂亮的错答”。</p>
+<h3 id="失效-6局部安全策略与全局任务目标冲突"><a class="markdownIt-Anchor" href="#失效-6局部安全策略与全局任务目标冲突"></a> 失效 6：局部安全策略与全局任务目标冲突</h3>
+<p>例如在企业运维助手里，偏好数据奖励“谨慎，不轻易给危险命令”，但真实业务又要求紧急情况下快速给出准确修复动作。</p>
+<p>如果没有细分风险等级，模型会在关键场景里反而显得不够有用。</p>
+<h2 id="7-一个很实际的分解偏好对齐在同时优化哪些维度"><a class="markdownIt-Anchor" href="#7-一个很实际的分解偏好对齐在同时优化哪些维度"></a> 7. 一个很实际的分解：偏好对齐在同时优化哪些维度</h2>
+<p><strong>可以把偏好目标粗略写成</strong>：</p>
+<p><span class="katex-display"><span class="katex"><span class="katex-mathml"><math><semantics><mrow><mi>R</mi><mo stretchy="false">(</mo><mi>y</mi><mi mathvariant="normal">∣</mi><mi>x</mi><mo stretchy="false">)</mo><mo>=</mo><msub><mi>λ</mi><mn>1</mn></msub><msub><mi>R</mi><mtext>helpful</mtext></msub><mo>+</mo><msub><mi>λ</mi><mn>2</mn></msub><msub><mi>R</mi><mtext>safe</mtext></msub><mo>+</mo><msub><mi>λ</mi><mn>3</mn></msub><msub><mi>R</mi><mtext>style</mtext></msub><mo>+</mo><msub><mi>λ</mi><mn>4</mn></msub><msub><mi>R</mi><mtext>format</mtext></msub><mo>+</mo><msub><mi>λ</mi><mn>5</mn></msub><msub><mi>R</mi><mtext>truthfulness</mtext></msub><mi mathvariant="normal">.</mi></mrow><annotation encoding="application/x-tex">R(y|x)
+=
+\lambda_1 R_{\text{helpful}}
+ + \lambda_2 R_{\text{safe}}
+ + \lambda_3 R_{\text{style}}
+ + \lambda_4 R_{\text{format}}
+ + \lambda_5 R_{\text{truthfulness}}.
+</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:1em;vertical-align:-0.25em;"></span><span class="mord mathdefault" style="margin-right:0.00773em;">R</span><span class="mopen">(</span><span class="mord mathdefault" style="margin-right:0.03588em;">y</span><span class="mord">∣</span><span class="mord mathdefault">x</span><span class="mclose">)</span><span class="mspace" style="margin-right:0.2777777777777778em;"></span><span class="mrel">=</span><span class="mspace" style="margin-right:0.2777777777777778em;"></span></span><span class="base"><span class="strut" style="height:0.980548em;vertical-align:-0.286108em;"></span><span class="mord"><span class="mord mathdefault">λ</span><span class="msupsub"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height:0.30110799999999993em;"><span style="top:-2.5500000000000003em;margin-left:0em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mtight">1</span></span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height:0.15em;"><span></span></span></span></span></span></span><span class="mord"><span class="mord mathdefault" style="margin-right:0.00773em;">R</span><span class="msupsub"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height:0.3361079999999999em;"><span style="top:-2.5500000000000003em;margin-left:-0.00773em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mtight"><span class="mord text mtight"><span class="mord mtight">helpful</span></span></span></span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height:0.286108em;"><span></span></span></span></span></span></span><span class="mspace" style="margin-right:0.2222222222222222em;"></span><span class="mbin">+</span><span class="mspace" style="margin-right:0.2222222222222222em;"></span></span><span class="base"><span class="strut" style="height:0.84444em;vertical-align:-0.15em;"></span><span class="mord"><span class="mord mathdefault">λ</span><span class="msupsub"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height:0.30110799999999993em;"><span style="top:-2.5500000000000003em;margin-left:0em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mtight">2</span></span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height:0.15em;"><span></span></span></span></span></span></span><span class="mord"><span class="mord mathdefault" style="margin-right:0.00773em;">R</span><span class="msupsub"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height:0.33610799999999996em;"><span style="top:-2.5500000000000003em;margin-left:-0.00773em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mtight"><span class="mord text mtight"><span class="mord mtight">safe</span></span></span></span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height:0.15em;"><span></span></span></span></span></span></span><span class="mspace" style="margin-right:0.2222222222222222em;"></span><span class="mbin">+</span><span class="mspace" style="margin-right:0.2222222222222222em;"></span></span><span class="base"><span class="strut" style="height:0.980548em;vertical-align:-0.286108em;"></span><span class="mord"><span class="mord mathdefault">λ</span><span class="msupsub"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height:0.30110799999999993em;"><span style="top:-2.5500000000000003em;margin-left:0em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mtight">3</span></span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height:0.15em;"><span></span></span></span></span></span></span><span class="mord"><span class="mord mathdefault" style="margin-right:0.00773em;">R</span><span class="msupsub"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height:0.3361079999999999em;"><span style="top:-2.5500000000000003em;margin-left:-0.00773em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mtight"><span class="mord text mtight"><span class="mord mtight">style</span></span></span></span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height:0.286108em;"><span></span></span></span></span></span></span><span class="mspace" style="margin-right:0.2222222222222222em;"></span><span class="mbin">+</span><span class="mspace" style="margin-right:0.2222222222222222em;"></span></span><span class="base"><span class="strut" style="height:0.84444em;vertical-align:-0.15em;"></span><span class="mord"><span class="mord mathdefault">λ</span><span class="msupsub"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height:0.30110799999999993em;"><span style="top:-2.5500000000000003em;margin-left:0em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mtight">4</span></span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height:0.15em;"><span></span></span></span></span></span></span><span class="mord"><span class="mord mathdefault" style="margin-right:0.00773em;">R</span><span class="msupsub"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height:0.33610799999999996em;"><span style="top:-2.5500000000000003em;margin-left:-0.00773em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mtight"><span class="mord text mtight"><span class="mord mtight">format</span></span></span></span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height:0.15em;"><span></span></span></span></span></span></span><span class="mspace" style="margin-right:0.2222222222222222em;"></span><span class="mbin">+</span><span class="mspace" style="margin-right:0.2222222222222222em;"></span></span><span class="base"><span class="strut" style="height:0.84444em;vertical-align:-0.15em;"></span><span class="mord"><span class="mord mathdefault">λ</span><span class="msupsub"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height:0.30110799999999993em;"><span style="top:-2.5500000000000003em;margin-left:0em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mtight">5</span></span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height:0.15em;"><span></span></span></span></span></span></span><span class="mord"><span class="mord mathdefault" style="margin-right:0.00773em;">R</span><span class="msupsub"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height:0.33610799999999996em;"><span style="top:-2.5500000000000003em;margin-left:-0.00773em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mtight"><span class="mord text mtight"><span class="mord mtight">truthfulness</span></span></span></span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height:0.15em;"><span></span></span></span></span></span></span><span class="mord">.</span></span></span></span></span></p>
+<p>现实困难在于这些子目标彼此会冲突，不同业务下 <span class="katex"><span class="katex-mathml"><math><semantics><mrow><msub><mi>λ</mi><mi>i</mi></msub></mrow><annotation encoding="application/x-tex">\lambda_i</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.84444em;vertical-align:-0.15em;"></span><span class="mord"><span class="mord mathdefault">λ</span><span class="msupsub"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height:0.31166399999999994em;"><span style="top:-2.5500000000000003em;margin-left:0em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mathdefault mtight">i</span></span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height:0.15em;"><span></span></span></span></span></span></span></span></span></span> 完全不同，标注过程也往往没有显式告诉模型这些权重。</p>
+<p>于是模型只能从偏好样本里“猜测”团队想要什么。<br />
+如果样本设计不清楚，最终输出就会变成一种难以解释的折中。</p>
+<h2 id="8-为什么对齐问题常常不是算法问题"><a class="markdownIt-Anchor" href="#8-为什么对齐问题常常不是算法问题"></a> 8. 为什么对齐问题常常不是算法问题</h2>
+<p>现实中很多失败，并不是 <code>DPO</code> 比 <code>RLHF</code> 差，或者反过来，而是偏好数据质量不够、标注标准不清、业务目标没拆清楚、候选回答分布过窄、高风险长尾样本太少。</p>
+<p>所以做对齐时，算法只是最后一层，前面偏好数据设计更关键。</p>
+<p>这也是为什么很多团队会发现：换了新算法，提升有限；但一旦重做偏好指南、补关键失败样本、引入线上反馈，效果会立刻改善。</p>
+<h2 id="9-三个典型业务例子"><a class="markdownIt-Anchor" href="#9-三个典型业务例子"></a> 9. 三个典型业务例子</h2>
+<h3 id="91-编程助手"><a class="markdownIt-Anchor" href="#91-编程助手"></a> 9.1 编程助手</h3>
+<p>如果偏好数据过度偏爱“保守不执行”，模型会更少给出具体修复，更喜欢说“需要更多信息”，也更少主动提出合理假设。</p>
+<p>这会直接伤害开发者体验。</p>
+<h3 id="92-企业知识库问答"><a class="markdownIt-Anchor" href="#92-企业知识库问答"></a> 9.2 企业知识库问答</h3>
+<p>如果偏好数据过度奖励“看起来完整”，模型可能在检索证据不足时仍然给出过度肯定的结论。<br />
+正确的做法应是把“证据约束”纳入偏好标准。</p>
+<h3 id="93-青少年教育助手"><a class="markdownIt-Anchor" href="#93-青少年教育助手"></a> 9.3 青少年教育助手</h3>
+<p>这里的偏好重点可能是正向引导、解释清晰、避免危险建议和用词温和。</p>
+<p>这和企业运维、法律助手、研究助手的对齐目标显然完全不同。</p>
+<h2 id="10-如何设计更好的偏好标签结构"><a class="markdownIt-Anchor" href="#10-如何设计更好的偏好标签结构"></a> 10. 如何设计更好的偏好标签结构</h2>
+<p>一个更稳的办法，不是只给二元偏好，而是给分解标签，例如准确性、帮助性、安全性、风格、结构化程度和引用证据是否充分。</p>
+<p>即使最终训练时仍然会合成一个总目标，分解标签也能帮助团队发现标注冲突来自哪里，在不同业务里调整权重，并更方便地做错误分析和回放。</p>
+<h2 id="11-偏好数据采集时的实践建议"><a class="markdownIt-Anchor" href="#11-偏好数据采集时的实践建议"></a> 11. 偏好数据采集时的实践建议</h2>
+<h3 id="111-候选回答要足够多样"><a class="markdownIt-Anchor" href="#111-候选回答要足够多样"></a> 11.1 候选回答要足够多样</h3>
+<p>不要只从一个模型采两条回答。最好混合基座模型回答、SFT 模型回答、当前线上模型回答，以及不同 prompt 模板下的回答。</p>
+<p>这样偏好数据才真正覆盖“风格差异”和“错误差异”。</p>
+<h3 id="112-把代表性失败样本单独建池"><a class="markdownIt-Anchor" href="#112-把代表性失败样本单独建池"></a> 11.2 把代表性失败样本单独建池</h3>
+<p>例如容易幻觉、用户表达模糊、需要结构化输出、极易过度拒答的问题，都应该单独建池。</p>
+<p>这些样本的训练价值常常远高于普通样本。</p>
+<h3 id="113-在线反馈一定要回流"><a class="markdownIt-Anchor" href="#113-在线反馈一定要回流"></a> 11.3 在线反馈一定要回流</h3>
+<p>如果只依赖离线标注，偏好目标很容易逐渐脱离真实用户体验。<br />
+尤其产品迭代后，用户任务结构可能会明显变化。</p>
+<h2 id="12-一份对齐项目的检查清单"><a class="markdownIt-Anchor" href="#12-一份对齐项目的检查清单"></a> 12. 一份对齐项目的检查清单</h2>
+<p>在真正启动偏好训练前，建议至少确认：到底想优化准确、帮助、安全、风格中的哪几项；这些目标有无优先级；标注指南能否处理冲突情形；偏好样本是否覆盖高风险长尾；是否保留线上失败样本；离线评测是否覆盖过度拒答、事实性、结构化输出等维度；上线后是否有持续反馈闭环。</p>
+<h2 id="13-一个总判断"><a class="markdownIt-Anchor" href="#13-一个总判断"></a> 13. 一个总判断</h2>
+<p>偏好对齐最难的，从来不是把公式写出来，而是决定“你到底想让模型更像什么样的人”。<br />
+一旦这个目标没拆清楚，再漂亮的对齐算法也很难稳定成功。</p>
+<p>更准确地说，偏好对齐的真正难点，是把业务目标拆成可标注的偏好维度，把长尾失败模式稳定送进训练集，并把离线排序收益转成线上真实帮助性提升。</p>
+<p>只要这三件事没打通，对齐就很容易停留在“回答更像助手了”，却没有真正变得更有用。</p>
+<h2 id="工程收束"><a class="markdownIt-Anchor" href="#工程收束"></a> 工程收束</h2>
+<p>偏好对齐不是单独调一个 loss，而是把“想要什么行为”翻译成可标注、可复验、可回流的数据制度。上线前要校准 judge，按任务桶做人审抽查，区分风格收益与能力收益，并把关键配置、数据快照、失败案例、回滚条件和下游接口说明版本化；否则对齐经验很难沉淀为组织能力。</p>
+
+		</div>
+
+		
+		<div class="post-copyright-info w-full my-8 px-2 sm:px-6 md:px-8">
+			<div class="article-copyright-info-container">
+    <ul>
+        <li><strong>Title:</strong> 训练：偏好数据与对齐失效</li>
+        <li><strong>Author:</strong> Charles</li>
+        <li><strong>Created at
+                :</strong> 2026-03-20 09:00:00</li>
+        
+            <li>
+                <strong>Updated at
+                    :</strong> 2026-03-20 09:00:00
+            </li>
+        
+        <li>
+            <strong>Link:</strong> https://charles2530.github.io/2026/03/20/ai-files-training-preference-data-and-alignment-pitfalls/
+        </li>
+        <li>
+            <strong>
+                License:
+            </strong>
+            
+
+            
+                This work is licensed under <a class="license" target="_blank" rel="noopener" href="https://creativecommons.org/licenses/by-nc-sa/4.0">CC BY-NC-SA 4.0</a>.
+            
+        </li>
+    </ul>
+</div>
+
+		</div>
+		
+
+		
+		<ul class="post-tags-box text-lg mt-1.5 flex-wrap justify-center flex md:hidden">
+			
+			<li class="tag-item mx-0.5">
+				<a href="/tags/AI/">#AI</a>&nbsp;
+			</li>
+			
+			<li class="tag-item mx-0.5">
+				<a href="/tags/%E8%AE%AD%E7%BB%83/">#训练</a>&nbsp;
+			</li>
+			
+			<li class="tag-item mx-0.5">
+				<a href="/tags/%E6%95%B0%E6%8D%AE%E4%B8%8E%E8%AF%84%E6%B5%8B/">#数据与评测</a>&nbsp;
+			</li>
+			
+		</ul>
+		
+
+		
+
+		
+		<div class="article-nav my-8 flex justify-between items-center px-2 sm:px-6 md:px-8">
+			
+			<div class="article-prev border-border-color shadow-redefine-flat shadow-shadow-color-2 rounded-medium px-4 py-2 hover:shadow-redefine-flat-hover hover:shadow-shadow-color-2">
+				<a class="prev" rel="prev" href="/2026/03/22/ai-files-training-pretraining-finetuning-alignment/">
+					<span class="left arrow-icon flex justify-center items-center">
+						<i class="fa-solid fa-chevron-left"></i>
+					</span>
+					<span class="title flex justify-center items-center">
+						<span class="post-nav-title-item truncate max-w-48">训练：预训练、微调与对齐</span>
+						<span class="post-nav-item">Prev posts</span>
+					</span>
+				</a>
+			</div>
+			
+			
+			<div class="article-next border-border-color shadow-redefine-flat shadow-shadow-color-2 rounded-medium px-4 py-2 hover:shadow-redefine-flat-hover hover:shadow-shadow-color-2">
+				<a class="next" rel="next" href="/2026/03/18/ai-files-training-post-training-data-engines-and-judge-models/">
+					<span class="title flex justify-center items-center">
+						<span class="post-nav-title-item truncate max-w-48">训练：后训练数据引擎与 Judge 模型</span>
+						<span class="post-nav-item">Next posts</span>
+					</span>
+					<span class="right arrow-icon flex justify-center items-center">
+						<i class="fa-solid fa-chevron-right"></i>
+					</span>
+				</a>
+			</div>
+			
+		</div>
+		
+
+
+		
+		<div class="comment-container px-2 sm:px-6 md:px-8 pb-8">
+			<div class="comments-container mt-10 w-full ">
+    <div id="comment-anchor" class="w-full h-2.5"></div>
+    <div class="comment-area-title w-full my-1.5 md:my-2.5 text-xl md:text-3xl font-bold">
+        Comments
+    </div>
+    
+
+        
+            
+    <div id="gitalk-container"></div>
+    <script data-swup-reload-script
+            src="https://cdnjs.cloudflare.com/ajax/libs/gitalk/1.8.0/gitalk.min.js"></script>
+    <script data-swup-reload-script>
+        (function() {
+            const startPath = location.pathname;
+            const startTime = Date.now();
+            const retryDelay = 200;
+            const retryLimit = 5000;
+
+            const runGitalk = () => {
+                if (location.pathname !== startPath) {
+                    return;
+                }
+
+                const container = document.getElementById('gitalk-container');
+                if (!container || typeof Gitalk === 'undefined') {
+                    if (Date.now() - startTime < retryLimit) {
+                        setTimeout(runGitalk, retryDelay);
+                    }
+                    return;
+                }
+
+                container.innerHTML = '';
+
+                let pageKey = decodeURI(location.pathname);
+                const maxLength = 50;
+                if (pageKey.length > maxLength) {
+                    pageKey = pageKey.substring(0, maxLength - 3) + '...';
+                }
+
+                try {
+                    new Gitalk({
+                        clientID: '8083299a8ee2aaf23879',
+                        clientSecret: 'a8161e81d4872181e884fdb69f7be24916b6a9d0',
+                        repo: 'Charles2530.github.io',
+                        owner: 'Charles2530',
+                        admin: ['Charles2530'],
+                        id: pageKey,
+                        language: 'en',
+                        proxy: 'https://github.com/login/oauth/access_token'
+                    }).render(container);
+                } catch (e) {
+                    window.Gitalk = null;
+                }
+            };
+
+            runGitalk();
+        })();
+    </script>
+
+
+
+        
+    
+</div>
+
+		</div>
+		
+	</div>
+
+	
+	<div class="toc-content-container">
+		<div class="post-toc-wrap">
+	<div class="post-toc">
+		<div class="toc-title">On this page</div>
+		<div class="page-title">训练：偏好数据与对齐失效</div>
+		<ol class="nav"><li class="nav-item nav-level-2"><a class="nav-link" href="#0-%E5%85%88%E7%94%A8-instructgpt-%E5%9B%BE%E5%BB%BA%E7%AB%8B%E5%85%A8%E5%B1%80%E6%B5%81%E7%A8%8B"><span class="nav-text"> 0. 先用 InstructGPT 图建立全局流程</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#1-%E5%81%8F%E5%A5%BD%E6%95%B0%E6%8D%AE%E5%9C%A8%E5%A1%91%E9%80%A0%E4%BB%80%E4%B9%88"><span class="nav-text"> 1. 偏好数据在塑造什么</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#2-%E4%B8%80%E4%B8%AA%E6%9B%B4%E5%BD%A2%E5%BC%8F%E5%8C%96%E7%9A%84%E7%9B%B4%E8%A7%89%E5%81%8F%E5%A5%BD%E5%9C%A8%E5%AD%A6%E4%B9%A0%E6%8E%92%E5%BA%8F"><span class="nav-text"> 2. 一个更形式化的直觉：偏好在学习排序</span></a><ol class="nav-child"><li class="nav-item nav-level-3"><a class="nav-link" href="#21-rlhf-%E5%92%8C-dpo-%E7%9A%84%E5%8C%BA%E5%88%AB%E5%85%88%E8%BF%99%E6%A0%B7%E8%AE%B0"><span class="nav-text"> 2.1 RLHF 和 DPO 的区别先这样记</span></a></li></ol></li><li class="nav-item nav-level-2"><a class="nav-link" href="#3-%E5%A5%BD%E7%9A%84%E5%81%8F%E5%A5%BD%E6%95%B0%E6%8D%AE%E9%95%BF%E4%BB%80%E4%B9%88%E6%A0%B7"><span class="nav-text"> 3. 好的偏好数据长什么样</span></a><ol class="nav-child"><li class="nav-item nav-level-3"><a class="nav-link" href="#31-%E5%8C%BA%E5%88%86%E5%BA%A6%E6%98%8E%E7%A1%AE"><span class="nav-text"> 3.1 区分度明确</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#32-%E6%A0%87%E6%B3%A8%E6%A0%87%E5%87%86%E4%B8%80%E8%87%B4"><span class="nav-text"> 3.2 标注标准一致</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#33-%E4%B8%8E%E7%9C%9F%E5%AE%9E%E4%BB%BB%E5%8A%A1%E6%8E%A5%E8%BF%91"><span class="nav-text"> 3.3 与真实任务接近</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#34-%E8%A6%86%E7%9B%96%E5%85%B3%E9%94%AE%E5%A4%B1%E8%B4%A5%E6%A8%A1%E5%BC%8F"><span class="nav-text"> 3.4 覆盖关键失败模式</span></a></li></ol></li><li class="nav-item nav-level-2"><a class="nav-link" href="#4-%E4%B8%80%E4%B8%AA%E7%9B%B4%E8%A7%82%E4%BE%8B%E5%AD%90%E5%AE%A2%E6%9C%8D%E5%9C%BA%E6%99%AF"><span class="nav-text"> 4. 一个直观例子：客服场景</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#5-%E5%81%8F%E5%A5%BD%E6%95%B0%E6%8D%AE%E6%9C%80%E5%B8%B8%E8%A7%81%E7%9A%84%E5%99%AA%E5%A3%B0%E6%9D%A5%E6%BA%90"><span class="nav-text"> 5. 偏好数据最常见的噪声来源</span></a><ol class="nav-child"><li class="nav-item nav-level-3"><a class="nav-link" href="#51-%E6%A0%87%E6%B3%A8%E5%91%98%E5%81%8F%E5%A5%BD%E4%B8%8D%E4%B8%80%E8%87%B4"><span class="nav-text"> 5.1 标注员偏好不一致</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#52-%E6%A0%87%E6%B3%A8%E5%87%86%E5%88%99%E8%BF%87%E4%BA%8E%E6%A8%A1%E7%B3%8A"><span class="nav-text"> 5.2 标注准则过于模糊</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#53-%E5%81%8F%E5%A5%BD%E6%95%B0%E6%8D%AE%E4%B8%8E%E4%B8%9A%E5%8A%A1%E7%9B%AE%E6%A0%87%E9%94%99%E4%BD%8D"><span class="nav-text"> 5.3 偏好数据与业务目标错位</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#54-%E5%80%99%E9%80%89%E5%9B%9E%E7%AD%94%E5%88%86%E5%B8%83%E5%A4%AA%E5%8D%95%E4%B8%80"><span class="nav-text"> 5.4 候选回答分布太单一</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#55-%E5%A5%96%E5%8A%B1%E9%BB%91%E5%AE%A2%E5%BC%8F%E6%A0%B7%E6%9C%AC%E4%B8%8D%E8%B6%B3"><span class="nav-text"> 5.5 奖励黑客式样本不足</span></a></li></ol></li><li class="nav-item nav-level-2"><a class="nav-link" href="#6-%E5%AF%B9%E9%BD%90%E5%A4%B1%E6%95%88%E6%A8%A1%E5%BC%8F%E6%80%BB%E8%A7%88"><span class="nav-text"> 6. 对齐失效模式总览</span></a><ol class="nav-child"><li class="nav-item nav-level-3"><a class="nav-link" href="#%E5%A4%B1%E6%95%88-1%E8%BF%87%E5%BA%A6%E4%BF%9D%E5%AE%88"><span class="nav-text"> 失效 1：过度保守</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#%E5%A4%B1%E6%95%88-2%E6%A8%A1%E6%9D%BF%E5%8C%96%E4%B8%A5%E9%87%8D"><span class="nav-text"> 失效 2：模板化严重</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#%E5%A4%B1%E6%95%88-3%E8%83%BD%E5%8A%9B%E8%A2%AB%E5%8E%8B%E5%88%B6"><span class="nav-text"> 失效 3：能力被压制</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#%E5%A4%B1%E6%95%88-4%E5%8F%AA%E5%9C%A8%E7%A6%BB%E7%BA%BF%E5%81%8F%E5%A5%BD%E9%9B%86%E4%B8%8A%E5%A5%BD%E7%9C%8B"><span class="nav-text"> 失效 4：只在离线偏好集上好看</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#%E5%A4%B1%E6%95%88-5%E9%A3%8E%E6%A0%BC%E5%8F%98%E5%A5%BD%E4%BA%86%E4%BA%8B%E5%AE%9E%E6%80%A7%E5%8F%98%E5%B7%AE%E4%BA%86"><span class="nav-text"> 失效 5：风格变好了，事实性变差了</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#%E5%A4%B1%E6%95%88-6%E5%B1%80%E9%83%A8%E5%AE%89%E5%85%A8%E7%AD%96%E7%95%A5%E4%B8%8E%E5%85%A8%E5%B1%80%E4%BB%BB%E5%8A%A1%E7%9B%AE%E6%A0%87%E5%86%B2%E7%AA%81"><span class="nav-text"> 失效 6：局部安全策略与全局任务目标冲突</span></a></li></ol></li><li class="nav-item nav-level-2"><a class="nav-link" href="#7-%E4%B8%80%E4%B8%AA%E5%BE%88%E5%AE%9E%E9%99%85%E7%9A%84%E5%88%86%E8%A7%A3%E5%81%8F%E5%A5%BD%E5%AF%B9%E9%BD%90%E5%9C%A8%E5%90%8C%E6%97%B6%E4%BC%98%E5%8C%96%E5%93%AA%E4%BA%9B%E7%BB%B4%E5%BA%A6"><span class="nav-text"> 7. 一个很实际的分解：偏好对齐在同时优化哪些维度</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#8-%E4%B8%BA%E4%BB%80%E4%B9%88%E5%AF%B9%E9%BD%90%E9%97%AE%E9%A2%98%E5%B8%B8%E5%B8%B8%E4%B8%8D%E6%98%AF%E7%AE%97%E6%B3%95%E9%97%AE%E9%A2%98"><span class="nav-text"> 8. 为什么对齐问题常常不是算法问题</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#9-%E4%B8%89%E4%B8%AA%E5%85%B8%E5%9E%8B%E4%B8%9A%E5%8A%A1%E4%BE%8B%E5%AD%90"><span class="nav-text"> 9. 三个典型业务例子</span></a><ol class="nav-child"><li class="nav-item nav-level-3"><a class="nav-link" href="#91-%E7%BC%96%E7%A8%8B%E5%8A%A9%E6%89%8B"><span class="nav-text"> 9.1 编程助手</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#92-%E4%BC%81%E4%B8%9A%E7%9F%A5%E8%AF%86%E5%BA%93%E9%97%AE%E7%AD%94"><span class="nav-text"> 9.2 企业知识库问答</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#93-%E9%9D%92%E5%B0%91%E5%B9%B4%E6%95%99%E8%82%B2%E5%8A%A9%E6%89%8B"><span class="nav-text"> 9.3 青少年教育助手</span></a></li></ol></li><li class="nav-item nav-level-2"><a class="nav-link" href="#10-%E5%A6%82%E4%BD%95%E8%AE%BE%E8%AE%A1%E6%9B%B4%E5%A5%BD%E7%9A%84%E5%81%8F%E5%A5%BD%E6%A0%87%E7%AD%BE%E7%BB%93%E6%9E%84"><span class="nav-text"> 10. 如何设计更好的偏好标签结构</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#11-%E5%81%8F%E5%A5%BD%E6%95%B0%E6%8D%AE%E9%87%87%E9%9B%86%E6%97%B6%E7%9A%84%E5%AE%9E%E8%B7%B5%E5%BB%BA%E8%AE%AE"><span class="nav-text"> 11. 偏好数据采集时的实践建议</span></a><ol class="nav-child"><li class="nav-item nav-level-3"><a class="nav-link" href="#111-%E5%80%99%E9%80%89%E5%9B%9E%E7%AD%94%E8%A6%81%E8%B6%B3%E5%A4%9F%E5%A4%9A%E6%A0%B7"><span class="nav-text"> 11.1 候选回答要足够多样</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#112-%E6%8A%8A%E4%BB%A3%E8%A1%A8%E6%80%A7%E5%A4%B1%E8%B4%A5%E6%A0%B7%E6%9C%AC%E5%8D%95%E7%8B%AC%E5%BB%BA%E6%B1%A0"><span class="nav-text"> 11.2 把代表性失败样本单独建池</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#113-%E5%9C%A8%E7%BA%BF%E5%8F%8D%E9%A6%88%E4%B8%80%E5%AE%9A%E8%A6%81%E5%9B%9E%E6%B5%81"><span class="nav-text"> 11.3 在线反馈一定要回流</span></a></li></ol></li><li class="nav-item nav-level-2"><a class="nav-link" href="#12-%E4%B8%80%E4%BB%BD%E5%AF%B9%E9%BD%90%E9%A1%B9%E7%9B%AE%E7%9A%84%E6%A3%80%E6%9F%A5%E6%B8%85%E5%8D%95"><span class="nav-text"> 12. 一份对齐项目的检查清单</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#13-%E4%B8%80%E4%B8%AA%E6%80%BB%E5%88%A4%E6%96%AD"><span class="nav-text"> 13. 一个总判断</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#%E5%B7%A5%E7%A8%8B%E6%94%B6%E6%9D%9F"><span class="nav-text"> 工程收束</span></a></li></ol>
+
+	</div>
+</div>
+	</div>
+	
+</div>
+
+			</div>
+
+			
+		</div>
+
+		<div class="main-content-footer">
+			<footer class="footer mt-5 py-5 h-auto text-base text-third-text-color relative border-t-2 border-t-border-color">
+    <div class="info-container py-3 text-center">
+        
+        <div class="text-center">
+            &copy;
+            
+              <span>2022</span>
+              -
+            
+            2026&nbsp;&nbsp;<i class="fa-solid fa-heart fa-beat" style="--fa-animation-duration: 0.5s; color: #f54545"></i>&nbsp;&nbsp;<a href="/">Charles</a>
+            
+                
+                <p class="post-count space-x-0.5">
+                    <span>
+                        504 posts in total
+                    </span>
+                    
+                        <span>
+                            2011k words in total
+                        </span>
+                    
+                </p>
+            
+        </div>
+        
+            <script data-swup-reload-script src="https://cn.vercount.one/js"></script>
+            <div class="relative text-center lg:absolute lg:right-[20px] lg:top-1/2 lg:-translate-y-1/2 lg:text-right">
+                
+                    <span id="busuanzi_container_site_uv" class="lg:!block">
+                        <span class="text-sm">VISITOR COUNT</span>
+                        <span id="busuanzi_value_site_uv"></span>
+                    </span>
+                
+                
+                    <span id="busuanzi_container_site_pv" class="lg:!block">
+                        <span class="text-sm">TOTAL PAGE VIEWS</span>
+                        <span id="busuanzi_value_site_pv"></span>
+                    </span>
+                
+            </div>
+        
+        <div class="relative text-center lg:absolute lg:left-[20px] lg:top-1/2 lg:-translate-y-1/2 lg:text-left">
+            <span class="lg:block text-sm">POWERED BY <?xml version="1.0" encoding="utf-8"?><!DOCTYPE svg PUBLIC "-//W3C//DTD SVG 1.1//EN" "http://www.w3.org/Graphics/SVG/1.1/DTD/svg11.dtd"><svg class="relative top-[2px] inline-block align-baseline" version="1.1" id="圖層_1" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" x="0px" y="0px" width="1rem" height="1rem" viewBox="0 0 512 512" enable-background="new 0 0 512 512" xml:space="preserve"><path fill="#0E83CD" d="M256.4,25.8l-200,115.5L56,371.5l199.6,114.7l200-115.5l0.4-230.2L256.4,25.8z M349,354.6l-18.4,10.7l-18.6-11V275H200v79.6l-18.4,10.7l-18.6-11v-197l18.5-10.6l18.5,10.8V237h112v-79.6l18.5-10.6l18.5,10.8V354.6z"/></svg><a target="_blank" class="text-base" href="https://hexo.io">Hexo</a></span>
+            <span class="text-sm lg:block">THEME&nbsp;<a class="text-base" target="_blank" href="https://github.com/EvanNotFound/hexo-theme-redefine">Redefine v2.9.0</a></span>
+        </div>
+        
+        
+            <div>
+                Blog up for <span class="odometer" id="runtime_days" ></span> days <span class="odometer" id="runtime_hours"></span> hrs <span class="odometer" id="runtime_minutes"></span> Min <span class="odometer" id="runtime_seconds"></span> Sec
+            </div>
+        
+        
+            <script data-swup-reload-script>
+                try {
+                    function odometer_init() {
+                    const elements = document.querySelectorAll('.odometer');
+                    elements.forEach(el => {
+                        new Odometer({
+                            el,
+                            format: '( ddd).dd',
+                            duration: 200
+                        });
+                    });
+                    }
+                    odometer_init();
+                } catch (error) {}
+            </script>
+        
+        
+            
+                
+        
+                
+        
+                
+
+                    
+                        <script data-swup-reload-script type="text/javascript" src="/js/love.js"></script>
+                    
+        
+        
+    </div>  
+</footer>
+		</div>
+	</div>
+
+	
+	<div class="post-tools">
+		<div class="post-tools-container">
+	<ul class="article-tools-list">
+		<!-- TOC aside toggle -->
+		
+		<li class="right-bottom-tools page-aside-toggle">
+			<i class="fa-regular fa-outdent"></i>
+		</li>
+		
+
+		<!-- go comment -->
+		
+		<li class="go-comment">
+			<i class="fa-regular fa-comments"></i>
+		</li>
+		
+	</ul>
+</div>
+	</div>
+	
+
+	<div class="right-side-tools-container">
+		<div class="side-tools-container">
+	<ul class="hidden-tools-list">
+		<li class="right-bottom-tools tool-font-adjust-plus flex justify-center items-center">
+			<i class="fa-regular fa-magnifying-glass-plus"></i>
+		</li>
+
+		<li class="right-bottom-tools tool-font-adjust-minus flex justify-center items-center">
+			<i class="fa-regular fa-magnifying-glass-minus"></i>
+		</li>
+
+		<li class="right-bottom-tools tool-dark-light-toggle flex justify-center items-center">
+			<i class="fa-regular fa-moon"></i>
+		</li>
+
+		<!-- rss -->
+		
+		<li class="right-bottom-tools rss flex justify-center items-center">
+			<a class="flex justify-center items-center" href="/atom.xml" target="_blank">
+				<i class="fa-regular fa-rss"></i>
+			</a>
+		</li>
+		
+
+		
+
+		<li class="right-bottom-tools tool-scroll-to-bottom flex justify-center items-center">
+			<i class="fa-regular fa-arrow-down"></i>
+		</li>
+	</ul>
+
+	<ul class="visible-tools-list">
+		<li class="right-bottom-tools toggle-tools-list flex justify-center items-center">
+			<i class="fa-regular fa-cog fa-spin"></i>
+		</li>
+		
+		<li class="right-bottom-tools tool-scroll-to-top flex justify-center items-center">
+			<i class="arrow-up fas fa-arrow-up"></i>
+			<span class="percent"></span>
+		</li>
+		
+		
+	</ul>
+</div>
+	</div>
+
+	<div class="image-viewer-container" role="dialog" aria-modal="true" aria-label="Image viewer">
+	<button class="image-viewer-close" type="button" aria-label="Close">
+		<i class="fa-solid fa-xmark"></i>
+	</button>
+	<button class="image-viewer-prev" type="button" aria-label="Prev">
+		<i class="fa-solid fa-chevron-left"></i>
+	</button>
+	<div class="image-viewer-frame">
+		<img src="" alt="">
+	</div>
+	<div class="image-viewer-exif-panel hidden absolute left-1/2 bottom-20 -translate-x-1/2 w-[min(92vw,420px)] max-h-[60vh] overflow-hidden rounded-2xl bg-background-color-transparent-80 p-4 text-left shadow-redefine-flat backdrop-blur-md" role="dialog" aria-label="EXIF" aria-hidden="true">
+		<div class="flex items-center justify-between mb-3">
+			<span class="text-sm font-semibold text-first-text-color">EXIF</span>
+			<button class="image-viewer-exif-close flex h-8 w-8 items-center justify-center rounded-full bg-background-color-transparent-80 text-first-text-color transition hover:bg-background-color-transparent-40" type="button" aria-label="Close">
+				<i class="fa-solid fa-xmark text-[0.65rem]"></i>
+			</button>
+		</div>
+		<div class="image-viewer-exif-cards grid grid-cols-1 sm:grid-cols-2 gap-3 max-h-[50vh] overflow-y-auto pr-1 scrollbar-hide"></div>
+		<template class="image-viewer-exif-card-template">
+			<div class="rounded-lg bg-background-color-transparent-40 px-3 py-2">
+				<div class="image-viewer-exif-card-header flex items-center gap-2 mb-1">
+					<i class="image-viewer-exif-card-icon fa-solid fa-circle-info text-xs text-third-text-color"></i>
+					<div class="image-viewer-exif-card-title text-xs font-semibold text-first-text-color"></div>
+				</div>
+				<div class="image-viewer-exif-card-items flex flex-col gap-1"></div>
+			</div>
+		</template>
+	</div>
+	<button class="image-viewer-exif-toggle flex items-center gap-2 hidden absolute left-1/2 bottom-6 -translate-x-1/2 rounded-full border border-border-color bg-background-color-transparent-80 px-4 py-2 text-first-text-color backdrop-blur-md transition hover:bg-background-color-transparent-40" type="button" aria-label="EXIF" aria-expanded="false">
+		<i class="fa-solid fa-circle-info text-xs"></i>
+		<span class="text-xs font-semibold uppercase tracking-wider">EXIF</span>
+	</button>
+	<button class="image-viewer-next" type="button" aria-label="Next">
+		<i class="fa-solid fa-chevron-right"></i>
+	</button>
+</div>
+
+
+	
+	<div class="search-pop-overlay">
+	<div class="popup search-popup">
+		<div class="search-header">
+			<span class="search-input-field-pre">
+				<i class="fa-solid fa-keyboard"></i>
+			</span>
+			<div class="search-input-container">
+				<input autocomplete="off" autocorrect="off" autocapitalize="off" placeholder="Search..." spellcheck="false" type="search" class="search-input">
+			</div>
+			<span class="popup-btn-close">
+				<i class="fa-solid fa-times"></i>
+			</span>
+		</div>
+		<div id="search-result">
+			<div id="no-result">
+				<i class="fa-solid fa-spinner fa-spin-pulse fa-5x fa-fw"></i>
+			</div>
+		</div>
+	</div>
+</div>
+	
+
+</main>
+
+
+
+<script src="/js/build/libs/Swup.min.js"></script>
+
+<script src="/js/build/libs/SwupSlideTheme.min.js"></script>
+
+<script src="/js/build/libs/SwupScriptsPlugin.min.js"></script>
+
+<script src="/js/build/libs/SwupProgressPlugin.min.js"></script>
+
+<script src="/js/build/libs/SwupScrollPlugin.min.js"></script>
+
+<script src="/js/build/libs/SwupPreloadPlugin.min.js"></script>
+
+<script>
+    window.swup = new Swup({
+        plugins: [
+            new SwupScriptsPlugin({
+                optin: true,
+            }),
+            new SwupProgressPlugin(),
+            new SwupScrollPlugin({
+                offset: 80,
+            }),
+            new SwupSlideTheme({
+                mainElement: ".main-content-body",
+            }),
+            new SwupPreloadPlugin(),
+        ],
+        containers: ["#swup"],
+    });
+
+    window.dispatchEvent(
+        new CustomEvent("redefine:swup:ready", {
+            detail: {
+                swup: window.swup,
+            },
+        }),
+    );
+</script>
+
+
+
+
+	
+<script src="/js/build/main.js" type="module"></script>
+
+
+
+    
+<script src="/js/build/libs/odometer.min.js"></script>
+
+    
+<link rel="stylesheet" href="/assets/odometer-theme-minimal.css">
+
+
+
+
+
+
+
+  
+<script src="/js/build/libs/Typed.min.js"></script>
+<script src="/js/build/libs/minimasonry.min.js" data-swup-reload-script=""></script>
+
+
+
+
+<script src="/js/build/libs/moment-with-locales.min.js" data-swup-reload-script=""></script>
+
+
+
+	
+</body>
+
+</html>

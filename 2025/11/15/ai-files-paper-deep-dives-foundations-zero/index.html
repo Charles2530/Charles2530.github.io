@@ -1,0 +1,2225 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="keywords" content="Charles">
+    
+    
+    <meta name="author" content="Charles">
+    
+    <!-- Completely eliminate flash of wrong theme -->
+    <script>
+        (function() {
+            const THEME_KEY = "REDEFINE-THEME-STATUS";
+            const DARK = "dark", LIGHT = "light";
+            
+            // Get preferred theme
+            function getTheme() {
+                try {
+                    const saved = localStorage.getItem(THEME_KEY);
+                    if (saved) {
+                        const { isDark } = JSON.parse(saved);
+                        return isDark ? DARK : LIGHT;
+                    }
+                } catch (e) {}
+                
+                return matchMedia("(prefers-color-scheme: dark)").matches ? DARK : LIGHT;
+            }
+            
+            // Apply theme to document
+            function applyTheme(theme) {
+                const isDark = theme === DARK;
+                const root = document.documentElement;
+                
+                // Set classes for compatibility
+                root.classList.add(theme);
+                root.classList.remove(isDark ? LIGHT : DARK);
+                root.style.colorScheme = theme;
+            }
+            
+            // Initial application
+            const theme = getTheme();
+            applyTheme(theme);
+            
+            // Listen for system preference changes
+            matchMedia("(prefers-color-scheme: dark)").addEventListener("change", ({ matches }) => {
+                // Only update if using system preference (no localStorage entry)
+                if (!localStorage.getItem(THEME_KEY)) {
+                    applyTheme(matches ? DARK : LIGHT);
+                }
+            });
+            
+            // Set body classes ASAP (before DOMContentLoaded)
+            (function() {
+                const addBodyClass = () => {
+                    const b = document.body;
+                    if (!b) return false;
+                    b.classList.add(theme + "-mode");
+                    return true;
+                };
+
+                // Try immediately
+                if (addBodyClass()) return;
+
+                // Observe until body exists
+                const mo = new MutationObserver(() => {
+                    if (addBodyClass()) mo.disconnect();
+                });
+                mo.observe(document.documentElement, { childList: true, subtree: true });
+            })();
+        })();
+    </script>
+    
+    <!-- preconnect -->
+<!--- Seo Part-->
+    
+    <link rel="canonical" href="https://charles2530.github.io/2025/11/15/ai-files-paper-deep-dives-foundations-zero/"/>
+    <meta name="robots" content="index,follow">
+    <meta name="googlebot" content="index,follow">
+    <meta name="revisit-after" content="1 days">
+    
+    
+        
+        <meta name="description" content="This is Charles&#39;s Castle.">
+<meta property="og:type" content="article">
+<meta property="og:title" content="论文专题讲解：ZeRO：大模型训练的零冗余状态优化">
+<meta property="og:url" content="https://charles2530.github.io/2025/11/15/ai-files-paper-deep-dives-foundations-zero/index.html">
+<meta property="og:site_name" content="Charles&#39;s Castle">
+<meta property="og:description" content="This is Charles&#39;s Castle.">
+<meta property="og:locale" content="en_US">
+<meta property="og:image" content="https://charles2530.github.io/image/background/logo.jpg">
+<meta property="article:published_time" content="2025-11-15T01:00:00.000Z">
+<meta property="article:modified_time" content="2025-11-15T01:00:00.000Z">
+<meta property="article:author" content="Du Jinyang">
+<meta property="article:tag" content="AI">
+<meta property="article:tag" content="基础知识">
+<meta property="article:tag" content="论文专题">
+<meta name="twitter:card" content="summary">
+<meta name="twitter:image" content="https://charles2530.github.io/image/background/logo.jpg">
+    
+    
+    <!--- Icon Part-->
+    <link rel="icon" type="image/png" href="https://charles2530.github.io/image/background/favicon.png" sizes="192x192">
+    <link rel="apple-touch-icon" sizes="180x180" href="https://charles2530.github.io/image/background/favicon.png">
+    <meta name="theme-color" content="#A31F34">
+    <link rel="shortcut icon" href="https://charles2530.github.io/image/background/favicon.png">
+    <!--- Page Info-->
+    
+    <title>
+        
+            论文专题讲解：ZeRO：大模型训练的零冗余状态优化 | Charles&#39;s Castle
+        
+    </title>
+
+    
+<link rel="stylesheet" href="/fonts/Chillax/chillax.css">
+
+
+    <!--- Inject Part-->
+    
+        
+            
+    
+            
+    
+            
+                
+                    <link rel="stylesheet" href="/katex/katex.min.css">
+                
+    
+            
+                
+                    <link rel="stylesheet" href="/css/site-polish-v2.css">
+                
+    
+            
+                
+                    <script data-swup-reload-script>
+(function() {
+  function loadBaiduAnalytics() {
+    if (window.__baiduAnalyticsLoaded) return;
+    window.__baiduAnalyticsLoaded = true;
+    window._hmt = window._hmt || [];
+    var hm = document.createElement("script");
+    hm.async = true;
+    hm.src = "https://hm.baidu.com/hm.js?8e0e5f382d14d87cbeadc33a36e71e86";
+    document.head.appendChild(hm);
+  }
+  if ("requestIdleCallback" in window) {
+    requestIdleCallback(loadBaiduAnalytics, { timeout: 3000 });
+  } else {
+    window.addEventListener("load", function() {
+      setTimeout(loadBaiduAnalytics, 1500);
+    });
+  }
+})();
+</script>
+
+                
+    
+
+    
+<link rel="stylesheet" href="/css/style.css">
+
+
+    
+        
+<link rel="stylesheet" href="/css/build/tailwind.css">
+
+    
+
+    
+<link rel="stylesheet" href="/fonts/GeistMono/geist-mono.css">
+
+    
+<link rel="stylesheet" href="/fonts/Geist/geist.css">
+
+    <!--- Font Part-->
+    
+    
+    
+    
+    
+    
+        
+<script src="/js/build/libs/anime.min.js"></script>
+
+    
+
+    <script id="hexo-configurations">
+    window.config = {"hostname":"charles2530.github.io","root":"/","language":"en","path":"search.xml"};
+    window.theme = {"articles":{"style":{"font_size":"16px","line_height":1.5,"image_border_radius":"14px","image_alignment":"center","image_caption":false,"link_icon":true,"delete_mask":false,"title_alignment":"left","headings_top_spacing":{"h1":"5rem","h2":"4rem","h3":"2.8rem","h4":"2.5rem","h5":"2.2rem","h6":"2rem"}},"word_count":{"enable":true,"count":true,"min2read":true},"author_label":{"enable":true,"auto":true,"list":["lol","Neo","God"]},"code_block":{"copy":true,"style":"mac","highlight_theme":{"light":"github","dark":"vs2015"},"font":{"enable":false,"family":null,"url":null}},"toc":{"enable":true,"max_depth":6,"number":false,"expand":true,"init_open":true},"copyright":{"enable":true,"default":"cc_by_nc_sa"},"lazyload":true,"pangu_js":false,"recommendation":{"enable":false,"title":"recommend_articles","limit":3,"mobile_limit":2,"placeholder":"https://charles2530.github.io/image/background/p3.jfif","skip_dirs":[]}},"colors":{"primary":"#A31F34","secondary":"#1890ff","default_mode":"light"},"global":{"fonts":{"chinese":{"enable":false,"family":null,"url":null},"english":{"enable":false,"family":null,"url":null},"title":{"enable":false,"family":null,"url":null}},"content_max_width":"1000px","sidebar_width":"210px","hover":{"shadow":true,"scale":true},"scroll_progress":{"bar":true,"percentage":true},"website_counter":{"url":"https://cn.vercount.one/js","enable":true,"site_pv":true,"site_uv":true,"post_pv":true},"single_page":true,"preloader":{"enable":true,"custom_message":null},"side_tools":{"gear_rotation":true,"auto_expand":false},"open_graph":{"enable":true,"image":"https://charles2530.github.io/image/background/logo.jpg","description":"This is Charles's Castle."},"google_analytics":{"enable":false,"id":null}},"home_banner":{"enable":true,"style":"fixed","image":{"light":"https://charles2530.github.io/image/background/background-light1.jpg","dark":"https://charles2530.github.io/image/background/background-dark1.jpg"},"title":"Charles's Castle","subtitle":{"text":["Happiness is best!","Never give up!","Everyday is a gift!"],"hitokoto":{"enable":false,"show_author":false,"api":"https://v1.hitokoto.cn"},"typing_speed":100,"backing_speed":80,"starting_delay":500,"backing_delay":1500,"loop":true,"smart_backspace":true},"text_color":{"light":"#000000","dark":"#d1d1b6"},"text_style":{"title_size":"3.2rem","subtitle_size":"1.5rem","line_height":1.2},"custom_font":{"enable":false,"family":null,"url":null},"social_links":{"enable":true,"style":"center","links":[{"icon":"fa-brands fa-github","url":"https://github.com/Charles2530/"},{"icon":"fa-brands fa-zhihu","url":"https://www.zhihu.com/people/yang-guang-xiao-zi-55-55"},{"icon":"fa-solid fa-at","url":"mailto:charles2530@163.com"},{"icon":"fa-brands fa-telegram","url":null},{"icon":"/images/custom-icon.svg","url":null}],"qrs":[{"icon":"fa-brands fa-weixin","qr":"https://charles2530.github.io/image/background/Wechat_icon.png"},{"icon":"/images/custom-icon.svg","qr":null}]}},"plugins":{"feed":{"enable":true},"aplayer":{"enable":false,"type":"fixed","audios":[{"name":null,"artist":null,"url":null,"cover":null,"lrc":null}]},"mermaid":{"enable":false,"version":"11.4.1","theme":{"light":"default","dark":"dark"}}},"version":"2.9.0","navbar":{"auto_hide":true,"color":{"left":"#f78736","right":"#367df7","transparency":35},"width":{"home":"1200px","pages":"1000px"},"links":{"Home":{"path":"/","icon":"fa-regular fa-house"},"Categories":{"path":"/categories","icon":"fas fa-bookmark"},"Tags":{"path":"/tags","icon":"fas fa-tags"},"About":{"icon":"fa-regular fa-user","submenus":{"Me":"https://jinyang-du.github.io/","Github":"https://github.com/Charles2530/","Blog":"https://charles2530.github.io","Statistics":"https://tongji.baidu.com/"}}},"search":{"enable":true,"preload":false}},"page_templates":{"friends_column":2,"tags_style":"blur","masonry":{"batch_size":12,"initial_batch_size":24}},"home":{"sidebar":{"enable":true,"position":"left","first_item":"menu","announcement":"This is Charles's Castle","show_on_mobile":true,"links":{"Archives":{"path":"/archives","icon":"fa-regular fa-archive"},"Photos":{"icon":"fa-solid fa-image","path":"/masonry/"},"Essays":{"icon":"fa-solid fa-message-lines","path":"/essay/"},"Friends":{"icon":"fa-solid fa-user-group","path":"/friends/"}}},"article_date_format":"auto","excerpt_length":200,"categories":{"enable":true,"limit":3},"tags":{"enable":true,"limit":3}},"footer":{"runtime":true,"icon":"<i class=\"fa-solid fa-heart fa-beat\" style=\"--fa-animation-duration: 0.5s; color: #f54545\"></i>","start":"2022/12/27 00:00:00","statistics":true,"customize":null,"icp":{"enable":false,"number":null,"url":null}},"footerStart":"2022/12/27 00:00:00","mermaid":{"style":{"light":"default","dark":"dark"}}};
+    window.lang_ago = {"second":"%s seconds ago","minute":"%s minutes ago","hour":"%s hours ago","day":"%s days ago","week":"%s weeks ago","month":"%s months ago","year":"%s years ago"};
+    window.i18n = {"search":"Search...","toc":"On this page","prev":"Prev","next":"Next","prev_posts":"Prev posts","next_posts":"Next posts","page":"Page %d","recent_posts":"Recent Posts","share":"Share","powered_by":"POWERED BY %s","theme":"THEME","rss_feed":"RSS Feed","category":"Category","categories":"Categories","tag":"Tag","tags":"Tags","post":"Post","posts":"Posts","tagcloud":"Tag Cloud","comment":"Comment","comments":"Comments","home":"Home","archive":"Archive","archives":"Archives","top":"TOP","sticky":"Sticky","go-back-home":"Go Back Home","masonry_loading":"Loading photos...","image_viewer":"Image viewer","close":"Close","exif":{"title":"EXIF","cards":{"camera":"Camera","lens":"Lens","exposure":"Exposure","other":"Other"},"fields":{"make":"Brand","model":"Model","date_taken":"Date taken","lens_model":"Lens","focal_length":"Focal length","focus_mode":"Focus mode","shutter":"Shutter","aperture":"Aperture","iso":"ISO","exposure_program":"Exposure program","exposure_compensation":"Exposure compensation","metering_mode":"Metering mode","flash":"Flash","white_balance":"White balance","latitude":"Latitude","longitude":"Longitude","altitude":"Altitude"},"status":{"loading":"Loading...","no_exif":"No EXIF available","library_missing":"EXIF library not loaded","image_source_missing":"Image source unavailable","unavailable":"EXIF unavailable (blocked by CORS or missing metadata)","flag_unavailable":"EXIF unavailable"}},"about":"About","changelog":"Changelog","links":"Links","link":"Link","friends":"Friends","friend":"Friend","timeline":"Timeline","shuoshuo":"Shuoshuo","bookmarks":"Bookmarks","site_uv":"VISITOR COUNT","site_pv":"TOTAL PAGE VIEWS","read_more":"Read more","wordcount":"Words","min2read":"Mins","status":"Status","runtime":"Blog up for","days":"days","hours":"hrs","minutes":"Min","seconds":"Sec","optimized_by":"and Optimized by Evan","rights":"All Rights Reserved","site_posts":"%s posts in total","site_wordcount":"%s words in total","copyright":{"author":"Author","title":"Title","link":"Link","create_time":"Created at","update_time":"Updated at","license_title":"License","license_content":"This work is licensed under %s.","all_rights_reserved":"All Rights Reserved &#169; %s","public_domain":"This work is in the public domain."},"ago":{"second":"%s seconds ago","minute":"%s minutes ago","hour":"%s hours ago","day":"%s days ago","week":"%s weeks ago","month":"%s months ago","year":"%s years ago"},"create_time":"Created","update_time":"Updated","expired":"This post is written %s days ago, and the content may not be up to date."};
+    window.data = {"masonry":true};
+  </script>
+    
+    <!--- Fontawesome Part-->
+    
+<link rel="stylesheet" href="/fontawesome/fontawesome.min.css">
+
+    
+<link rel="stylesheet" href="/fontawesome/brands.min.css">
+
+    
+<link rel="stylesheet" href="/fontawesome/solid.min.css">
+
+    
+<link rel="stylesheet" href="/fontawesome/regular.min.css">
+
+    
+    
+    
+    
+<meta name="generator" content="Hexo 6.3.0"><link rel="alternate" href="/atom.xml" title="Charles's Castle" type="application/atom+xml">
+<link rel="stylesheet" href="/css/prism-tomorrow.css" type="text/css"></head>
+
+
+<body>
+	<div class="progress-bar-container">
+	
+	<span class="scroll-progress-bar"></span>
+	
+
+	
+	<span class="pjax-progress-bar"></span>
+	<!--        <span class="swup-progress-icon">-->
+	<!--            <i class="fa-solid fa-circle-notch fa-spin"></i>-->
+	<!--        </span>-->
+	
+</div>
+
+<style>
+    :root {
+        --preloader-background-color: #fff;
+        --preloader-text-color: #000;
+    }
+
+    @media (prefers-color-scheme: dark) {
+        :root {
+            --preloader-background-color: #202124;
+            --preloader-text-color: #fff;
+        }
+    }
+
+    @media (prefers-color-scheme: light) {
+        :root {
+            --preloader-background-color: #fff;
+            --preloader-text-color: #000;
+        }
+    }
+
+    @media (max-width: 600px) {
+        .ml13 {
+            font-size: 2.6rem !important; /* Adjust this value as needed */
+        }
+    }
+
+    .preloader {
+        display: flex;
+        flex-direction: column;
+        gap: 1rem; /* Tailwind 'gap-4' is 1rem */
+        align-items: center;
+        justify-content: center;
+        position: fixed;
+        padding: 12px;
+        top: 0;
+        right: 0;
+        bottom: 0;
+        left: 0;
+        width: 100vw;
+        height: 100vh; /* 'h-screen' is 100% of the viewport height */
+        background-color: var(--preloader-background-color);
+        z-index: 1100; /* 'z-[1100]' sets the z-index */
+        transition: opacity 0.2s ease-in-out;
+    }
+
+    .ml13 {
+        font-size: 3.2rem;
+        /* text-transform: uppercase; */
+        color: var(--preloader-text-color);
+        letter-spacing: -1px;
+        font-weight: 500;
+        font-family: 'Chillax-Variable', sans-serif;
+        text-align: center;
+    }
+
+    .ml13 .word {
+        display: inline-flex;
+        flex-wrap: wrap;
+        white-space: nowrap;
+    }
+
+    .ml13 .letter {
+        display: inline-block;
+        line-height: 1em;
+    }
+</style>
+
+<div class="preloader">
+    <h2 class="ml13">
+        Charles&#39;s Castle
+    </h2>
+    <script>
+        var textWrapper = document.querySelector('.ml13');
+        // Split text into words
+        var words = textWrapper.textContent.trim().split(' ');
+
+        // Clear the existing content
+        textWrapper.innerHTML = '';
+
+        // Wrap each word and its letters in spans
+        words.forEach(function(word) {
+            var wordSpan = document.createElement('span');
+            wordSpan.classList.add('word');
+            wordSpan.innerHTML = word.replace(/\S/g, "<span class='letter'>$&</span>");
+            textWrapper.appendChild(wordSpan);
+            textWrapper.appendChild(document.createTextNode(' ')); // Add space between words
+        });
+
+        var animation = anime.timeline({ loop: true })
+            .add({
+                targets: '.ml13 .letter',
+                translateY: [20, 0],
+                translateZ: 0,
+                opacity: [0, 1],
+                filter: ['blur(5px)', 'blur(0px)'],
+                easing: "easeOutExpo",
+                duration: 1200,
+                delay: (el, i) => 300 + 20 * i,
+            })
+            .add({
+                targets: '.ml13 .letter',
+                translateY: [0, -20],
+                opacity: [1, 0],
+                filter: ['blur(0px)', 'blur(5px)'],
+                easing: "easeInExpo",
+                duration: 1000,
+                delay: (el, i) => 15 * i,
+                complete: function() {
+                    hidePreloader();
+                }
+            }, '-=700');
+
+
+        let themeStatus = JSON.parse(localStorage.getItem('REDEFINE-THEME-STATUS'))?.isDark;
+
+        // If the theme status is not found in local storage, check the preferred color scheme
+        if (themeStatus === undefined || themeStatus === null) {
+            if (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) {
+                themeStatus = 'dark';
+            } else {
+                themeStatus = 'light';
+            }
+        }
+
+        // Now you can use the themeStatus variable in your code
+        if (themeStatus) {
+            document.documentElement.style.setProperty('--preloader-background-color', '#202124');
+            document.documentElement.style.setProperty('--preloader-text-color', '#fff');
+        } else {
+            document.documentElement.style.setProperty('--preloader-background-color', '#fff');
+            document.documentElement.style.setProperty('--preloader-text-color', '#000');
+        }
+
+        window.addEventListener('load', function () {
+            setTimeout(hidePreloader, 5000); // Call hidePreloader after 5000 milliseconds if not already called by animation
+        });
+
+        function hidePreloader() {
+            var preloader = document.querySelector('.preloader');
+            preloader.style.opacity = '0';
+            setTimeout(function () {
+                preloader.style.display = 'none';
+            }, 200);
+        }
+    </script>
+</div>
+
+<main class="page-container" id="swup">
+
+	
+
+	<div class="main-content-container flex flex-col justify-between min-h-dvh">
+		<div class="main-content-header">
+			<header class="navbar-container px-6 md:px-12">
+    <div class="navbar-content transition-navbar ">
+        <div class="left">
+            
+                <a class="logo-image h-8 w-8 sm:w-10 sm:h-10 mr-3" href="/">
+                    <img src="https://charles2530.github.io/image/background/logo.jpg" class="w-full h-full rounded-xs">
+                </a>
+            
+            <a class="logo-title" href="/">
+                
+                Charles&#39;s Castle
+                
+            </a>
+        </div>
+
+        <div class="right">
+            <!-- PC -->
+            <div class="desktop">
+                <ul class="navbar-list">
+                    
+                        
+                            
+
+                            <li class="navbar-item">
+                                <!-- Menu -->
+                                <a class=""
+                                   href="/"
+                                        >
+                                    <i class="fa-regular fa-house fa-fw"></i>
+                                    HOME
+                                    
+                                </a>
+
+                                <!-- Submenu -->
+                                
+                            </li>
+                    
+                        
+                            
+
+                            <li class="navbar-item">
+                                <!-- Menu -->
+                                <a class=""
+                                   href="/categories"
+                                        >
+                                    <i class="fas fa-bookmark fa-fw"></i>
+                                    CATEGORIES
+                                    
+                                </a>
+
+                                <!-- Submenu -->
+                                
+                            </li>
+                    
+                        
+                            
+
+                            <li class="navbar-item">
+                                <!-- Menu -->
+                                <a class=""
+                                   href="/tags"
+                                        >
+                                    <i class="fas fa-tags fa-fw"></i>
+                                    TAGS
+                                    
+                                </a>
+
+                                <!-- Submenu -->
+                                
+                            </li>
+                    
+                        
+                            
+
+                            <li class="navbar-item">
+                                <!-- Menu -->
+                                <a class="has-dropdown"
+                                   href="#"
+                                        onClick=&#34;return false;&#34;>
+                                    <i class="fa-regular fa-user fa-fw"></i>
+                                    ABOUT
+                                    <i class="fa-solid fa-chevron-down fa-fw"></i>
+                                </a>
+
+                                <!-- Submenu -->
+                                
+                                    <ul class="sub-menu">
+                                        
+                                            <li>
+                                                <a target="_blank" rel="noopener" href="https://jinyang-du.github.io/">
+                                                    ME
+                                                </a>
+                                            </li>
+                                        
+                                            <li>
+                                                <a target="_blank" rel="noopener" href="https://github.com/Charles2530/">
+                                                    GITHUB
+                                                </a>
+                                            </li>
+                                        
+                                            <li>
+                                                <a href="https://charles2530.github.io">
+                                                    BLOG
+                                                </a>
+                                            </li>
+                                        
+                                            <li>
+                                                <a target="_blank" rel="noopener" href="https://tongji.baidu.com/">
+                                                    STATISTICS
+                                                </a>
+                                            </li>
+                                        
+                                    </ul>
+                                
+                            </li>
+                    
+                    
+                        <li class="navbar-item search search-popup-trigger">
+                            <i class="fa-solid fa-magnifying-glass"></i>
+                        </li>
+                    
+                </ul>
+            </div>
+            <!-- Mobile -->
+            <div class="mobile">
+                
+                    <div class="icon-item search search-popup-trigger"><i class="fa-solid fa-magnifying-glass"></i>
+                    </div>
+                
+                <div class="icon-item navbar-bar">
+                    <div class="navbar-bar-middle"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Mobile sheet -->
+    <div class="navbar-drawer h-dvh w-full absolute top-0 left-0 bg-background-color flex flex-col justify-between">
+        <ul class="drawer-navbar-list flex flex-col px-4 justify-center items-start">
+            
+                
+                    
+
+                    <li class="drawer-navbar-item text-base my-1.5 flex flex-col w-full">
+                        
+                        <a class="py-1.5 px-2 flex flex-row items-center justify-between gap-1 hover:!text-primary active:!text-primary text-2xl font-semibold group border-b border-border-color hover:border-primary w-full "
+                           href="/"
+                        >
+                            <span>
+                                HOME
+                            </span>
+                            
+                                <i class="fa-regular fa-house fa-sm fa-fw"></i>
+                            
+                        </a>
+                        
+
+                        
+                    </li>
+            
+                
+                    
+
+                    <li class="drawer-navbar-item text-base my-1.5 flex flex-col w-full">
+                        
+                        <a class="py-1.5 px-2 flex flex-row items-center justify-between gap-1 hover:!text-primary active:!text-primary text-2xl font-semibold group border-b border-border-color hover:border-primary w-full "
+                           href="/categories"
+                        >
+                            <span>
+                                CATEGORIES
+                            </span>
+                            
+                                <i class="fas fa-bookmark fa-sm fa-fw"></i>
+                            
+                        </a>
+                        
+
+                        
+                    </li>
+            
+                
+                    
+
+                    <li class="drawer-navbar-item text-base my-1.5 flex flex-col w-full">
+                        
+                        <a class="py-1.5 px-2 flex flex-row items-center justify-between gap-1 hover:!text-primary active:!text-primary text-2xl font-semibold group border-b border-border-color hover:border-primary w-full "
+                           href="/tags"
+                        >
+                            <span>
+                                TAGS
+                            </span>
+                            
+                                <i class="fas fa-tags fa-sm fa-fw"></i>
+                            
+                        </a>
+                        
+
+                        
+                    </li>
+            
+                
+                    
+
+                    <li class="drawer-navbar-item-sub text-base my-1.5 flex flex-col w-full">
+                        
+                        <div class="py-1.5 px-2 flex flex-row items-center justify-between gap-1 hover:!text-primary active:!text-primary cursor-pointer text-2xl font-semibold group border-b border-border-color hover:border-primary w-full "
+                             navbar-data-toggle="submenu-About"
+                        >
+                            <span>
+                                ABOUT
+                            </span>
+                            
+                                <i class="fa-solid fa-chevron-right fa-sm fa-fw transition-all"></i>
+                            
+                        </div>
+                        
+
+                        
+                            <div class="flex-col items-start px-2 py-2 hidden" data-target="submenu-About">
+                                
+                                    <div class="drawer-navbar-item text-base flex flex-col justify-center items-start hover:underline active:underline hover:underline-offset-1 rounded-3xl">
+                                        <a class=" text-third-text-color text-xl"
+                                           target="_blank" rel="noopener" href="https://jinyang-du.github.io/">ME</a>
+                                    </div>
+                                
+                                    <div class="drawer-navbar-item text-base flex flex-col justify-center items-start hover:underline active:underline hover:underline-offset-1 rounded-3xl">
+                                        <a class=" text-third-text-color text-xl"
+                                           target="_blank" rel="noopener" href="https://github.com/Charles2530/">GITHUB</a>
+                                    </div>
+                                
+                                    <div class="drawer-navbar-item text-base flex flex-col justify-center items-start hover:underline active:underline hover:underline-offset-1 rounded-3xl">
+                                        <a class=" text-third-text-color text-xl"
+                                           href="https://charles2530.github.io">BLOG</a>
+                                    </div>
+                                
+                                    <div class="drawer-navbar-item text-base flex flex-col justify-center items-start hover:underline active:underline hover:underline-offset-1 rounded-3xl">
+                                        <a class=" text-third-text-color text-xl"
+                                           target="_blank" rel="noopener" href="https://tongji.baidu.com/">STATISTICS</a>
+                                    </div>
+                                
+                            </div>
+                        
+                    </li>
+            
+
+            
+            
+                
+                    
+                    <li class="drawer-navbar-item text-base my-1.5 flex flex-col w-full">
+                        <a class="py-1.5 px-2 flex flex-row items-center justify-between gap-1 hover:!text-primary active:!text-primary text-2xl font-semibold group border-b border-border-color hover:border-primary w-full active"
+                           href="/archives"
+                        >
+                            <span>Archives</span>
+                            <i class="fa-regular fa-archive fa-sm fa-fw"></i>
+                        </a>
+                    </li>
+                
+                    
+                    <li class="drawer-navbar-item text-base my-1.5 flex flex-col w-full">
+                        <a class="py-1.5 px-2 flex flex-row items-center justify-between gap-1 hover:!text-primary active:!text-primary text-2xl font-semibold group border-b border-border-color hover:border-primary w-full active"
+                           href="/masonry/"
+                        >
+                            <span>Photos</span>
+                            <i class="fa-solid fa-image fa-sm fa-fw"></i>
+                        </a>
+                    </li>
+                
+                    
+                    <li class="drawer-navbar-item text-base my-1.5 flex flex-col w-full">
+                        <a class="py-1.5 px-2 flex flex-row items-center justify-between gap-1 hover:!text-primary active:!text-primary text-2xl font-semibold group border-b border-border-color hover:border-primary w-full active"
+                           href="/essay/"
+                        >
+                            <span>Essays</span>
+                            <i class="fa-solid fa-message-lines fa-sm fa-fw"></i>
+                        </a>
+                    </li>
+                
+                    
+                    <li class="drawer-navbar-item text-base my-1.5 flex flex-col w-full">
+                        <a class="py-1.5 px-2 flex flex-row items-center justify-between gap-1 hover:!text-primary active:!text-primary text-2xl font-semibold group border-b border-border-color hover:border-primary w-full active"
+                           href="/friends/"
+                        >
+                            <span>Friends</span>
+                            <i class="fa-solid fa-user-group fa-sm fa-fw"></i>
+                        </a>
+                    </li>
+                
+            
+        </ul>
+
+        <div class="statistics flex justify-around my-2.5">
+    <a class="item tag-count-item flex flex-col justify-center items-center w-20" href="/tags">
+        <div class="number text-2xl sm:text-xl text-second-text-color font-semibold">45</div>
+        <div class="label text-third-text-color text-sm">Tags</div>
+    </a>
+    <a class="item tag-count-item flex flex-col justify-center items-center w-20" href="/categories">
+        <div class="number text-2xl sm:text-xl text-second-text-color font-semibold">93</div>
+        <div class="label text-third-text-color text-sm">Categories</div>
+    </a>
+    <a class="item tag-count-item flex flex-col justify-center items-center w-20" href="/archives">
+        <div class="number text-2xl sm:text-xl text-second-text-color font-semibold">504</div>
+        <div class="label text-third-text-color text-sm">Posts</div>
+    </a>
+</div>
+    </div>
+
+    <div class="window-mask"></div>
+
+</header>
+
+
+		</div>
+
+		<div class="main-content-body transition-fade-up">
+			
+
+			<div class="main-content">
+				<div class="post-page-container flex relative justify-between box-border w-full h-full">
+	<div class="article-content-container">
+
+		<div class="article-title relative w-full">
+			
+			
+			
+			<img src="https://charles2530.github.io/image/background/p4.jfif" alt="论文专题讲解：ZeRO：大模型训练的零冗余状态优化" class="w-full h-60 sm:h-72 md:h-80 object-cover sm:rounded-t-large dark:brightness-75" />
+			
+			<div class="w-full flex items-center absolute bottom-0 justify-start">
+				<h1 class="article-title-cover text-center mx-6 my-6 text-second-text-color bg-background-color-transparent px-4 py-3 text-3xl sm:text-4xl md:text-5xl font-semibold backdrop-blur-lg rounded-xl border border-border-color ">论文专题讲解：ZeRO：大模型训练的零冗余状态优化</h1>
+			</div>
+			
+		</div>
+
+		
+		<div class="article-header flex flex-row gap-2 items-center px-2 sm:px-6 md:px-8">
+			<div class="avatar w-[46px] h-[46px] shrink-0 rounded-medium border border-border-color p-px">
+				<img src="https://charles2530.github.io/image/background/logo2.jpg">
+			</div>
+			<div class="info flex flex-col justify-between">
+				<div class="author flex items-center">
+					<span class="name text-default-text-color text-lg font-semibold">Charles</span>
+					
+					<span class="author-label ml-1.5 text-xs px-2 py-0.5 rounded-small text-third-text-color border border-shadow-color-1">Lv7</span>
+					
+				</div>
+				<div class="meta-info">
+					<div class="article-meta-info">
+    <span class="article-date article-meta-item">
+        <i class="fa-regular fa-pen-fancy"></i>&nbsp;
+        <span class="desktop">2025-11-15 09:00</span>
+        <span class="mobile">2025-11-15 09:00</span>
+        <span class="hover-info">Created</span>
+    </span>
+    
+        <span class="article-date article-meta-item">
+            <i class="fa-regular fa-wrench"></i>&nbsp;
+            <span class="desktop">2025-11-15 09:00</span>
+            <span class="mobile">2025-11-15 09:00</span>
+            <span class="hover-info">Updated</span>
+        </span>
+    
+
+    
+        <span class="article-categories article-meta-item">
+            <i class="fa-regular fa-folders"></i>&nbsp;
+            <ul>
+                
+                
+                    
+                        
+                        <li>
+                            <a href="/categories/AI/">AI</a>&nbsp;
+                        </li>
+                    
+                    
+                
+                    
+                        
+                            <li>></li>
+                        
+                        <li>
+                            <a href="/categories/AI/%E8%AE%BA%E6%96%87%E4%B8%93%E9%A2%98%E8%AE%B2%E8%A7%A3/">论文专题讲解</a>&nbsp;
+                        </li>
+                    
+                    
+                
+            </ul>
+        </span>
+    
+    
+        <span class="article-tags article-meta-item">
+            <i class="fa-regular fa-tags"></i>&nbsp;
+            <ul>
+                
+                    <li>
+                        <a href="/tags/AI/">AI</a>&nbsp;
+                    </li>
+                
+                    <li>
+                        | <a href="/tags/%E5%9F%BA%E7%A1%80%E7%9F%A5%E8%AF%86/">基础知识</a>&nbsp;
+                    </li>
+                
+                    <li>
+                        | <a href="/tags/%E8%AE%BA%E6%96%87%E4%B8%93%E9%A2%98/">论文专题</a>&nbsp;
+                    </li>
+                
+            </ul>
+        </span>
+    
+
+    
+    
+        <span class="article-wordcount article-meta-item">
+            <i class="fa-regular fa-typewriter"></i>&nbsp;<span>4.5k Words</span>
+        </span>
+    
+    
+        <span class="article-min2read article-meta-item">
+            <i class="fa-regular fa-clock"></i>&nbsp;<span>20 Mins</span>
+        </span>
+    
+    
+        <span class="article-pv article-meta-item">
+            <i class="fa-regular fa-eye"></i>&nbsp;<span id="busuanzi_value_page_pv"></span>
+        </span>
+    
+</div>
+
+				</div>
+			</div>
+		</div>
+		
+
+		
+
+
+		<div class="article-content markdown-body px-2 sm:px-6 md:px-8 pb-8">
+			<div class="callout callout--titled info mb-4 rounded-small shadow-redefine-flat bg-(--callout-bg-color) p-3 pl-1 relative flex flex-row gap-2"><div role="none" class="rounded-full self-stretch w-0.5 bg-(--callout-primary-color) shrink-0 opacity-60"></div><div class="flex flex-col gap-2"><div class="callout__title flex items-center gap-2 font-semibold tracking-tight">论文信息</div><div class="callout__content markdown-body flex-1 min-w-0"><ul>
+<li>论文：<code>ZeRO: Memory Optimizations Toward Training Trillion Parameter Models</code></li>
+<li>链接：<a class="link"   target="_blank" rel="noopener" href="https://arxiv.org/abs/1910.02054" >arXiv:1910.02054<i class="fa-solid fa-arrow-up-right ml-[0.2em] font-light align-text-top text-[0.7em] link-icon"></i></a></li>
+<li>作者：Samyam Rajbhandari、Jeff Rasley、Olatunji Ruwase、Yuxiong He</li>
+<li>代码：<a class="link"   target="_blank" rel="noopener" href="https://github.com/microsoft/DeepSpeed" >microsoft/DeepSpeed<i class="fa-solid fa-arrow-up-right ml-[0.2em] font-light align-text-top text-[0.7em] link-icon"></i></a></li>
+<li>日期：2019-10；arXiv v3 修订于 2020-05-13</li>
+<li>关键词：ZeRO、DeepSpeed、data parallelism、optimizer state partitioning、gradient partitioning、parameter partitioning、activation partitioning、memory defragmentation、mixed precision Adam</li>
+</ul></div></div></div>
+<p>Megatron-LM 解决的是“Transformer 的大 GEMM 怎么切到多张 GPU 上”。ZeRO 解决的是另一个更底层的问题：<strong>数据并行明明最容易用，为什么一上大模型就把每张卡的显存浪费在重复存 optimizer states、gradients 和 parameters 上？</strong></p>
+<p>ZeRO 的核心想法很漂亮：保持数据并行的使用方式和计算粒度，但把模型状态从“每张卡完整复制一份”改成“在 data-parallel ranks 间分片存储，训练时按需 gather / reduce”。这样就能在不要求用户重写模型的前提下，把可训练模型规模从十亿级推到百亿、千亿甚至理论上的万亿参数。</p>
+<h2 id="它的效率贡献是什么"><a class="markdownIt-Anchor" href="#它的效率贡献是什么"></a> 它的效率贡献是什么</h2>
+<table>
+<thead>
+<tr>
+<th>维度</th>
+<th>贡献</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>节省的成本</td>
+<td>消除 data parallel training 中 optimizer states、gradients、parameters 的冗余复制，并优化 activations、temporary buffers、memory fragmentation</td>
+</tr>
+<tr>
+<td>核心机制</td>
+<td>ZeRO-DP 三阶段分片：<code>P_os</code> partition optimizer states，<code>P_os+g</code> 再 partition gradients，<code>P_os+g+p</code> 再 partition parameters；ZeRO-R 处理 activation partition、constant-size buffers 和 defragmentation</td>
+</tr>
+<tr>
+<td>对训练系统主线的意义</td>
+<td>把“大模型训练显存账”从模型切分问题扩展成状态生命周期问题，成为 DeepSpeed ZeRO、FSDP、optimizer/gradient/parameter sharding 的基础范式</td>
+</tr>
+<tr>
+<td>主要风险</td>
+<td>论文的 ZeRO-100B 实现主要覆盖 <code>P_os+g</code> 加 ZeRO-R，并未完整评估后来的 ZeRO-3 生态；实验基于 V100/DGX-2 与 GPT-2-like dense models</td>
+</tr>
+<tr>
+<td>应接到本站哪里</td>
+<td><a href="/2026/05/11/ai-files-training-megatron-lm-deepspeed-and-open-training-stacks/">Megatron-LM / DeepSpeed 与训练栈</a>、<a href="/2026/05/11/ai-files-training-distributed-training-and-checkpointing/">分布式训练与 Checkpointing</a>、<a href="/2026/05/11/ai-files-training-low-bit-training-and-numerics/">低比特训练与数值格式</a></td>
+</tr>
+</tbody>
+</table>
+<h2 id="证据等级与外推边界"><a class="markdownIt-Anchor" href="#证据等级与外推边界"></a> 证据等级与外推边界</h2>
+<p>ZeRO 的证据分两层：前半部分是内存和通信量的理论分析，后半部分是 ZeRO-100B 在 400 张 V100 上的系统实验。它证明的是“状态分片能大幅降低 DP 的显存冗余，并保留较高训练吞吐”，不是证明“万亿参数训练在当时已经经济可行”。</p>
+<table>
+<thead>
+<tr>
+<th>论文结论</th>
+<th>证据来源</th>
+<th>证据等级</th>
+<th>可外推到高效训练</th>
+<th>不能直接外推</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>mixed precision Adam 的模型状态显存远大于 fp16 参数本身</td>
+<td>Section 3 memory accounting、Figure 1</td>
+<td>Analytical accounting</td>
+<td>训练系统要拆开 parameters、gradients、optimizer states、activations、buffers 和 fragmentation</td>
+<td>不包含现代 FP8/FP4 optimizer、8-bit optimizer 或 CPU/NVMe offload 的完整成本</td>
+</tr>
+<tr>
+<td>ZeRO-DP 三阶段能线性降低冗余状态</td>
+<td>Figure 1、Table 1、Table 2</td>
+<td>Analytical + measured capacity</td>
+<td>ZeRO/FSDP 类方法本质是在 DP 组内分片模型状态，并在生命周期需要时重建</td>
+<td>不能只看理论显存，还要看 gather/reduce 通信和 overlap</td>
+</tr>
+<tr>
+<td>ZeRO-100B 能把 100B 级 dense GPT-like 模型跑到高吞吐</td>
+<td>Figure 2、Figure 3、Table 5、Table 6</td>
+<td>System throughput</td>
+<td>大模型训练的吞吐提升可以来自“更省显存 -&gt; 更大 local batch -&gt; 更高 arithmetic intensity”</td>
+<td>不能代表所有模型、网络拓扑和 batch regime 都会 super-linear scaling</td>
+</tr>
+<tr>
+<td>ZeRO-R 解决 residual states 后，显存瓶颈继续后移</td>
+<td>Figure 6、Figure 7、Figure 8、Table 3</td>
+<td>Ablation / system analysis</td>
+<td>activation partition、buffer sizing 和 defragmentation 应该和状态分片一起考虑</td>
+<td>CPU activation offload 只有在模型很大或 batch 很小时才可能值得</td>
+</tr>
+<tr>
+<td>Turing-NLG 证明 ZeRO 能支撑真实大模型训练</td>
+<td>Figure 5、Section 10.6</td>
+<td>End-to-end model result</td>
+<td>系统论文也要接到真实训练 loss / perplexity，而不是只报告 memory</td>
+<td>数据、tokenizer、模型细节和完整训练配方没有像模型报告那样展开</td>
+</tr>
+</tbody>
+</table>
+<h2 id="显存账为什么-15b-gpt-2-参数只有-3gb-却训不动"><a class="markdownIt-Anchor" href="#显存账为什么-15b-gpt-2-参数只有-3gb-却训不动"></a> 显存账：为什么 1.5B GPT-2 参数只有 3GB 却训不动</h2>
+<p>论文从一个非常适合教学的问题开始：1.5B 参数如果用 fp16 存参数，只有大约 3GB；为什么 TensorFlow / PyTorch 在 32GB GPU 上还是训不动？</p>
+<p>答案是训练时不只存参数。以 mixed precision Adam 为例，模型有 <span class="katex"><span class="katex-mathml"><math><semantics><mrow><mi mathvariant="normal">Ψ</mi></mrow><annotation encoding="application/x-tex">\Psi</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.68333em;vertical-align:0em;"></span><span class="mord">Ψ</span></span></span></span> 个参数时：</p>
+<table>
+<thead>
+<tr>
+<th>State</th>
+<th>Precision</th>
+<th>Memory</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>parameters used in forward/backward</td>
+<td>fp16</td>
+<td><span class="katex"><span class="katex-mathml"><math><semantics><mrow><mn>2</mn><mi mathvariant="normal">Ψ</mi></mrow><annotation encoding="application/x-tex">2\Psi</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.68333em;vertical-align:0em;"></span><span class="mord">2</span><span class="mord">Ψ</span></span></span></span> bytes</td>
+</tr>
+<tr>
+<td>gradients</td>
+<td>fp16</td>
+<td><span class="katex"><span class="katex-mathml"><math><semantics><mrow><mn>2</mn><mi mathvariant="normal">Ψ</mi></mrow><annotation encoding="application/x-tex">2\Psi</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.68333em;vertical-align:0em;"></span><span class="mord">2</span><span class="mord">Ψ</span></span></span></span> bytes</td>
+</tr>
+<tr>
+<td>fp32 master parameters</td>
+<td>fp32</td>
+<td><span class="katex"><span class="katex-mathml"><math><semantics><mrow><mn>4</mn><mi mathvariant="normal">Ψ</mi></mrow><annotation encoding="application/x-tex">4\Psi</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.68333em;vertical-align:0em;"></span><span class="mord">4</span><span class="mord">Ψ</span></span></span></span> bytes</td>
+</tr>
+<tr>
+<td>Adam momentum</td>
+<td>fp32</td>
+<td><span class="katex"><span class="katex-mathml"><math><semantics><mrow><mn>4</mn><mi mathvariant="normal">Ψ</mi></mrow><annotation encoding="application/x-tex">4\Psi</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.68333em;vertical-align:0em;"></span><span class="mord">4</span><span class="mord">Ψ</span></span></span></span> bytes</td>
+</tr>
+<tr>
+<td>Adam variance</td>
+<td>fp32</td>
+<td><span class="katex"><span class="katex-mathml"><math><semantics><mrow><mn>4</mn><mi mathvariant="normal">Ψ</mi></mrow><annotation encoding="application/x-tex">4\Psi</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.68333em;vertical-align:0em;"></span><span class="mord">4</span><span class="mord">Ψ</span></span></span></span> bytes</td>
+</tr>
+<tr>
+<td>total model states</td>
+<td>mixed precision Adam</td>
+<td><span class="katex"><span class="katex-mathml"><math><semantics><mrow><mn>16</mn><mi mathvariant="normal">Ψ</mi></mrow><annotation encoding="application/x-tex">16\Psi</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.68333em;vertical-align:0em;"></span><span class="mord">1</span><span class="mord">6</span><span class="mord">Ψ</span></span></span></span> bytes</td>
+</tr>
+</tbody>
+</table>
+<p>所以 1.5B 参数不只是 3GB，而是至少 <span class="katex"><span class="katex-mathml"><math><semantics><mrow><mn>16</mn><mo>×</mo><mn>1.5</mn><mi>B</mi><mo>=</mo><mn>24</mn><mi>G</mi><mi>B</mi></mrow><annotation encoding="application/x-tex">16 \times 1.5B = 24GB</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.72777em;vertical-align:-0.08333em;"></span><span class="mord">1</span><span class="mord">6</span><span class="mspace" style="margin-right:0.2222222222222222em;"></span><span class="mbin">×</span><span class="mspace" style="margin-right:0.2222222222222222em;"></span></span><span class="base"><span class="strut" style="height:0.68333em;vertical-align:0em;"></span><span class="mord">1</span><span class="mord">.</span><span class="mord">5</span><span class="mord mathdefault" style="margin-right:0.05017em;">B</span><span class="mspace" style="margin-right:0.2777777777777778em;"></span><span class="mrel">=</span><span class="mspace" style="margin-right:0.2777777777777778em;"></span></span><span class="base"><span class="strut" style="height:0.68333em;vertical-align:0em;"></span><span class="mord">2</span><span class="mord">4</span><span class="mord mathdefault">G</span><span class="mord mathdefault" style="margin-right:0.05017em;">B</span></span></span></span> 的 model states。还没算 activation、temporary buffers、fragmentation 和通信 buffer。这就是 ZeRO 论文最重要的训练视角：<strong>显存不是一个总数，而是一组生命周期不同的状态。</strong></p>
+<p><img  
+                     lazyload
+                     src="/images/loading.svg"
+                     data-src="/image/ai-notes/images/paper-deep-dives/foundations/zero/figure-1-zero-dp-stages.png"
+                      alt="ZeRO-DP stages 原论文图" 
+                ></p>
+<p><small>图源：ZeRO Figure 1。原图比较 data parallel model states 的 per-device memory，并展示 ZeRO-DP 三阶段如何逐步分片 optimizer states、gradients 和 parameters。图中示例使用 <span class="katex"><span class="katex-mathml"><math><semantics><mrow><mi mathvariant="normal">Ψ</mi><mo>=</mo><mn>7.5</mn><mi>B</mi></mrow><annotation encoding="application/x-tex">\Psi=7.5B</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.68333em;vertical-align:0em;"></span><span class="mord">Ψ</span><span class="mspace" style="margin-right:0.2777777777777778em;"></span><span class="mrel">=</span><span class="mspace" style="margin-right:0.2777777777777778em;"></span></span><span class="base"><span class="strut" style="height:0.68333em;vertical-align:0em;"></span><span class="mord">7</span><span class="mord">.</span><span class="mord">5</span><span class="mord mathdefault" style="margin-right:0.05017em;">B</span></span></span></span>、<span class="katex"><span class="katex-mathml"><math><semantics><mrow><msub><mi>N</mi><mi>d</mi></msub><mo>=</mo><mn>64</mn></mrow><annotation encoding="application/x-tex">N_d=64</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.83333em;vertical-align:-0.15em;"></span><span class="mord"><span class="mord mathdefault" style="margin-right:0.10903em;">N</span><span class="msupsub"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height:0.33610799999999996em;"><span style="top:-2.5500000000000003em;margin-left:-0.10903em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mathdefault mtight">d</span></span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height:0.15em;"><span></span></span></span></span></span></span><span class="mspace" style="margin-right:0.2777777777777778em;"></span><span class="mrel">=</span><span class="mspace" style="margin-right:0.2777777777777778em;"></span></span><span class="base"><span class="strut" style="height:0.64444em;vertical-align:0em;"></span><span class="mord">6</span><span class="mord">4</span></span></span></span>、mixed precision Adam <span class="katex"><span class="katex-mathml"><math><semantics><mrow><mi>K</mi><mo>=</mo><mn>12</mn></mrow><annotation encoding="application/x-tex">K=12</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.68333em;vertical-align:0em;"></span><span class="mord mathdefault" style="margin-right:0.07153em;">K</span><span class="mspace" style="margin-right:0.2777777777777778em;"></span><span class="mrel">=</span><span class="mspace" style="margin-right:0.2777777777777778em;"></span></span><span class="base"><span class="strut" style="height:0.64444em;vertical-align:0em;"></span><span class="mord">1</span><span class="mord">2</span></span></span></span>。</small></p>
+<h2 id="zero-dp-三阶段"><a class="markdownIt-Anchor" href="#zero-dp-三阶段"></a> ZeRO-DP 三阶段</h2>
+<p>ZeRO-DP 的三阶段不是互斥选项，而是累积打开：</p>
+<table>
+<thead>
+<tr>
+<th>Stage</th>
+<th>Partitioned state</th>
+<th>Per-device model-state memory</th>
+<th>Communication volume</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>baseline DP</td>
+<td>none</td>
+<td><span class="katex"><span class="katex-mathml"><math><semantics><mrow><mn>16</mn><mi mathvariant="normal">Ψ</mi></mrow><annotation encoding="application/x-tex">16\Psi</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.68333em;vertical-align:0em;"></span><span class="mord">1</span><span class="mord">6</span><span class="mord">Ψ</span></span></span></span></td>
+<td>baseline all-reduce, about <span class="katex"><span class="katex-mathml"><math><semantics><mrow><mn>2</mn><mi mathvariant="normal">Ψ</mi></mrow><annotation encoding="application/x-tex">2\Psi</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.68333em;vertical-align:0em;"></span><span class="mord">2</span><span class="mord">Ψ</span></span></span></span> data movement per step</td>
+</tr>
+<tr>
+<td><code>P_os</code></td>
+<td>optimizer states</td>
+<td><span class="katex"><span class="katex-mathml"><math><semantics><mrow><mn>4</mn><mi mathvariant="normal">Ψ</mi><mo>+</mo><mi>K</mi><mi mathvariant="normal">Ψ</mi><mi mathvariant="normal">/</mi><msub><mi>N</mi><mi>d</mi></msub></mrow><annotation encoding="application/x-tex">4\Psi + K\Psi/N_d</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.76666em;vertical-align:-0.08333em;"></span><span class="mord">4</span><span class="mord">Ψ</span><span class="mspace" style="margin-right:0.2222222222222222em;"></span><span class="mbin">+</span><span class="mspace" style="margin-right:0.2222222222222222em;"></span></span><span class="base"><span class="strut" style="height:1em;vertical-align:-0.25em;"></span><span class="mord mathdefault" style="margin-right:0.07153em;">K</span><span class="mord">Ψ</span><span class="mord">/</span><span class="mord"><span class="mord mathdefault" style="margin-right:0.10903em;">N</span><span class="msupsub"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height:0.33610799999999996em;"><span style="top:-2.5500000000000003em;margin-left:-0.10903em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mathdefault mtight">d</span></span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height:0.15em;"><span></span></span></span></span></span></span></span></span></span></td>
+<td>same communication volume as DP</td>
+</tr>
+<tr>
+<td><code>P_os+g</code></td>
+<td>optimizer states + gradients</td>
+<td><span class="katex"><span class="katex-mathml"><math><semantics><mrow><mn>2</mn><mi mathvariant="normal">Ψ</mi><mo>+</mo><mo stretchy="false">(</mo><mn>2</mn><mo>+</mo><mi>K</mi><mo stretchy="false">)</mo><mi mathvariant="normal">Ψ</mi><mi mathvariant="normal">/</mi><msub><mi>N</mi><mi>d</mi></msub></mrow><annotation encoding="application/x-tex">2\Psi + (2+K)\Psi/N_d</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.76666em;vertical-align:-0.08333em;"></span><span class="mord">2</span><span class="mord">Ψ</span><span class="mspace" style="margin-right:0.2222222222222222em;"></span><span class="mbin">+</span><span class="mspace" style="margin-right:0.2222222222222222em;"></span></span><span class="base"><span class="strut" style="height:1em;vertical-align:-0.25em;"></span><span class="mopen">(</span><span class="mord">2</span><span class="mspace" style="margin-right:0.2222222222222222em;"></span><span class="mbin">+</span><span class="mspace" style="margin-right:0.2222222222222222em;"></span></span><span class="base"><span class="strut" style="height:1em;vertical-align:-0.25em;"></span><span class="mord mathdefault" style="margin-right:0.07153em;">K</span><span class="mclose">)</span><span class="mord">Ψ</span><span class="mord">/</span><span class="mord"><span class="mord mathdefault" style="margin-right:0.10903em;">N</span><span class="msupsub"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height:0.33610799999999996em;"><span style="top:-2.5500000000000003em;margin-left:-0.10903em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mathdefault mtight">d</span></span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height:0.15em;"><span></span></span></span></span></span></span></span></span></span></td>
+<td>same communication volume as DP, using reduce-scatter + all-gather</td>
+</tr>
+<tr>
+<td><code>P_os+g+p</code></td>
+<td>optimizer states + gradients + parameters</td>
+<td><span class="katex"><span class="katex-mathml"><math><semantics><mrow><mn>16</mn><mi mathvariant="normal">Ψ</mi><mi mathvariant="normal">/</mi><msub><mi>N</mi><mi>d</mi></msub></mrow><annotation encoding="application/x-tex">16\Psi/N_d</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:1em;vertical-align:-0.25em;"></span><span class="mord">1</span><span class="mord">6</span><span class="mord">Ψ</span><span class="mord">/</span><span class="mord"><span class="mord mathdefault" style="margin-right:0.10903em;">N</span><span class="msupsub"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height:0.33610799999999996em;"><span style="top:-2.5500000000000003em;margin-left:-0.10903em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mathdefault mtight">d</span></span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height:0.15em;"><span></span></span></span></span></span></span></span></span></span></td>
+<td>about 1.5x baseline DP communication volume</td>
+</tr>
+</tbody>
+</table>
+<p>这里 <span class="katex"><span class="katex-mathml"><math><semantics><mrow><msub><mi>N</mi><mi>d</mi></msub></mrow><annotation encoding="application/x-tex">N_d</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.83333em;vertical-align:-0.15em;"></span><span class="mord"><span class="mord mathdefault" style="margin-right:0.10903em;">N</span><span class="msupsub"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height:0.33610799999999996em;"><span style="top:-2.5500000000000003em;margin-left:-0.10903em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mathdefault mtight">d</span></span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height:0.15em;"><span></span></span></span></span></span></span></span></span></span> 是 data parallel degree，<span class="katex"><span class="katex-mathml"><math><semantics><mrow><mi>K</mi><mo>=</mo><mn>12</mn></mrow><annotation encoding="application/x-tex">K=12</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.68333em;vertical-align:0em;"></span><span class="mord mathdefault" style="margin-right:0.07153em;">K</span><span class="mspace" style="margin-right:0.2777777777777778em;"></span><span class="mrel">=</span><span class="mspace" style="margin-right:0.2777777777777778em;"></span></span><span class="base"><span class="strut" style="height:0.64444em;vertical-align:0em;"></span><span class="mord">1</span><span class="mord">2</span></span></span></span> 是 mixed precision Adam optimizer states 的内存系数。三个阶段的直觉可以这样记：</p>
+<ol>
+<li><code>P_os</code>：每个 rank 只负责更新一部分 optimizer states，省掉 Adam master weights / momentum / variance 的重复存储；</li>
+<li><code>P_os+g</code>：梯度也按负责的参数 shard reduce-scatter，不再每张卡保留完整 gradients；</li>
+<li><code>P_os+g+p</code>：参数本身也分片，forward / backward 到某一层时按需 broadcast / all-gather。</li>
+</ol>
+<h3 id="table-1-zero-dp-memory"><a class="markdownIt-Anchor" href="#table-1-zero-dp-memory"></a> Table 1: ZeRO-DP Memory</h3>
+<p>下面表格重绘自原论文 Table 1，保留英文列名。单位为 GB，表示不同 DP degree 下每张设备的 model-state memory。</p>
+<table>
+<thead>
+<tr>
+<th>DP</th>
+<th>7.5B Model P_os (GB)</th>
+<th>7.5B Model P_os+g (GB)</th>
+<th>7.5B Model P_os+g+p (GB)</th>
+<th>128B Model P_os (GB)</th>
+<th>128B Model P_os+g (GB)</th>
+<th>128B Model P_os+g+p (GB)</th>
+<th>1T Model P_os (GB)</th>
+<th>1T Model P_os+g (GB)</th>
+<th>1T Model P_os+g+p (GB)</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>1</td>
+<td>120</td>
+<td>120</td>
+<td>120</td>
+<td>2048</td>
+<td>2048</td>
+<td>2048</td>
+<td>16000</td>
+<td>16000</td>
+<td>16000</td>
+</tr>
+<tr>
+<td>4</td>
+<td>52.5</td>
+<td>41.3</td>
+<td>30</td>
+<td>896</td>
+<td>704</td>
+<td>512</td>
+<td>7000</td>
+<td>5500</td>
+<td>4000</td>
+</tr>
+<tr>
+<td>16</td>
+<td>35.6</td>
+<td>21.6</td>
+<td>7.5</td>
+<td>608</td>
+<td>368</td>
+<td>128</td>
+<td>4750</td>
+<td>2875</td>
+<td>1000</td>
+</tr>
+<tr>
+<td>64</td>
+<td>31.4</td>
+<td>16.6</td>
+<td>1.88</td>
+<td>536</td>
+<td>284</td>
+<td>32</td>
+<td>4187</td>
+<td>2218</td>
+<td>250</td>
+</tr>
+<tr>
+<td>256</td>
+<td>30.4</td>
+<td>15.4</td>
+<td>0.47</td>
+<td>518</td>
+<td>263</td>
+<td>8</td>
+<td>4046</td>
+<td>2054</td>
+<td>62.5</td>
+</tr>
+<tr>
+<td>1024</td>
+<td>30.1</td>
+<td>15.1</td>
+<td>0.12</td>
+<td>513</td>
+<td>257</td>
+<td>2</td>
+<td>4011</td>
+<td>2013</td>
+<td>15.6</td>
+</tr>
+</tbody>
+</table>
+<p>这张表解释了 ZeRO 的影响力。普通 DP 下，模型状态不随 DP degree 下降；ZeRO 打开 <code>P_os+g+p</code> 后，1T 模型在 1024-way DP 下的模型状态理论上可以降到 15.6GB/卡。论文也提醒：显存够放下不等于训练时间经济可行，1T 模型在当时硬件上端到端训练可能仍需很久。</p>
+<h2 id="zero-r模型状态之外还有-residual-states"><a class="markdownIt-Anchor" href="#zero-r模型状态之外还有-residual-states"></a> ZeRO-R：模型状态之外还有 residual states</h2>
+<p>ZeRO-DP 把 model states 压下去以后，剩下的 activation、temporary buffers 和 fragmented memory 会变成新瓶颈。论文把这一组优化称为 ZeRO-R。</p>
+<table>
+<thead>
+<tr>
+<th>Component</th>
+<th>What it optimizes</th>
+<th>Training detail</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>P_a</code></td>
+<td>partitioned activation checkpointing</td>
+<td>MP 中 activation checkpoints 不再在 model-parallel ranks 上重复保存；需要时 all-gather 还原</td>
+</tr>
+<tr>
+<td><code>P_a+cpu</code></td>
+<td>CPU activation checkpoint offload</td>
+<td>对超大模型可把 partitioned activation checkpoints 放到 CPU，减少 GPU activation footprint</td>
+</tr>
+<tr>
+<td><code>C_B</code></td>
+<td>constant-size buffers</td>
+<td>避免 fused temporary buffers 随模型大小线性增长；例如 3B 模型的 32-bit fused buffer 可达 12GB</td>
+</tr>
+<tr>
+<td><code>M_D</code></td>
+<td>memory defragmentation</td>
+<td>将 activation checkpoints 和 gradients 搬到预分配连续 buffer，降低碎片导致的 OOM 和 allocator overhead</td>
+</tr>
+</tbody>
+</table>
+<p>论文给了一个很具体的 activation 例子：100B GPT-like 模型、batch size 32、sequence length 1024、MP degree 16，如果每层 checkpoint 一个 activation，单卡 activation checkpoints 约 33GB；用 <code>P_a</code> 后可降到约 2GB，再 offload 到 CPU 时 GPU activation footprint 接近 0。</p>
+<h2 id="通信量为什么它还能像-dp-一样高效"><a class="markdownIt-Anchor" href="#通信量为什么它还能像-dp-一样高效"></a> 通信量：为什么它还能像 DP 一样高效</h2>
+<p>ZeRO 不是简单地“把东西切了”，因为分片必然意味着训练时要取回或聚合状态。论文的关键论证是通信体积仍然接近标准 DP。</p>
+<p>标准 DP 的 gradient all-reduce 可以拆成 reduce-scatter + all-gather，两步各移动约 <span class="katex"><span class="katex-mathml"><math><semantics><mrow><mi mathvariant="normal">Ψ</mi></mrow><annotation encoding="application/x-tex">\Psi</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.68333em;vertical-align:0em;"></span><span class="mord">Ψ</span></span></span></span> 元素，所以每步约 <span class="katex"><span class="katex-mathml"><math><semantics><mrow><mn>2</mn><mi mathvariant="normal">Ψ</mi></mrow><annotation encoding="application/x-tex">2\Psi</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.68333em;vertical-align:0em;"></span><span class="mord">2</span><span class="mord">Ψ</span></span></span></span>。</p>
+<p><code>P_os+g</code> 的通信路径是：</p>
+<ol>
+<li>gradient partition 用 reduce-scatter，把每个参数 shard 的 gradient 聚合到负责它的 rank；</li>
+<li>每个 rank 更新自己负责的参数 shard；</li>
+<li>all-gather 更新后的 parameters，让下一步 forward/backward 能使用完整参数。</li>
+</ol>
+<p>这两步合起来仍然约 <span class="katex"><span class="katex-mathml"><math><semantics><mrow><mn>2</mn><mi mathvariant="normal">Ψ</mi></mrow><annotation encoding="application/x-tex">2\Psi</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.68333em;vertical-align:0em;"></span><span class="mord">2</span><span class="mord">Ψ</span></span></span></span>，和标准 DP 同阶。<code>P_os+g+p</code> 进一步把 parameters 常驻分片，forward/backward 时按层 gather，会把通信量提高到约 1.5x baseline DP，但换来随 <span class="katex"><span class="katex-mathml"><math><semantics><mrow><msub><mi>N</mi><mi>d</mi></msub></mrow><annotation encoding="application/x-tex">N_d</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.83333em;vertical-align:-0.15em;"></span><span class="mord"><span class="mord mathdefault" style="margin-right:0.10903em;">N</span><span class="msupsub"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height:0.33610799999999996em;"><span style="top:-2.5500000000000003em;margin-left:-0.10903em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mathdefault mtight">d</span></span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height:0.15em;"><span></span></span></span></span></span></span></span></span></span> 线性下降的模型状态显存。</p>
+<h3 id="table-2-maximum-model-size"><a class="markdownIt-Anchor" href="#table-2-maximum-model-size"></a> Table 2: Maximum Model Size</h3>
+<p>下面表格重绘自原论文 Table 2，保留英文列名。左侧是内存分析得到的最大模型规模，右侧是 <code>ZeRO-OS</code> 实测可运行模型规模。</p>
+<table>
+<thead>
+<tr>
+<th>MP</th>
+<th>GPUs</th>
+<th>Max Theoretical Model Size Baseline</th>
+<th>Max Theoretical Model Size P_os</th>
+<th>Max Theoretical Model Size P_os+g</th>
+<th>Max Theoretical Model Size P_os+g+p</th>
+<th>Measured Model Size Baseline</th>
+<th>Measured Model Size ZeRO-DP (P_os)</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>1</td>
+<td>64</td>
+<td>2B</td>
+<td>7.6B</td>
+<td>14.4B</td>
+<td>128B</td>
+<td>1.3B</td>
+<td>6.2B</td>
+</tr>
+<tr>
+<td>2</td>
+<td>128</td>
+<td>4B</td>
+<td>15.2B</td>
+<td>28.8B</td>
+<td>256B</td>
+<td>2.5B</td>
+<td>12.5B</td>
+</tr>
+<tr>
+<td>4</td>
+<td>256</td>
+<td>8B</td>
+<td>30.4B</td>
+<td>57.6B</td>
+<td>0.5T</td>
+<td>5B</td>
+<td>25B</td>
+</tr>
+<tr>
+<td>8</td>
+<td>512</td>
+<td>16B</td>
+<td>60.8B</td>
+<td>115.2B</td>
+<td>1T</td>
+<td>10B</td>
+<td>50B</td>
+</tr>
+<tr>
+<td>16</td>
+<td>1024</td>
+<td>32B</td>
+<td>121.6B</td>
+<td>230.4B</td>
+<td>2T</td>
+<td>20B</td>
+<td>100B</td>
+</tr>
+</tbody>
+</table>
+<p>这张表说明了 ZeRO 和 MP 的关系：MP 仍然可以作为 batch size、activation 或通信拓扑的工具，但“只是为了让模型状态放得下”这件事，ZeRO-DP 通常更直接。</p>
+<h2 id="zero-100b-的实现与实验设置"><a class="markdownIt-Anchor" href="#zero-100b-的实现与实验设置"></a> ZeRO-100B 的实现与实验设置</h2>
+<p>论文实现并评估的是 ZeRO-100B：<code>P_os+g</code> 的 ZeRO-DP 加 ZeRO-R，而不是完整 <code>P_os+g+p</code>。这是一个务实取舍：完整 ZeRO 理论上能上 1T，但当时算力让 1T 端到端训练不经济，因此实验聚焦 100B 级 GPT-2-like 模型。</p>
+<table>
+<thead>
+<tr>
+<th>Training / system component</th>
+<th>Detail</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Implementation</td>
+<td>PyTorch implementation; compatible with any model implemented as <code>torch.nn.Module</code></td>
+</tr>
+<tr>
+<td>Usability</td>
+<td>users wrap the model and use ZeRO-powered DP like classic DP; no model rewrite required</td>
+</tr>
+<tr>
+<td>Hardware</td>
+<td>400 V100 GPUs, 25 DGX-2 nodes, 800 Gbps internode communication bandwidth</td>
+</tr>
+<tr>
+<td>No-MP baseline</td>
+<td>PyTorch distributed data parallel (DDP)</td>
+</tr>
+<tr>
+<td>MP baseline</td>
+<td>Megatron-LM, September 2019 open-source version</td>
+</tr>
+<tr>
+<td>Model family</td>
+<td>GPT-2-like transformer models with varied hidden dimension and number of layers</td>
+</tr>
+<tr>
+<td>ZeRO with MP</td>
+<td>ZeRO-powered DP combined with Megatron-LM model parallelism</td>
+</tr>
+<tr>
+<td>Implementation focus</td>
+<td>efficient support for models around 100B parameters on then-current hardware</td>
+</tr>
+</tbody>
+</table>
+<p><img  
+                     lazyload
+                     src="/images/loading.svg"
+                     data-src="/image/ai-notes/images/paper-deep-dives/foundations/zero/figure-2-throughput-speedup.png"
+                      alt="ZeRO throughput speedup 原论文图" 
+                ></p>
+<p><small>图源：ZeRO Figure 2。原图比较 ZeRO 与 SOTA baseline 在不同模型规模下的 training throughput 和 speedup。ZeRO 的 MP 始终限制在单节点内，而 baseline 在 40B 以上需要跨节点 MP，通信效率快速下降。</small></p>
+<p>论文报告 ZeRO-100B 可在 400 张 V100 上高效运行最高 170B 参数模型；对 8B 到 100B 模型，平均达到约 15 PFLOPs，总体约为硬件峰值 30% 以上。100B 模型上 ZeRO 每 GPU 超过 38 TFLOPs，聚合超过 15 PFLOPs，相比 SOTA baseline 同规模训练有 10x 以上速度提升。</p>
+<h3 id="table-5-figure-2-model-configurations"><a class="markdownIt-Anchor" href="#table-5-figure-2-model-configurations"></a> Table 5: Figure 2 Model Configurations</h3>
+<p>下面表格重绘自原论文 Appendix Table 5，保留英文列名。它解释了 Figure 2 的模型、MP 与 batch 配置。</p>
+<table>
+<thead>
+<tr>
+<th>Model size</th>
+<th>ZeRO/Baseline</th>
+<th>Number of GPUs</th>
+<th>MP</th>
+<th>Layers</th>
+<th>Hidden size</th>
+<th>Attention head</th>
+<th>Batch size</th>
+<th>Total batch size</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>1.5B</td>
+<td>ZeRO</td>
+<td>400</td>
+<td>1</td>
+<td>48</td>
+<td>1600</td>
+<td>16</td>
+<td>24</td>
+<td>9600</td>
+</tr>
+<tr>
+<td>1.5B</td>
+<td>Baseline</td>
+<td>400</td>
+<td>2</td>
+<td>48</td>
+<td>1600</td>
+<td>16</td>
+<td>16</td>
+<td>3200</td>
+</tr>
+<tr>
+<td>8B</td>
+<td>ZeRO</td>
+<td>400</td>
+<td>4</td>
+<td>72</td>
+<td>3072</td>
+<td>24</td>
+<td>64</td>
+<td>6400</td>
+</tr>
+<tr>
+<td>8B</td>
+<td>Baseline</td>
+<td>400</td>
+<td>8</td>
+<td>72</td>
+<td>3072</td>
+<td>24</td>
+<td>8</td>
+<td>400</td>
+</tr>
+<tr>
+<td>40B</td>
+<td>ZeRO</td>
+<td>400</td>
+<td>4</td>
+<td>88</td>
+<td>6144</td>
+<td>32</td>
+<td>12</td>
+<td>1200</td>
+</tr>
+<tr>
+<td>40B</td>
+<td>Baseline</td>
+<td>384</td>
+<td>32</td>
+<td>88</td>
+<td>6144</td>
+<td>64</td>
+<td>4</td>
+<td>48</td>
+</tr>
+<tr>
+<td>60B</td>
+<td>ZeRO</td>
+<td>400</td>
+<td>16</td>
+<td>132</td>
+<td>6144</td>
+<td>32</td>
+<td>64</td>
+<td>1600</td>
+</tr>
+<tr>
+<td>60B</td>
+<td>Baseline</td>
+<td>384</td>
+<td>64</td>
+<td>132</td>
+<td>6144</td>
+<td>64</td>
+<td>4</td>
+<td>24</td>
+</tr>
+<tr>
+<td>80B</td>
+<td>ZeRO</td>
+<td>400</td>
+<td>16</td>
+<td>100</td>
+<td>8192</td>
+<td>64</td>
+<td>32</td>
+<td>800</td>
+</tr>
+<tr>
+<td>80B</td>
+<td>Baseline</td>
+<td>384</td>
+<td>128</td>
+<td>100</td>
+<td>8192</td>
+<td>128</td>
+<td>4</td>
+<td>12</td>
+</tr>
+<tr>
+<td>100B</td>
+<td>ZeRO</td>
+<td>400</td>
+<td>16</td>
+<td>125</td>
+<td>8192</td>
+<td>64</td>
+<td>32</td>
+<td>800</td>
+</tr>
+<tr>
+<td>100B</td>
+<td>Baseline</td>
+<td>384</td>
+<td>128</td>
+<td>125</td>
+<td>8192</td>
+<td>128</td>
+<td>2</td>
+<td>6</td>
+</tr>
+<tr>
+<td>120B</td>
+<td>ZeRO</td>
+<td>400</td>
+<td>16</td>
+<td>150</td>
+<td>8192</td>
+<td>64</td>
+<td>24</td>
+<td>600</td>
+</tr>
+<tr>
+<td>120B</td>
+<td>Baseline</td>
+<td>384</td>
+<td>128</td>
+<td>150</td>
+<td>8192</td>
+<td>128</td>
+<td>2</td>
+<td>6</td>
+</tr>
+<tr>
+<td>140B</td>
+<td>ZeRO</td>
+<td>400</td>
+<td>16</td>
+<td>175</td>
+<td>8192</td>
+<td>64</td>
+<td>16</td>
+<td>400</td>
+</tr>
+<tr>
+<td>140B</td>
+<td>Baseline</td>
+<td>384</td>
+<td>128</td>
+<td>175</td>
+<td>8192</td>
+<td>128</td>
+<td>2</td>
+<td>6</td>
+</tr>
+<tr>
+<td>170B</td>
+<td>ZeRO</td>
+<td>400</td>
+<td>16</td>
+<td>212</td>
+<td>8192</td>
+<td>64</td>
+<td>12</td>
+<td>300</td>
+</tr>
+<tr>
+<td>170B</td>
+<td>Baseline</td>
+<td>256</td>
+<td>256</td>
+<td>212</td>
+<td>8192</td>
+<td>256</td>
+<td>2</td>
+<td>2</td>
+</tr>
+</tbody>
+</table>
+<p>这张表要和 Figure 2 一起读。baseline 为了放下大模型，被迫把 MP 拉到跨节点甚至 128/256-way，导致每个 GPU 的计算粒度变小、通信跨慢链路；ZeRO 则把 MP 控制在单节点 16-way 以内，靠 DP state sharding 拿回显存。</p>
+<h2 id="super-linear-scalability"><a class="markdownIt-Anchor" href="#super-linear-scalability"></a> Super-linear Scalability</h2>
+<p>ZeRO 论文最有意思的实验之一是 super-linear scaling：GPU 数变多时，每 GPU throughput 也上升。原因不是违反并行常识，而是 ZeRO-DP 随 DP degree 增大降低每 GPU memory footprint，使单卡能放更大的 batch，从而提高 arithmetic intensity。</p>
+<p><img  
+                     lazyload
+                     src="/images/loading.svg"
+                     data-src="/image/ai-notes/images/paper-deep-dives/foundations/zero/figure-3-superlinear-scalability.png"
+                      alt="Superlinear scalability 原论文图" 
+                ></p>
+<p><small>图源：ZeRO Figure 3。原图展示 60B 参数模型从 64 到 400 GPU 时的 speedup 与 per-GPU throughput。论文解释为 ZeRO-DP 减少显存占用后允许更大 per-GPU batch，提高计算效率。</small></p>
+<p>下面表格重绘自原论文 Appendix Table 6，保留英文列名。</p>
+<table>
+<thead>
+<tr>
+<th>Model size</th>
+<th>ZeRO/Baseline</th>
+<th>Number of GPUs</th>
+<th>MP</th>
+<th>Layers</th>
+<th>Hidden size</th>
+<th>Attention head</th>
+<th>Batch size</th>
+<th>Total batch size</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>60B</td>
+<td>ZeRO</td>
+<td>64</td>
+<td>16</td>
+<td>75</td>
+<td>8192</td>
+<td>32</td>
+<td>16</td>
+<td>64</td>
+</tr>
+<tr>
+<td>60B</td>
+<td>ZeRO</td>
+<td>128</td>
+<td>16</td>
+<td>75</td>
+<td>8192</td>
+<td>32</td>
+<td>48</td>
+<td>384</td>
+</tr>
+<tr>
+<td>60B</td>
+<td>ZeRO</td>
+<td>256</td>
+<td>16</td>
+<td>75</td>
+<td>8192</td>
+<td>32</td>
+<td>48</td>
+<td>768</td>
+</tr>
+<tr>
+<td>60B</td>
+<td>ZeRO</td>
+<td>400</td>
+<td>16</td>
+<td>75</td>
+<td>8192</td>
+<td>32</td>
+<td>64</td>
+<td>1600</td>
+</tr>
+</tbody>
+</table>
+<p>论文也没有把 super-linear scaling 说成免费午餐。它明确指出 batch 太大会影响 convergence，但这些超大模型在 1K GPU 量级下仍处于 batch 不够大的区间，因此增大 batch 还没有撞到 critical batch size。</p>
+<h2 id="zero-configurations-与消融"><a class="markdownIt-Anchor" href="#zero-configurations-与消融"></a> ZeRO Configurations 与消融</h2>
+<p>论文用 C1 到 C5 组合 ZeRO-DP 和 ZeRO-R，用于 Figure 6、Figure 7、Figure 8 的消融。下面表格重绘自原论文 Table 3，保留英文列名。</p>
+<table>
+<thead>
+<tr>
+<th>Config</th>
+<th>ZeRO-DP</th>
+<th>ZeRO-R</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>1</td>
+<td>P_os</td>
+<td>C_B + M_D</td>
+</tr>
+<tr>
+<td>2</td>
+<td>P_os</td>
+<td>C_B + M_D + P_a</td>
+</tr>
+<tr>
+<td>3</td>
+<td>P_os+g</td>
+<td>C_B + M_D</td>
+</tr>
+<tr>
+<td>4</td>
+<td>P_os+g</td>
+<td>C_B + M_D + P_a</td>
+</tr>
+<tr>
+<td>5</td>
+<td>P_os+g</td>
+<td>C_B + M_D + P_a+cpu</td>
+</tr>
+</tbody>
+</table>
+<p><img  
+                     lazyload
+                     src="/images/loading.svg"
+                     data-src="/image/ai-notes/images/paper-deep-dives/foundations/zero/figure-6-max-model-size.png"
+                      alt="Max model size 原论文图" 
+                ></p>
+<p><small>图源：ZeRO Figure 6。原图比较不同 ZeRO configurations 下可运行的 maximum model size。</small></p>
+<p><img  
+                     lazyload
+                     src="/images/loading.svg"
+                     data-src="/image/ai-notes/images/paper-deep-dives/foundations/zero/figure-7-max-cache-allocated.png"
+                      alt="Max cache allocated 原论文图" 
+                ></p>
+<p><small>图源：ZeRO Figure 7。原图比较不同 ZeRO configurations 的 PyTorch max cached memory，用于观察状态分片、activation partition 和 CPU offload 对显存峰值的影响。</small></p>
+<p><img  
+                     lazyload
+                     src="/images/loading.svg"
+                     data-src="/image/ai-notes/images/paper-deep-dives/foundations/zero/figure-8-throughput-per-gpu.png"
+                      alt="Throughput per GPU 原论文图" 
+                ></p>
+<p><small>图源：ZeRO Figure 8。原图比较不同 ZeRO configurations 的 per-GPU throughput。C5 虽然显存最低，但 activation CPU transfer 会降低吞吐，因此论文只在收益大于代价时启用 <code>P_a+cpu</code>。</small></p>
+<p>这里最重要的工程结论是：<strong>省显存本身不是终点，省出来的显存要么用于跑更大模型，要么用于更大 batch 和更高吞吐；如果 offload 带来的数据搬运超过收益，就不应该打开。</strong></p>
+<h2 id="model-configurations-summary"><a class="markdownIt-Anchor" href="#model-configurations-summary"></a> Model Configurations Summary</h2>
+<p>下面表格重绘自原论文 Table 4，保留英文列名。它把 Figure 2、Figure 3、Figure 5 涉及的模型规模、层数和 hidden dimension 做了汇总。</p>
+<table>
+<thead>
+<tr>
+<th>Figure 2 model size</th>
+<th>Layers</th>
+<th>HD</th>
+<th>Figures 3, 5 model size</th>
+<th>Layers</th>
+<th>HD</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>1.5B</td>
+<td>48</td>
+<td>1600</td>
+<td>1.16B-2.5B</td>
+<td>24, 34, 54</td>
+<td>1920</td>
+</tr>
+<tr>
+<td>8B</td>
+<td>72</td>
+<td>3072</td>
+<td>4B</td>
+<td>64</td>
+<td>2304</td>
+</tr>
+<tr>
+<td>40B-60B</td>
+<td>88, 132</td>
+<td>4096</td>
+<td>6B-8B</td>
+<td>52, 72</td>
+<td>3072</td>
+</tr>
+<tr>
+<td>80B-170B</td>
+<td>100, 125, 150</td>
+<td>8192</td>
+<td>10B-13B</td>
+<td>50, 54, 58, 62</td>
+<td>4096</td>
+</tr>
+<tr>
+<td>140B-170B</td>
+<td>175, 212</td>
+<td>8192</td>
+<td>60B</td>
+<td>75</td>
+<td>8192</td>
+</tr>
+</tbody>
+</table>
+<h2 id="从-100b-到-1t能放下不等于训练得起"><a class="markdownIt-Anchor" href="#从-100b-到-1t能放下不等于训练得起"></a> 从 100B 到 1T：能放下不等于训练得起</h2>
+<p>ZeRO 把 1T 模型从“显存不可能”推进到“显存理论可行”，但论文也非常清醒地指出了 compute power gap。它用 BERT-Large 做类比：BERT-Large 在 1024 GPU DGX-2H cluster 上可以 67 分钟训练；1T 参数模型单样本计算量约为 BERT-Large 的 3000 倍。如果假设相同 sequence length 和样本数，1T 训练也要约 140 天；实际更大模型往往还会增加数据量和序列长度，因此可能超过一年，需要 exa-flop 级系统才更合理。</p>
+<p><img  
+                     lazyload
+                     src="/images/loading.svg"
+                     data-src="/image/ai-notes/images/paper-deep-dives/foundations/zero/figure-4-max-model-throughput.png"
+                      alt="Max model throughput 原论文图" 
+                ></p>
+<p><small>图源：ZeRO Figure 4。原图展示 ZeRO-DP 支撑更大模型时的 maximum model throughput，强调 ZeRO 解决了显存可行性，但训练时间仍受算力制约。</small></p>
+<h2 id="turing-nlg系统优化要回到真实模型质量"><a class="markdownIt-Anchor" href="#turing-nlg系统优化要回到真实模型质量"></a> Turing-NLG：系统优化要回到真实模型质量</h2>
+<p>ZeRO 论文最后用 Turing-NLG 作为真实端到端训练例子。截至论文 v3 的时间点，Turing-NLG 是 17B 参数语言模型，使用 ZeRO-100B 端到端训练，并在 WebText-103 上达到 perplexity 10.21。论文报告这个模型的 sustained throughput 为 41.4 TFLOPs/GPU。</p>
+<p><img  
+                     lazyload
+                     src="/images/loading.svg"
+                     data-src="/image/ai-notes/images/paper-deep-dives/foundations/zero/figure-5-turing-nlg.png"
+                      alt="Turing-NLG 原论文图" 
+                ></p>
+<p><small>图源：ZeRO Figure 5。原图展示 Turing-NLG 与 Megatron-LM 8.3B 在 300K iterations 内的 validation perplexity 曲线。它把 ZeRO 的系统优化连接到真实语言模型训练质量。</small></p>
+<p>这也是 ZeRO 应该放进“高效训练”而不只是“分布式系统”的原因：好的训练系统必须同时回答三件事：</p>
+<ol>
+<li>模型状态能不能放下；</li>
+<li>通信和计算能不能保持高效；</li>
+<li>省出来的资源有没有转化成真实模型质量。</li>
+</ol>
+<h2 id="和-megatron-lm-的关系"><a class="markdownIt-Anchor" href="#和-megatron-lm-的关系"></a> 和 Megatron-LM 的关系</h2>
+<table>
+<thead>
+<tr>
+<th>Question</th>
+<th>Megatron-LM</th>
+<th>ZeRO</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>主要解决</td>
+<td>单个 Transformer layer 的大 GEMM 怎么切</td>
+<td>DP 中重复 model states 怎么消掉</td>
+</tr>
+<tr>
+<td>核心维度</td>
+<td>tensor model parallel / intra-layer model parallel</td>
+<td>data-parallel state sharding</td>
+</tr>
+<tr>
+<td>对模型代码</td>
+<td>需要使用 column/row parallel modules 等模型并行结构</td>
+<td>目标是像普通 DP 一样包一层，不要求模型重写</td>
+</tr>
+<tr>
+<td>通信重点</td>
+<td>TP ranks 内的 all-reduce</td>
+<td>DP ranks 间的 reduce-scatter / all-gather / parameter gather</td>
+</tr>
+<tr>
+<td>显存重点</td>
+<td>参数和计算分布到 TP ranks</td>
+<td>optimizer states、gradients、parameters、activations、buffers、fragmentation</td>
+</tr>
+<tr>
+<td>最佳组合</td>
+<td>大模型、单节点高带宽、需要控制 GEMM shape</td>
+<td>大模型状态冗余高、希望保留 DP 易用性和高计算粒度</td>
+</tr>
+</tbody>
+</table>
+<p>今天的训练栈通常把两者叠起来用：Megatron 系列负责 TP/PP/CP/EP 等模型与序列维度并行，DeepSpeed ZeRO 或 PyTorch FSDP 负责参数、梯度、optimizer states 的分片与恢复。ZeRO 这篇论文的价值，是把“显存优化”从小技巧变成了一套可以分析通信量、状态生命周期和用户可用性的训练系统方法。</p>
+<h2 id="可以直接复用的训练检查表"><a class="markdownIt-Anchor" href="#可以直接复用的训练检查表"></a> 可以直接复用的训练检查表</h2>
+<p>把 ZeRO 的思路迁移到自己的训练项目时，可以按下面顺序查：</p>
+<ol>
+<li><strong>先列模型状态账</strong>：fp16/bf16 parameters、gradients、fp32 master weights、optimizer states 分别是多少。</li>
+<li><strong>再列 residual states</strong>：activations、checkpointed activations、temporary buffers、communication buffers、fragmentation 是否已经超过模型状态。</li>
+<li><strong>决定 sharding stage</strong>：只分 optimizer states 是否够，还是要分 gradients、parameters。</li>
+<li><strong>估通信代价</strong>：reduce-scatter、all-gather、parameter gather 能不能和 backward/forward 重叠，网络拓扑是否支持。</li>
+<li><strong>检查 batch 语义</strong>：ZeRO 省出的显存是否会被用来增大 batch；增大 batch 是否还在 critical batch size 之前。</li>
+<li><strong>谨慎打开 offload</strong>：CPU activation offload 只有在不打开就 OOM，或者能换来明显更大 batch / model 时才值得。</li>
+<li><strong>用质量闭环</strong>：最终仍要看 validation loss、perplexity 或目标任务指标，不能只看可运行模型规模。</li>
+</ol>
+<p>ZeRO 最值得学习的不是某一个具体配置名，而是它的账本方式：先问“哪些状态被重复存了”，再问“这些状态在训练步骤的哪个时间点真的需要”，最后用通信调度把显存和吞吐重新平衡。</p>
+
+		</div>
+
+		
+		<div class="post-copyright-info w-full my-8 px-2 sm:px-6 md:px-8">
+			<div class="article-copyright-info-container">
+    <ul>
+        <li><strong>Title:</strong> 论文专题讲解：ZeRO：大模型训练的零冗余状态优化</li>
+        <li><strong>Author:</strong> Charles</li>
+        <li><strong>Created at
+                :</strong> 2025-11-15 09:00:00</li>
+        
+            <li>
+                <strong>Updated at
+                    :</strong> 2025-11-15 09:00:00
+            </li>
+        
+        <li>
+            <strong>Link:</strong> https://charles2530.github.io/2025/11/15/ai-files-paper-deep-dives-foundations-zero/
+        </li>
+        <li>
+            <strong>
+                License:
+            </strong>
+            
+
+            
+                This work is licensed under <a class="license" target="_blank" rel="noopener" href="https://creativecommons.org/licenses/by-nc-sa/4.0">CC BY-NC-SA 4.0</a>.
+            
+        </li>
+    </ul>
+</div>
+
+		</div>
+		
+
+		
+		<ul class="post-tags-box text-lg mt-1.5 flex-wrap justify-center flex md:hidden">
+			
+			<li class="tag-item mx-0.5">
+				<a href="/tags/AI/">#AI</a>&nbsp;
+			</li>
+			
+			<li class="tag-item mx-0.5">
+				<a href="/tags/%E5%9F%BA%E7%A1%80%E7%9F%A5%E8%AF%86/">#基础知识</a>&nbsp;
+			</li>
+			
+			<li class="tag-item mx-0.5">
+				<a href="/tags/%E8%AE%BA%E6%96%87%E4%B8%93%E9%A2%98/">#论文专题</a>&nbsp;
+			</li>
+			
+		</ul>
+		
+
+		
+
+		
+		<div class="article-nav my-8 flex justify-between items-center px-2 sm:px-6 md:px-8">
+			
+			<div class="article-prev border-border-color shadow-redefine-flat shadow-shadow-color-2 rounded-medium px-4 py-2 hover:shadow-redefine-flat-hover hover:shadow-shadow-color-2">
+				<a class="prev" rel="prev" href="/2025/11/17/ai-files-paper-deep-dives-inference-eagle-2/">
+					<span class="left arrow-icon flex justify-center items-center">
+						<i class="fa-solid fa-chevron-left"></i>
+					</span>
+					<span class="title flex justify-center items-center">
+						<span class="post-nav-title-item truncate max-w-48">论文专题讲解：EAGLE-2：用动态 Draft Tree 加速投机解码</span>
+						<span class="post-nav-item">Prev posts</span>
+					</span>
+				</a>
+			</div>
+			
+			
+			<div class="article-next border-border-color shadow-redefine-flat shadow-shadow-color-2 rounded-medium px-4 py-2 hover:shadow-redefine-flat-hover hover:shadow-shadow-color-2">
+				<a class="next" rel="next" href="/2025/11/13/ai-files-paper-deep-dives-foundations-sla-sparse-linear-attention/">
+					<span class="title flex justify-center items-center">
+						<span class="post-nav-title-item truncate max-w-48">论文专题讲解：SLA / SLA2：DiT 稀疏线性 Attention</span>
+						<span class="post-nav-item">Next posts</span>
+					</span>
+					<span class="right arrow-icon flex justify-center items-center">
+						<i class="fa-solid fa-chevron-right"></i>
+					</span>
+				</a>
+			</div>
+			
+		</div>
+		
+
+
+		
+		<div class="comment-container px-2 sm:px-6 md:px-8 pb-8">
+			<div class="comments-container mt-10 w-full ">
+    <div id="comment-anchor" class="w-full h-2.5"></div>
+    <div class="comment-area-title w-full my-1.5 md:my-2.5 text-xl md:text-3xl font-bold">
+        Comments
+    </div>
+    
+
+        
+            
+    <div id="gitalk-container"></div>
+    <script data-swup-reload-script
+            src="https://cdnjs.cloudflare.com/ajax/libs/gitalk/1.8.0/gitalk.min.js"></script>
+    <script data-swup-reload-script>
+        (function() {
+            const startPath = location.pathname;
+            const startTime = Date.now();
+            const retryDelay = 200;
+            const retryLimit = 5000;
+
+            const runGitalk = () => {
+                if (location.pathname !== startPath) {
+                    return;
+                }
+
+                const container = document.getElementById('gitalk-container');
+                if (!container || typeof Gitalk === 'undefined') {
+                    if (Date.now() - startTime < retryLimit) {
+                        setTimeout(runGitalk, retryDelay);
+                    }
+                    return;
+                }
+
+                container.innerHTML = '';
+
+                let pageKey = decodeURI(location.pathname);
+                const maxLength = 50;
+                if (pageKey.length > maxLength) {
+                    pageKey = pageKey.substring(0, maxLength - 3) + '...';
+                }
+
+                try {
+                    new Gitalk({
+                        clientID: '8083299a8ee2aaf23879',
+                        clientSecret: 'a8161e81d4872181e884fdb69f7be24916b6a9d0',
+                        repo: 'Charles2530.github.io',
+                        owner: 'Charles2530',
+                        admin: ['Charles2530'],
+                        id: pageKey,
+                        language: 'en',
+                        proxy: 'https://github.com/login/oauth/access_token'
+                    }).render(container);
+                } catch (e) {
+                    window.Gitalk = null;
+                }
+            };
+
+            runGitalk();
+        })();
+    </script>
+
+
+
+        
+    
+</div>
+
+		</div>
+		
+	</div>
+
+	
+	<div class="toc-content-container">
+		<div class="post-toc-wrap">
+	<div class="post-toc">
+		<div class="toc-title">On this page</div>
+		<div class="page-title">论文专题讲解：ZeRO：大模型训练的零冗余状态优化</div>
+		<ol class="nav"><li class="nav-item nav-level-2"><a class="nav-link" href="#%E5%AE%83%E7%9A%84%E6%95%88%E7%8E%87%E8%B4%A1%E7%8C%AE%E6%98%AF%E4%BB%80%E4%B9%88"><span class="nav-text"> 它的效率贡献是什么</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#%E8%AF%81%E6%8D%AE%E7%AD%89%E7%BA%A7%E4%B8%8E%E5%A4%96%E6%8E%A8%E8%BE%B9%E7%95%8C"><span class="nav-text"> 证据等级与外推边界</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#%E6%98%BE%E5%AD%98%E8%B4%A6%E4%B8%BA%E4%BB%80%E4%B9%88-15b-gpt-2-%E5%8F%82%E6%95%B0%E5%8F%AA%E6%9C%89-3gb-%E5%8D%B4%E8%AE%AD%E4%B8%8D%E5%8A%A8"><span class="nav-text"> 显存账：为什么 1.5B GPT-2 参数只有 3GB 却训不动</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#zero-dp-%E4%B8%89%E9%98%B6%E6%AE%B5"><span class="nav-text"> ZeRO-DP 三阶段</span></a><ol class="nav-child"><li class="nav-item nav-level-3"><a class="nav-link" href="#table-1-zero-dp-memory"><span class="nav-text"> Table 1: ZeRO-DP Memory</span></a></li></ol></li><li class="nav-item nav-level-2"><a class="nav-link" href="#zero-r%E6%A8%A1%E5%9E%8B%E7%8A%B6%E6%80%81%E4%B9%8B%E5%A4%96%E8%BF%98%E6%9C%89-residual-states"><span class="nav-text"> ZeRO-R：模型状态之外还有 residual states</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#%E9%80%9A%E4%BF%A1%E9%87%8F%E4%B8%BA%E4%BB%80%E4%B9%88%E5%AE%83%E8%BF%98%E8%83%BD%E5%83%8F-dp-%E4%B8%80%E6%A0%B7%E9%AB%98%E6%95%88"><span class="nav-text"> 通信量：为什么它还能像 DP 一样高效</span></a><ol class="nav-child"><li class="nav-item nav-level-3"><a class="nav-link" href="#table-2-maximum-model-size"><span class="nav-text"> Table 2: Maximum Model Size</span></a></li></ol></li><li class="nav-item nav-level-2"><a class="nav-link" href="#zero-100b-%E7%9A%84%E5%AE%9E%E7%8E%B0%E4%B8%8E%E5%AE%9E%E9%AA%8C%E8%AE%BE%E7%BD%AE"><span class="nav-text"> ZeRO-100B 的实现与实验设置</span></a><ol class="nav-child"><li class="nav-item nav-level-3"><a class="nav-link" href="#table-5-figure-2-model-configurations"><span class="nav-text"> Table 5: Figure 2 Model Configurations</span></a></li></ol></li><li class="nav-item nav-level-2"><a class="nav-link" href="#super-linear-scalability"><span class="nav-text"> Super-linear Scalability</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#zero-configurations-%E4%B8%8E%E6%B6%88%E8%9E%8D"><span class="nav-text"> ZeRO Configurations 与消融</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#model-configurations-summary"><span class="nav-text"> Model Configurations Summary</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#%E4%BB%8E-100b-%E5%88%B0-1t%E8%83%BD%E6%94%BE%E4%B8%8B%E4%B8%8D%E7%AD%89%E4%BA%8E%E8%AE%AD%E7%BB%83%E5%BE%97%E8%B5%B7"><span class="nav-text"> 从 100B 到 1T：能放下不等于训练得起</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#turing-nlg%E7%B3%BB%E7%BB%9F%E4%BC%98%E5%8C%96%E8%A6%81%E5%9B%9E%E5%88%B0%E7%9C%9F%E5%AE%9E%E6%A8%A1%E5%9E%8B%E8%B4%A8%E9%87%8F"><span class="nav-text"> Turing-NLG：系统优化要回到真实模型质量</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#%E5%92%8C-megatron-lm-%E7%9A%84%E5%85%B3%E7%B3%BB"><span class="nav-text"> 和 Megatron-LM 的关系</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#%E5%8F%AF%E4%BB%A5%E7%9B%B4%E6%8E%A5%E5%A4%8D%E7%94%A8%E7%9A%84%E8%AE%AD%E7%BB%83%E6%A3%80%E6%9F%A5%E8%A1%A8"><span class="nav-text"> 可以直接复用的训练检查表</span></a></li></ol>
+
+	</div>
+</div>
+	</div>
+	
+</div>
+
+			</div>
+
+			
+		</div>
+
+		<div class="main-content-footer">
+			<footer class="footer mt-5 py-5 h-auto text-base text-third-text-color relative border-t-2 border-t-border-color">
+    <div class="info-container py-3 text-center">
+        
+        <div class="text-center">
+            &copy;
+            
+              <span>2022</span>
+              -
+            
+            2026&nbsp;&nbsp;<i class="fa-solid fa-heart fa-beat" style="--fa-animation-duration: 0.5s; color: #f54545"></i>&nbsp;&nbsp;<a href="/">Charles</a>
+            
+                
+                <p class="post-count space-x-0.5">
+                    <span>
+                        504 posts in total
+                    </span>
+                    
+                        <span>
+                            2011k words in total
+                        </span>
+                    
+                </p>
+            
+        </div>
+        
+            <script data-swup-reload-script src="https://cn.vercount.one/js"></script>
+            <div class="relative text-center lg:absolute lg:right-[20px] lg:top-1/2 lg:-translate-y-1/2 lg:text-right">
+                
+                    <span id="busuanzi_container_site_uv" class="lg:!block">
+                        <span class="text-sm">VISITOR COUNT</span>
+                        <span id="busuanzi_value_site_uv"></span>
+                    </span>
+                
+                
+                    <span id="busuanzi_container_site_pv" class="lg:!block">
+                        <span class="text-sm">TOTAL PAGE VIEWS</span>
+                        <span id="busuanzi_value_site_pv"></span>
+                    </span>
+                
+            </div>
+        
+        <div class="relative text-center lg:absolute lg:left-[20px] lg:top-1/2 lg:-translate-y-1/2 lg:text-left">
+            <span class="lg:block text-sm">POWERED BY <?xml version="1.0" encoding="utf-8"?><!DOCTYPE svg PUBLIC "-//W3C//DTD SVG 1.1//EN" "http://www.w3.org/Graphics/SVG/1.1/DTD/svg11.dtd"><svg class="relative top-[2px] inline-block align-baseline" version="1.1" id="圖層_1" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" x="0px" y="0px" width="1rem" height="1rem" viewBox="0 0 512 512" enable-background="new 0 0 512 512" xml:space="preserve"><path fill="#0E83CD" d="M256.4,25.8l-200,115.5L56,371.5l199.6,114.7l200-115.5l0.4-230.2L256.4,25.8z M349,354.6l-18.4,10.7l-18.6-11V275H200v79.6l-18.4,10.7l-18.6-11v-197l18.5-10.6l18.5,10.8V237h112v-79.6l18.5-10.6l18.5,10.8V354.6z"/></svg><a target="_blank" class="text-base" href="https://hexo.io">Hexo</a></span>
+            <span class="text-sm lg:block">THEME&nbsp;<a class="text-base" target="_blank" href="https://github.com/EvanNotFound/hexo-theme-redefine">Redefine v2.9.0</a></span>
+        </div>
+        
+        
+            <div>
+                Blog up for <span class="odometer" id="runtime_days" ></span> days <span class="odometer" id="runtime_hours"></span> hrs <span class="odometer" id="runtime_minutes"></span> Min <span class="odometer" id="runtime_seconds"></span> Sec
+            </div>
+        
+        
+            <script data-swup-reload-script>
+                try {
+                    function odometer_init() {
+                    const elements = document.querySelectorAll('.odometer');
+                    elements.forEach(el => {
+                        new Odometer({
+                            el,
+                            format: '( ddd).dd',
+                            duration: 200
+                        });
+                    });
+                    }
+                    odometer_init();
+                } catch (error) {}
+            </script>
+        
+        
+            
+                
+        
+                
+        
+                
+
+                    
+                        <script data-swup-reload-script type="text/javascript" src="/js/love.js"></script>
+                    
+        
+        
+    </div>  
+</footer>
+		</div>
+	</div>
+
+	
+	<div class="post-tools">
+		<div class="post-tools-container">
+	<ul class="article-tools-list">
+		<!-- TOC aside toggle -->
+		
+		<li class="right-bottom-tools page-aside-toggle">
+			<i class="fa-regular fa-outdent"></i>
+		</li>
+		
+
+		<!-- go comment -->
+		
+		<li class="go-comment">
+			<i class="fa-regular fa-comments"></i>
+		</li>
+		
+	</ul>
+</div>
+	</div>
+	
+
+	<div class="right-side-tools-container">
+		<div class="side-tools-container">
+	<ul class="hidden-tools-list">
+		<li class="right-bottom-tools tool-font-adjust-plus flex justify-center items-center">
+			<i class="fa-regular fa-magnifying-glass-plus"></i>
+		</li>
+
+		<li class="right-bottom-tools tool-font-adjust-minus flex justify-center items-center">
+			<i class="fa-regular fa-magnifying-glass-minus"></i>
+		</li>
+
+		<li class="right-bottom-tools tool-dark-light-toggle flex justify-center items-center">
+			<i class="fa-regular fa-moon"></i>
+		</li>
+
+		<!-- rss -->
+		
+		<li class="right-bottom-tools rss flex justify-center items-center">
+			<a class="flex justify-center items-center" href="/atom.xml" target="_blank">
+				<i class="fa-regular fa-rss"></i>
+			</a>
+		</li>
+		
+
+		
+
+		<li class="right-bottom-tools tool-scroll-to-bottom flex justify-center items-center">
+			<i class="fa-regular fa-arrow-down"></i>
+		</li>
+	</ul>
+
+	<ul class="visible-tools-list">
+		<li class="right-bottom-tools toggle-tools-list flex justify-center items-center">
+			<i class="fa-regular fa-cog fa-spin"></i>
+		</li>
+		
+		<li class="right-bottom-tools tool-scroll-to-top flex justify-center items-center">
+			<i class="arrow-up fas fa-arrow-up"></i>
+			<span class="percent"></span>
+		</li>
+		
+		
+	</ul>
+</div>
+	</div>
+
+	<div class="image-viewer-container" role="dialog" aria-modal="true" aria-label="Image viewer">
+	<button class="image-viewer-close" type="button" aria-label="Close">
+		<i class="fa-solid fa-xmark"></i>
+	</button>
+	<button class="image-viewer-prev" type="button" aria-label="Prev">
+		<i class="fa-solid fa-chevron-left"></i>
+	</button>
+	<div class="image-viewer-frame">
+		<img src="" alt="">
+	</div>
+	<div class="image-viewer-exif-panel hidden absolute left-1/2 bottom-20 -translate-x-1/2 w-[min(92vw,420px)] max-h-[60vh] overflow-hidden rounded-2xl bg-background-color-transparent-80 p-4 text-left shadow-redefine-flat backdrop-blur-md" role="dialog" aria-label="EXIF" aria-hidden="true">
+		<div class="flex items-center justify-between mb-3">
+			<span class="text-sm font-semibold text-first-text-color">EXIF</span>
+			<button class="image-viewer-exif-close flex h-8 w-8 items-center justify-center rounded-full bg-background-color-transparent-80 text-first-text-color transition hover:bg-background-color-transparent-40" type="button" aria-label="Close">
+				<i class="fa-solid fa-xmark text-[0.65rem]"></i>
+			</button>
+		</div>
+		<div class="image-viewer-exif-cards grid grid-cols-1 sm:grid-cols-2 gap-3 max-h-[50vh] overflow-y-auto pr-1 scrollbar-hide"></div>
+		<template class="image-viewer-exif-card-template">
+			<div class="rounded-lg bg-background-color-transparent-40 px-3 py-2">
+				<div class="image-viewer-exif-card-header flex items-center gap-2 mb-1">
+					<i class="image-viewer-exif-card-icon fa-solid fa-circle-info text-xs text-third-text-color"></i>
+					<div class="image-viewer-exif-card-title text-xs font-semibold text-first-text-color"></div>
+				</div>
+				<div class="image-viewer-exif-card-items flex flex-col gap-1"></div>
+			</div>
+		</template>
+	</div>
+	<button class="image-viewer-exif-toggle flex items-center gap-2 hidden absolute left-1/2 bottom-6 -translate-x-1/2 rounded-full border border-border-color bg-background-color-transparent-80 px-4 py-2 text-first-text-color backdrop-blur-md transition hover:bg-background-color-transparent-40" type="button" aria-label="EXIF" aria-expanded="false">
+		<i class="fa-solid fa-circle-info text-xs"></i>
+		<span class="text-xs font-semibold uppercase tracking-wider">EXIF</span>
+	</button>
+	<button class="image-viewer-next" type="button" aria-label="Next">
+		<i class="fa-solid fa-chevron-right"></i>
+	</button>
+</div>
+
+
+	
+	<div class="search-pop-overlay">
+	<div class="popup search-popup">
+		<div class="search-header">
+			<span class="search-input-field-pre">
+				<i class="fa-solid fa-keyboard"></i>
+			</span>
+			<div class="search-input-container">
+				<input autocomplete="off" autocorrect="off" autocapitalize="off" placeholder="Search..." spellcheck="false" type="search" class="search-input">
+			</div>
+			<span class="popup-btn-close">
+				<i class="fa-solid fa-times"></i>
+			</span>
+		</div>
+		<div id="search-result">
+			<div id="no-result">
+				<i class="fa-solid fa-spinner fa-spin-pulse fa-5x fa-fw"></i>
+			</div>
+		</div>
+	</div>
+</div>
+	
+
+</main>
+
+
+
+<script src="/js/build/libs/Swup.min.js"></script>
+
+<script src="/js/build/libs/SwupSlideTheme.min.js"></script>
+
+<script src="/js/build/libs/SwupScriptsPlugin.min.js"></script>
+
+<script src="/js/build/libs/SwupProgressPlugin.min.js"></script>
+
+<script src="/js/build/libs/SwupScrollPlugin.min.js"></script>
+
+<script src="/js/build/libs/SwupPreloadPlugin.min.js"></script>
+
+<script>
+    window.swup = new Swup({
+        plugins: [
+            new SwupScriptsPlugin({
+                optin: true,
+            }),
+            new SwupProgressPlugin(),
+            new SwupScrollPlugin({
+                offset: 80,
+            }),
+            new SwupSlideTheme({
+                mainElement: ".main-content-body",
+            }),
+            new SwupPreloadPlugin(),
+        ],
+        containers: ["#swup"],
+    });
+
+    window.dispatchEvent(
+        new CustomEvent("redefine:swup:ready", {
+            detail: {
+                swup: window.swup,
+            },
+        }),
+    );
+</script>
+
+
+
+
+	
+<script src="/js/build/main.js" type="module"></script>
+
+
+
+    
+<script src="/js/build/libs/odometer.min.js"></script>
+
+    
+<link rel="stylesheet" href="/assets/odometer-theme-minimal.css">
+
+
+
+
+
+
+
+  
+<script src="/js/build/libs/Typed.min.js"></script>
+<script src="/js/build/libs/minimasonry.min.js" data-swup-reload-script=""></script>
+
+
+
+
+<script src="/js/build/libs/moment-with-locales.min.js" data-swup-reload-script=""></script>
+
+
+
+	
+</body>
+
+</html>

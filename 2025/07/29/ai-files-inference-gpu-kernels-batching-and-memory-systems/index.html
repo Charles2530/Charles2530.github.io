@@ -1,0 +1,1438 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="keywords" content="Charles">
+    
+    
+    <meta name="author" content="Charles">
+    
+    <!-- Completely eliminate flash of wrong theme -->
+    <script>
+        (function() {
+            const THEME_KEY = "REDEFINE-THEME-STATUS";
+            const DARK = "dark", LIGHT = "light";
+            
+            // Get preferred theme
+            function getTheme() {
+                try {
+                    const saved = localStorage.getItem(THEME_KEY);
+                    if (saved) {
+                        const { isDark } = JSON.parse(saved);
+                        return isDark ? DARK : LIGHT;
+                    }
+                } catch (e) {}
+                
+                return matchMedia("(prefers-color-scheme: dark)").matches ? DARK : LIGHT;
+            }
+            
+            // Apply theme to document
+            function applyTheme(theme) {
+                const isDark = theme === DARK;
+                const root = document.documentElement;
+                
+                // Set classes for compatibility
+                root.classList.add(theme);
+                root.classList.remove(isDark ? LIGHT : DARK);
+                root.style.colorScheme = theme;
+            }
+            
+            // Initial application
+            const theme = getTheme();
+            applyTheme(theme);
+            
+            // Listen for system preference changes
+            matchMedia("(prefers-color-scheme: dark)").addEventListener("change", ({ matches }) => {
+                // Only update if using system preference (no localStorage entry)
+                if (!localStorage.getItem(THEME_KEY)) {
+                    applyTheme(matches ? DARK : LIGHT);
+                }
+            });
+            
+            // Set body classes ASAP (before DOMContentLoaded)
+            (function() {
+                const addBodyClass = () => {
+                    const b = document.body;
+                    if (!b) return false;
+                    b.classList.add(theme + "-mode");
+                    return true;
+                };
+
+                // Try immediately
+                if (addBodyClass()) return;
+
+                // Observe until body exists
+                const mo = new MutationObserver(() => {
+                    if (addBodyClass()) mo.disconnect();
+                });
+                mo.observe(document.documentElement, { childList: true, subtree: true });
+            })();
+        })();
+    </script>
+    
+    <!-- preconnect -->
+<!--- Seo Part-->
+    
+    <link rel="canonical" href="https://charles2530.github.io/2025/07/29/ai-files-inference-gpu-kernels-batching-and-memory-systems/"/>
+    <meta name="robots" content="index,follow">
+    <meta name="googlebot" content="index,follow">
+    <meta name="revisit-after" content="1 days">
+    
+    
+        
+        <meta name="description" content="This is Charles&#39;s Castle.">
+<meta property="og:type" content="article">
+<meta property="og:title" content="推理：GPU Kernel、Batching 与显存">
+<meta property="og:url" content="https://charles2530.github.io/2025/07/29/ai-files-inference-gpu-kernels-batching-and-memory-systems/index.html">
+<meta property="og:site_name" content="Charles&#39;s Castle">
+<meta property="og:description" content="This is Charles&#39;s Castle.">
+<meta property="og:locale" content="en_US">
+<meta property="og:image" content="https://charles2530.github.io/image/background/logo.jpg">
+<meta property="article:published_time" content="2025-07-29T01:00:00.000Z">
+<meta property="article:modified_time" content="2025-07-29T01:00:00.000Z">
+<meta property="article:author" content="Du Jinyang">
+<meta property="article:tag" content="AI">
+<meta property="article:tag" content="推理">
+<meta property="article:tag" content="GPU 系统">
+<meta property="article:tag" content="服务系统">
+<meta name="twitter:card" content="summary">
+<meta name="twitter:image" content="https://charles2530.github.io/image/background/logo.jpg">
+    
+    
+    <!--- Icon Part-->
+    <link rel="icon" type="image/png" href="https://charles2530.github.io/image/background/favicon.png" sizes="192x192">
+    <link rel="apple-touch-icon" sizes="180x180" href="https://charles2530.github.io/image/background/favicon.png">
+    <meta name="theme-color" content="#A31F34">
+    <link rel="shortcut icon" href="https://charles2530.github.io/image/background/favicon.png">
+    <!--- Page Info-->
+    
+    <title>
+        
+            推理：GPU Kernel、Batching 与显存 | Charles&#39;s Castle
+        
+    </title>
+
+    
+<link rel="stylesheet" href="/fonts/Chillax/chillax.css">
+
+
+    <!--- Inject Part-->
+    
+        
+            
+    
+            
+    
+            
+                
+                    <link rel="stylesheet" href="/katex/katex.min.css">
+                
+    
+            
+                
+                    <link rel="stylesheet" href="/css/site-polish-v2.css">
+                
+    
+            
+                
+                    <script data-swup-reload-script>
+(function() {
+  function loadBaiduAnalytics() {
+    if (window.__baiduAnalyticsLoaded) return;
+    window.__baiduAnalyticsLoaded = true;
+    window._hmt = window._hmt || [];
+    var hm = document.createElement("script");
+    hm.async = true;
+    hm.src = "https://hm.baidu.com/hm.js?8e0e5f382d14d87cbeadc33a36e71e86";
+    document.head.appendChild(hm);
+  }
+  if ("requestIdleCallback" in window) {
+    requestIdleCallback(loadBaiduAnalytics, { timeout: 3000 });
+  } else {
+    window.addEventListener("load", function() {
+      setTimeout(loadBaiduAnalytics, 1500);
+    });
+  }
+})();
+</script>
+
+                
+    
+
+    
+<link rel="stylesheet" href="/css/style.css">
+
+
+    
+        
+<link rel="stylesheet" href="/css/build/tailwind.css">
+
+    
+
+    
+<link rel="stylesheet" href="/fonts/GeistMono/geist-mono.css">
+
+    
+<link rel="stylesheet" href="/fonts/Geist/geist.css">
+
+    <!--- Font Part-->
+    
+    
+    
+    
+    
+    
+        
+<script src="/js/build/libs/anime.min.js"></script>
+
+    
+
+    <script id="hexo-configurations">
+    window.config = {"hostname":"charles2530.github.io","root":"/","language":"en","path":"search.xml"};
+    window.theme = {"articles":{"style":{"font_size":"16px","line_height":1.5,"image_border_radius":"14px","image_alignment":"center","image_caption":false,"link_icon":true,"delete_mask":false,"title_alignment":"left","headings_top_spacing":{"h1":"5rem","h2":"4rem","h3":"2.8rem","h4":"2.5rem","h5":"2.2rem","h6":"2rem"}},"word_count":{"enable":true,"count":true,"min2read":true},"author_label":{"enable":true,"auto":true,"list":["lol","Neo","God"]},"code_block":{"copy":true,"style":"mac","highlight_theme":{"light":"github","dark":"vs2015"},"font":{"enable":false,"family":null,"url":null}},"toc":{"enable":true,"max_depth":6,"number":false,"expand":true,"init_open":true},"copyright":{"enable":true,"default":"cc_by_nc_sa"},"lazyload":true,"pangu_js":false,"recommendation":{"enable":false,"title":"recommend_articles","limit":3,"mobile_limit":2,"placeholder":"https://charles2530.github.io/image/background/p3.jfif","skip_dirs":[]}},"colors":{"primary":"#A31F34","secondary":"#1890ff","default_mode":"light"},"global":{"fonts":{"chinese":{"enable":false,"family":null,"url":null},"english":{"enable":false,"family":null,"url":null},"title":{"enable":false,"family":null,"url":null}},"content_max_width":"1000px","sidebar_width":"210px","hover":{"shadow":true,"scale":true},"scroll_progress":{"bar":true,"percentage":true},"website_counter":{"url":"https://cn.vercount.one/js","enable":true,"site_pv":true,"site_uv":true,"post_pv":true},"single_page":true,"preloader":{"enable":true,"custom_message":null},"side_tools":{"gear_rotation":true,"auto_expand":false},"open_graph":{"enable":true,"image":"https://charles2530.github.io/image/background/logo.jpg","description":"This is Charles's Castle."},"google_analytics":{"enable":false,"id":null}},"home_banner":{"enable":true,"style":"fixed","image":{"light":"https://charles2530.github.io/image/background/background-light1.jpg","dark":"https://charles2530.github.io/image/background/background-dark1.jpg"},"title":"Charles's Castle","subtitle":{"text":["Happiness is best!","Never give up!","Everyday is a gift!"],"hitokoto":{"enable":false,"show_author":false,"api":"https://v1.hitokoto.cn"},"typing_speed":100,"backing_speed":80,"starting_delay":500,"backing_delay":1500,"loop":true,"smart_backspace":true},"text_color":{"light":"#000000","dark":"#d1d1b6"},"text_style":{"title_size":"3.2rem","subtitle_size":"1.5rem","line_height":1.2},"custom_font":{"enable":false,"family":null,"url":null},"social_links":{"enable":true,"style":"center","links":[{"icon":"fa-brands fa-github","url":"https://github.com/Charles2530/"},{"icon":"fa-brands fa-zhihu","url":"https://www.zhihu.com/people/yang-guang-xiao-zi-55-55"},{"icon":"fa-solid fa-at","url":"mailto:charles2530@163.com"},{"icon":"fa-brands fa-telegram","url":null},{"icon":"/images/custom-icon.svg","url":null}],"qrs":[{"icon":"fa-brands fa-weixin","qr":"https://charles2530.github.io/image/background/Wechat_icon.png"},{"icon":"/images/custom-icon.svg","qr":null}]}},"plugins":{"feed":{"enable":true},"aplayer":{"enable":false,"type":"fixed","audios":[{"name":null,"artist":null,"url":null,"cover":null,"lrc":null}]},"mermaid":{"enable":false,"version":"11.4.1","theme":{"light":"default","dark":"dark"}}},"version":"2.9.0","navbar":{"auto_hide":true,"color":{"left":"#f78736","right":"#367df7","transparency":35},"width":{"home":"1200px","pages":"1000px"},"links":{"Home":{"path":"/","icon":"fa-regular fa-house"},"Categories":{"path":"/categories","icon":"fas fa-bookmark"},"Tags":{"path":"/tags","icon":"fas fa-tags"},"About":{"icon":"fa-regular fa-user","submenus":{"Me":"https://jinyang-du.github.io/","Github":"https://github.com/Charles2530/","Blog":"https://charles2530.github.io","Statistics":"https://tongji.baidu.com/"}}},"search":{"enable":true,"preload":false}},"page_templates":{"friends_column":2,"tags_style":"blur","masonry":{"batch_size":12,"initial_batch_size":24}},"home":{"sidebar":{"enable":true,"position":"left","first_item":"menu","announcement":"This is Charles's Castle","show_on_mobile":true,"links":{"Archives":{"path":"/archives","icon":"fa-regular fa-archive"},"Photos":{"icon":"fa-solid fa-image","path":"/masonry/"},"Essays":{"icon":"fa-solid fa-message-lines","path":"/essay/"},"Friends":{"icon":"fa-solid fa-user-group","path":"/friends/"}}},"article_date_format":"auto","excerpt_length":200,"categories":{"enable":true,"limit":3},"tags":{"enable":true,"limit":3}},"footer":{"runtime":true,"icon":"<i class=\"fa-solid fa-heart fa-beat\" style=\"--fa-animation-duration: 0.5s; color: #f54545\"></i>","start":"2022/12/27 00:00:00","statistics":true,"customize":null,"icp":{"enable":false,"number":null,"url":null}},"footerStart":"2022/12/27 00:00:00","mermaid":{"style":{"light":"default","dark":"dark"}}};
+    window.lang_ago = {"second":"%s seconds ago","minute":"%s minutes ago","hour":"%s hours ago","day":"%s days ago","week":"%s weeks ago","month":"%s months ago","year":"%s years ago"};
+    window.i18n = {"search":"Search...","toc":"On this page","prev":"Prev","next":"Next","prev_posts":"Prev posts","next_posts":"Next posts","page":"Page %d","recent_posts":"Recent Posts","share":"Share","powered_by":"POWERED BY %s","theme":"THEME","rss_feed":"RSS Feed","category":"Category","categories":"Categories","tag":"Tag","tags":"Tags","post":"Post","posts":"Posts","tagcloud":"Tag Cloud","comment":"Comment","comments":"Comments","home":"Home","archive":"Archive","archives":"Archives","top":"TOP","sticky":"Sticky","go-back-home":"Go Back Home","masonry_loading":"Loading photos...","image_viewer":"Image viewer","close":"Close","exif":{"title":"EXIF","cards":{"camera":"Camera","lens":"Lens","exposure":"Exposure","other":"Other"},"fields":{"make":"Brand","model":"Model","date_taken":"Date taken","lens_model":"Lens","focal_length":"Focal length","focus_mode":"Focus mode","shutter":"Shutter","aperture":"Aperture","iso":"ISO","exposure_program":"Exposure program","exposure_compensation":"Exposure compensation","metering_mode":"Metering mode","flash":"Flash","white_balance":"White balance","latitude":"Latitude","longitude":"Longitude","altitude":"Altitude"},"status":{"loading":"Loading...","no_exif":"No EXIF available","library_missing":"EXIF library not loaded","image_source_missing":"Image source unavailable","unavailable":"EXIF unavailable (blocked by CORS or missing metadata)","flag_unavailable":"EXIF unavailable"}},"about":"About","changelog":"Changelog","links":"Links","link":"Link","friends":"Friends","friend":"Friend","timeline":"Timeline","shuoshuo":"Shuoshuo","bookmarks":"Bookmarks","site_uv":"VISITOR COUNT","site_pv":"TOTAL PAGE VIEWS","read_more":"Read more","wordcount":"Words","min2read":"Mins","status":"Status","runtime":"Blog up for","days":"days","hours":"hrs","minutes":"Min","seconds":"Sec","optimized_by":"and Optimized by Evan","rights":"All Rights Reserved","site_posts":"%s posts in total","site_wordcount":"%s words in total","copyright":{"author":"Author","title":"Title","link":"Link","create_time":"Created at","update_time":"Updated at","license_title":"License","license_content":"This work is licensed under %s.","all_rights_reserved":"All Rights Reserved &#169; %s","public_domain":"This work is in the public domain."},"ago":{"second":"%s seconds ago","minute":"%s minutes ago","hour":"%s hours ago","day":"%s days ago","week":"%s weeks ago","month":"%s months ago","year":"%s years ago"},"create_time":"Created","update_time":"Updated","expired":"This post is written %s days ago, and the content may not be up to date."};
+    window.data = {"masonry":true};
+  </script>
+    
+    <!--- Fontawesome Part-->
+    
+<link rel="stylesheet" href="/fontawesome/fontawesome.min.css">
+
+    
+<link rel="stylesheet" href="/fontawesome/brands.min.css">
+
+    
+<link rel="stylesheet" href="/fontawesome/solid.min.css">
+
+    
+<link rel="stylesheet" href="/fontawesome/regular.min.css">
+
+    
+    
+    
+    
+<meta name="generator" content="Hexo 6.3.0"><link rel="alternate" href="/atom.xml" title="Charles's Castle" type="application/atom+xml">
+<link rel="stylesheet" href="/css/prism-tomorrow.css" type="text/css"></head>
+
+
+<body>
+	<div class="progress-bar-container">
+	
+	<span class="scroll-progress-bar"></span>
+	
+
+	
+	<span class="pjax-progress-bar"></span>
+	<!--        <span class="swup-progress-icon">-->
+	<!--            <i class="fa-solid fa-circle-notch fa-spin"></i>-->
+	<!--        </span>-->
+	
+</div>
+
+<style>
+    :root {
+        --preloader-background-color: #fff;
+        --preloader-text-color: #000;
+    }
+
+    @media (prefers-color-scheme: dark) {
+        :root {
+            --preloader-background-color: #202124;
+            --preloader-text-color: #fff;
+        }
+    }
+
+    @media (prefers-color-scheme: light) {
+        :root {
+            --preloader-background-color: #fff;
+            --preloader-text-color: #000;
+        }
+    }
+
+    @media (max-width: 600px) {
+        .ml13 {
+            font-size: 2.6rem !important; /* Adjust this value as needed */
+        }
+    }
+
+    .preloader {
+        display: flex;
+        flex-direction: column;
+        gap: 1rem; /* Tailwind 'gap-4' is 1rem */
+        align-items: center;
+        justify-content: center;
+        position: fixed;
+        padding: 12px;
+        top: 0;
+        right: 0;
+        bottom: 0;
+        left: 0;
+        width: 100vw;
+        height: 100vh; /* 'h-screen' is 100% of the viewport height */
+        background-color: var(--preloader-background-color);
+        z-index: 1100; /* 'z-[1100]' sets the z-index */
+        transition: opacity 0.2s ease-in-out;
+    }
+
+    .ml13 {
+        font-size: 3.2rem;
+        /* text-transform: uppercase; */
+        color: var(--preloader-text-color);
+        letter-spacing: -1px;
+        font-weight: 500;
+        font-family: 'Chillax-Variable', sans-serif;
+        text-align: center;
+    }
+
+    .ml13 .word {
+        display: inline-flex;
+        flex-wrap: wrap;
+        white-space: nowrap;
+    }
+
+    .ml13 .letter {
+        display: inline-block;
+        line-height: 1em;
+    }
+</style>
+
+<div class="preloader">
+    <h2 class="ml13">
+        Charles&#39;s Castle
+    </h2>
+    <script>
+        var textWrapper = document.querySelector('.ml13');
+        // Split text into words
+        var words = textWrapper.textContent.trim().split(' ');
+
+        // Clear the existing content
+        textWrapper.innerHTML = '';
+
+        // Wrap each word and its letters in spans
+        words.forEach(function(word) {
+            var wordSpan = document.createElement('span');
+            wordSpan.classList.add('word');
+            wordSpan.innerHTML = word.replace(/\S/g, "<span class='letter'>$&</span>");
+            textWrapper.appendChild(wordSpan);
+            textWrapper.appendChild(document.createTextNode(' ')); // Add space between words
+        });
+
+        var animation = anime.timeline({ loop: true })
+            .add({
+                targets: '.ml13 .letter',
+                translateY: [20, 0],
+                translateZ: 0,
+                opacity: [0, 1],
+                filter: ['blur(5px)', 'blur(0px)'],
+                easing: "easeOutExpo",
+                duration: 1200,
+                delay: (el, i) => 300 + 20 * i,
+            })
+            .add({
+                targets: '.ml13 .letter',
+                translateY: [0, -20],
+                opacity: [1, 0],
+                filter: ['blur(0px)', 'blur(5px)'],
+                easing: "easeInExpo",
+                duration: 1000,
+                delay: (el, i) => 15 * i,
+                complete: function() {
+                    hidePreloader();
+                }
+            }, '-=700');
+
+
+        let themeStatus = JSON.parse(localStorage.getItem('REDEFINE-THEME-STATUS'))?.isDark;
+
+        // If the theme status is not found in local storage, check the preferred color scheme
+        if (themeStatus === undefined || themeStatus === null) {
+            if (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) {
+                themeStatus = 'dark';
+            } else {
+                themeStatus = 'light';
+            }
+        }
+
+        // Now you can use the themeStatus variable in your code
+        if (themeStatus) {
+            document.documentElement.style.setProperty('--preloader-background-color', '#202124');
+            document.documentElement.style.setProperty('--preloader-text-color', '#fff');
+        } else {
+            document.documentElement.style.setProperty('--preloader-background-color', '#fff');
+            document.documentElement.style.setProperty('--preloader-text-color', '#000');
+        }
+
+        window.addEventListener('load', function () {
+            setTimeout(hidePreloader, 5000); // Call hidePreloader after 5000 milliseconds if not already called by animation
+        });
+
+        function hidePreloader() {
+            var preloader = document.querySelector('.preloader');
+            preloader.style.opacity = '0';
+            setTimeout(function () {
+                preloader.style.display = 'none';
+            }, 200);
+        }
+    </script>
+</div>
+
+<main class="page-container" id="swup">
+
+	
+
+	<div class="main-content-container flex flex-col justify-between min-h-dvh">
+		<div class="main-content-header">
+			<header class="navbar-container px-6 md:px-12">
+    <div class="navbar-content transition-navbar ">
+        <div class="left">
+            
+                <a class="logo-image h-8 w-8 sm:w-10 sm:h-10 mr-3" href="/">
+                    <img src="https://charles2530.github.io/image/background/logo.jpg" class="w-full h-full rounded-xs">
+                </a>
+            
+            <a class="logo-title" href="/">
+                
+                Charles&#39;s Castle
+                
+            </a>
+        </div>
+
+        <div class="right">
+            <!-- PC -->
+            <div class="desktop">
+                <ul class="navbar-list">
+                    
+                        
+                            
+
+                            <li class="navbar-item">
+                                <!-- Menu -->
+                                <a class=""
+                                   href="/"
+                                        >
+                                    <i class="fa-regular fa-house fa-fw"></i>
+                                    HOME
+                                    
+                                </a>
+
+                                <!-- Submenu -->
+                                
+                            </li>
+                    
+                        
+                            
+
+                            <li class="navbar-item">
+                                <!-- Menu -->
+                                <a class=""
+                                   href="/categories"
+                                        >
+                                    <i class="fas fa-bookmark fa-fw"></i>
+                                    CATEGORIES
+                                    
+                                </a>
+
+                                <!-- Submenu -->
+                                
+                            </li>
+                    
+                        
+                            
+
+                            <li class="navbar-item">
+                                <!-- Menu -->
+                                <a class=""
+                                   href="/tags"
+                                        >
+                                    <i class="fas fa-tags fa-fw"></i>
+                                    TAGS
+                                    
+                                </a>
+
+                                <!-- Submenu -->
+                                
+                            </li>
+                    
+                        
+                            
+
+                            <li class="navbar-item">
+                                <!-- Menu -->
+                                <a class="has-dropdown"
+                                   href="#"
+                                        onClick=&#34;return false;&#34;>
+                                    <i class="fa-regular fa-user fa-fw"></i>
+                                    ABOUT
+                                    <i class="fa-solid fa-chevron-down fa-fw"></i>
+                                </a>
+
+                                <!-- Submenu -->
+                                
+                                    <ul class="sub-menu">
+                                        
+                                            <li>
+                                                <a target="_blank" rel="noopener" href="https://jinyang-du.github.io/">
+                                                    ME
+                                                </a>
+                                            </li>
+                                        
+                                            <li>
+                                                <a target="_blank" rel="noopener" href="https://github.com/Charles2530/">
+                                                    GITHUB
+                                                </a>
+                                            </li>
+                                        
+                                            <li>
+                                                <a href="https://charles2530.github.io">
+                                                    BLOG
+                                                </a>
+                                            </li>
+                                        
+                                            <li>
+                                                <a target="_blank" rel="noopener" href="https://tongji.baidu.com/">
+                                                    STATISTICS
+                                                </a>
+                                            </li>
+                                        
+                                    </ul>
+                                
+                            </li>
+                    
+                    
+                        <li class="navbar-item search search-popup-trigger">
+                            <i class="fa-solid fa-magnifying-glass"></i>
+                        </li>
+                    
+                </ul>
+            </div>
+            <!-- Mobile -->
+            <div class="mobile">
+                
+                    <div class="icon-item search search-popup-trigger"><i class="fa-solid fa-magnifying-glass"></i>
+                    </div>
+                
+                <div class="icon-item navbar-bar">
+                    <div class="navbar-bar-middle"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Mobile sheet -->
+    <div class="navbar-drawer h-dvh w-full absolute top-0 left-0 bg-background-color flex flex-col justify-between">
+        <ul class="drawer-navbar-list flex flex-col px-4 justify-center items-start">
+            
+                
+                    
+
+                    <li class="drawer-navbar-item text-base my-1.5 flex flex-col w-full">
+                        
+                        <a class="py-1.5 px-2 flex flex-row items-center justify-between gap-1 hover:!text-primary active:!text-primary text-2xl font-semibold group border-b border-border-color hover:border-primary w-full "
+                           href="/"
+                        >
+                            <span>
+                                HOME
+                            </span>
+                            
+                                <i class="fa-regular fa-house fa-sm fa-fw"></i>
+                            
+                        </a>
+                        
+
+                        
+                    </li>
+            
+                
+                    
+
+                    <li class="drawer-navbar-item text-base my-1.5 flex flex-col w-full">
+                        
+                        <a class="py-1.5 px-2 flex flex-row items-center justify-between gap-1 hover:!text-primary active:!text-primary text-2xl font-semibold group border-b border-border-color hover:border-primary w-full "
+                           href="/categories"
+                        >
+                            <span>
+                                CATEGORIES
+                            </span>
+                            
+                                <i class="fas fa-bookmark fa-sm fa-fw"></i>
+                            
+                        </a>
+                        
+
+                        
+                    </li>
+            
+                
+                    
+
+                    <li class="drawer-navbar-item text-base my-1.5 flex flex-col w-full">
+                        
+                        <a class="py-1.5 px-2 flex flex-row items-center justify-between gap-1 hover:!text-primary active:!text-primary text-2xl font-semibold group border-b border-border-color hover:border-primary w-full "
+                           href="/tags"
+                        >
+                            <span>
+                                TAGS
+                            </span>
+                            
+                                <i class="fas fa-tags fa-sm fa-fw"></i>
+                            
+                        </a>
+                        
+
+                        
+                    </li>
+            
+                
+                    
+
+                    <li class="drawer-navbar-item-sub text-base my-1.5 flex flex-col w-full">
+                        
+                        <div class="py-1.5 px-2 flex flex-row items-center justify-between gap-1 hover:!text-primary active:!text-primary cursor-pointer text-2xl font-semibold group border-b border-border-color hover:border-primary w-full "
+                             navbar-data-toggle="submenu-About"
+                        >
+                            <span>
+                                ABOUT
+                            </span>
+                            
+                                <i class="fa-solid fa-chevron-right fa-sm fa-fw transition-all"></i>
+                            
+                        </div>
+                        
+
+                        
+                            <div class="flex-col items-start px-2 py-2 hidden" data-target="submenu-About">
+                                
+                                    <div class="drawer-navbar-item text-base flex flex-col justify-center items-start hover:underline active:underline hover:underline-offset-1 rounded-3xl">
+                                        <a class=" text-third-text-color text-xl"
+                                           target="_blank" rel="noopener" href="https://jinyang-du.github.io/">ME</a>
+                                    </div>
+                                
+                                    <div class="drawer-navbar-item text-base flex flex-col justify-center items-start hover:underline active:underline hover:underline-offset-1 rounded-3xl">
+                                        <a class=" text-third-text-color text-xl"
+                                           target="_blank" rel="noopener" href="https://github.com/Charles2530/">GITHUB</a>
+                                    </div>
+                                
+                                    <div class="drawer-navbar-item text-base flex flex-col justify-center items-start hover:underline active:underline hover:underline-offset-1 rounded-3xl">
+                                        <a class=" text-third-text-color text-xl"
+                                           href="https://charles2530.github.io">BLOG</a>
+                                    </div>
+                                
+                                    <div class="drawer-navbar-item text-base flex flex-col justify-center items-start hover:underline active:underline hover:underline-offset-1 rounded-3xl">
+                                        <a class=" text-third-text-color text-xl"
+                                           target="_blank" rel="noopener" href="https://tongji.baidu.com/">STATISTICS</a>
+                                    </div>
+                                
+                            </div>
+                        
+                    </li>
+            
+
+            
+            
+                
+                    
+                    <li class="drawer-navbar-item text-base my-1.5 flex flex-col w-full">
+                        <a class="py-1.5 px-2 flex flex-row items-center justify-between gap-1 hover:!text-primary active:!text-primary text-2xl font-semibold group border-b border-border-color hover:border-primary w-full active"
+                           href="/archives"
+                        >
+                            <span>Archives</span>
+                            <i class="fa-regular fa-archive fa-sm fa-fw"></i>
+                        </a>
+                    </li>
+                
+                    
+                    <li class="drawer-navbar-item text-base my-1.5 flex flex-col w-full">
+                        <a class="py-1.5 px-2 flex flex-row items-center justify-between gap-1 hover:!text-primary active:!text-primary text-2xl font-semibold group border-b border-border-color hover:border-primary w-full active"
+                           href="/masonry/"
+                        >
+                            <span>Photos</span>
+                            <i class="fa-solid fa-image fa-sm fa-fw"></i>
+                        </a>
+                    </li>
+                
+                    
+                    <li class="drawer-navbar-item text-base my-1.5 flex flex-col w-full">
+                        <a class="py-1.5 px-2 flex flex-row items-center justify-between gap-1 hover:!text-primary active:!text-primary text-2xl font-semibold group border-b border-border-color hover:border-primary w-full active"
+                           href="/essay/"
+                        >
+                            <span>Essays</span>
+                            <i class="fa-solid fa-message-lines fa-sm fa-fw"></i>
+                        </a>
+                    </li>
+                
+                    
+                    <li class="drawer-navbar-item text-base my-1.5 flex flex-col w-full">
+                        <a class="py-1.5 px-2 flex flex-row items-center justify-between gap-1 hover:!text-primary active:!text-primary text-2xl font-semibold group border-b border-border-color hover:border-primary w-full active"
+                           href="/friends/"
+                        >
+                            <span>Friends</span>
+                            <i class="fa-solid fa-user-group fa-sm fa-fw"></i>
+                        </a>
+                    </li>
+                
+            
+        </ul>
+
+        <div class="statistics flex justify-around my-2.5">
+    <a class="item tag-count-item flex flex-col justify-center items-center w-20" href="/tags">
+        <div class="number text-2xl sm:text-xl text-second-text-color font-semibold">45</div>
+        <div class="label text-third-text-color text-sm">Tags</div>
+    </a>
+    <a class="item tag-count-item flex flex-col justify-center items-center w-20" href="/categories">
+        <div class="number text-2xl sm:text-xl text-second-text-color font-semibold">93</div>
+        <div class="label text-third-text-color text-sm">Categories</div>
+    </a>
+    <a class="item tag-count-item flex flex-col justify-center items-center w-20" href="/archives">
+        <div class="number text-2xl sm:text-xl text-second-text-color font-semibold">504</div>
+        <div class="label text-third-text-color text-sm">Posts</div>
+    </a>
+</div>
+    </div>
+
+    <div class="window-mask"></div>
+
+</header>
+
+
+		</div>
+
+		<div class="main-content-body transition-fade-up">
+			
+
+			<div class="main-content">
+				<div class="post-page-container flex relative justify-between box-border w-full h-full">
+	<div class="article-content-container">
+
+		<div class="article-title relative w-full">
+			
+			
+			
+			<img src="https://charles2530.github.io/image/background/p1.jfif" alt="推理：GPU Kernel、Batching 与显存" class="w-full h-60 sm:h-72 md:h-80 object-cover sm:rounded-t-large dark:brightness-75" />
+			
+			<div class="w-full flex items-center absolute bottom-0 justify-start">
+				<h1 class="article-title-cover text-center mx-6 my-6 text-second-text-color bg-background-color-transparent px-4 py-3 text-3xl sm:text-4xl md:text-5xl font-semibold backdrop-blur-lg rounded-xl border border-border-color ">推理：GPU Kernel、Batching 与显存</h1>
+			</div>
+			
+		</div>
+
+		
+		<div class="article-header flex flex-row gap-2 items-center px-2 sm:px-6 md:px-8">
+			<div class="avatar w-[46px] h-[46px] shrink-0 rounded-medium border border-border-color p-px">
+				<img src="https://charles2530.github.io/image/background/logo2.jpg">
+			</div>
+			<div class="info flex flex-col justify-between">
+				<div class="author flex items-center">
+					<span class="name text-default-text-color text-lg font-semibold">Charles</span>
+					
+					<span class="author-label ml-1.5 text-xs px-2 py-0.5 rounded-small text-third-text-color border border-shadow-color-1">Lv7</span>
+					
+				</div>
+				<div class="meta-info">
+					<div class="article-meta-info">
+    <span class="article-date article-meta-item">
+        <i class="fa-regular fa-pen-fancy"></i>&nbsp;
+        <span class="desktop">2025-07-29 09:00</span>
+        <span class="mobile">2025-07-29 09:00</span>
+        <span class="hover-info">Created</span>
+    </span>
+    
+        <span class="article-date article-meta-item">
+            <i class="fa-regular fa-wrench"></i>&nbsp;
+            <span class="desktop">2025-07-29 09:00</span>
+            <span class="mobile">2025-07-29 09:00</span>
+            <span class="hover-info">Updated</span>
+        </span>
+    
+
+    
+        <span class="article-categories article-meta-item">
+            <i class="fa-regular fa-folders"></i>&nbsp;
+            <ul>
+                
+                
+                    
+                        
+                        <li>
+                            <a href="/categories/AI/">AI</a>&nbsp;
+                        </li>
+                    
+                    
+                
+                    
+                        
+                            <li>></li>
+                        
+                        <li>
+                            <a href="/categories/AI/%E6%8E%A8%E7%90%86/">推理</a>&nbsp;
+                        </li>
+                    
+                    
+                
+            </ul>
+        </span>
+    
+    
+        <span class="article-tags article-meta-item">
+            <i class="fa-regular fa-tags"></i>&nbsp;
+            <ul>
+                
+                    <li>
+                        <a href="/tags/AI/">AI</a>&nbsp;
+                    </li>
+                
+                    <li>
+                        | <a href="/tags/%E6%8E%A8%E7%90%86/">推理</a>&nbsp;
+                    </li>
+                
+                    <li>
+                        | <a href="/tags/GPU-%E7%B3%BB%E7%BB%9F/">GPU 系统</a>&nbsp;
+                    </li>
+                
+                    <li>
+                        | <a href="/tags/%E6%9C%8D%E5%8A%A1%E7%B3%BB%E7%BB%9F/">服务系统</a>&nbsp;
+                    </li>
+                
+            </ul>
+        </span>
+    
+
+    
+    
+        <span class="article-wordcount article-meta-item">
+            <i class="fa-regular fa-typewriter"></i>&nbsp;<span>2.9k Words</span>
+        </span>
+    
+    
+        <span class="article-min2read article-meta-item">
+            <i class="fa-regular fa-clock"></i>&nbsp;<span>11 Mins</span>
+        </span>
+    
+    
+        <span class="article-pv article-meta-item">
+            <i class="fa-regular fa-eye"></i>&nbsp;<span id="busuanzi_value_page_pv"></span>
+        </span>
+    
+</div>
+
+				</div>
+			</div>
+		</div>
+		
+
+		
+
+
+		<div class="article-content markdown-body px-2 sm:px-6 md:px-8 pb-8">
+			<p>推理优化落到 GPU 上时，很多抽象问题都会变成具体瓶颈：prefill 是否吃满 Tensor Core，decode 是否被 KV 访存拖住，batching 是否让 shape 变得更碎，量化收益是否被 dequant 和布局转换吞掉。理解 GPU kernel、batching 和内存系统，不是为了手写所有 CUDA，而是为了判断性能问题究竟来自模型、runtime、kernel 还是缓存生命周期。</p>
+<p>这页和 <a href="/2026/05/11/ai-files-inference-serving-systems/">推理服务系统</a>、<a href="/2026/05/11/ai-files-inference-context-compression-kv-eviction-and-memory-hierarchies/">上下文压缩与 KV 层级</a>、<a href="/2026/05/11/ai-files-operators-serving-attention-and-kv-kernels/">推理 Attention 与 KV Kernel</a> 互补。推理服务系统页讲队列和资源治理，本页讲 GPU 热路径和内存行为。</p>
+<div class="callout callout--titled info mb-4 rounded-small shadow-redefine-flat bg-(--callout-bg-color) p-3 pl-1 relative flex flex-row gap-2"><div role="none" class="rounded-full self-stretch w-0.5 bg-(--callout-primary-color) shrink-0 opacity-60"></div><div class="flex flex-col gap-2"><div class="callout__title flex items-center gap-2 font-semibold tracking-tight">初学者先抓住</div><div class="callout__content markdown-body flex-1 min-w-0"><p>推理性能不是一个 token/s 数字能讲清的。prefill 更像一次性处理大块输入，decode 更像不断读历史 KV 的小步循环；batching 决定 GPU 是否吃满，内存系统决定尾延迟是否稳定。</p></div></div></div>
+<div class="callout callout--titled info mb-4 rounded-small shadow-redefine-flat bg-(--callout-bg-color) p-3 pl-1 relative flex flex-row gap-2"><div role="none" class="rounded-full self-stretch w-0.5 bg-(--callout-primary-color) shrink-0 opacity-60"></div><div class="flex flex-col gap-2"><div class="callout__title flex items-center gap-2 font-semibold tracking-tight">难点解释：为什么训练快不代表推理也快</div><div class="callout__content markdown-body flex-1 min-w-0"><p>训练通常 batch 大、形状稳定，GEMM 更容易跑满 Tensor Core；在线 decode 请求随时进出、序列长度不同、KV 访问碎片化，更容易被内存带宽和 kernel launch 开销限制。所以推理优化要拆 TTFT、TPOT、P95/P99，而不是照搬训练吞吐直觉。</p></div></div></div>
+<div class="callout callout--titled default mb-4 rounded-small shadow-redefine-flat bg-(--callout-bg-color) p-3 pl-1 relative flex flex-row gap-2"><div role="none" class="rounded-full self-stretch w-0.5 bg-(--callout-primary-color) shrink-0 opacity-60"></div><div class="flex flex-col gap-2"><div class="callout__title flex items-center gap-2 font-semibold tracking-tight">有趣例子：自助餐和点菜</div><div class="callout__content markdown-body flex-1 min-w-0"><p>Prefill 像自助餐后厨一次做一大盘，容易批量处理；decode 像顾客一口一口点菜，每次只做一点，还要记住每桌之前点过什么。GPU 在这两种场景下的瓶颈完全不同。</p></div></div></div>
+<h2 id="一-推理延迟拆解先区分-queue-prefill-decode"><a class="markdownIt-Anchor" href="#一-推理延迟拆解先区分-queue-prefill-decode"></a> 一、推理延迟拆解：先区分 Queue、Prefill、Decode</h2>
+<p>一次请求的总时延可以粗略分成：</p>
+<p><span class="katex-display"><span class="katex"><span class="katex-mathml"><math><semantics><mrow><msub><mi>T</mi><mtext>total</mtext></msub><mo>=</mo><msub><mi>T</mi><mtext>queue</mtext></msub><mo>+</mo><msub><mi>T</mi><mtext>prefill</mtext></msub><mo>+</mo><msub><mi>T</mi><mtext>decode</mtext></msub><mo>+</mo><msub><mi>T</mi><mtext>post</mtext></msub><mo>+</mo><msub><mi>T</mi><mtext>network</mtext></msub><mi mathvariant="normal">.</mi></mrow><annotation encoding="application/x-tex">T_{\text{total}}
+=
+T_{\text{queue}}
++ T_{\text{prefill}}
++ T_{\text{decode}}
++ T_{\text{post}}
++ T_{\text{network}}.
+</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.83333em;vertical-align:-0.15em;"></span><span class="mord"><span class="mord mathdefault" style="margin-right:0.13889em;">T</span><span class="msupsub"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height:0.33610799999999996em;"><span style="top:-2.5500000000000003em;margin-left:-0.13889em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mtight"><span class="mord text mtight"><span class="mord mtight">total</span></span></span></span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height:0.15em;"><span></span></span></span></span></span></span><span class="mspace" style="margin-right:0.2777777777777778em;"></span><span class="mrel">=</span><span class="mspace" style="margin-right:0.2777777777777778em;"></span></span><span class="base"><span class="strut" style="height:0.969438em;vertical-align:-0.286108em;"></span><span class="mord"><span class="mord mathdefault" style="margin-right:0.13889em;">T</span><span class="msupsub"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height:0.15139200000000003em;"><span style="top:-2.5500000000000003em;margin-left:-0.13889em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mtight"><span class="mord text mtight"><span class="mord mtight">queue</span></span></span></span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height:0.286108em;"><span></span></span></span></span></span></span><span class="mspace" style="margin-right:0.2222222222222222em;"></span><span class="mbin">+</span><span class="mspace" style="margin-right:0.2222222222222222em;"></span></span><span class="base"><span class="strut" style="height:0.969438em;vertical-align:-0.286108em;"></span><span class="mord"><span class="mord mathdefault" style="margin-right:0.13889em;">T</span><span class="msupsub"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height:0.3361079999999999em;"><span style="top:-2.5500000000000003em;margin-left:-0.13889em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mtight"><span class="mord text mtight"><span class="mord mtight">prefill</span></span></span></span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height:0.286108em;"><span></span></span></span></span></span></span><span class="mspace" style="margin-right:0.2222222222222222em;"></span><span class="mbin">+</span><span class="mspace" style="margin-right:0.2222222222222222em;"></span></span><span class="base"><span class="strut" style="height:0.83333em;vertical-align:-0.15em;"></span><span class="mord"><span class="mord mathdefault" style="margin-right:0.13889em;">T</span><span class="msupsub"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height:0.33610799999999996em;"><span style="top:-2.5500000000000003em;margin-left:-0.13889em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mtight"><span class="mord text mtight"><span class="mord mtight">decode</span></span></span></span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height:0.15em;"><span></span></span></span></span></span></span><span class="mspace" style="margin-right:0.2222222222222222em;"></span><span class="mbin">+</span><span class="mspace" style="margin-right:0.2222222222222222em;"></span></span><span class="base"><span class="strut" style="height:0.969438em;vertical-align:-0.286108em;"></span><span class="mord"><span class="mord mathdefault" style="margin-right:0.13889em;">T</span><span class="msupsub"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height:0.28055599999999997em;"><span style="top:-2.5500000000000003em;margin-left:-0.13889em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mtight"><span class="mord text mtight"><span class="mord mtight">post</span></span></span></span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height:0.286108em;"><span></span></span></span></span></span></span><span class="mspace" style="margin-right:0.2222222222222222em;"></span><span class="mbin">+</span><span class="mspace" style="margin-right:0.2222222222222222em;"></span></span><span class="base"><span class="strut" style="height:0.83333em;vertical-align:-0.15em;"></span><span class="mord"><span class="mord mathdefault" style="margin-right:0.13889em;">T</span><span class="msupsub"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height:0.33610799999999996em;"><span style="top:-2.5500000000000003em;margin-left:-0.13889em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mtight"><span class="mord text mtight"><span class="mord mtight">network</span></span></span></span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height:0.15em;"><span></span></span></span></span></span></span><span class="mord">.</span></span></span></span></span></p>
+<p>其中 <code>TTFT</code> 主要受排队、prefill 和首步 decode 影响；<code>TPOT</code> 更接近后续 decode 稳态。很多优化误判都来自只看平均 token/s，而不拆 queue、prefill 和 decode。</p>
+<table>
+<thead>
+<tr>
+<th>阶段</th>
+<th>典型瓶颈</th>
+<th>关键指标</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Queue</td>
+<td>调度、批处理窗口、优先级</td>
+<td>queue time、admission reject、P95/P99</td>
+</tr>
+<tr>
+<td>Prefill</td>
+<td>长上下文 attention、大 GEMM、KV 写入</td>
+<td>TTFT、prefill tokens/s、HBM 带宽</td>
+</tr>
+<tr>
+<td>Decode</td>
+<td>小 batch、KV 读取、kernel launch、碎 shape</td>
+<td>TPOT、decode batch size、KV page miss</td>
+</tr>
+<tr>
+<td>Post</td>
+<td>detokenize、工具编排、网络</td>
+<td>post latency、RPC error、tool latency</td>
+</tr>
+</tbody>
+</table>
+<p>推理比训练更容易暴露带宽问题。训练时 batch 大、shape 稳定，GEMM 更容易吃满硬件；decode 阶段 batch 动态变化、每步工作量小、KV cache 访问频繁，更容易变成 memory-bound 和 launch-bound。</p>
+<h2 id="二-prefill-与-decode-是两种工作负载"><a class="markdownIt-Anchor" href="#二-prefill-与-decode-是两种工作负载"></a> 二、Prefill 与 Decode 是两种工作负载</h2>
+<p>Prefill 更像大块矩阵并行：输入上下文可以并行处理，长 prompt 会产生较大的 attention 和 GEMM 工作量。它适合大 batch、FlashAttention、prefix cache、chunked prefill 和高吞吐资源池。</p>
+<p>Decode 更像动态小步迭代：每轮只生成新 token，活动请求集合不断变化。它的主要问题是“碎”：小 <code>M</code> 的 skinny GEMM、频繁 kernel launch、请求随时加入和退出、KV page 访问不连续，以及 LoRA、采样参数、输出长度让 batch 更难合并。</p>
+<p>因此很多系统会把 prefill 和 decode 拆成不同队列、不同资源池或不同调度策略。长文档问答更可能 prefill 主导，聊天和 agent 更可能 decode 主导。优化前先拆阶段，否则很容易把 prefill 问题错当成 decode kernel 问题。</p>
+<h2 id="三-batching吞吐-尾延迟与-shape-shaping"><a class="markdownIt-Anchor" href="#三-batching吞吐-尾延迟与-shape-shaping"></a> 三、Batching：吞吐、尾延迟与 Shape Shaping</h2>
+<p>Batching 不只是“把请求拼在一起”。它决定 GPU 是否吃满，也决定用户等待多久。</p>
+<p>常见方式包括静态批处理、动态批处理、continuous batching、bucketing 和 batch shaping。静态批处理适合离线推理但交互延迟差；动态批处理用短窗口聚合请求；continuous batching 允许每个 decode step 加入和离开请求；bucketing 按长度、模型、LoRA、采样参数或优先级分桶；batch shaping 则让 runtime 主动选择对 kernel 更友好的 shape family。</p>
+<p>若当前活动请求为 <span class="katex"><span class="katex-mathml"><math><semantics><mrow><msub><mi mathvariant="script">B</mi><mi>t</mi></msub></mrow><annotation encoding="application/x-tex">\mathcal{B}_t</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.83333em;vertical-align:-0.15em;"></span><span class="mord"><span class="mord"><span class="mord mathcal" style="margin-right:0.03041em;">B</span></span><span class="msupsub"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height:0.2805559999999999em;"><span style="top:-2.5500000000000003em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mathdefault mtight">t</span></span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height:0.15em;"><span></span></span></span></span></span></span></span></span></span>，continuous batching 每步都在更新：</p>
+<p><span class="katex-display"><span class="katex"><span class="katex-mathml"><math><semantics><mrow><msub><mi mathvariant="script">B</mi><mrow><mi>t</mi><mo>+</mo><mn>1</mn></mrow></msub><mo>=</mo><mo stretchy="false">(</mo><msub><mi mathvariant="script">B</mi><mi>t</mi></msub><mo>∖</mo><msub><mi mathvariant="script">F</mi><mi>t</mi></msub><mo stretchy="false">)</mo><mo>∪</mo><msub><mi mathvariant="script">A</mi><mi>t</mi></msub><mi mathvariant="normal">.</mi></mrow><annotation encoding="application/x-tex">\mathcal{B}_{t+1}
+=
+(\mathcal{B}_t \setminus \mathcal{F}_t) \cup \mathcal{A}_t.
+</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.891661em;vertical-align:-0.208331em;"></span><span class="mord"><span class="mord"><span class="mord mathcal" style="margin-right:0.03041em;">B</span></span><span class="msupsub"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height:0.301108em;"><span style="top:-2.5500000000000003em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mtight"><span class="mord mathdefault mtight">t</span><span class="mbin mtight">+</span><span class="mord mtight">1</span></span></span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height:0.208331em;"><span></span></span></span></span></span></span><span class="mspace" style="margin-right:0.2777777777777778em;"></span><span class="mrel">=</span><span class="mspace" style="margin-right:0.2777777777777778em;"></span></span><span class="base"><span class="strut" style="height:1em;vertical-align:-0.25em;"></span><span class="mopen">(</span><span class="mord"><span class="mord"><span class="mord mathcal" style="margin-right:0.03041em;">B</span></span><span class="msupsub"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height:0.2805559999999999em;"><span style="top:-2.5500000000000003em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mathdefault mtight">t</span></span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height:0.15em;"><span></span></span></span></span></span></span><span class="mspace" style="margin-right:0.2222222222222222em;"></span><span class="mbin">∖</span><span class="mspace" style="margin-right:0.2222222222222222em;"></span></span><span class="base"><span class="strut" style="height:1em;vertical-align:-0.25em;"></span><span class="mord"><span class="mord"><span class="mord mathcal" style="margin-right:0.09931em;">F</span></span><span class="msupsub"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height:0.2805559999999999em;"><span style="top:-2.5500000000000003em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mathdefault mtight">t</span></span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height:0.15em;"><span></span></span></span></span></span></span><span class="mclose">)</span><span class="mspace" style="margin-right:0.2222222222222222em;"></span><span class="mbin">∪</span><span class="mspace" style="margin-right:0.2222222222222222em;"></span></span><span class="base"><span class="strut" style="height:0.83333em;vertical-align:-0.15em;"></span><span class="mord"><span class="mord"><span class="mord mathcal">A</span></span><span class="msupsub"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height:0.2805559999999999em;"><span style="top:-2.5500000000000003em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mathdefault mtight">t</span></span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height:0.15em;"><span></span></span></span></span></span></span><span class="mord">.</span></span></span></span></span></p>
+<p>这里 <span class="katex"><span class="katex-mathml"><math><semantics><mrow><msub><mi mathvariant="script">F</mi><mi>t</mi></msub></mrow><annotation encoding="application/x-tex">\mathcal{F}_t</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.83333em;vertical-align:-0.15em;"></span><span class="mord"><span class="mord"><span class="mord mathcal" style="margin-right:0.09931em;">F</span></span><span class="msupsub"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height:0.2805559999999999em;"><span style="top:-2.5500000000000003em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mathdefault mtight">t</span></span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height:0.15em;"><span></span></span></span></span></span></span></span></span></span> 是完成请求，<span class="katex"><span class="katex-mathml"><math><semantics><mrow><msub><mi mathvariant="script">A</mi><mi>t</mi></msub></mrow><annotation encoding="application/x-tex">\mathcal{A}_t</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.83333em;vertical-align:-0.15em;"></span><span class="mord"><span class="mord"><span class="mord mathcal">A</span></span><span class="msupsub"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height:0.2805559999999999em;"><span style="top:-2.5500000000000003em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mathdefault mtight">t</span></span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height:0.15em;"><span></span></span></span></span></span></span></span></span></span> 是新加入请求。它能提高 GPU 利用率，但也会让内存生命周期和 shape 更动态。</p>
+<h3 id="何时吞吐会伤害体验"><a class="markdownIt-Anchor" href="#何时吞吐会伤害体验"></a> 何时吞吐会伤害体验</h3>
+<p>为了吞吐拉长 batching 窗口、把长短请求混在一起、或让 prefill 抢占 decode，可能让 token/s 更漂亮，但 TTFT 和 P99 更差。推理系统必须同时看平均吞吐、TTFT、TPOT、P95/P99、长短请求公平性，以及高价值租户是否被低价值长请求拖慢。</p>
+<h2 id="四-kv-cache-是推理内存系统的核心"><a class="markdownIt-Anchor" href="#四-kv-cache-是推理内存系统的核心"></a> 四、KV Cache 是推理内存系统的核心</h2>
+<p>自回归生成时，KV cache 保存历史 token 的 key/value，避免每步重算全部上下文。若层数为 <span class="katex"><span class="katex-mathml"><math><semantics><mrow><mi>L</mi></mrow><annotation encoding="application/x-tex">L</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.68333em;vertical-align:0em;"></span><span class="mord mathdefault">L</span></span></span></span>，hidden size 为 <span class="katex"><span class="katex-mathml"><math><semantics><mrow><mi>d</mi></mrow><annotation encoding="application/x-tex">d</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.69444em;vertical-align:0em;"></span><span class="mord mathdefault">d</span></span></span></span>，序列长度为 <span class="katex"><span class="katex-mathml"><math><semantics><mrow><mi>T</mi></mrow><annotation encoding="application/x-tex">T</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.68333em;vertical-align:0em;"></span><span class="mord mathdefault" style="margin-right:0.13889em;">T</span></span></span></span>，batch 为 <span class="katex"><span class="katex-mathml"><math><semantics><mrow><mi>B</mi></mrow><annotation encoding="application/x-tex">B</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.68333em;vertical-align:0em;"></span><span class="mord mathdefault" style="margin-right:0.05017em;">B</span></span></span></span>，每元素字节数为 <span class="katex"><span class="katex-mathml"><math><semantics><mrow><mi>b</mi></mrow><annotation encoding="application/x-tex">b</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.69444em;vertical-align:0em;"></span><span class="mord mathdefault">b</span></span></span></span>，KV 大小近似为：</p>
+<p><span class="katex-display"><span class="katex"><span class="katex-mathml"><math><semantics><mrow><msub><mi>M</mi><mtext>KV</mtext></msub><mo>≈</mo><mn>2</mn><mo>⋅</mo><mi>L</mi><mo>⋅</mo><mi>B</mi><mo>⋅</mo><mi>T</mi><mo>⋅</mo><mi>d</mi><mo>⋅</mo><mi>b</mi><mi mathvariant="normal">.</mi></mrow><annotation encoding="application/x-tex">M_{\text{KV}}
+\approx 2 \cdot L \cdot B \cdot T \cdot d \cdot b.
+</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.83333em;vertical-align:-0.15em;"></span><span class="mord"><span class="mord mathdefault" style="margin-right:0.10903em;">M</span><span class="msupsub"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height:0.32833099999999993em;"><span style="top:-2.5500000000000003em;margin-left:-0.10903em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mtight"><span class="mord text mtight"><span class="mord mtight">KV</span></span></span></span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height:0.15em;"><span></span></span></span></span></span></span><span class="mspace" style="margin-right:0.2777777777777778em;"></span><span class="mrel">≈</span><span class="mspace" style="margin-right:0.2777777777777778em;"></span></span><span class="base"><span class="strut" style="height:0.64444em;vertical-align:0em;"></span><span class="mord">2</span><span class="mspace" style="margin-right:0.2222222222222222em;"></span><span class="mbin">⋅</span><span class="mspace" style="margin-right:0.2222222222222222em;"></span></span><span class="base"><span class="strut" style="height:0.68333em;vertical-align:0em;"></span><span class="mord mathdefault">L</span><span class="mspace" style="margin-right:0.2222222222222222em;"></span><span class="mbin">⋅</span><span class="mspace" style="margin-right:0.2222222222222222em;"></span></span><span class="base"><span class="strut" style="height:0.68333em;vertical-align:0em;"></span><span class="mord mathdefault" style="margin-right:0.05017em;">B</span><span class="mspace" style="margin-right:0.2222222222222222em;"></span><span class="mbin">⋅</span><span class="mspace" style="margin-right:0.2222222222222222em;"></span></span><span class="base"><span class="strut" style="height:0.68333em;vertical-align:0em;"></span><span class="mord mathdefault" style="margin-right:0.13889em;">T</span><span class="mspace" style="margin-right:0.2222222222222222em;"></span><span class="mbin">⋅</span><span class="mspace" style="margin-right:0.2222222222222222em;"></span></span><span class="base"><span class="strut" style="height:0.69444em;vertical-align:0em;"></span><span class="mord mathdefault">d</span><span class="mspace" style="margin-right:0.2222222222222222em;"></span><span class="mbin">⋅</span><span class="mspace" style="margin-right:0.2222222222222222em;"></span></span><span class="base"><span class="strut" style="height:0.69444em;vertical-align:0em;"></span><span class="mord mathdefault">b</span><span class="mord">.</span></span></span></span></span></p>
+<p>这里的 <span class="katex"><span class="katex-mathml"><math><semantics><mrow><mi>d</mi></mrow><annotation encoding="application/x-tex">d</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.69444em;vertical-align:0em;"></span><span class="mord mathdefault">d</span></span></span></span> 要按 KV 实际宽度理解，而不是盲目等同于模型 hidden size。标准 MHA 通常每个 query head 都有自己的 K/V，<span class="katex"><span class="katex-mathml"><math><semantics><mrow><mi>d</mi></mrow><annotation encoding="application/x-tex">d</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.69444em;vertical-align:0em;"></span><span class="mord mathdefault">d</span></span></span></span> 接近 hidden size；GQA/MQA 会减少 KV head 数，所以更常写成 <span class="katex"><span class="katex-mathml"><math><semantics><mrow><msub><mi>H</mi><mtext>kv</mtext></msub><mo>×</mo><msub><mi>D</mi><mtext>head</mtext></msub></mrow><annotation encoding="application/x-tex">H_{\text{kv}}\times D_{\text{head}}</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.83333em;vertical-align:-0.15em;"></span><span class="mord"><span class="mord mathdefault" style="margin-right:0.08125em;">H</span><span class="msupsub"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height:0.33610799999999996em;"><span style="top:-2.5500000000000003em;margin-left:-0.08125em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mtight"><span class="mord text mtight"><span class="mord mtight">kv</span></span></span></span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height:0.15em;"><span></span></span></span></span></span></span><span class="mspace" style="margin-right:0.2222222222222222em;"></span><span class="mbin">×</span><span class="mspace" style="margin-right:0.2222222222222222em;"></span></span><span class="base"><span class="strut" style="height:0.83333em;vertical-align:-0.15em;"></span><span class="mord"><span class="mord mathdefault" style="margin-right:0.02778em;">D</span><span class="msupsub"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height:0.33610799999999996em;"><span style="top:-2.5500000000000003em;margin-left:-0.02778em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mtight"><span class="mord text mtight"><span class="mord mtight">head</span></span></span></span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height:0.15em;"><span></span></span></span></span></span></span></span></span></span>。</p>
+<p>例如 <code>32</code> 层、batch <code>4</code>、上下文 <code>32k</code>、BF16 KV：</p>
+<table>
+<thead>
+<tr>
+<th>KV 结构</th>
+<th>代入方式</th>
+<th style="text-align:right">KV cache 数量级</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>MHA，<code>32</code> 个 KV heads，<code>head_dim=128</code></td>
+<td><span class="katex"><span class="katex-mathml"><math><semantics><mrow><mn>2</mn><mo>×</mo><mn>32</mn><mo>×</mo><mn>4</mn><mo>×</mo><mn>32768</mn><mo>×</mo><mn>32</mn><mo>×</mo><mn>128</mn><mo>×</mo><mn>2</mn></mrow><annotation encoding="application/x-tex">2\times32\times4\times32768\times32\times128\times2</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.72777em;vertical-align:-0.08333em;"></span><span class="mord">2</span><span class="mspace" style="margin-right:0.2222222222222222em;"></span><span class="mbin">×</span><span class="mspace" style="margin-right:0.2222222222222222em;"></span></span><span class="base"><span class="strut" style="height:0.72777em;vertical-align:-0.08333em;"></span><span class="mord">3</span><span class="mord">2</span><span class="mspace" style="margin-right:0.2222222222222222em;"></span><span class="mbin">×</span><span class="mspace" style="margin-right:0.2222222222222222em;"></span></span><span class="base"><span class="strut" style="height:0.72777em;vertical-align:-0.08333em;"></span><span class="mord">4</span><span class="mspace" style="margin-right:0.2222222222222222em;"></span><span class="mbin">×</span><span class="mspace" style="margin-right:0.2222222222222222em;"></span></span><span class="base"><span class="strut" style="height:0.72777em;vertical-align:-0.08333em;"></span><span class="mord">3</span><span class="mord">2</span><span class="mord">7</span><span class="mord">6</span><span class="mord">8</span><span class="mspace" style="margin-right:0.2222222222222222em;"></span><span class="mbin">×</span><span class="mspace" style="margin-right:0.2222222222222222em;"></span></span><span class="base"><span class="strut" style="height:0.72777em;vertical-align:-0.08333em;"></span><span class="mord">3</span><span class="mord">2</span><span class="mspace" style="margin-right:0.2222222222222222em;"></span><span class="mbin">×</span><span class="mspace" style="margin-right:0.2222222222222222em;"></span></span><span class="base"><span class="strut" style="height:0.72777em;vertical-align:-0.08333em;"></span><span class="mord">1</span><span class="mord">2</span><span class="mord">8</span><span class="mspace" style="margin-right:0.2222222222222222em;"></span><span class="mbin">×</span><span class="mspace" style="margin-right:0.2222222222222222em;"></span></span><span class="base"><span class="strut" style="height:0.64444em;vertical-align:0em;"></span><span class="mord">2</span></span></span></span></td>
+<td style="text-align:right">约 <code>64GiB</code></td>
+</tr>
+<tr>
+<td>GQA，<code>8</code> 个 KV heads，<code>head_dim=128</code></td>
+<td><span class="katex"><span class="katex-mathml"><math><semantics><mrow><mn>2</mn><mo>×</mo><mn>32</mn><mo>×</mo><mn>4</mn><mo>×</mo><mn>32768</mn><mo>×</mo><mn>8</mn><mo>×</mo><mn>128</mn><mo>×</mo><mn>2</mn></mrow><annotation encoding="application/x-tex">2\times32\times4\times32768\times8\times128\times2</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.72777em;vertical-align:-0.08333em;"></span><span class="mord">2</span><span class="mspace" style="margin-right:0.2222222222222222em;"></span><span class="mbin">×</span><span class="mspace" style="margin-right:0.2222222222222222em;"></span></span><span class="base"><span class="strut" style="height:0.72777em;vertical-align:-0.08333em;"></span><span class="mord">3</span><span class="mord">2</span><span class="mspace" style="margin-right:0.2222222222222222em;"></span><span class="mbin">×</span><span class="mspace" style="margin-right:0.2222222222222222em;"></span></span><span class="base"><span class="strut" style="height:0.72777em;vertical-align:-0.08333em;"></span><span class="mord">4</span><span class="mspace" style="margin-right:0.2222222222222222em;"></span><span class="mbin">×</span><span class="mspace" style="margin-right:0.2222222222222222em;"></span></span><span class="base"><span class="strut" style="height:0.72777em;vertical-align:-0.08333em;"></span><span class="mord">3</span><span class="mord">2</span><span class="mord">7</span><span class="mord">6</span><span class="mord">8</span><span class="mspace" style="margin-right:0.2222222222222222em;"></span><span class="mbin">×</span><span class="mspace" style="margin-right:0.2222222222222222em;"></span></span><span class="base"><span class="strut" style="height:0.72777em;vertical-align:-0.08333em;"></span><span class="mord">8</span><span class="mspace" style="margin-right:0.2222222222222222em;"></span><span class="mbin">×</span><span class="mspace" style="margin-right:0.2222222222222222em;"></span></span><span class="base"><span class="strut" style="height:0.72777em;vertical-align:-0.08333em;"></span><span class="mord">1</span><span class="mord">2</span><span class="mord">8</span><span class="mspace" style="margin-right:0.2222222222222222em;"></span><span class="mbin">×</span><span class="mspace" style="margin-right:0.2222222222222222em;"></span></span><span class="base"><span class="strut" style="height:0.64444em;vertical-align:0em;"></span><span class="mord">2</span></span></span></span></td>
+<td style="text-align:right">约 <code>16GiB</code></td>
+</tr>
+<tr>
+<td>GQA + INT8 KV</td>
+<td>上式 bytes 从 <code>2</code> 改成 <code>1</code></td>
+<td style="text-align:right">约 <code>8GiB</code></td>
+</tr>
+</tbody>
+</table>
+<p>这张表只是在算常驻 KV 本体。线上还要给 paged KV 的 block metadata、空闲页碎片、speculative 分支、临时 workspace 和不同请求长度的浪费留余量。</p>
+<p>长上下文和大 batch 下，KV cache 往往比权重更先成为瓶颈。它的难点不只是“大”，还包括生命周期不同步、请求长度差异大、prefix 复用、page 回收、多租户隔离、speculative decoding 的临时分支和显存碎片。</p>
+<h3 id="paged-kv-与-prefix-cache"><a class="markdownIt-Anchor" href="#paged-kv-与-prefix-cache"></a> Paged KV 与 Prefix Cache</h3>
+<p>Paged KV 把 cache 拆成页，像虚拟内存一样管理，适合 continuous batching 下动态加入和退出请求。收益是降低连续大块显存需求、便于复用和回收；代价是地址间接、访存离散和 page size 选择问题。</p>
+<p>Prefix cache 复用公共前缀，例如系统 prompt、热门文档块或共享工具上下文。它可以显著降低 prefill 成本，但要处理权限隔离、失效策略、租户边界和 cache locality。prefix 复用策略如果和 decode 调度脱节，也会破坏局部性。</p>
+<h3 id="内存碎片为什么线上才暴露"><a class="markdownIt-Anchor" href="#内存碎片为什么线上才暴露"></a> 内存碎片为什么线上才暴露</h3>
+<p>碎片常常不是单个请求造成的，而是长短请求、LoRA、多模型、prefix cache 和 page 回收交错运行后积累的。监控应包括 free page 分布、page reuse rate、KV 命中率、碎片率、OOM 前显存布局和分桶后的 KV 占用。</p>
+<h2 id="五-kernel-热点attention-fusion-quantization"><a class="markdownIt-Anchor" href="#五-kernel-热点attention-fusion-quantization"></a> 五、Kernel 热点：Attention、Fusion、Quantization</h2>
+<p>GPU 性能可用 roofline 直觉判断：</p>
+<p><span class="katex-display"><span class="katex"><span class="katex-mathml"><math><semantics><mrow><mtext>Performance</mtext><mo>≤</mo><mi>min</mi><mo>⁡</mo><mo stretchy="false">(</mo><mtext>Peak FLOPs</mtext><mo separator="true">,</mo><mtext>Bandwidth</mtext><mo>×</mo><mtext>Arithmetic Intensity</mtext><mo stretchy="false">)</mo><mi mathvariant="normal">.</mi></mrow><annotation encoding="application/x-tex">\text{Performance}
+\le
+\min(\text{Peak FLOPs}, \text{Bandwidth} \times \text{Arithmetic Intensity}).
+</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.83041em;vertical-align:-0.13597em;"></span><span class="mord text"><span class="mord">Performance</span></span><span class="mspace" style="margin-right:0.2777777777777778em;"></span><span class="mrel">≤</span><span class="mspace" style="margin-right:0.2777777777777778em;"></span></span><span class="base"><span class="strut" style="height:1em;vertical-align:-0.25em;"></span><span class="mop">min</span><span class="mopen">(</span><span class="mord text"><span class="mord">Peak FLOPs</span></span><span class="mpunct">,</span><span class="mspace" style="margin-right:0.16666666666666666em;"></span><span class="mord text"><span class="mord">Bandwidth</span></span><span class="mspace" style="margin-right:0.2222222222222222em;"></span><span class="mbin">×</span><span class="mspace" style="margin-right:0.2222222222222222em;"></span></span><span class="base"><span class="strut" style="height:1em;vertical-align:-0.25em;"></span><span class="mord text"><span class="mord">Arithmetic Intensity</span></span><span class="mclose">)</span><span class="mord">.</span></span></span></span></span></p>
+<p>如果一个算子搬很多数据但计算很少，即使 GPU 峰值 FLOPs 很高，也会被 HBM 带宽限制。推理中的 attention、RMSNorm、embedding gather、KV 读取、dequant 和 logits 后处理都可能落入这一类。</p>
+<h3 id="attention-kernel"><a class="markdownIt-Anchor" href="#attention-kernel"></a> Attention Kernel</h3>
+<p>推理里的 attention kernel 至少要区分 prefill attention、decode attention、paged attention、MQA/GQA attention、sliding window / chunked attention，以及 speculative decoding 下的验证 attention。</p>
+<p>它们都叫 attention，但访问模式和热点不同。FlashAttention 类方法通过分块和在线 softmax 归约避免 materialize 巨大 score 矩阵；paged attention 则更关注 KV page 布局和动态请求。</p>
+<h3 id="kernel-fusion"><a class="markdownIt-Anchor" href="#kernel-fusion"></a> Kernel Fusion</h3>
+<p>decode 每步工作量小，小算子和 launch 开销更容易显性化。Fusion 可以减少全局内存往返，例如 RMSNorm + scale、dequant + matmul、rotary + QK 后处理、residual + norm、logits 后处理。代价是实现复杂、调试困难、硬件兼容性和 shape 覆盖更难。</p>
+<h3 id="quantization-kernel"><a class="markdownIt-Anchor" href="#quantization-kernel"></a> Quantization Kernel</h3>
+<p>量化推理不是把权重变小就一定更快。若 kernel 内要频繁读取 scale / zero-point、做 dequant、处理不友好的 group layout，收益会被内存 stall 和额外指令吃掉。评估量化时应看是否有 fused quantized GEMM，group size 和 layout 是否匹配 kernel，小 batch decode 是否仍然快，scale 访问是否成为新带宽瓶颈，以及多 LoRA、多模型是否破坏量化布局收益。</p>
+<h2 id="六-多模型-lora-moe-与多-gpu-的额外复杂度"><a class="markdownIt-Anchor" href="#六-多模型-lora-moe-与多-gpu-的额外复杂度"></a> 六、多模型、LoRA、MoE 与多 GPU 的额外复杂度</h2>
+<p>真实推理节点往往不是单模型、单租户、单形状服务。多 LoRA、adapter、MoE、量化版本和多模型路由会把 kernel 选择问题放大。</p>
+<p>典型影响包括 adapter 切换破坏 batch 合并、权重局部性下降、不同请求 shape family 更杂、expert routing 造成负载不均、TP/EP 跨卡同步放大 decode 延迟，以及多租户隔离限制 prefix cache 复用。</p>
+<p>MoE 推理尤其要看 expert 热点和 all-to-all。单个 expert 被热门请求集中命中时，即使整体 GPU 利用率看起来不低，某些 rank 仍会成为系统瓶颈。</p>
+<p>多 GPU 推理也不只是通信问题。KV cache 如何分布、page metadata 如何同步、prefix cache 是否跨 rank 可用、fallback 是否改变拓扑，都会影响尾延迟。</p>
+<h2 id="七-诊断与优化顺序"><a class="markdownIt-Anchor" href="#七-诊断与优化顺序"></a> 七、诊断与优化顺序</h2>
+<p>推理系统变慢时，不建议一开始就换 GPU 或重写 kernel。更稳的排查顺序是先按 queue / prefill / decode / post 拆时延，判断主瓶颈是 TTFT、TPOT、吞吐还是 P99；若 prefill 主导，先看上下文长度、attention、prefix cache 和 chunking；若 decode 主导，先看 continuous batching、KV cache、kernel launch、fusion 和 page locality；若显存主导，先看 KV 占用、碎片、page size、量化和 memory tiering；若多租户主导，先看分池、优先级、LoRA / adapter 分桶和路由策略；最后再决定是否需要写新 kernel、换 runtime 或改模型结构。</p>
+<h3 id="最小观测集"><a class="markdownIt-Anchor" href="#最小观测集"></a> 最小观测集</h3>
+<p>至少应持续记录 TTFT、TPOT、P50/P95/P99，prefill / decode 分阶段 GPU 时间，实际 batch size 和 shape 分布，HBM 带宽、SM util、kernel 时间分解，KV cache 占用、page 命中、碎片率，prefix cache 命中率，queue depth、admission reject、fallback，以及 LoRA / model / expert route 分桶后的延迟和成本。</p>
+<p>核心判断是：推理优化不是微基准游戏。只有当 kernel 性能、runtime 调度、KV 生命周期和真实流量分布一起变好，线上体验才会真正改善。</p>
+<h2 id="真实排查案例batch-变大后吞吐上升交互体验下降"><a class="markdownIt-Anchor" href="#真实排查案例batch-变大后吞吐上升交互体验下降"></a> 真实排查案例：Batch 变大后吞吐上升，交互体验下降</h2>
+<p><strong>输入症状</strong>：连续批处理参数调大后，tokens/s 提升 22%，但聊天产品 TTFT P95 从 1.1s 涨到 2.0s，短请求投诉增多。</p>
+<p><strong>关键指标</strong>：实际 batch size 变大，GPU util 更高；queue time 和 prefill waiting time 上升；短请求被长文档请求一起合批；decode kernel 时间下降，但排队时间吞掉收益。</p>
+<p><strong>Nsight / trace 观察</strong>：GPU 时间线更密集，kernel 间空隙减少；系统 trace 显示请求在 scheduler 队列里等待凑 batch，长 prefill 段把短请求首 token 推迟。</p>
+<p><strong>判断</strong>：优化改善了 GPU 层吞吐，却牺牲了产品层 SLO。问题不是 kernel 慢，而是 batching 策略没有区分短交互和长文档。</p>
+<p><strong>修复</strong>：按输入长度和 SLA 分队列；短请求设置更小 max wait，长文档进入吞吐池；指标同时看 tokens/s、TTFT、TPOT 和任务级完成时间；灰度时按请求桶比较收益。</p>
+<p><strong>反例</strong>：离线批量生成或后台文档处理通常可以牺牲 TTFT 换吞吐。交互产品不能只用全局 tokens/s 判定优化成功。</p>
+
+		</div>
+
+		
+		<div class="post-copyright-info w-full my-8 px-2 sm:px-6 md:px-8">
+			<div class="article-copyright-info-container">
+    <ul>
+        <li><strong>Title:</strong> 推理：GPU Kernel、Batching 与显存</li>
+        <li><strong>Author:</strong> Charles</li>
+        <li><strong>Created at
+                :</strong> 2025-07-29 09:00:00</li>
+        
+            <li>
+                <strong>Updated at
+                    :</strong> 2025-07-29 09:00:00
+            </li>
+        
+        <li>
+            <strong>Link:</strong> https://charles2530.github.io/2025/07/29/ai-files-inference-gpu-kernels-batching-and-memory-systems/
+        </li>
+        <li>
+            <strong>
+                License:
+            </strong>
+            
+
+            
+                This work is licensed under <a class="license" target="_blank" rel="noopener" href="https://creativecommons.org/licenses/by-nc-sa/4.0">CC BY-NC-SA 4.0</a>.
+            
+        </li>
+    </ul>
+</div>
+
+		</div>
+		
+
+		
+		<ul class="post-tags-box text-lg mt-1.5 flex-wrap justify-center flex md:hidden">
+			
+			<li class="tag-item mx-0.5">
+				<a href="/tags/AI/">#AI</a>&nbsp;
+			</li>
+			
+			<li class="tag-item mx-0.5">
+				<a href="/tags/%E6%8E%A8%E7%90%86/">#推理</a>&nbsp;
+			</li>
+			
+			<li class="tag-item mx-0.5">
+				<a href="/tags/GPU-%E7%B3%BB%E7%BB%9F/">#GPU 系统</a>&nbsp;
+			</li>
+			
+			<li class="tag-item mx-0.5">
+				<a href="/tags/%E6%9C%8D%E5%8A%A1%E7%B3%BB%E7%BB%9F/">#服务系统</a>&nbsp;
+			</li>
+			
+		</ul>
+		
+
+		
+
+		
+		<div class="article-nav my-8 flex justify-between items-center px-2 sm:px-6 md:px-8">
+			
+			<div class="article-prev border-border-color shadow-redefine-flat shadow-shadow-color-2 rounded-medium px-4 py-2 hover:shadow-redefine-flat-hover hover:shadow-shadow-color-2">
+				<a class="prev" rel="prev" href="/2025/07/31/ai-files-inference-moe-routing-and-multi-model-serving/">
+					<span class="left arrow-icon flex justify-center items-center">
+						<i class="fa-solid fa-chevron-left"></i>
+					</span>
+					<span class="title flex justify-center items-center">
+						<span class="post-nav-title-item truncate max-w-48">推理：MoE 路由与多模型服务</span>
+						<span class="post-nav-item">Prev posts</span>
+					</span>
+				</a>
+			</div>
+			
+			
+			<div class="article-next border-border-color shadow-redefine-flat shadow-shadow-color-2 rounded-medium px-4 py-2 hover:shadow-redefine-flat-hover hover:shadow-shadow-color-2">
+				<a class="next" rel="next" href="/2025/07/27/ai-files-inference-disaggregated-prefill-kv-services-and-capacity-ops/">
+					<span class="title flex justify-center items-center">
+						<span class="post-nav-title-item truncate max-w-48">推理：解耦 Prefill 与 KV 服务</span>
+						<span class="post-nav-item">Next posts</span>
+					</span>
+					<span class="right arrow-icon flex justify-center items-center">
+						<i class="fa-solid fa-chevron-right"></i>
+					</span>
+				</a>
+			</div>
+			
+		</div>
+		
+
+
+		
+		<div class="comment-container px-2 sm:px-6 md:px-8 pb-8">
+			<div class="comments-container mt-10 w-full ">
+    <div id="comment-anchor" class="w-full h-2.5"></div>
+    <div class="comment-area-title w-full my-1.5 md:my-2.5 text-xl md:text-3xl font-bold">
+        Comments
+    </div>
+    
+
+        
+            
+    <div id="gitalk-container"></div>
+    <script data-swup-reload-script
+            src="https://cdnjs.cloudflare.com/ajax/libs/gitalk/1.8.0/gitalk.min.js"></script>
+    <script data-swup-reload-script>
+        (function() {
+            const startPath = location.pathname;
+            const startTime = Date.now();
+            const retryDelay = 200;
+            const retryLimit = 5000;
+
+            const runGitalk = () => {
+                if (location.pathname !== startPath) {
+                    return;
+                }
+
+                const container = document.getElementById('gitalk-container');
+                if (!container || typeof Gitalk === 'undefined') {
+                    if (Date.now() - startTime < retryLimit) {
+                        setTimeout(runGitalk, retryDelay);
+                    }
+                    return;
+                }
+
+                container.innerHTML = '';
+
+                let pageKey = decodeURI(location.pathname);
+                const maxLength = 50;
+                if (pageKey.length > maxLength) {
+                    pageKey = pageKey.substring(0, maxLength - 3) + '...';
+                }
+
+                try {
+                    new Gitalk({
+                        clientID: '8083299a8ee2aaf23879',
+                        clientSecret: 'a8161e81d4872181e884fdb69f7be24916b6a9d0',
+                        repo: 'Charles2530.github.io',
+                        owner: 'Charles2530',
+                        admin: ['Charles2530'],
+                        id: pageKey,
+                        language: 'en',
+                        proxy: 'https://github.com/login/oauth/access_token'
+                    }).render(container);
+                } catch (e) {
+                    window.Gitalk = null;
+                }
+            };
+
+            runGitalk();
+        })();
+    </script>
+
+
+
+        
+    
+</div>
+
+		</div>
+		
+	</div>
+
+	
+	<div class="toc-content-container">
+		<div class="post-toc-wrap">
+	<div class="post-toc">
+		<div class="toc-title">On this page</div>
+		<div class="page-title">推理：GPU Kernel、Batching 与显存</div>
+		<ol class="nav"><li class="nav-item nav-level-2"><a class="nav-link" href="#%E4%B8%80-%E6%8E%A8%E7%90%86%E5%BB%B6%E8%BF%9F%E6%8B%86%E8%A7%A3%E5%85%88%E5%8C%BA%E5%88%86-queue-prefill-decode"><span class="nav-text"> 一、推理延迟拆解：先区分 Queue、Prefill、Decode</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#%E4%BA%8C-prefill-%E4%B8%8E-decode-%E6%98%AF%E4%B8%A4%E7%A7%8D%E5%B7%A5%E4%BD%9C%E8%B4%9F%E8%BD%BD"><span class="nav-text"> 二、Prefill 与 Decode 是两种工作负载</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#%E4%B8%89-batching%E5%90%9E%E5%90%90-%E5%B0%BE%E5%BB%B6%E8%BF%9F%E4%B8%8E-shape-shaping"><span class="nav-text"> 三、Batching：吞吐、尾延迟与 Shape Shaping</span></a><ol class="nav-child"><li class="nav-item nav-level-3"><a class="nav-link" href="#%E4%BD%95%E6%97%B6%E5%90%9E%E5%90%90%E4%BC%9A%E4%BC%A4%E5%AE%B3%E4%BD%93%E9%AA%8C"><span class="nav-text"> 何时吞吐会伤害体验</span></a></li></ol></li><li class="nav-item nav-level-2"><a class="nav-link" href="#%E5%9B%9B-kv-cache-%E6%98%AF%E6%8E%A8%E7%90%86%E5%86%85%E5%AD%98%E7%B3%BB%E7%BB%9F%E7%9A%84%E6%A0%B8%E5%BF%83"><span class="nav-text"> 四、KV Cache 是推理内存系统的核心</span></a><ol class="nav-child"><li class="nav-item nav-level-3"><a class="nav-link" href="#paged-kv-%E4%B8%8E-prefix-cache"><span class="nav-text"> Paged KV 与 Prefix Cache</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#%E5%86%85%E5%AD%98%E7%A2%8E%E7%89%87%E4%B8%BA%E4%BB%80%E4%B9%88%E7%BA%BF%E4%B8%8A%E6%89%8D%E6%9A%B4%E9%9C%B2"><span class="nav-text"> 内存碎片为什么线上才暴露</span></a></li></ol></li><li class="nav-item nav-level-2"><a class="nav-link" href="#%E4%BA%94-kernel-%E7%83%AD%E7%82%B9attention-fusion-quantization"><span class="nav-text"> 五、Kernel 热点：Attention、Fusion、Quantization</span></a><ol class="nav-child"><li class="nav-item nav-level-3"><a class="nav-link" href="#attention-kernel"><span class="nav-text"> Attention Kernel</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#kernel-fusion"><span class="nav-text"> Kernel Fusion</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#quantization-kernel"><span class="nav-text"> Quantization Kernel</span></a></li></ol></li><li class="nav-item nav-level-2"><a class="nav-link" href="#%E5%85%AD-%E5%A4%9A%E6%A8%A1%E5%9E%8B-lora-moe-%E4%B8%8E%E5%A4%9A-gpu-%E7%9A%84%E9%A2%9D%E5%A4%96%E5%A4%8D%E6%9D%82%E5%BA%A6"><span class="nav-text"> 六、多模型、LoRA、MoE 与多 GPU 的额外复杂度</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#%E4%B8%83-%E8%AF%8A%E6%96%AD%E4%B8%8E%E4%BC%98%E5%8C%96%E9%A1%BA%E5%BA%8F"><span class="nav-text"> 七、诊断与优化顺序</span></a><ol class="nav-child"><li class="nav-item nav-level-3"><a class="nav-link" href="#%E6%9C%80%E5%B0%8F%E8%A7%82%E6%B5%8B%E9%9B%86"><span class="nav-text"> 最小观测集</span></a></li></ol></li><li class="nav-item nav-level-2"><a class="nav-link" href="#%E7%9C%9F%E5%AE%9E%E6%8E%92%E6%9F%A5%E6%A1%88%E4%BE%8Bbatch-%E5%8F%98%E5%A4%A7%E5%90%8E%E5%90%9E%E5%90%90%E4%B8%8A%E5%8D%87%E4%BA%A4%E4%BA%92%E4%BD%93%E9%AA%8C%E4%B8%8B%E9%99%8D"><span class="nav-text"> 真实排查案例：Batch 变大后吞吐上升，交互体验下降</span></a></li></ol>
+
+	</div>
+</div>
+	</div>
+	
+</div>
+
+			</div>
+
+			
+		</div>
+
+		<div class="main-content-footer">
+			<footer class="footer mt-5 py-5 h-auto text-base text-third-text-color relative border-t-2 border-t-border-color">
+    <div class="info-container py-3 text-center">
+        
+        <div class="text-center">
+            &copy;
+            
+              <span>2022</span>
+              -
+            
+            2026&nbsp;&nbsp;<i class="fa-solid fa-heart fa-beat" style="--fa-animation-duration: 0.5s; color: #f54545"></i>&nbsp;&nbsp;<a href="/">Charles</a>
+            
+                
+                <p class="post-count space-x-0.5">
+                    <span>
+                        504 posts in total
+                    </span>
+                    
+                        <span>
+                            2011k words in total
+                        </span>
+                    
+                </p>
+            
+        </div>
+        
+            <script data-swup-reload-script src="https://cn.vercount.one/js"></script>
+            <div class="relative text-center lg:absolute lg:right-[20px] lg:top-1/2 lg:-translate-y-1/2 lg:text-right">
+                
+                    <span id="busuanzi_container_site_uv" class="lg:!block">
+                        <span class="text-sm">VISITOR COUNT</span>
+                        <span id="busuanzi_value_site_uv"></span>
+                    </span>
+                
+                
+                    <span id="busuanzi_container_site_pv" class="lg:!block">
+                        <span class="text-sm">TOTAL PAGE VIEWS</span>
+                        <span id="busuanzi_value_site_pv"></span>
+                    </span>
+                
+            </div>
+        
+        <div class="relative text-center lg:absolute lg:left-[20px] lg:top-1/2 lg:-translate-y-1/2 lg:text-left">
+            <span class="lg:block text-sm">POWERED BY <?xml version="1.0" encoding="utf-8"?><!DOCTYPE svg PUBLIC "-//W3C//DTD SVG 1.1//EN" "http://www.w3.org/Graphics/SVG/1.1/DTD/svg11.dtd"><svg class="relative top-[2px] inline-block align-baseline" version="1.1" id="圖層_1" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" x="0px" y="0px" width="1rem" height="1rem" viewBox="0 0 512 512" enable-background="new 0 0 512 512" xml:space="preserve"><path fill="#0E83CD" d="M256.4,25.8l-200,115.5L56,371.5l199.6,114.7l200-115.5l0.4-230.2L256.4,25.8z M349,354.6l-18.4,10.7l-18.6-11V275H200v79.6l-18.4,10.7l-18.6-11v-197l18.5-10.6l18.5,10.8V237h112v-79.6l18.5-10.6l18.5,10.8V354.6z"/></svg><a target="_blank" class="text-base" href="https://hexo.io">Hexo</a></span>
+            <span class="text-sm lg:block">THEME&nbsp;<a class="text-base" target="_blank" href="https://github.com/EvanNotFound/hexo-theme-redefine">Redefine v2.9.0</a></span>
+        </div>
+        
+        
+            <div>
+                Blog up for <span class="odometer" id="runtime_days" ></span> days <span class="odometer" id="runtime_hours"></span> hrs <span class="odometer" id="runtime_minutes"></span> Min <span class="odometer" id="runtime_seconds"></span> Sec
+            </div>
+        
+        
+            <script data-swup-reload-script>
+                try {
+                    function odometer_init() {
+                    const elements = document.querySelectorAll('.odometer');
+                    elements.forEach(el => {
+                        new Odometer({
+                            el,
+                            format: '( ddd).dd',
+                            duration: 200
+                        });
+                    });
+                    }
+                    odometer_init();
+                } catch (error) {}
+            </script>
+        
+        
+            
+                
+        
+                
+        
+                
+
+                    
+                        <script data-swup-reload-script type="text/javascript" src="/js/love.js"></script>
+                    
+        
+        
+    </div>  
+</footer>
+		</div>
+	</div>
+
+	
+	<div class="post-tools">
+		<div class="post-tools-container">
+	<ul class="article-tools-list">
+		<!-- TOC aside toggle -->
+		
+		<li class="right-bottom-tools page-aside-toggle">
+			<i class="fa-regular fa-outdent"></i>
+		</li>
+		
+
+		<!-- go comment -->
+		
+		<li class="go-comment">
+			<i class="fa-regular fa-comments"></i>
+		</li>
+		
+	</ul>
+</div>
+	</div>
+	
+
+	<div class="right-side-tools-container">
+		<div class="side-tools-container">
+	<ul class="hidden-tools-list">
+		<li class="right-bottom-tools tool-font-adjust-plus flex justify-center items-center">
+			<i class="fa-regular fa-magnifying-glass-plus"></i>
+		</li>
+
+		<li class="right-bottom-tools tool-font-adjust-minus flex justify-center items-center">
+			<i class="fa-regular fa-magnifying-glass-minus"></i>
+		</li>
+
+		<li class="right-bottom-tools tool-dark-light-toggle flex justify-center items-center">
+			<i class="fa-regular fa-moon"></i>
+		</li>
+
+		<!-- rss -->
+		
+		<li class="right-bottom-tools rss flex justify-center items-center">
+			<a class="flex justify-center items-center" href="/atom.xml" target="_blank">
+				<i class="fa-regular fa-rss"></i>
+			</a>
+		</li>
+		
+
+		
+
+		<li class="right-bottom-tools tool-scroll-to-bottom flex justify-center items-center">
+			<i class="fa-regular fa-arrow-down"></i>
+		</li>
+	</ul>
+
+	<ul class="visible-tools-list">
+		<li class="right-bottom-tools toggle-tools-list flex justify-center items-center">
+			<i class="fa-regular fa-cog fa-spin"></i>
+		</li>
+		
+		<li class="right-bottom-tools tool-scroll-to-top flex justify-center items-center">
+			<i class="arrow-up fas fa-arrow-up"></i>
+			<span class="percent"></span>
+		</li>
+		
+		
+	</ul>
+</div>
+	</div>
+
+	<div class="image-viewer-container" role="dialog" aria-modal="true" aria-label="Image viewer">
+	<button class="image-viewer-close" type="button" aria-label="Close">
+		<i class="fa-solid fa-xmark"></i>
+	</button>
+	<button class="image-viewer-prev" type="button" aria-label="Prev">
+		<i class="fa-solid fa-chevron-left"></i>
+	</button>
+	<div class="image-viewer-frame">
+		<img src="" alt="">
+	</div>
+	<div class="image-viewer-exif-panel hidden absolute left-1/2 bottom-20 -translate-x-1/2 w-[min(92vw,420px)] max-h-[60vh] overflow-hidden rounded-2xl bg-background-color-transparent-80 p-4 text-left shadow-redefine-flat backdrop-blur-md" role="dialog" aria-label="EXIF" aria-hidden="true">
+		<div class="flex items-center justify-between mb-3">
+			<span class="text-sm font-semibold text-first-text-color">EXIF</span>
+			<button class="image-viewer-exif-close flex h-8 w-8 items-center justify-center rounded-full bg-background-color-transparent-80 text-first-text-color transition hover:bg-background-color-transparent-40" type="button" aria-label="Close">
+				<i class="fa-solid fa-xmark text-[0.65rem]"></i>
+			</button>
+		</div>
+		<div class="image-viewer-exif-cards grid grid-cols-1 sm:grid-cols-2 gap-3 max-h-[50vh] overflow-y-auto pr-1 scrollbar-hide"></div>
+		<template class="image-viewer-exif-card-template">
+			<div class="rounded-lg bg-background-color-transparent-40 px-3 py-2">
+				<div class="image-viewer-exif-card-header flex items-center gap-2 mb-1">
+					<i class="image-viewer-exif-card-icon fa-solid fa-circle-info text-xs text-third-text-color"></i>
+					<div class="image-viewer-exif-card-title text-xs font-semibold text-first-text-color"></div>
+				</div>
+				<div class="image-viewer-exif-card-items flex flex-col gap-1"></div>
+			</div>
+		</template>
+	</div>
+	<button class="image-viewer-exif-toggle flex items-center gap-2 hidden absolute left-1/2 bottom-6 -translate-x-1/2 rounded-full border border-border-color bg-background-color-transparent-80 px-4 py-2 text-first-text-color backdrop-blur-md transition hover:bg-background-color-transparent-40" type="button" aria-label="EXIF" aria-expanded="false">
+		<i class="fa-solid fa-circle-info text-xs"></i>
+		<span class="text-xs font-semibold uppercase tracking-wider">EXIF</span>
+	</button>
+	<button class="image-viewer-next" type="button" aria-label="Next">
+		<i class="fa-solid fa-chevron-right"></i>
+	</button>
+</div>
+
+
+	
+	<div class="search-pop-overlay">
+	<div class="popup search-popup">
+		<div class="search-header">
+			<span class="search-input-field-pre">
+				<i class="fa-solid fa-keyboard"></i>
+			</span>
+			<div class="search-input-container">
+				<input autocomplete="off" autocorrect="off" autocapitalize="off" placeholder="Search..." spellcheck="false" type="search" class="search-input">
+			</div>
+			<span class="popup-btn-close">
+				<i class="fa-solid fa-times"></i>
+			</span>
+		</div>
+		<div id="search-result">
+			<div id="no-result">
+				<i class="fa-solid fa-spinner fa-spin-pulse fa-5x fa-fw"></i>
+			</div>
+		</div>
+	</div>
+</div>
+	
+
+</main>
+
+
+
+<script src="/js/build/libs/Swup.min.js"></script>
+
+<script src="/js/build/libs/SwupSlideTheme.min.js"></script>
+
+<script src="/js/build/libs/SwupScriptsPlugin.min.js"></script>
+
+<script src="/js/build/libs/SwupProgressPlugin.min.js"></script>
+
+<script src="/js/build/libs/SwupScrollPlugin.min.js"></script>
+
+<script src="/js/build/libs/SwupPreloadPlugin.min.js"></script>
+
+<script>
+    window.swup = new Swup({
+        plugins: [
+            new SwupScriptsPlugin({
+                optin: true,
+            }),
+            new SwupProgressPlugin(),
+            new SwupScrollPlugin({
+                offset: 80,
+            }),
+            new SwupSlideTheme({
+                mainElement: ".main-content-body",
+            }),
+            new SwupPreloadPlugin(),
+        ],
+        containers: ["#swup"],
+    });
+
+    window.dispatchEvent(
+        new CustomEvent("redefine:swup:ready", {
+            detail: {
+                swup: window.swup,
+            },
+        }),
+    );
+</script>
+
+
+
+
+	
+<script src="/js/build/main.js" type="module"></script>
+
+
+
+    
+<script src="/js/build/libs/odometer.min.js"></script>
+
+    
+<link rel="stylesheet" href="/assets/odometer-theme-minimal.css">
+
+
+
+
+
+
+
+  
+<script src="/js/build/libs/Typed.min.js"></script>
+<script src="/js/build/libs/minimasonry.min.js" data-swup-reload-script=""></script>
+
+
+
+
+<script src="/js/build/libs/moment-with-locales.min.js" data-swup-reload-script=""></script>
+
+
+
+	
+</body>
+
+</html>

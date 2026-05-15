@@ -1,0 +1,2225 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="keywords" content="Charles">
+    
+    
+    <meta name="author" content="Charles">
+    
+    <!-- Completely eliminate flash of wrong theme -->
+    <script>
+        (function() {
+            const THEME_KEY = "REDEFINE-THEME-STATUS";
+            const DARK = "dark", LIGHT = "light";
+            
+            // Get preferred theme
+            function getTheme() {
+                try {
+                    const saved = localStorage.getItem(THEME_KEY);
+                    if (saved) {
+                        const { isDark } = JSON.parse(saved);
+                        return isDark ? DARK : LIGHT;
+                    }
+                } catch (e) {}
+                
+                return matchMedia("(prefers-color-scheme: dark)").matches ? DARK : LIGHT;
+            }
+            
+            // Apply theme to document
+            function applyTheme(theme) {
+                const isDark = theme === DARK;
+                const root = document.documentElement;
+                
+                // Set classes for compatibility
+                root.classList.add(theme);
+                root.classList.remove(isDark ? LIGHT : DARK);
+                root.style.colorScheme = theme;
+            }
+            
+            // Initial application
+            const theme = getTheme();
+            applyTheme(theme);
+            
+            // Listen for system preference changes
+            matchMedia("(prefers-color-scheme: dark)").addEventListener("change", ({ matches }) => {
+                // Only update if using system preference (no localStorage entry)
+                if (!localStorage.getItem(THEME_KEY)) {
+                    applyTheme(matches ? DARK : LIGHT);
+                }
+            });
+            
+            // Set body classes ASAP (before DOMContentLoaded)
+            (function() {
+                const addBodyClass = () => {
+                    const b = document.body;
+                    if (!b) return false;
+                    b.classList.add(theme + "-mode");
+                    return true;
+                };
+
+                // Try immediately
+                if (addBodyClass()) return;
+
+                // Observe until body exists
+                const mo = new MutationObserver(() => {
+                    if (addBodyClass()) mo.disconnect();
+                });
+                mo.observe(document.documentElement, { childList: true, subtree: true });
+            })();
+        })();
+    </script>
+    
+    <!-- preconnect -->
+<!--- Seo Part-->
+    
+    <link rel="canonical" href="https://charles2530.github.io/2025/11/02/ai-files-paper-deep-dives-embodied-ai-vggt/"/>
+    <meta name="robots" content="index,follow">
+    <meta name="googlebot" content="index,follow">
+    <meta name="revisit-after" content="1 days">
+    
+    
+        
+        <meta name="description" content="This is Charles&#39;s Castle.">
+<meta property="og:type" content="article">
+<meta property="og:title" content="论文专题讲解：VGGT：一次前向推理恢复相机、深度、点云与轨迹">
+<meta property="og:url" content="https://charles2530.github.io/2025/11/02/ai-files-paper-deep-dives-embodied-ai-vggt/index.html">
+<meta property="og:site_name" content="Charles&#39;s Castle">
+<meta property="og:description" content="This is Charles&#39;s Castle.">
+<meta property="og:locale" content="en_US">
+<meta property="og:image" content="https://charles2530.github.io/image/background/logo.jpg">
+<meta property="article:published_time" content="2025-11-02T01:00:00.000Z">
+<meta property="article:modified_time" content="2025-11-02T01:00:00.000Z">
+<meta property="article:author" content="Du Jinyang">
+<meta property="article:tag" content="AI">
+<meta property="article:tag" content="具身智能">
+<meta property="article:tag" content="论文专题">
+<meta name="twitter:card" content="summary">
+<meta name="twitter:image" content="https://charles2530.github.io/image/background/logo.jpg">
+    
+    
+    <!--- Icon Part-->
+    <link rel="icon" type="image/png" href="https://charles2530.github.io/image/background/favicon.png" sizes="192x192">
+    <link rel="apple-touch-icon" sizes="180x180" href="https://charles2530.github.io/image/background/favicon.png">
+    <meta name="theme-color" content="#A31F34">
+    <link rel="shortcut icon" href="https://charles2530.github.io/image/background/favicon.png">
+    <!--- Page Info-->
+    
+    <title>
+        
+            论文专题讲解：VGGT：一次前向推理恢复相机、深度、点云与轨迹 | Charles&#39;s Castle
+        
+    </title>
+
+    
+<link rel="stylesheet" href="/fonts/Chillax/chillax.css">
+
+
+    <!--- Inject Part-->
+    
+        
+            
+    
+            
+    
+            
+                
+                    <link rel="stylesheet" href="/katex/katex.min.css">
+                
+    
+            
+                
+                    <link rel="stylesheet" href="/css/site-polish-v2.css">
+                
+    
+            
+                
+                    <script data-swup-reload-script>
+(function() {
+  function loadBaiduAnalytics() {
+    if (window.__baiduAnalyticsLoaded) return;
+    window.__baiduAnalyticsLoaded = true;
+    window._hmt = window._hmt || [];
+    var hm = document.createElement("script");
+    hm.async = true;
+    hm.src = "https://hm.baidu.com/hm.js?8e0e5f382d14d87cbeadc33a36e71e86";
+    document.head.appendChild(hm);
+  }
+  if ("requestIdleCallback" in window) {
+    requestIdleCallback(loadBaiduAnalytics, { timeout: 3000 });
+  } else {
+    window.addEventListener("load", function() {
+      setTimeout(loadBaiduAnalytics, 1500);
+    });
+  }
+})();
+</script>
+
+                
+    
+
+    
+<link rel="stylesheet" href="/css/style.css">
+
+
+    
+        
+<link rel="stylesheet" href="/css/build/tailwind.css">
+
+    
+
+    
+<link rel="stylesheet" href="/fonts/GeistMono/geist-mono.css">
+
+    
+<link rel="stylesheet" href="/fonts/Geist/geist.css">
+
+    <!--- Font Part-->
+    
+    
+    
+    
+    
+    
+        
+<script src="/js/build/libs/anime.min.js"></script>
+
+    
+
+    <script id="hexo-configurations">
+    window.config = {"hostname":"charles2530.github.io","root":"/","language":"en","path":"search.xml"};
+    window.theme = {"articles":{"style":{"font_size":"16px","line_height":1.5,"image_border_radius":"14px","image_alignment":"center","image_caption":false,"link_icon":true,"delete_mask":false,"title_alignment":"left","headings_top_spacing":{"h1":"5rem","h2":"4rem","h3":"2.8rem","h4":"2.5rem","h5":"2.2rem","h6":"2rem"}},"word_count":{"enable":true,"count":true,"min2read":true},"author_label":{"enable":true,"auto":true,"list":["lol","Neo","God"]},"code_block":{"copy":true,"style":"mac","highlight_theme":{"light":"github","dark":"vs2015"},"font":{"enable":false,"family":null,"url":null}},"toc":{"enable":true,"max_depth":6,"number":false,"expand":true,"init_open":true},"copyright":{"enable":true,"default":"cc_by_nc_sa"},"lazyload":true,"pangu_js":false,"recommendation":{"enable":false,"title":"recommend_articles","limit":3,"mobile_limit":2,"placeholder":"https://charles2530.github.io/image/background/p3.jfif","skip_dirs":[]}},"colors":{"primary":"#A31F34","secondary":"#1890ff","default_mode":"light"},"global":{"fonts":{"chinese":{"enable":false,"family":null,"url":null},"english":{"enable":false,"family":null,"url":null},"title":{"enable":false,"family":null,"url":null}},"content_max_width":"1000px","sidebar_width":"210px","hover":{"shadow":true,"scale":true},"scroll_progress":{"bar":true,"percentage":true},"website_counter":{"url":"https://cn.vercount.one/js","enable":true,"site_pv":true,"site_uv":true,"post_pv":true},"single_page":true,"preloader":{"enable":true,"custom_message":null},"side_tools":{"gear_rotation":true,"auto_expand":false},"open_graph":{"enable":true,"image":"https://charles2530.github.io/image/background/logo.jpg","description":"This is Charles's Castle."},"google_analytics":{"enable":false,"id":null}},"home_banner":{"enable":true,"style":"fixed","image":{"light":"https://charles2530.github.io/image/background/background-light1.jpg","dark":"https://charles2530.github.io/image/background/background-dark1.jpg"},"title":"Charles's Castle","subtitle":{"text":["Happiness is best!","Never give up!","Everyday is a gift!"],"hitokoto":{"enable":false,"show_author":false,"api":"https://v1.hitokoto.cn"},"typing_speed":100,"backing_speed":80,"starting_delay":500,"backing_delay":1500,"loop":true,"smart_backspace":true},"text_color":{"light":"#000000","dark":"#d1d1b6"},"text_style":{"title_size":"3.2rem","subtitle_size":"1.5rem","line_height":1.2},"custom_font":{"enable":false,"family":null,"url":null},"social_links":{"enable":true,"style":"center","links":[{"icon":"fa-brands fa-github","url":"https://github.com/Charles2530/"},{"icon":"fa-brands fa-zhihu","url":"https://www.zhihu.com/people/yang-guang-xiao-zi-55-55"},{"icon":"fa-solid fa-at","url":"mailto:charles2530@163.com"},{"icon":"fa-brands fa-telegram","url":null},{"icon":"/images/custom-icon.svg","url":null}],"qrs":[{"icon":"fa-brands fa-weixin","qr":"https://charles2530.github.io/image/background/Wechat_icon.png"},{"icon":"/images/custom-icon.svg","qr":null}]}},"plugins":{"feed":{"enable":true},"aplayer":{"enable":false,"type":"fixed","audios":[{"name":null,"artist":null,"url":null,"cover":null,"lrc":null}]},"mermaid":{"enable":false,"version":"11.4.1","theme":{"light":"default","dark":"dark"}}},"version":"2.9.0","navbar":{"auto_hide":true,"color":{"left":"#f78736","right":"#367df7","transparency":35},"width":{"home":"1200px","pages":"1000px"},"links":{"Home":{"path":"/","icon":"fa-regular fa-house"},"Categories":{"path":"/categories","icon":"fas fa-bookmark"},"Tags":{"path":"/tags","icon":"fas fa-tags"},"About":{"icon":"fa-regular fa-user","submenus":{"Me":"https://jinyang-du.github.io/","Github":"https://github.com/Charles2530/","Blog":"https://charles2530.github.io","Statistics":"https://tongji.baidu.com/"}}},"search":{"enable":true,"preload":false}},"page_templates":{"friends_column":2,"tags_style":"blur","masonry":{"batch_size":12,"initial_batch_size":24}},"home":{"sidebar":{"enable":true,"position":"left","first_item":"menu","announcement":"This is Charles's Castle","show_on_mobile":true,"links":{"Archives":{"path":"/archives","icon":"fa-regular fa-archive"},"Photos":{"icon":"fa-solid fa-image","path":"/masonry/"},"Essays":{"icon":"fa-solid fa-message-lines","path":"/essay/"},"Friends":{"icon":"fa-solid fa-user-group","path":"/friends/"}}},"article_date_format":"auto","excerpt_length":200,"categories":{"enable":true,"limit":3},"tags":{"enable":true,"limit":3}},"footer":{"runtime":true,"icon":"<i class=\"fa-solid fa-heart fa-beat\" style=\"--fa-animation-duration: 0.5s; color: #f54545\"></i>","start":"2022/12/27 00:00:00","statistics":true,"customize":null,"icp":{"enable":false,"number":null,"url":null}},"footerStart":"2022/12/27 00:00:00","mermaid":{"style":{"light":"default","dark":"dark"}}};
+    window.lang_ago = {"second":"%s seconds ago","minute":"%s minutes ago","hour":"%s hours ago","day":"%s days ago","week":"%s weeks ago","month":"%s months ago","year":"%s years ago"};
+    window.i18n = {"search":"Search...","toc":"On this page","prev":"Prev","next":"Next","prev_posts":"Prev posts","next_posts":"Next posts","page":"Page %d","recent_posts":"Recent Posts","share":"Share","powered_by":"POWERED BY %s","theme":"THEME","rss_feed":"RSS Feed","category":"Category","categories":"Categories","tag":"Tag","tags":"Tags","post":"Post","posts":"Posts","tagcloud":"Tag Cloud","comment":"Comment","comments":"Comments","home":"Home","archive":"Archive","archives":"Archives","top":"TOP","sticky":"Sticky","go-back-home":"Go Back Home","masonry_loading":"Loading photos...","image_viewer":"Image viewer","close":"Close","exif":{"title":"EXIF","cards":{"camera":"Camera","lens":"Lens","exposure":"Exposure","other":"Other"},"fields":{"make":"Brand","model":"Model","date_taken":"Date taken","lens_model":"Lens","focal_length":"Focal length","focus_mode":"Focus mode","shutter":"Shutter","aperture":"Aperture","iso":"ISO","exposure_program":"Exposure program","exposure_compensation":"Exposure compensation","metering_mode":"Metering mode","flash":"Flash","white_balance":"White balance","latitude":"Latitude","longitude":"Longitude","altitude":"Altitude"},"status":{"loading":"Loading...","no_exif":"No EXIF available","library_missing":"EXIF library not loaded","image_source_missing":"Image source unavailable","unavailable":"EXIF unavailable (blocked by CORS or missing metadata)","flag_unavailable":"EXIF unavailable"}},"about":"About","changelog":"Changelog","links":"Links","link":"Link","friends":"Friends","friend":"Friend","timeline":"Timeline","shuoshuo":"Shuoshuo","bookmarks":"Bookmarks","site_uv":"VISITOR COUNT","site_pv":"TOTAL PAGE VIEWS","read_more":"Read more","wordcount":"Words","min2read":"Mins","status":"Status","runtime":"Blog up for","days":"days","hours":"hrs","minutes":"Min","seconds":"Sec","optimized_by":"and Optimized by Evan","rights":"All Rights Reserved","site_posts":"%s posts in total","site_wordcount":"%s words in total","copyright":{"author":"Author","title":"Title","link":"Link","create_time":"Created at","update_time":"Updated at","license_title":"License","license_content":"This work is licensed under %s.","all_rights_reserved":"All Rights Reserved &#169; %s","public_domain":"This work is in the public domain."},"ago":{"second":"%s seconds ago","minute":"%s minutes ago","hour":"%s hours ago","day":"%s days ago","week":"%s weeks ago","month":"%s months ago","year":"%s years ago"},"create_time":"Created","update_time":"Updated","expired":"This post is written %s days ago, and the content may not be up to date."};
+    window.data = {"masonry":true};
+  </script>
+    
+    <!--- Fontawesome Part-->
+    
+<link rel="stylesheet" href="/fontawesome/fontawesome.min.css">
+
+    
+<link rel="stylesheet" href="/fontawesome/brands.min.css">
+
+    
+<link rel="stylesheet" href="/fontawesome/solid.min.css">
+
+    
+<link rel="stylesheet" href="/fontawesome/regular.min.css">
+
+    
+    
+    
+    
+<meta name="generator" content="Hexo 6.3.0"><link rel="alternate" href="/atom.xml" title="Charles's Castle" type="application/atom+xml">
+<link rel="stylesheet" href="/css/prism-tomorrow.css" type="text/css"></head>
+
+
+<body>
+	<div class="progress-bar-container">
+	
+	<span class="scroll-progress-bar"></span>
+	
+
+	
+	<span class="pjax-progress-bar"></span>
+	<!--        <span class="swup-progress-icon">-->
+	<!--            <i class="fa-solid fa-circle-notch fa-spin"></i>-->
+	<!--        </span>-->
+	
+</div>
+
+<style>
+    :root {
+        --preloader-background-color: #fff;
+        --preloader-text-color: #000;
+    }
+
+    @media (prefers-color-scheme: dark) {
+        :root {
+            --preloader-background-color: #202124;
+            --preloader-text-color: #fff;
+        }
+    }
+
+    @media (prefers-color-scheme: light) {
+        :root {
+            --preloader-background-color: #fff;
+            --preloader-text-color: #000;
+        }
+    }
+
+    @media (max-width: 600px) {
+        .ml13 {
+            font-size: 2.6rem !important; /* Adjust this value as needed */
+        }
+    }
+
+    .preloader {
+        display: flex;
+        flex-direction: column;
+        gap: 1rem; /* Tailwind 'gap-4' is 1rem */
+        align-items: center;
+        justify-content: center;
+        position: fixed;
+        padding: 12px;
+        top: 0;
+        right: 0;
+        bottom: 0;
+        left: 0;
+        width: 100vw;
+        height: 100vh; /* 'h-screen' is 100% of the viewport height */
+        background-color: var(--preloader-background-color);
+        z-index: 1100; /* 'z-[1100]' sets the z-index */
+        transition: opacity 0.2s ease-in-out;
+    }
+
+    .ml13 {
+        font-size: 3.2rem;
+        /* text-transform: uppercase; */
+        color: var(--preloader-text-color);
+        letter-spacing: -1px;
+        font-weight: 500;
+        font-family: 'Chillax-Variable', sans-serif;
+        text-align: center;
+    }
+
+    .ml13 .word {
+        display: inline-flex;
+        flex-wrap: wrap;
+        white-space: nowrap;
+    }
+
+    .ml13 .letter {
+        display: inline-block;
+        line-height: 1em;
+    }
+</style>
+
+<div class="preloader">
+    <h2 class="ml13">
+        Charles&#39;s Castle
+    </h2>
+    <script>
+        var textWrapper = document.querySelector('.ml13');
+        // Split text into words
+        var words = textWrapper.textContent.trim().split(' ');
+
+        // Clear the existing content
+        textWrapper.innerHTML = '';
+
+        // Wrap each word and its letters in spans
+        words.forEach(function(word) {
+            var wordSpan = document.createElement('span');
+            wordSpan.classList.add('word');
+            wordSpan.innerHTML = word.replace(/\S/g, "<span class='letter'>$&</span>");
+            textWrapper.appendChild(wordSpan);
+            textWrapper.appendChild(document.createTextNode(' ')); // Add space between words
+        });
+
+        var animation = anime.timeline({ loop: true })
+            .add({
+                targets: '.ml13 .letter',
+                translateY: [20, 0],
+                translateZ: 0,
+                opacity: [0, 1],
+                filter: ['blur(5px)', 'blur(0px)'],
+                easing: "easeOutExpo",
+                duration: 1200,
+                delay: (el, i) => 300 + 20 * i,
+            })
+            .add({
+                targets: '.ml13 .letter',
+                translateY: [0, -20],
+                opacity: [1, 0],
+                filter: ['blur(0px)', 'blur(5px)'],
+                easing: "easeInExpo",
+                duration: 1000,
+                delay: (el, i) => 15 * i,
+                complete: function() {
+                    hidePreloader();
+                }
+            }, '-=700');
+
+
+        let themeStatus = JSON.parse(localStorage.getItem('REDEFINE-THEME-STATUS'))?.isDark;
+
+        // If the theme status is not found in local storage, check the preferred color scheme
+        if (themeStatus === undefined || themeStatus === null) {
+            if (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) {
+                themeStatus = 'dark';
+            } else {
+                themeStatus = 'light';
+            }
+        }
+
+        // Now you can use the themeStatus variable in your code
+        if (themeStatus) {
+            document.documentElement.style.setProperty('--preloader-background-color', '#202124');
+            document.documentElement.style.setProperty('--preloader-text-color', '#fff');
+        } else {
+            document.documentElement.style.setProperty('--preloader-background-color', '#fff');
+            document.documentElement.style.setProperty('--preloader-text-color', '#000');
+        }
+
+        window.addEventListener('load', function () {
+            setTimeout(hidePreloader, 5000); // Call hidePreloader after 5000 milliseconds if not already called by animation
+        });
+
+        function hidePreloader() {
+            var preloader = document.querySelector('.preloader');
+            preloader.style.opacity = '0';
+            setTimeout(function () {
+                preloader.style.display = 'none';
+            }, 200);
+        }
+    </script>
+</div>
+
+<main class="page-container" id="swup">
+
+	
+
+	<div class="main-content-container flex flex-col justify-between min-h-dvh">
+		<div class="main-content-header">
+			<header class="navbar-container px-6 md:px-12">
+    <div class="navbar-content transition-navbar ">
+        <div class="left">
+            
+                <a class="logo-image h-8 w-8 sm:w-10 sm:h-10 mr-3" href="/">
+                    <img src="https://charles2530.github.io/image/background/logo.jpg" class="w-full h-full rounded-xs">
+                </a>
+            
+            <a class="logo-title" href="/">
+                
+                Charles&#39;s Castle
+                
+            </a>
+        </div>
+
+        <div class="right">
+            <!-- PC -->
+            <div class="desktop">
+                <ul class="navbar-list">
+                    
+                        
+                            
+
+                            <li class="navbar-item">
+                                <!-- Menu -->
+                                <a class=""
+                                   href="/"
+                                        >
+                                    <i class="fa-regular fa-house fa-fw"></i>
+                                    HOME
+                                    
+                                </a>
+
+                                <!-- Submenu -->
+                                
+                            </li>
+                    
+                        
+                            
+
+                            <li class="navbar-item">
+                                <!-- Menu -->
+                                <a class=""
+                                   href="/categories"
+                                        >
+                                    <i class="fas fa-bookmark fa-fw"></i>
+                                    CATEGORIES
+                                    
+                                </a>
+
+                                <!-- Submenu -->
+                                
+                            </li>
+                    
+                        
+                            
+
+                            <li class="navbar-item">
+                                <!-- Menu -->
+                                <a class=""
+                                   href="/tags"
+                                        >
+                                    <i class="fas fa-tags fa-fw"></i>
+                                    TAGS
+                                    
+                                </a>
+
+                                <!-- Submenu -->
+                                
+                            </li>
+                    
+                        
+                            
+
+                            <li class="navbar-item">
+                                <!-- Menu -->
+                                <a class="has-dropdown"
+                                   href="#"
+                                        onClick=&#34;return false;&#34;>
+                                    <i class="fa-regular fa-user fa-fw"></i>
+                                    ABOUT
+                                    <i class="fa-solid fa-chevron-down fa-fw"></i>
+                                </a>
+
+                                <!-- Submenu -->
+                                
+                                    <ul class="sub-menu">
+                                        
+                                            <li>
+                                                <a target="_blank" rel="noopener" href="https://jinyang-du.github.io/">
+                                                    ME
+                                                </a>
+                                            </li>
+                                        
+                                            <li>
+                                                <a target="_blank" rel="noopener" href="https://github.com/Charles2530/">
+                                                    GITHUB
+                                                </a>
+                                            </li>
+                                        
+                                            <li>
+                                                <a href="https://charles2530.github.io">
+                                                    BLOG
+                                                </a>
+                                            </li>
+                                        
+                                            <li>
+                                                <a target="_blank" rel="noopener" href="https://tongji.baidu.com/">
+                                                    STATISTICS
+                                                </a>
+                                            </li>
+                                        
+                                    </ul>
+                                
+                            </li>
+                    
+                    
+                        <li class="navbar-item search search-popup-trigger">
+                            <i class="fa-solid fa-magnifying-glass"></i>
+                        </li>
+                    
+                </ul>
+            </div>
+            <!-- Mobile -->
+            <div class="mobile">
+                
+                    <div class="icon-item search search-popup-trigger"><i class="fa-solid fa-magnifying-glass"></i>
+                    </div>
+                
+                <div class="icon-item navbar-bar">
+                    <div class="navbar-bar-middle"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Mobile sheet -->
+    <div class="navbar-drawer h-dvh w-full absolute top-0 left-0 bg-background-color flex flex-col justify-between">
+        <ul class="drawer-navbar-list flex flex-col px-4 justify-center items-start">
+            
+                
+                    
+
+                    <li class="drawer-navbar-item text-base my-1.5 flex flex-col w-full">
+                        
+                        <a class="py-1.5 px-2 flex flex-row items-center justify-between gap-1 hover:!text-primary active:!text-primary text-2xl font-semibold group border-b border-border-color hover:border-primary w-full "
+                           href="/"
+                        >
+                            <span>
+                                HOME
+                            </span>
+                            
+                                <i class="fa-regular fa-house fa-sm fa-fw"></i>
+                            
+                        </a>
+                        
+
+                        
+                    </li>
+            
+                
+                    
+
+                    <li class="drawer-navbar-item text-base my-1.5 flex flex-col w-full">
+                        
+                        <a class="py-1.5 px-2 flex flex-row items-center justify-between gap-1 hover:!text-primary active:!text-primary text-2xl font-semibold group border-b border-border-color hover:border-primary w-full "
+                           href="/categories"
+                        >
+                            <span>
+                                CATEGORIES
+                            </span>
+                            
+                                <i class="fas fa-bookmark fa-sm fa-fw"></i>
+                            
+                        </a>
+                        
+
+                        
+                    </li>
+            
+                
+                    
+
+                    <li class="drawer-navbar-item text-base my-1.5 flex flex-col w-full">
+                        
+                        <a class="py-1.5 px-2 flex flex-row items-center justify-between gap-1 hover:!text-primary active:!text-primary text-2xl font-semibold group border-b border-border-color hover:border-primary w-full "
+                           href="/tags"
+                        >
+                            <span>
+                                TAGS
+                            </span>
+                            
+                                <i class="fas fa-tags fa-sm fa-fw"></i>
+                            
+                        </a>
+                        
+
+                        
+                    </li>
+            
+                
+                    
+
+                    <li class="drawer-navbar-item-sub text-base my-1.5 flex flex-col w-full">
+                        
+                        <div class="py-1.5 px-2 flex flex-row items-center justify-between gap-1 hover:!text-primary active:!text-primary cursor-pointer text-2xl font-semibold group border-b border-border-color hover:border-primary w-full "
+                             navbar-data-toggle="submenu-About"
+                        >
+                            <span>
+                                ABOUT
+                            </span>
+                            
+                                <i class="fa-solid fa-chevron-right fa-sm fa-fw transition-all"></i>
+                            
+                        </div>
+                        
+
+                        
+                            <div class="flex-col items-start px-2 py-2 hidden" data-target="submenu-About">
+                                
+                                    <div class="drawer-navbar-item text-base flex flex-col justify-center items-start hover:underline active:underline hover:underline-offset-1 rounded-3xl">
+                                        <a class=" text-third-text-color text-xl"
+                                           target="_blank" rel="noopener" href="https://jinyang-du.github.io/">ME</a>
+                                    </div>
+                                
+                                    <div class="drawer-navbar-item text-base flex flex-col justify-center items-start hover:underline active:underline hover:underline-offset-1 rounded-3xl">
+                                        <a class=" text-third-text-color text-xl"
+                                           target="_blank" rel="noopener" href="https://github.com/Charles2530/">GITHUB</a>
+                                    </div>
+                                
+                                    <div class="drawer-navbar-item text-base flex flex-col justify-center items-start hover:underline active:underline hover:underline-offset-1 rounded-3xl">
+                                        <a class=" text-third-text-color text-xl"
+                                           href="https://charles2530.github.io">BLOG</a>
+                                    </div>
+                                
+                                    <div class="drawer-navbar-item text-base flex flex-col justify-center items-start hover:underline active:underline hover:underline-offset-1 rounded-3xl">
+                                        <a class=" text-third-text-color text-xl"
+                                           target="_blank" rel="noopener" href="https://tongji.baidu.com/">STATISTICS</a>
+                                    </div>
+                                
+                            </div>
+                        
+                    </li>
+            
+
+            
+            
+                
+                    
+                    <li class="drawer-navbar-item text-base my-1.5 flex flex-col w-full">
+                        <a class="py-1.5 px-2 flex flex-row items-center justify-between gap-1 hover:!text-primary active:!text-primary text-2xl font-semibold group border-b border-border-color hover:border-primary w-full active"
+                           href="/archives"
+                        >
+                            <span>Archives</span>
+                            <i class="fa-regular fa-archive fa-sm fa-fw"></i>
+                        </a>
+                    </li>
+                
+                    
+                    <li class="drawer-navbar-item text-base my-1.5 flex flex-col w-full">
+                        <a class="py-1.5 px-2 flex flex-row items-center justify-between gap-1 hover:!text-primary active:!text-primary text-2xl font-semibold group border-b border-border-color hover:border-primary w-full active"
+                           href="/masonry/"
+                        >
+                            <span>Photos</span>
+                            <i class="fa-solid fa-image fa-sm fa-fw"></i>
+                        </a>
+                    </li>
+                
+                    
+                    <li class="drawer-navbar-item text-base my-1.5 flex flex-col w-full">
+                        <a class="py-1.5 px-2 flex flex-row items-center justify-between gap-1 hover:!text-primary active:!text-primary text-2xl font-semibold group border-b border-border-color hover:border-primary w-full active"
+                           href="/essay/"
+                        >
+                            <span>Essays</span>
+                            <i class="fa-solid fa-message-lines fa-sm fa-fw"></i>
+                        </a>
+                    </li>
+                
+                    
+                    <li class="drawer-navbar-item text-base my-1.5 flex flex-col w-full">
+                        <a class="py-1.5 px-2 flex flex-row items-center justify-between gap-1 hover:!text-primary active:!text-primary text-2xl font-semibold group border-b border-border-color hover:border-primary w-full active"
+                           href="/friends/"
+                        >
+                            <span>Friends</span>
+                            <i class="fa-solid fa-user-group fa-sm fa-fw"></i>
+                        </a>
+                    </li>
+                
+            
+        </ul>
+
+        <div class="statistics flex justify-around my-2.5">
+    <a class="item tag-count-item flex flex-col justify-center items-center w-20" href="/tags">
+        <div class="number text-2xl sm:text-xl text-second-text-color font-semibold">45</div>
+        <div class="label text-third-text-color text-sm">Tags</div>
+    </a>
+    <a class="item tag-count-item flex flex-col justify-center items-center w-20" href="/categories">
+        <div class="number text-2xl sm:text-xl text-second-text-color font-semibold">93</div>
+        <div class="label text-third-text-color text-sm">Categories</div>
+    </a>
+    <a class="item tag-count-item flex flex-col justify-center items-center w-20" href="/archives">
+        <div class="number text-2xl sm:text-xl text-second-text-color font-semibold">504</div>
+        <div class="label text-third-text-color text-sm">Posts</div>
+    </a>
+</div>
+    </div>
+
+    <div class="window-mask"></div>
+
+</header>
+
+
+		</div>
+
+		<div class="main-content-body transition-fade-up">
+			
+
+			<div class="main-content">
+				<div class="post-page-container flex relative justify-between box-border w-full h-full">
+	<div class="article-content-container">
+
+		<div class="article-title relative w-full">
+			
+			
+			
+			<img src="https://charles2530.github.io/image/background/p7.jpg" alt="论文专题讲解：VGGT：一次前向推理恢复相机、深度、点云与轨迹" class="w-full h-60 sm:h-72 md:h-80 object-cover sm:rounded-t-large dark:brightness-75" />
+			
+			<div class="w-full flex items-center absolute bottom-0 justify-start">
+				<h1 class="article-title-cover text-center mx-6 my-6 text-second-text-color bg-background-color-transparent px-4 py-3 text-3xl sm:text-4xl md:text-5xl font-semibold backdrop-blur-lg rounded-xl border border-border-color ">论文专题讲解：VGGT：一次前向推理恢复相机、深度、点云与轨迹</h1>
+			</div>
+			
+		</div>
+
+		
+		<div class="article-header flex flex-row gap-2 items-center px-2 sm:px-6 md:px-8">
+			<div class="avatar w-[46px] h-[46px] shrink-0 rounded-medium border border-border-color p-px">
+				<img src="https://charles2530.github.io/image/background/logo2.jpg">
+			</div>
+			<div class="info flex flex-col justify-between">
+				<div class="author flex items-center">
+					<span class="name text-default-text-color text-lg font-semibold">Charles</span>
+					
+					<span class="author-label ml-1.5 text-xs px-2 py-0.5 rounded-small text-third-text-color border border-shadow-color-1">Lv7</span>
+					
+				</div>
+				<div class="meta-info">
+					<div class="article-meta-info">
+    <span class="article-date article-meta-item">
+        <i class="fa-regular fa-pen-fancy"></i>&nbsp;
+        <span class="desktop">2025-11-02 09:00</span>
+        <span class="mobile">2025-11-02 09:00</span>
+        <span class="hover-info">Created</span>
+    </span>
+    
+        <span class="article-date article-meta-item">
+            <i class="fa-regular fa-wrench"></i>&nbsp;
+            <span class="desktop">2025-11-02 09:00</span>
+            <span class="mobile">2025-11-02 09:00</span>
+            <span class="hover-info">Updated</span>
+        </span>
+    
+
+    
+        <span class="article-categories article-meta-item">
+            <i class="fa-regular fa-folders"></i>&nbsp;
+            <ul>
+                
+                
+                    
+                        
+                        <li>
+                            <a href="/categories/AI/">AI</a>&nbsp;
+                        </li>
+                    
+                    
+                
+                    
+                        
+                            <li>></li>
+                        
+                        <li>
+                            <a href="/categories/AI/%E8%AE%BA%E6%96%87%E4%B8%93%E9%A2%98%E8%AE%B2%E8%A7%A3/">论文专题讲解</a>&nbsp;
+                        </li>
+                    
+                    
+                
+            </ul>
+        </span>
+    
+    
+        <span class="article-tags article-meta-item">
+            <i class="fa-regular fa-tags"></i>&nbsp;
+            <ul>
+                
+                    <li>
+                        <a href="/tags/AI/">AI</a>&nbsp;
+                    </li>
+                
+                    <li>
+                        | <a href="/tags/%E5%85%B7%E8%BA%AB%E6%99%BA%E8%83%BD/">具身智能</a>&nbsp;
+                    </li>
+                
+                    <li>
+                        | <a href="/tags/%E8%AE%BA%E6%96%87%E4%B8%93%E9%A2%98/">论文专题</a>&nbsp;
+                    </li>
+                
+            </ul>
+        </span>
+    
+
+    
+    
+        <span class="article-wordcount article-meta-item">
+            <i class="fa-regular fa-typewriter"></i>&nbsp;<span>4.7k Words</span>
+        </span>
+    
+    
+        <span class="article-min2read article-meta-item">
+            <i class="fa-regular fa-clock"></i>&nbsp;<span>21 Mins</span>
+        </span>
+    
+    
+        <span class="article-pv article-meta-item">
+            <i class="fa-regular fa-eye"></i>&nbsp;<span id="busuanzi_value_page_pv"></span>
+        </span>
+    
+</div>
+
+				</div>
+			</div>
+		</div>
+		
+
+		
+
+
+		<div class="article-content markdown-body px-2 sm:px-6 md:px-8 pb-8">
+			<div class="callout callout--titled info mb-4 rounded-small shadow-redefine-flat bg-(--callout-bg-color) p-3 pl-1 relative flex flex-row gap-2"><div role="none" class="rounded-full self-stretch w-0.5 bg-(--callout-primary-color) shrink-0 opacity-60"></div><div class="flex flex-col gap-2"><div class="callout__title flex items-center gap-2 font-semibold tracking-tight">论文信息</div><div class="callout__content markdown-body flex-1 min-w-0"><ul>
+<li>论文：<code>VGGT: Visual Geometry Grounded Transformer</code></li>
+<li>系统：<code>VGGT</code></li>
+<li>链接：<a class="link"   target="_blank" rel="noopener" href="https://arxiv.org/abs/2503.11651" >arXiv:2503.11651<i class="fa-solid fa-arrow-up-right ml-[0.2em] font-light align-text-top text-[0.7em] link-icon"></i></a></li>
+<li>项目页：<a class="link"   target="_blank" rel="noopener" href="https://vgg-t.github.io/" >vgg-t.github.io<i class="fa-solid fa-arrow-up-right ml-[0.2em] font-light align-text-top text-[0.7em] link-icon"></i></a></li>
+<li>代码与模型：<a class="link"   target="_blank" rel="noopener" href="https://github.com/facebookresearch/vggt" >facebookresearch/vggt<i class="fa-solid fa-arrow-up-right ml-[0.2em] font-light align-text-top text-[0.7em] link-icon"></i></a></li>
+<li>关键词：feed-forward 3D geometry、camera pose、depth map、point map、point tracking、DINOv2、DPT、alternating attention、multi-task learning</li>
+</ul></div></div></div>
+<p>VGGT 放在具身智能专题里，是因为它把机器人视觉里几件经常分开的事接到同一个 feed-forward 模型里：<strong>相机参数、深度图、point map 和 3D point tracks</strong>。它不直接输出动作，但它能把多张 RGB 图像快速变成几何状态，为导航、抓取、视角规划、重建、VLA 状态编码和世界模型提供可消费的 3D 表示。</p>
+<p>这篇论文的核心不是“再做一个 SfM / MVS 模块”，而是把传统上依赖匹配、几何优化、bundle adjustment 和任务专用后处理的视觉几何问题，改写成一个大 Transformer 的多任务监督问题。输入可以是一张、几张，甚至上百张图；输出一次前向给出 cameras、depth maps、point maps 和 tracking features。</p>
+<h2 id="它的效率贡献是什么"><a class="markdownIt-Anchor" href="#它的效率贡献是什么"></a> 它的效率贡献是什么</h2>
+<table>
+<thead>
+<tr>
+<th>维度</th>
+<th>贡献</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>节省的成本</td>
+<td>不把相机位姿、深度、点云和 track 拆成多条优化管线；核心预测可在一次 feed-forward 中完成，10 frames 约 0.2s，100 frames backbone 约 3.12s</td>
+</tr>
+<tr>
+<td>核心机制</td>
+<td>DINOv2 patchify、camera/register tokens、Alternating-Attention、DPT dense heads、camera head、CoTracker-style tracking head、多任务 loss</td>
+</tr>
+<tr>
+<td>对具身主线的意义</td>
+<td>给机器人提供快速 3D scene state：相机在哪里、每个像素多远、点云如何对齐、关键点在多帧中怎么对应</td>
+</tr>
+<tr>
+<td>主要风险</td>
+<td>仍是离线或准在线几何感知模块，不直接解决动作、接触动力学和安全控制；对 fisheye / panorama、极端旋转、大幅非刚体形变仍有限</td>
+</tr>
+<tr>
+<td>应接到本站哪里</td>
+<td><a href="/2026/05/11/ai-files-embodied-ai-cameras-depth-and-robot-vision/">相机、深度与机器人视觉</a>、<a href="/2026/05/11/ai-files-paper-deep-dives-embodied-ai-depth-anything-3/">Depth Anything 3</a>、<a href="/2026/05/11/ai-files-embodied-ai-asset-perception-grasp-and-trajectory-pipeline/">资产到轨迹：感知、抓取与数据管线</a></td>
+</tr>
+</tbody>
+</table>
+<h2 id="论文位置"><a class="markdownIt-Anchor" href="#论文位置"></a> 论文位置</h2>
+<p>传统视觉几何通常是“模块化 + 优化”：</p>
+<div class="code-container" data-rel="Text"><figure class="iseeu highlight text"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br></pre></td><td class="code"><pre><span class="line">feature matching</span><br><span class="line">  -&gt; camera pose / SfM</span><br><span class="line">  -&gt; multi-view stereo / depth</span><br><span class="line">  -&gt; point cloud fusion</span><br><span class="line">  -&gt; tracking / correspondence</span><br><span class="line">  -&gt; optional BA or global alignment</span><br></pre></td></tr></table></figure></div>
+<p>VGGT 反过来问：如果我们有足够多带 3D annotation 的数据，能不能让一个大模型直接学会这些互相关联的几何量？</p>
+<p>它的回答是可以，而且不需要很强的手工 3D inductive bias。模型接收同一场景的 <span class="katex"><span class="katex-mathml"><math><semantics><mrow><mi>N</mi></mrow><annotation encoding="application/x-tex">N</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.68333em;vertical-align:0em;"></span><span class="mord mathdefault" style="margin-right:0.10903em;">N</span></span></span></span> 张 RGB 图像：</p>
+<p><span class="katex-display"><span class="katex"><span class="katex-mathml"><math><semantics><mrow><mo stretchy="false">(</mo><msub><mi>I</mi><mi>i</mi></msub><msubsup><mo stretchy="false">)</mo><mrow><mi>i</mi><mo>=</mo><mn>1</mn></mrow><mi>N</mi></msubsup></mrow><annotation encoding="application/x-tex">(I_i)_{i=1}^{N}
+</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:1.1413309999999999em;vertical-align:-0.25em;"></span><span class="mopen">(</span><span class="mord"><span class="mord mathdefault" style="margin-right:0.07847em;">I</span><span class="msupsub"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height:0.31166399999999994em;"><span style="top:-2.5500000000000003em;margin-left:-0.07847em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mathdefault mtight">i</span></span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height:0.15em;"><span></span></span></span></span></span></span><span class="mclose"><span class="mclose">)</span><span class="msupsub"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height:0.8913309999999999em;"><span style="top:-2.4530000000000003em;margin-left:0em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mtight"><span class="mord mathdefault mtight">i</span><span class="mrel mtight">=</span><span class="mord mtight">1</span></span></span></span><span style="top:-3.113em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mtight"><span class="mord mathdefault mtight" style="margin-right:0.10903em;">N</span></span></span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height:0.247em;"><span></span></span></span></span></span></span></span></span></span></span></p>
+<p>然后为每一帧输出：</p>
+<p><span class="katex-display"><span class="katex"><span class="katex-mathml"><math><semantics><mrow><mi>f</mi><mo stretchy="false">(</mo><mo stretchy="false">(</mo><msub><mi>I</mi><mi>i</mi></msub><msubsup><mo stretchy="false">)</mo><mrow><mi>i</mi><mo>=</mo><mn>1</mn></mrow><mi>N</mi></msubsup><mo stretchy="false">)</mo><mo>=</mo><mo stretchy="false">(</mo><msub><mi mathvariant="bold">g</mi><mi>i</mi></msub><mo separator="true">,</mo><msub><mi>D</mi><mi>i</mi></msub><mo separator="true">,</mo><msub><mi>P</mi><mi>i</mi></msub><mo separator="true">,</mo><msub><mi>T</mi><mi>i</mi></msub><msubsup><mo stretchy="false">)</mo><mrow><mi>i</mi><mo>=</mo><mn>1</mn></mrow><mi>N</mi></msubsup></mrow><annotation encoding="application/x-tex">f((I_i)_{i=1}^{N}) = (\mathbf{g}_i, D_i, P_i, T_i)_{i=1}^{N}
+</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:1.1413309999999999em;vertical-align:-0.25em;"></span><span class="mord mathdefault" style="margin-right:0.10764em;">f</span><span class="mopen">(</span><span class="mopen">(</span><span class="mord"><span class="mord mathdefault" style="margin-right:0.07847em;">I</span><span class="msupsub"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height:0.31166399999999994em;"><span style="top:-2.5500000000000003em;margin-left:-0.07847em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mathdefault mtight">i</span></span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height:0.15em;"><span></span></span></span></span></span></span><span class="mclose"><span class="mclose">)</span><span class="msupsub"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height:0.8913309999999999em;"><span style="top:-2.4530000000000003em;margin-left:0em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mtight"><span class="mord mathdefault mtight">i</span><span class="mrel mtight">=</span><span class="mord mtight">1</span></span></span></span><span style="top:-3.113em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mtight"><span class="mord mathdefault mtight" style="margin-right:0.10903em;">N</span></span></span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height:0.247em;"><span></span></span></span></span></span></span><span class="mclose">)</span><span class="mspace" style="margin-right:0.2777777777777778em;"></span><span class="mrel">=</span><span class="mspace" style="margin-right:0.2777777777777778em;"></span></span><span class="base"><span class="strut" style="height:1.1413309999999999em;vertical-align:-0.25em;"></span><span class="mopen">(</span><span class="mord"><span class="mord"><span class="mord mathbf" style="margin-right:0.01597em;">g</span></span><span class="msupsub"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height:0.31166399999999994em;"><span style="top:-2.5500000000000003em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mathdefault mtight">i</span></span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height:0.15em;"><span></span></span></span></span></span></span><span class="mpunct">,</span><span class="mspace" style="margin-right:0.16666666666666666em;"></span><span class="mord"><span class="mord mathdefault" style="margin-right:0.02778em;">D</span><span class="msupsub"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height:0.31166399999999994em;"><span style="top:-2.5500000000000003em;margin-left:-0.02778em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mathdefault mtight">i</span></span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height:0.15em;"><span></span></span></span></span></span></span><span class="mpunct">,</span><span class="mspace" style="margin-right:0.16666666666666666em;"></span><span class="mord"><span class="mord mathdefault" style="margin-right:0.13889em;">P</span><span class="msupsub"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height:0.31166399999999994em;"><span style="top:-2.5500000000000003em;margin-left:-0.13889em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mathdefault mtight">i</span></span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height:0.15em;"><span></span></span></span></span></span></span><span class="mpunct">,</span><span class="mspace" style="margin-right:0.16666666666666666em;"></span><span class="mord"><span class="mord mathdefault" style="margin-right:0.13889em;">T</span><span class="msupsub"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height:0.31166399999999994em;"><span style="top:-2.5500000000000003em;margin-left:-0.13889em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mathdefault mtight">i</span></span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height:0.15em;"><span></span></span></span></span></span></span><span class="mclose"><span class="mclose">)</span><span class="msupsub"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height:0.8913309999999999em;"><span style="top:-2.4530000000000003em;margin-left:0em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mtight"><span class="mord mathdefault mtight">i</span><span class="mrel mtight">=</span><span class="mord mtight">1</span></span></span></span><span style="top:-3.113em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mtight"><span class="mord mathdefault mtight" style="margin-right:0.10903em;">N</span></span></span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height:0.247em;"><span></span></span></span></span></span></span></span></span></span></span></p>
+<p>其中 <span class="katex"><span class="katex-mathml"><math><semantics><mrow><msub><mi mathvariant="bold">g</mi><mi>i</mi></msub></mrow><annotation encoding="application/x-tex">\mathbf{g}_i</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.63888em;vertical-align:-0.19444em;"></span><span class="mord"><span class="mord"><span class="mord mathbf" style="margin-right:0.01597em;">g</span></span><span class="msupsub"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height:0.31166399999999994em;"><span style="top:-2.5500000000000003em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mathdefault mtight">i</span></span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height:0.15em;"><span></span></span></span></span></span></span></span></span></span> 是 camera parameters，<span class="katex"><span class="katex-mathml"><math><semantics><mrow><msub><mi>D</mi><mi>i</mi></msub></mrow><annotation encoding="application/x-tex">D_i</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.83333em;vertical-align:-0.15em;"></span><span class="mord"><span class="mord mathdefault" style="margin-right:0.02778em;">D</span><span class="msupsub"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height:0.31166399999999994em;"><span style="top:-2.5500000000000003em;margin-left:-0.02778em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mathdefault mtight">i</span></span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height:0.15em;"><span></span></span></span></span></span></span></span></span></span> 是 depth map，<span class="katex"><span class="katex-mathml"><math><semantics><mrow><msub><mi>P</mi><mi>i</mi></msub></mrow><annotation encoding="application/x-tex">P_i</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.83333em;vertical-align:-0.15em;"></span><span class="mord"><span class="mord mathdefault" style="margin-right:0.13889em;">P</span><span class="msupsub"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height:0.31166399999999994em;"><span style="top:-2.5500000000000003em;margin-left:-0.13889em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mathdefault mtight">i</span></span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height:0.15em;"><span></span></span></span></span></span></span></span></span></span> 是 point map，<span class="katex"><span class="katex-mathml"><math><semantics><mrow><msub><mi>T</mi><mi>i</mi></msub></mrow><annotation encoding="application/x-tex">T_i</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.83333em;vertical-align:-0.15em;"></span><span class="mord"><span class="mord mathdefault" style="margin-right:0.13889em;">T</span><span class="msupsub"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height:0.31166399999999994em;"><span style="top:-2.5500000000000003em;margin-left:-0.13889em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mathdefault mtight">i</span></span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height:0.15em;"><span></span></span></span></span></span></span></span></span></span> 是用于 point tracking 的 dense feature grid。</p>
+<p><img  
+                     lazyload
+                     src="/images/loading.svg"
+                     data-src="/image/ai-notes/images/paper-deep-dives/embodied-ai/vggt/figure-1-teaser.png"
+                      alt="VGGT teaser 原论文图" 
+                ></p>
+<p><small>图源：<code>VGGT</code>，Figure 1。原论文图意：VGGT 接收多张图像，一次前向预测 cameras、point maps、depth maps 和 tracks；图中展示了输入帧、重建点云、相机视锥、track 和 depth maps。</small></p>
+<h2 id="总体架构"><a class="markdownIt-Anchor" href="#总体架构"></a> 总体架构</h2>
+<p>论文 Figure 2 可以看成 VGGT 的系统图。</p>
+<p><img  
+                     lazyload
+                     src="/images/loading.svg"
+                     data-src="/image/ai-notes/images/paper-deep-dives/embodied-ai/vggt/figure-2-architecture.png"
+                      alt="VGGT architecture 原论文图" 
+                ></p>
+<p><small>图源：<code>VGGT</code>，Architecture Overview。原论文图意：输入图像先经 DINO patchify 成 tokens，再加入 camera token，经过交替的 global attention 与 frame attention；camera head 输出相机，DPT head 输出 depth maps、point maps 和 tracking features。</small></p>
+<div class="callout callout--titled info mb-4 rounded-small shadow-redefine-flat bg-(--callout-bg-color) p-3 pl-1 relative flex flex-row gap-2"><div role="none" class="rounded-full self-stretch w-0.5 bg-(--callout-primary-color) shrink-0 opacity-60"></div><div class="flex flex-col gap-2"><div class="callout__title flex items-center gap-2 font-semibold tracking-tight">这张图怎么读</div><div class="callout__content markdown-body flex-1 min-w-0"><p>左边每张图像先被 DINOv2 切成 image tokens。每一帧还会额外加入 camera token 和 register tokens。中间的核心不是 cross-attention，而是交替使用两种 self-attention：global self-attention 让不同视角交换信息，frame-wise self-attention 让每帧内部的结构和尺度更稳定。</p>
+<p>右侧输出分成两类：camera token 进入 camera head，预测 extrinsics / intrinsics；image tokens 进入 DPT head，预测 dense depth、point map 和 tracking features。tracking 本身交给一个 CoTracker2-style head，用 VGGT 输出的 dense tracking features 做匹配。</p></div></div></div>
+<h2 id="输入和输出怎么定义"><a class="markdownIt-Anchor" href="#输入和输出怎么定义"></a> 输入和输出怎么定义</h2>
+<p>VGGT 预测的是一组 over-complete 3D attributes。它们之间有几何关系，但论文刻意让模型都显式预测，因为多任务训练能让表征更强。</p>
+<table>
+<thead>
+<tr>
+<th>Output</th>
+<th>Shape / Parametrization</th>
+<th>Meaning</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>camera parameters <span class="katex"><span class="katex-mathml"><math><semantics><mrow><msub><mi mathvariant="bold">g</mi><mi>i</mi></msub></mrow><annotation encoding="application/x-tex">\mathbf{g}_i</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.63888em;vertical-align:-0.19444em;"></span><span class="mord"><span class="mord"><span class="mord mathbf" style="margin-right:0.01597em;">g</span></span><span class="msupsub"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height:0.31166399999999994em;"><span style="top:-2.5500000000000003em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mathdefault mtight">i</span></span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height:0.15em;"><span></span></span></span></span></span></span></span></span></span></td>
+<td><span class="katex"><span class="katex-mathml"><math><semantics><mrow><mo stretchy="false">[</mo><mi mathvariant="bold">q</mi><mo separator="true">,</mo><mi mathvariant="bold">t</mi><mo separator="true">,</mo><mi mathvariant="bold">f</mi><mo stretchy="false">]</mo><mo>∈</mo><msup><mi mathvariant="double-struck">R</mi><mn>9</mn></msup></mrow><annotation encoding="application/x-tex">[\mathbf{q}, \mathbf{t}, \mathbf{f}] \in \mathbb{R}^9</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:1em;vertical-align:-0.25em;"></span><span class="mopen">[</span><span class="mord"><span class="mord mathbf">q</span></span><span class="mpunct">,</span><span class="mspace" style="margin-right:0.16666666666666666em;"></span><span class="mord"><span class="mord mathbf">t</span></span><span class="mpunct">,</span><span class="mspace" style="margin-right:0.16666666666666666em;"></span><span class="mord"><span class="mord mathbf" style="margin-right:0.10903em;">f</span></span><span class="mclose">]</span><span class="mspace" style="margin-right:0.2777777777777778em;"></span><span class="mrel">∈</span><span class="mspace" style="margin-right:0.2777777777777778em;"></span></span><span class="base"><span class="strut" style="height:0.8141079999999999em;vertical-align:0em;"></span><span class="mord"><span class="mord"><span class="mord mathbb">R</span></span><span class="msupsub"><span class="vlist-t"><span class="vlist-r"><span class="vlist" style="height:0.8141079999999999em;"><span style="top:-3.063em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mtight">9</span></span></span></span></span></span></span></span></span></span></span></td>
+<td>rotation quaternion、translation、field of view；principal point 默认在图像中心</td>
+</tr>
+<tr>
+<td>depth map <span class="katex"><span class="katex-mathml"><math><semantics><mrow><msub><mi>D</mi><mi>i</mi></msub></mrow><annotation encoding="application/x-tex">D_i</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.83333em;vertical-align:-0.15em;"></span><span class="mord"><span class="mord mathdefault" style="margin-right:0.02778em;">D</span><span class="msupsub"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height:0.31166399999999994em;"><span style="top:-2.5500000000000003em;margin-left:-0.02778em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mathdefault mtight">i</span></span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height:0.15em;"><span></span></span></span></span></span></span></span></span></span></td>
+<td><span class="katex"><span class="katex-mathml"><math><semantics><mrow><mi>H</mi><mo>×</mo><mi>W</mi></mrow><annotation encoding="application/x-tex">H \times W</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.76666em;vertical-align:-0.08333em;"></span><span class="mord mathdefault" style="margin-right:0.08125em;">H</span><span class="mspace" style="margin-right:0.2222222222222222em;"></span><span class="mbin">×</span><span class="mspace" style="margin-right:0.2222222222222222em;"></span></span><span class="base"><span class="strut" style="height:0.68333em;vertical-align:0em;"></span><span class="mord mathdefault" style="margin-right:0.13889em;">W</span></span></span></span></td>
+<td>每个像素从第 <span class="katex"><span class="katex-mathml"><math><semantics><mrow><mi>i</mi></mrow><annotation encoding="application/x-tex">i</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.65952em;vertical-align:0em;"></span><span class="mord mathdefault">i</span></span></span></span> 个相机看到的 depth</td>
+</tr>
+<tr>
+<td>point map <span class="katex"><span class="katex-mathml"><math><semantics><mrow><msub><mi>P</mi><mi>i</mi></msub></mrow><annotation encoding="application/x-tex">P_i</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.83333em;vertical-align:-0.15em;"></span><span class="mord"><span class="mord mathdefault" style="margin-right:0.13889em;">P</span><span class="msupsub"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height:0.31166399999999994em;"><span style="top:-2.5500000000000003em;margin-left:-0.13889em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mathdefault mtight">i</span></span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height:0.15em;"><span></span></span></span></span></span></span></span></span></span></td>
+<td><span class="katex"><span class="katex-mathml"><math><semantics><mrow><mn>3</mn><mo>×</mo><mi>H</mi><mo>×</mo><mi>W</mi></mrow><annotation encoding="application/x-tex">3 \times H \times W</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.72777em;vertical-align:-0.08333em;"></span><span class="mord">3</span><span class="mspace" style="margin-right:0.2222222222222222em;"></span><span class="mbin">×</span><span class="mspace" style="margin-right:0.2222222222222222em;"></span></span><span class="base"><span class="strut" style="height:0.76666em;vertical-align:-0.08333em;"></span><span class="mord mathdefault" style="margin-right:0.08125em;">H</span><span class="mspace" style="margin-right:0.2222222222222222em;"></span><span class="mbin">×</span><span class="mspace" style="margin-right:0.2222222222222222em;"></span></span><span class="base"><span class="strut" style="height:0.68333em;vertical-align:0em;"></span><span class="mord mathdefault" style="margin-right:0.13889em;">W</span></span></span></span></td>
+<td>每个像素对应的 3D scene point</td>
+</tr>
+<tr>
+<td>tracking features <span class="katex"><span class="katex-mathml"><math><semantics><mrow><msub><mi>T</mi><mi>i</mi></msub></mrow><annotation encoding="application/x-tex">T_i</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.83333em;vertical-align:-0.15em;"></span><span class="mord"><span class="mord mathdefault" style="margin-right:0.13889em;">T</span><span class="msupsub"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height:0.31166399999999994em;"><span style="top:-2.5500000000000003em;margin-left:-0.13889em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mathdefault mtight">i</span></span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height:0.15em;"><span></span></span></span></span></span></span></span></span></span></td>
+<td><span class="katex"><span class="katex-mathml"><math><semantics><mrow><mi>C</mi><mo>×</mo><mi>H</mi><mo>×</mo><mi>W</mi></mrow><annotation encoding="application/x-tex">C \times H \times W</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.76666em;vertical-align:-0.08333em;"></span><span class="mord mathdefault" style="margin-right:0.07153em;">C</span><span class="mspace" style="margin-right:0.2222222222222222em;"></span><span class="mbin">×</span><span class="mspace" style="margin-right:0.2222222222222222em;"></span></span><span class="base"><span class="strut" style="height:0.76666em;vertical-align:-0.08333em;"></span><span class="mord mathdefault" style="margin-right:0.08125em;">H</span><span class="mspace" style="margin-right:0.2222222222222222em;"></span><span class="mbin">×</span><span class="mspace" style="margin-right:0.2222222222222222em;"></span></span><span class="base"><span class="strut" style="height:0.68333em;vertical-align:0em;"></span><span class="mord mathdefault" style="margin-right:0.13889em;">W</span></span></span></span></td>
+<td>给 tracking head 使用的 dense feature grid</td>
+</tr>
+</tbody>
+</table>
+<p>一个容易混的点是 coordinate frame。VGGT 像 DUSt3R 一样使用 viewpoint-invariant point maps：<span class="katex"><span class="katex-mathml"><math><semantics><mrow><msub><mi>P</mi><mi>i</mi></msub></mrow><annotation encoding="application/x-tex">P_i</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.83333em;vertical-align:-0.15em;"></span><span class="mord"><span class="mord mathdefault" style="margin-right:0.13889em;">P</span><span class="msupsub"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height:0.31166399999999994em;"><span style="top:-2.5500000000000003em;margin-left:-0.13889em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mathdefault mtight">i</span></span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height:0.15em;"><span></span></span></span></span></span></span></span></span></span> 里的 3D 点都表示在第一帧相机坐标系中。第一帧就是 world reference frame，因此第一帧 extrinsics 固定为 identity：</p>
+<p><span class="katex-display"><span class="katex"><span class="katex-mathml"><math><semantics><mrow><msub><mi mathvariant="bold">q</mi><mn>1</mn></msub><mo>=</mo><mo stretchy="false">[</mo><mn>0</mn><mo separator="true">,</mo><mn>0</mn><mo separator="true">,</mo><mn>0</mn><mo separator="true">,</mo><mn>1</mn><mo stretchy="false">]</mo><mo separator="true">,</mo><mspace width="1em"/><msub><mi mathvariant="bold">t</mi><mn>1</mn></msub><mo>=</mo><mo stretchy="false">[</mo><mn>0</mn><mo separator="true">,</mo><mn>0</mn><mo separator="true">,</mo><mn>0</mn><mo stretchy="false">]</mo></mrow><annotation encoding="application/x-tex">\mathbf{q}_1=[0,0,0,1], \quad \mathbf{t}_1=[0,0,0]
+</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.63888em;vertical-align:-0.19444em;"></span><span class="mord"><span class="mord"><span class="mord mathbf">q</span></span><span class="msupsub"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height:0.30110799999999993em;"><span style="top:-2.5500000000000003em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mtight">1</span></span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height:0.15em;"><span></span></span></span></span></span></span><span class="mspace" style="margin-right:0.2777777777777778em;"></span><span class="mrel">=</span><span class="mspace" style="margin-right:0.2777777777777778em;"></span></span><span class="base"><span class="strut" style="height:1em;vertical-align:-0.25em;"></span><span class="mopen">[</span><span class="mord">0</span><span class="mpunct">,</span><span class="mspace" style="margin-right:0.16666666666666666em;"></span><span class="mord">0</span><span class="mpunct">,</span><span class="mspace" style="margin-right:0.16666666666666666em;"></span><span class="mord">0</span><span class="mpunct">,</span><span class="mspace" style="margin-right:0.16666666666666666em;"></span><span class="mord">1</span><span class="mclose">]</span><span class="mpunct">,</span><span class="mspace" style="margin-right:0.16666666666666666em;"></span><span class="mspace" style="margin-right:1em;"></span><span class="mord"><span class="mord"><span class="mord mathbf">t</span></span><span class="msupsub"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height:0.30110799999999993em;"><span style="top:-2.5500000000000003em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mtight">1</span></span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height:0.15em;"><span></span></span></span></span></span></span><span class="mspace" style="margin-right:0.2777777777777778em;"></span><span class="mrel">=</span><span class="mspace" style="margin-right:0.2777777777777778em;"></span></span><span class="base"><span class="strut" style="height:1em;vertical-align:-0.25em;"></span><span class="mopen">[</span><span class="mord">0</span><span class="mpunct">,</span><span class="mspace" style="margin-right:0.16666666666666666em;"></span><span class="mord">0</span><span class="mpunct">,</span><span class="mspace" style="margin-right:0.16666666666666666em;"></span><span class="mord">0</span><span class="mclose">]</span></span></span></span></span></p>
+<p>这对具身系统很重要。模型不是每张图各自输出一团局部点云，而是把所有帧的几何都拉回同一个参考坐标系，后续才能做点云融合、轨迹跟踪、视角规划或地图更新。</p>
+<h2 id="alternating-attention-为什么关键"><a class="markdownIt-Anchor" href="#alternating-attention-为什么关键"></a> Alternating-Attention 为什么关键</h2>
+<p>如果所有 tokens 都做全局 self-attention，模型能跨视角交换信息，但计算和激活分布都更难稳定。如果只在每帧内部看，模型又缺少多视角几何关系。VGGT 的折中是 Alternating-Attention：</p>
+<table>
+<thead>
+<tr>
+<th>Attention type</th>
+<th>Scope</th>
+<th>Role</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>frame-wise self-attention</td>
+<td>tokens within each frame</td>
+<td>稳定单帧内部结构、局部几何和 per-frame activation</td>
+</tr>
+<tr>
+<td>global self-attention</td>
+<td>tokens across all frames</td>
+<td>建立跨视角匹配、相机关系、全局 scene geometry</td>
+</tr>
+</tbody>
+</table>
+<p>默认模型有 24 个 attention blocks，每个 block 包含 frame-wise 与 global attention。附录给了更具体的实现：</p>
+<table>
+<thead>
+<tr>
+<th>Setting</th>
+<th>Value</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Feature dimension</td>
+<td>1024</td>
+</tr>
+<tr>
+<td>Attention heads</td>
+<td>16</td>
+</tr>
+<tr>
+<td>Attention implementation</td>
+<td><code>torch.nn.MultiheadAttention</code> with flash attention</td>
+</tr>
+<tr>
+<td>Stabilization</td>
+<td>QKNorm, LayerScale</td>
+</tr>
+<tr>
+<td>LayerScale init</td>
+<td>0.01</td>
+</tr>
+<tr>
+<td>Tokenizer</td>
+<td>DINOv2 + positional embedding</td>
+</tr>
+<tr>
+<td>Dense head features</td>
+<td>DINO/DPT features from blocks 4, 11, 17, 23</td>
+</tr>
+<tr>
+<td>Total parameters</td>
+<td>approximately 1.2B</td>
+</tr>
+</tbody>
+</table>
+<p>Table 8 is redrawn below with the original English fields.</p>
+<table>
+<thead>
+<tr>
+<th>ETH3D Dataset</th>
+<th>Acc.<span class="katex"><span class="katex-mathml"><math><semantics><mrow><mo>↓</mo></mrow><annotation encoding="application/x-tex">\downarrow</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.8888799999999999em;vertical-align:-0.19444em;"></span><span class="mrel">↓</span></span></span></span></th>
+<th>Comp.<span class="katex"><span class="katex-mathml"><math><semantics><mrow><mo>↓</mo></mrow><annotation encoding="application/x-tex">\downarrow</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.8888799999999999em;vertical-align:-0.19444em;"></span><span class="mrel">↓</span></span></span></span></th>
+<th>Overall<span class="katex"><span class="katex-mathml"><math><semantics><mrow><mo>↓</mo></mrow><annotation encoding="application/x-tex">\downarrow</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.8888799999999999em;vertical-align:-0.19444em;"></span><span class="mrel">↓</span></span></span></span></th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Cross-Attention</td>
+<td>1.287</td>
+<td>0.835</td>
+<td>1.061</td>
+</tr>
+<tr>
+<td>Global Self-Attention Only</td>
+<td>1.032</td>
+<td>0.621</td>
+<td>0.827</td>
+</tr>
+<tr>
+<td>Alternating-Attention</td>
+<td><strong>0.901</strong></td>
+<td><strong>0.518</strong></td>
+<td><strong>0.709</strong></td>
+</tr>
+</tbody>
+</table>
+<p><small>表源：<code>VGGT</code>，Table 8。原论文表格要点：在 ETH3D point map estimation 上，Alternating-Attention 明显优于 Cross-Attention 和只用 Global Self-Attention 的变体。</small></p>
+<p>这张表说明 VGGT 不是单纯“堆大 Transformer”。跨帧全局建模必须和单帧内部归一、结构整理交替发生，几何预测才稳。</p>
+<h2 id="prediction-heads"><a class="markdownIt-Anchor" href="#prediction-heads"></a> Prediction Heads</h2>
+<p>VGGT 的 heads 分得很明确。</p>
+<h3 id="camera-head"><a class="markdownIt-Anchor" href="#camera-head"></a> Camera head</h3>
+<p>每帧都有 camera token。camera head 读取输出 camera tokens，经过 4 个额外 self-attention layers 和一个 linear layer，预测 <span class="katex"><span class="katex-mathml"><math><semantics><mrow><mi mathvariant="bold">q</mi><mo separator="true">,</mo><mi mathvariant="bold">t</mi><mo separator="true">,</mo><mi mathvariant="bold">f</mi></mrow><annotation encoding="application/x-tex">\mathbf{q}, \mathbf{t}, \mathbf{f}</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.8888799999999999em;vertical-align:-0.19444em;"></span><span class="mord"><span class="mord mathbf">q</span></span><span class="mpunct">,</span><span class="mspace" style="margin-right:0.16666666666666666em;"></span><span class="mord"><span class="mord mathbf">t</span></span><span class="mpunct">,</span><span class="mspace" style="margin-right:0.16666666666666666em;"></span><span class="mord"><span class="mord mathbf" style="margin-right:0.10903em;">f</span></span></span></span></span>。</p>
+<p>第一帧使用不同的 learnable camera/register tokens，让模型知道“这一帧是 reference frame”。其他帧使用另一套 learnable tokens。这样既保留 permutation equivariance，又能固定世界坐标。</p>
+<h3 id="dense-dpt-heads"><a class="markdownIt-Anchor" href="#dense-dpt-heads"></a> Dense DPT heads</h3>
+<p>输出 image tokens 进入 DPT layer，转成 dense feature maps <span class="katex"><span class="katex-mathml"><math><semantics><mrow><msub><mi>F</mi><mi>i</mi></msub></mrow><annotation encoding="application/x-tex">F_i</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.83333em;vertical-align:-0.15em;"></span><span class="mord"><span class="mord mathdefault" style="margin-right:0.13889em;">F</span><span class="msupsub"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height:0.31166399999999994em;"><span style="top:-2.5500000000000003em;margin-left:-0.13889em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mathdefault mtight">i</span></span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height:0.15em;"><span></span></span></span></span></span></span></span></span></span>，再用 <span class="katex"><span class="katex-mathml"><math><semantics><mrow><mn>3</mn><mo>×</mo><mn>3</mn></mrow><annotation encoding="application/x-tex">3 \times 3</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.72777em;vertical-align:-0.08333em;"></span><span class="mord">3</span><span class="mspace" style="margin-right:0.2222222222222222em;"></span><span class="mbin">×</span><span class="mspace" style="margin-right:0.2222222222222222em;"></span></span><span class="base"><span class="strut" style="height:0.64444em;vertical-align:0em;"></span><span class="mord">3</span></span></span></span> convolution 输出：</p>
+<ol>
+<li>depth maps <span class="katex"><span class="katex-mathml"><math><semantics><mrow><msub><mi>D</mi><mi>i</mi></msub></mrow><annotation encoding="application/x-tex">D_i</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.83333em;vertical-align:-0.15em;"></span><span class="mord"><span class="mord mathdefault" style="margin-right:0.02778em;">D</span><span class="msupsub"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height:0.31166399999999994em;"><span style="top:-2.5500000000000003em;margin-left:-0.02778em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mathdefault mtight">i</span></span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height:0.15em;"><span></span></span></span></span></span></span></span></span></span>；</li>
+<li>point maps <span class="katex"><span class="katex-mathml"><math><semantics><mrow><msub><mi>P</mi><mi>i</mi></msub></mrow><annotation encoding="application/x-tex">P_i</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.83333em;vertical-align:-0.15em;"></span><span class="mord"><span class="mord mathdefault" style="margin-right:0.13889em;">P</span><span class="msupsub"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height:0.31166399999999994em;"><span style="top:-2.5500000000000003em;margin-left:-0.13889em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mathdefault mtight">i</span></span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height:0.15em;"><span></span></span></span></span></span></span></span></span></span>；</li>
+<li>tracking features <span class="katex"><span class="katex-mathml"><math><semantics><mrow><msub><mi>T</mi><mi>i</mi></msub></mrow><annotation encoding="application/x-tex">T_i</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.83333em;vertical-align:-0.15em;"></span><span class="mord"><span class="mord mathdefault" style="margin-right:0.13889em;">T</span><span class="msupsub"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height:0.31166399999999994em;"><span style="top:-2.5500000000000003em;margin-left:-0.13889em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mathdefault mtight">i</span></span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height:0.15em;"><span></span></span></span></span></span></span></span></span></span>；</li>
+<li>depth / point-map uncertainty maps <span class="katex"><span class="katex-mathml"><math><semantics><mrow><msubsup><mi mathvariant="normal">Σ</mi><mi>i</mi><mi>D</mi></msubsup><mo separator="true">,</mo><msubsup><mi mathvariant="normal">Σ</mi><mi>i</mi><mi>P</mi></msubsup></mrow><annotation encoding="application/x-tex">\Sigma_i^D, \Sigma_i^P</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:1.0999949999999998em;vertical-align:-0.258664em;"></span><span class="mord"><span class="mord">Σ</span><span class="msupsub"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height:0.8413309999999999em;"><span style="top:-2.441336em;margin-left:0em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mathdefault mtight">i</span></span></span><span style="top:-3.063em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mathdefault mtight" style="margin-right:0.02778em;">D</span></span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height:0.258664em;"><span></span></span></span></span></span></span><span class="mpunct">,</span><span class="mspace" style="margin-right:0.16666666666666666em;"></span><span class="mord"><span class="mord">Σ</span><span class="msupsub"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height:0.8413309999999999em;"><span style="top:-2.441336em;margin-left:0em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mathdefault mtight">i</span></span></span><span style="top:-3.063em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mathdefault mtight" style="margin-right:0.13889em;">P</span></span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height:0.258664em;"><span></span></span></span></span></span></span></span></span></span>。</li>
+</ol>
+<p>uncertainty maps 不只是可视化 confidence，它们直接进入训练 loss，用于 aleatoric-uncertainty weighting。</p>
+<h3 id="tracking-head"><a class="markdownIt-Anchor" href="#tracking-head"></a> Tracking head</h3>
+<p>VGGT 的 transformer 不直接输出最终 tracks，而是输出 dense tracking features <span class="katex"><span class="katex-mathml"><math><semantics><mrow><msub><mi>T</mi><mi>i</mi></msub></mrow><annotation encoding="application/x-tex">T_i</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.83333em;vertical-align:-0.15em;"></span><span class="mord"><span class="mord mathdefault" style="margin-right:0.13889em;">T</span><span class="msupsub"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height:0.31166399999999994em;"><span style="top:-2.5500000000000003em;margin-left:-0.13889em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mathdefault mtight">i</span></span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height:0.15em;"><span></span></span></span></span></span></span></span></span></span>。tracking head 使用 CoTracker2 architecture：给定 query point，先在 query frame 的 feature map 上 bilinear sampling，再和其他帧 feature maps 做 correlation，最后通过 self-attention layers 输出对应点。它不假设输入帧有时间顺序，因此不仅可用于视频，也可用于无序图像集合。</p>
+<p><img  
+                     lazyload
+                     src="/images/loading.svg"
+                     data-src="/image/ai-notes/images/paper-deep-dives/embodied-ai/vggt/figure-3-pointmap.png"
+                      alt="VGGT point map visualization 原论文图" 
+                ></p>
+<p><small>图源：<code>VGGT</code>，Additional Visualizations of Point Map Estimation。原论文图意：VGGT 在不同输入帧数和不同场景上预测 point maps，并用 camera frustums 展示估计相机位姿。</small></p>
+<h2 id="训练目标"><a class="markdownIt-Anchor" href="#训练目标"></a> 训练目标</h2>
+<p>VGGT 是端到端多任务训练。总 loss 是：</p>
+<p><span class="katex-display"><span class="katex"><span class="katex-mathml"><math><semantics><mrow><mi mathvariant="script">L</mi><mo>=</mo><msub><mi mathvariant="script">L</mi><mtext>camera</mtext></msub><mo>+</mo><msub><mi mathvariant="script">L</mi><mtext>depth</mtext></msub><mo>+</mo><msub><mi mathvariant="script">L</mi><mtext>pmap</mtext></msub><mo>+</mo><mi>λ</mi><msub><mi mathvariant="script">L</mi><mtext>track</mtext></msub></mrow><annotation encoding="application/x-tex">\mathcal{L}
+=
+\mathcal{L}_\text{camera}
++ \mathcal{L}_\text{depth}
++ \mathcal{L}_\text{pmap}
++ \lambda \mathcal{L}_\text{track}
+</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.68333em;vertical-align:0em;"></span><span class="mord"><span class="mord mathcal">L</span></span><span class="mspace" style="margin-right:0.2777777777777778em;"></span><span class="mrel">=</span><span class="mspace" style="margin-right:0.2777777777777778em;"></span></span><span class="base"><span class="strut" style="height:0.83333em;vertical-align:-0.15em;"></span><span class="mord"><span class="mord"><span class="mord mathcal">L</span></span><span class="msupsub"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height:0.151392em;"><span style="top:-2.5500000000000003em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord text mtight"><span class="mord mtight">camera</span></span></span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height:0.15em;"><span></span></span></span></span></span></span><span class="mspace" style="margin-right:0.2222222222222222em;"></span><span class="mbin">+</span><span class="mspace" style="margin-right:0.2222222222222222em;"></span></span><span class="base"><span class="strut" style="height:0.969438em;vertical-align:-0.286108em;"></span><span class="mord"><span class="mord"><span class="mord mathcal">L</span></span><span class="msupsub"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height:0.3361079999999999em;"><span style="top:-2.5500000000000003em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord text mtight"><span class="mord mtight">depth</span></span></span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height:0.286108em;"><span></span></span></span></span></span></span><span class="mspace" style="margin-right:0.2222222222222222em;"></span><span class="mbin">+</span><span class="mspace" style="margin-right:0.2222222222222222em;"></span></span><span class="base"><span class="strut" style="height:0.969438em;vertical-align:-0.286108em;"></span><span class="mord"><span class="mord"><span class="mord mathcal">L</span></span><span class="msupsub"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height:0.15139200000000003em;"><span style="top:-2.5500000000000003em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord text mtight"><span class="mord mtight">pmap</span></span></span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height:0.286108em;"><span></span></span></span></span></span></span><span class="mspace" style="margin-right:0.2222222222222222em;"></span><span class="mbin">+</span><span class="mspace" style="margin-right:0.2222222222222222em;"></span></span><span class="base"><span class="strut" style="height:0.84444em;vertical-align:-0.15em;"></span><span class="mord mathdefault">λ</span><span class="mord"><span class="mord"><span class="mord mathcal">L</span></span><span class="msupsub"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height:0.33610799999999996em;"><span style="top:-2.5500000000000003em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord text mtight"><span class="mord mtight">track</span></span></span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height:0.15em;"><span></span></span></span></span></span></span></span></span></span></span></p>
+<p>论文发现 camera、depth、point-map 三个 loss 的范围相近，不需要相互加权；tracking loss 权重设为：</p>
+<p><span class="katex-display"><span class="katex"><span class="katex-mathml"><math><semantics><mrow><mi>λ</mi><mo>=</mo><mn>0.05</mn></mrow><annotation encoding="application/x-tex">\lambda = 0.05
+</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.69444em;vertical-align:0em;"></span><span class="mord mathdefault">λ</span><span class="mspace" style="margin-right:0.2777777777777778em;"></span><span class="mrel">=</span><span class="mspace" style="margin-right:0.2777777777777778em;"></span></span><span class="base"><span class="strut" style="height:0.64444em;vertical-align:0em;"></span><span class="mord">0</span><span class="mord">.</span><span class="mord">0</span><span class="mord">5</span></span></span></span></span></p>
+<table>
+<thead>
+<tr>
+<th>Loss</th>
+<th>Supervision</th>
+<th>Detail</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><span class="katex"><span class="katex-mathml"><math><semantics><mrow><msub><mi mathvariant="script">L</mi><mtext>camera</mtext></msub></mrow><annotation encoding="application/x-tex">\mathcal{L}_\text{camera}</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.83333em;vertical-align:-0.15em;"></span><span class="mord"><span class="mord"><span class="mord mathcal">L</span></span><span class="msupsub"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height:0.151392em;"><span style="top:-2.5500000000000003em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord text mtight"><span class="mord mtight">camera</span></span></span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height:0.15em;"><span></span></span></span></span></span></span></span></span></span></td>
+<td>camera parameters</td>
+<td>Huber loss on predicted <span class="katex"><span class="katex-mathml"><math><semantics><mrow><msub><mover accent="true"><mi mathvariant="bold">g</mi><mo>^</mo></mover><mi>i</mi></msub></mrow><annotation encoding="application/x-tex">\hat{\mathbf{g}}_i</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.90232em;vertical-align:-0.19444em;"></span><span class="mord"><span class="mord accent"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height:0.70788em;"><span style="top:-3em;"><span class="pstrut" style="height:3em;"></span><span class="mord"><span class="mord"><span class="mord mathbf" style="margin-right:0.01597em;">g</span></span></span></span><span style="top:-3.01344em;"><span class="pstrut" style="height:3em;"></span><span class="accent-body" style="left:-0.22222em;">^</span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height:0.19444em;"><span></span></span></span></span></span><span class="msupsub"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height:0.31166399999999994em;"><span style="top:-2.5500000000000003em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mathdefault mtight">i</span></span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height:0.15em;"><span></span></span></span></span></span></span></span></span></span> and GT <span class="katex"><span class="katex-mathml"><math><semantics><mrow><msub><mi mathvariant="bold">g</mi><mi>i</mi></msub></mrow><annotation encoding="application/x-tex">\mathbf{g}_i</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.63888em;vertical-align:-0.19444em;"></span><span class="mord"><span class="mord"><span class="mord mathbf" style="margin-right:0.01597em;">g</span></span><span class="msupsub"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height:0.31166399999999994em;"><span style="top:-2.5500000000000003em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mathdefault mtight">i</span></span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height:0.15em;"><span></span></span></span></span></span></span></span></span></span></td>
+</tr>
+<tr>
+<td><span class="katex"><span class="katex-mathml"><math><semantics><mrow><msub><mi mathvariant="script">L</mi><mtext>depth</mtext></msub></mrow><annotation encoding="application/x-tex">\mathcal{L}_\text{depth}</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.969438em;vertical-align:-0.286108em;"></span><span class="mord"><span class="mord"><span class="mord mathcal">L</span></span><span class="msupsub"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height:0.3361079999999999em;"><span style="top:-2.5500000000000003em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord text mtight"><span class="mord mtight">depth</span></span></span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height:0.286108em;"><span></span></span></span></span></span></span></span></span></span></td>
+<td>depth maps</td>
+<td>aleatoric-uncertainty weighted depth residual + gradient term</td>
+</tr>
+<tr>
+<td><span class="katex"><span class="katex-mathml"><math><semantics><mrow><msub><mi mathvariant="script">L</mi><mtext>pmap</mtext></msub></mrow><annotation encoding="application/x-tex">\mathcal{L}_\text{pmap}</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.969438em;vertical-align:-0.286108em;"></span><span class="mord"><span class="mord"><span class="mord mathcal">L</span></span><span class="msupsub"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height:0.15139200000000003em;"><span style="top:-2.5500000000000003em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord text mtight"><span class="mord mtight">pmap</span></span></span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height:0.286108em;"><span></span></span></span></span></span></span></span></span></span></td>
+<td>point maps</td>
+<td>analogous uncertainty weighted point residual + gradient term</td>
+</tr>
+<tr>
+<td><span class="katex"><span class="katex-mathml"><math><semantics><mrow><msub><mi mathvariant="script">L</mi><mtext>track</mtext></msub></mrow><annotation encoding="application/x-tex">\mathcal{L}_\text{track}</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.83333em;vertical-align:-0.15em;"></span><span class="mord"><span class="mord"><span class="mord mathcal">L</span></span><span class="msupsub"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height:0.33610799999999996em;"><span style="top:-2.5500000000000003em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord text mtight"><span class="mord mtight">track</span></span></span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height:0.15em;"><span></span></span></span></span></span></span></span></span></span></td>
+<td>keypoint correspondences</td>
+<td>2D point distance across frames + visibility BCE</td>
+</tr>
+</tbody>
+</table>
+<p>depth loss 不是只比较深度值，还加了 gradient-based term：</p>
+<p><span class="katex-display"><span class="katex"><span class="katex-mathml"><math><semantics><mrow><mi mathvariant="normal">∥</mi><msubsup><mi mathvariant="normal">Σ</mi><mi>i</mi><mi>D</mi></msubsup><mo>⊙</mo><mo stretchy="false">(</mo><msub><mover accent="true"><mi>D</mi><mo>^</mo></mover><mi>i</mi></msub><mo>−</mo><msub><mi>D</mi><mi>i</mi></msub><mo stretchy="false">)</mo><mi mathvariant="normal">∥</mi><mo>+</mo><mi mathvariant="normal">∥</mi><msubsup><mi mathvariant="normal">Σ</mi><mi>i</mi><mi>D</mi></msubsup><mo>⊙</mo><mo stretchy="false">(</mo><mi mathvariant="normal">∇</mi><msub><mover accent="true"><mi>D</mi><mo>^</mo></mover><mi>i</mi></msub><mo>−</mo><mi mathvariant="normal">∇</mi><msub><mi>D</mi><mi>i</mi></msub><mo stretchy="false">)</mo><mi mathvariant="normal">∥</mi><mo>−</mo><mi>α</mi><mi>log</mi><mo>⁡</mo><msubsup><mi mathvariant="normal">Σ</mi><mi>i</mi><mi>D</mi></msubsup></mrow><annotation encoding="application/x-tex">\|\Sigma_i^D \odot (\hat D_i-D_i)\|
++ \|\Sigma_i^D \odot (\nabla \hat D_i-\nabla D_i)\|
+- \alpha \log \Sigma_i^D
+</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:1.1413309999999999em;vertical-align:-0.25em;"></span><span class="mord">∥</span><span class="mord"><span class="mord">Σ</span><span class="msupsub"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height:0.8913309999999999em;"><span style="top:-2.4530000000000003em;margin-left:0em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mathdefault mtight">i</span></span></span><span style="top:-3.113em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mathdefault mtight" style="margin-right:0.02778em;">D</span></span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height:0.247em;"><span></span></span></span></span></span></span><span class="mspace" style="margin-right:0.2222222222222222em;"></span><span class="mbin">⊙</span><span class="mspace" style="margin-right:0.2222222222222222em;"></span></span><span class="base"><span class="strut" style="height:1.19677em;vertical-align:-0.25em;"></span><span class="mopen">(</span><span class="mord"><span class="mord accent"><span class="vlist-t"><span class="vlist-r"><span class="vlist" style="height:0.9467699999999999em;"><span style="top:-3em;"><span class="pstrut" style="height:3em;"></span><span class="mord mathdefault" style="margin-right:0.02778em;">D</span></span><span style="top:-3.25233em;"><span class="pstrut" style="height:3em;"></span><span class="accent-body" style="left:-0.19444em;">^</span></span></span></span></span></span><span class="msupsub"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height:0.31166399999999994em;"><span style="top:-2.5500000000000003em;margin-left:-0.02778em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mathdefault mtight">i</span></span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height:0.15em;"><span></span></span></span></span></span></span><span class="mspace" style="margin-right:0.2222222222222222em;"></span><span class="mbin">−</span><span class="mspace" style="margin-right:0.2222222222222222em;"></span></span><span class="base"><span class="strut" style="height:1em;vertical-align:-0.25em;"></span><span class="mord"><span class="mord mathdefault" style="margin-right:0.02778em;">D</span><span class="msupsub"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height:0.31166399999999994em;"><span style="top:-2.5500000000000003em;margin-left:-0.02778em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mathdefault mtight">i</span></span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height:0.15em;"><span></span></span></span></span></span></span><span class="mclose">)</span><span class="mord">∥</span><span class="mspace" style="margin-right:0.2222222222222222em;"></span><span class="mbin">+</span><span class="mspace" style="margin-right:0.2222222222222222em;"></span></span><span class="base"><span class="strut" style="height:1.1413309999999999em;vertical-align:-0.25em;"></span><span class="mord">∥</span><span class="mord"><span class="mord">Σ</span><span class="msupsub"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height:0.8913309999999999em;"><span style="top:-2.4530000000000003em;margin-left:0em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mathdefault mtight">i</span></span></span><span style="top:-3.113em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mathdefault mtight" style="margin-right:0.02778em;">D</span></span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height:0.247em;"><span></span></span></span></span></span></span><span class="mspace" style="margin-right:0.2222222222222222em;"></span><span class="mbin">⊙</span><span class="mspace" style="margin-right:0.2222222222222222em;"></span></span><span class="base"><span class="strut" style="height:1.19677em;vertical-align:-0.25em;"></span><span class="mopen">(</span><span class="mord">∇</span><span class="mord"><span class="mord accent"><span class="vlist-t"><span class="vlist-r"><span class="vlist" style="height:0.9467699999999999em;"><span style="top:-3em;"><span class="pstrut" style="height:3em;"></span><span class="mord mathdefault" style="margin-right:0.02778em;">D</span></span><span style="top:-3.25233em;"><span class="pstrut" style="height:3em;"></span><span class="accent-body" style="left:-0.19444em;">^</span></span></span></span></span></span><span class="msupsub"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height:0.31166399999999994em;"><span style="top:-2.5500000000000003em;margin-left:-0.02778em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mathdefault mtight">i</span></span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height:0.15em;"><span></span></span></span></span></span></span><span class="mspace" style="margin-right:0.2222222222222222em;"></span><span class="mbin">−</span><span class="mspace" style="margin-right:0.2222222222222222em;"></span></span><span class="base"><span class="strut" style="height:1em;vertical-align:-0.25em;"></span><span class="mord">∇</span><span class="mord"><span class="mord mathdefault" style="margin-right:0.02778em;">D</span><span class="msupsub"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height:0.31166399999999994em;"><span style="top:-2.5500000000000003em;margin-left:-0.02778em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mathdefault mtight">i</span></span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height:0.15em;"><span></span></span></span></span></span></span><span class="mclose">)</span><span class="mord">∥</span><span class="mspace" style="margin-right:0.2222222222222222em;"></span><span class="mbin">−</span><span class="mspace" style="margin-right:0.2222222222222222em;"></span></span><span class="base"><span class="strut" style="height:1.138331em;vertical-align:-0.247em;"></span><span class="mord mathdefault" style="margin-right:0.0037em;">α</span><span class="mspace" style="margin-right:0.16666666666666666em;"></span><span class="mop">lo<span style="margin-right:0.01389em;">g</span></span><span class="mspace" style="margin-right:0.16666666666666666em;"></span><span class="mord"><span class="mord">Σ</span><span class="msupsub"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height:0.8913309999999999em;"><span style="top:-2.4530000000000003em;margin-left:0em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mathdefault mtight">i</span></span></span><span style="top:-3.113em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mathdefault mtight" style="margin-right:0.02778em;">D</span></span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height:0.247em;"><span></span></span></span></span></span></span></span></span></span></span></p>
+<p>point map loss 同理：</p>
+<p><span class="katex-display"><span class="katex"><span class="katex-mathml"><math><semantics><mrow><mi mathvariant="normal">∥</mi><msubsup><mi mathvariant="normal">Σ</mi><mi>i</mi><mi>P</mi></msubsup><mo>⊙</mo><mo stretchy="false">(</mo><msub><mover accent="true"><mi>P</mi><mo>^</mo></mover><mi>i</mi></msub><mo>−</mo><msub><mi>P</mi><mi>i</mi></msub><mo stretchy="false">)</mo><mi mathvariant="normal">∥</mi><mo>+</mo><mi mathvariant="normal">∥</mi><msubsup><mi mathvariant="normal">Σ</mi><mi>i</mi><mi>P</mi></msubsup><mo>⊙</mo><mo stretchy="false">(</mo><mi mathvariant="normal">∇</mi><msub><mover accent="true"><mi>P</mi><mo>^</mo></mover><mi>i</mi></msub><mo>−</mo><mi mathvariant="normal">∇</mi><msub><mi>P</mi><mi>i</mi></msub><mo stretchy="false">)</mo><mi mathvariant="normal">∥</mi><mo>−</mo><mi>α</mi><mi>log</mi><mo>⁡</mo><msubsup><mi mathvariant="normal">Σ</mi><mi>i</mi><mi>P</mi></msubsup></mrow><annotation encoding="application/x-tex">\|\Sigma_i^P \odot (\hat P_i-P_i)\|
++ \|\Sigma_i^P \odot (\nabla \hat P_i-\nabla P_i)\|
+- \alpha \log \Sigma_i^P
+</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:1.1413309999999999em;vertical-align:-0.25em;"></span><span class="mord">∥</span><span class="mord"><span class="mord">Σ</span><span class="msupsub"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height:0.8913309999999999em;"><span style="top:-2.4530000000000003em;margin-left:0em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mathdefault mtight">i</span></span></span><span style="top:-3.113em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mathdefault mtight" style="margin-right:0.13889em;">P</span></span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height:0.247em;"><span></span></span></span></span></span></span><span class="mspace" style="margin-right:0.2222222222222222em;"></span><span class="mbin">⊙</span><span class="mspace" style="margin-right:0.2222222222222222em;"></span></span><span class="base"><span class="strut" style="height:1.19677em;vertical-align:-0.25em;"></span><span class="mopen">(</span><span class="mord"><span class="mord accent"><span class="vlist-t"><span class="vlist-r"><span class="vlist" style="height:0.9467699999999999em;"><span style="top:-3em;"><span class="pstrut" style="height:3em;"></span><span class="mord mathdefault" style="margin-right:0.13889em;">P</span></span><span style="top:-3.25233em;"><span class="pstrut" style="height:3em;"></span><span class="accent-body" style="left:-0.16666em;">^</span></span></span></span></span></span><span class="msupsub"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height:0.31166399999999994em;"><span style="top:-2.5500000000000003em;margin-left:-0.13889em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mathdefault mtight">i</span></span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height:0.15em;"><span></span></span></span></span></span></span><span class="mspace" style="margin-right:0.2222222222222222em;"></span><span class="mbin">−</span><span class="mspace" style="margin-right:0.2222222222222222em;"></span></span><span class="base"><span class="strut" style="height:1em;vertical-align:-0.25em;"></span><span class="mord"><span class="mord mathdefault" style="margin-right:0.13889em;">P</span><span class="msupsub"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height:0.31166399999999994em;"><span style="top:-2.5500000000000003em;margin-left:-0.13889em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mathdefault mtight">i</span></span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height:0.15em;"><span></span></span></span></span></span></span><span class="mclose">)</span><span class="mord">∥</span><span class="mspace" style="margin-right:0.2222222222222222em;"></span><span class="mbin">+</span><span class="mspace" style="margin-right:0.2222222222222222em;"></span></span><span class="base"><span class="strut" style="height:1.1413309999999999em;vertical-align:-0.25em;"></span><span class="mord">∥</span><span class="mord"><span class="mord">Σ</span><span class="msupsub"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height:0.8913309999999999em;"><span style="top:-2.4530000000000003em;margin-left:0em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mathdefault mtight">i</span></span></span><span style="top:-3.113em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mathdefault mtight" style="margin-right:0.13889em;">P</span></span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height:0.247em;"><span></span></span></span></span></span></span><span class="mspace" style="margin-right:0.2222222222222222em;"></span><span class="mbin">⊙</span><span class="mspace" style="margin-right:0.2222222222222222em;"></span></span><span class="base"><span class="strut" style="height:1.19677em;vertical-align:-0.25em;"></span><span class="mopen">(</span><span class="mord">∇</span><span class="mord"><span class="mord accent"><span class="vlist-t"><span class="vlist-r"><span class="vlist" style="height:0.9467699999999999em;"><span style="top:-3em;"><span class="pstrut" style="height:3em;"></span><span class="mord mathdefault" style="margin-right:0.13889em;">P</span></span><span style="top:-3.25233em;"><span class="pstrut" style="height:3em;"></span><span class="accent-body" style="left:-0.16666em;">^</span></span></span></span></span></span><span class="msupsub"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height:0.31166399999999994em;"><span style="top:-2.5500000000000003em;margin-left:-0.13889em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mathdefault mtight">i</span></span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height:0.15em;"><span></span></span></span></span></span></span><span class="mspace" style="margin-right:0.2222222222222222em;"></span><span class="mbin">−</span><span class="mspace" style="margin-right:0.2222222222222222em;"></span></span><span class="base"><span class="strut" style="height:1em;vertical-align:-0.25em;"></span><span class="mord">∇</span><span class="mord"><span class="mord mathdefault" style="margin-right:0.13889em;">P</span><span class="msupsub"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height:0.31166399999999994em;"><span style="top:-2.5500000000000003em;margin-left:-0.13889em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mathdefault mtight">i</span></span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height:0.15em;"><span></span></span></span></span></span></span><span class="mclose">)</span><span class="mord">∥</span><span class="mspace" style="margin-right:0.2222222222222222em;"></span><span class="mbin">−</span><span class="mspace" style="margin-right:0.2222222222222222em;"></span></span><span class="base"><span class="strut" style="height:1.138331em;vertical-align:-0.247em;"></span><span class="mord mathdefault" style="margin-right:0.0037em;">α</span><span class="mspace" style="margin-right:0.16666666666666666em;"></span><span class="mop">lo<span style="margin-right:0.01389em;">g</span></span><span class="mspace" style="margin-right:0.16666666666666666em;"></span><span class="mord"><span class="mord">Σ</span><span class="msupsub"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height:0.8913309999999999em;"><span style="top:-2.4530000000000003em;margin-left:0em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mathdefault mtight">i</span></span></span><span style="top:-3.113em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mathdefault mtight" style="margin-right:0.13889em;">P</span></span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height:0.247em;"><span></span></span></span></span></span></span></span></span></span></span></p>
+<p>这个设计和 <a href="/2026/05/11/ai-files-paper-deep-dives-embodied-ai-depth-anything-v2/">Depth Anything V2</a> 的 gradient matching 思路有点呼应：如果只学数值，不学局部梯度，深度和点云边界会更容易糊；但 VGGT 这里还把 uncertainty 学进来，让模型能表达哪些位置更不可靠。</p>
+<h2 id="ground-truth-coordinate-normalization"><a class="markdownIt-Anchor" href="#ground-truth-coordinate-normalization"></a> Ground Truth Coordinate Normalization</h2>
+<p>3D 重建天然有尺度和坐标系歧义。同一组图像可以对应无数个整体平移、旋转、缩放后的 3D 解。VGGT 的做法是：</p>
+<ol>
+<li>所有 GT quantities 先表达在第一帧相机坐标系；</li>
+<li>计算 point map 里所有 3D points 到原点的平均欧氏距离；</li>
+<li>用这个 scale 归一化 camera translations、point maps 和 depth maps；</li>
+<li>不对模型输出做同样的显式归一化，而是让模型从训练数据中学习这个规范。</li>
+</ol>
+<p>论文特别提到，像 DUSt3R 那样也对 network predictions 做 normalization 并不是必要条件，反而可能引入训练不稳定。</p>
+<h2 id="训练配方"><a class="markdownIt-Anchor" href="#训练配方"></a> 训练配方</h2>
+<p>VGGT 的训练细节值得单独拎出来，因为它的能力很大程度来自多数据、多任务和大模型训练的组合。</p>
+<table>
+<thead>
+<tr>
+<th>Setting</th>
+<th>Value</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Optimizer</td>
+<td>AdamW</td>
+</tr>
+<tr>
+<td>Iterations</td>
+<td>160K</td>
+</tr>
+<tr>
+<td>LR schedule</td>
+<td>cosine</td>
+</tr>
+<tr>
+<td>Peak LR</td>
+<td>0.0002</td>
+</tr>
+<tr>
+<td>Warmup</td>
+<td>8K iterations</td>
+</tr>
+<tr>
+<td>Frames per scene</td>
+<td>2-24</td>
+</tr>
+<tr>
+<td>Total frames per batch</td>
+<td>48</td>
+</tr>
+<tr>
+<td>Image / depth / point resize</td>
+<td>longer side 518 pixels</td>
+</tr>
+<tr>
+<td>Crop</td>
+<td>shorter dimension 168-518 pixels, multiple of 14, around principal point</td>
+</tr>
+<tr>
+<td>Augmentation</td>
+<td>aggressive color augmentation per frame, color jittering, Gaussian blur, grayscale</td>
+</tr>
+<tr>
+<td>Precision</td>
+<td>bfloat16</td>
+</tr>
+<tr>
+<td>Memory saving</td>
+<td>gradient checkpointing</td>
+</tr>
+<tr>
+<td>Gradient clipping</td>
+<td>norm 1.0</td>
+</tr>
+<tr>
+<td>Hardware</td>
+<td>64 A100 GPUs</td>
+</tr>
+<tr>
+<td>Training time</td>
+<td>9 days</td>
+</tr>
+</tbody>
+</table>
+<p>训练 batch 的构造是：先随机选一个 training dataset，再从其中均匀采样一个 scene。每个 dataset 的权重大致相近但不完全相同，接近 DUSt3R 的做法。训练时排除少于 24 frames 的 sequences。</p>
+<p>track supervision 不是凭空来的。论文用 depth maps unproject 到 3D，再 reproject 到目标帧，只保留 reprojected depths 和 target depth maps 一致的 correspondences。和 query frame 相似度太低的帧会从 batch sampling 排除；如果极少数情况下没有 valid correspondences，则跳过 tracking loss。</p>
+<h2 id="训练数据"><a class="markdownIt-Anchor" href="#训练数据"></a> 训练数据</h2>
+<p>论文没有给出逐项数据规模表，但列出了训练数据来源，覆盖真实室内、户外、合成、视频、object-centric 和 egocentric / digital twin 等场景。</p>
+<table>
+<thead>
+<tr>
+<th>Dataset / Source</th>
+<th>Role in VGGT training</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Co3Dv2</td>
+<td>object-centric multi-view scenes</td>
+</tr>
+<tr>
+<td>BlendMVS</td>
+<td>multi-view stereo scenes</td>
+</tr>
+<tr>
+<td>DL3DV</td>
+<td>large-scale dynamic / real-world 3D scenes</td>
+</tr>
+<tr>
+<td>MegaDepth</td>
+<td>internet photo tourism / SfM geometry</td>
+</tr>
+<tr>
+<td>Kubric</td>
+<td>synthetic scenes and tracks</td>
+</tr>
+<tr>
+<td>WildRGB</td>
+<td>RGB-D / wild scene supervision</td>
+</tr>
+<tr>
+<td>ScanNet</td>
+<td>indoor RGB-D scenes</td>
+</tr>
+<tr>
+<td>HyperSim</td>
+<td>synthetic indoor scenes</td>
+</tr>
+<tr>
+<td>Mapillary</td>
+<td>street-level outdoor imagery</td>
+</tr>
+<tr>
+<td>Habitat</td>
+<td>simulated embodied environments</td>
+</tr>
+<tr>
+<td>Replica</td>
+<td>indoor 3D reconstruction scenes</td>
+</tr>
+<tr>
+<td>MVS-Synth</td>
+<td>synthetic multi-view stereo</td>
+</tr>
+<tr>
+<td>PointOdyssey</td>
+<td>long-range point tracking / dynamic scenes</td>
+</tr>
+<tr>
+<td>Virtual KITTI</td>
+<td>synthetic driving scenes</td>
+</tr>
+<tr>
+<td>Aria Synthetic Environments</td>
+<td>egocentric synthetic environments</td>
+</tr>
+<tr>
+<td>Aria Digital Twin</td>
+<td>egocentric digital twin data</td>
+</tr>
+<tr>
+<td>synthetic artist-created assets similar to Objaverse</td>
+<td>object / asset-centric synthetic 3D supervision</td>
+</tr>
+</tbody>
+</table>
+<p>这些数据的 3D annotations 来自 direct sensor capture、synthetic engines 或 SfM。对具身系统来说，这很关键：模型不是只在 phototourism 上学 camera，也不是只在 RGB-D 室内学 depth，而是把多个几何任务和多种数据来源统一到同一个训练接口里。</p>
+<h2 id="multi-task-为什么有用"><a class="markdownIt-Anchor" href="#multi-task-为什么有用"></a> Multi-task 为什么有用</h2>
+<p>VGGT 的一个关键判断是：即使 camera、depth、point map 之间可以通过几何公式互相推导，也应该在训练时都显式预测。因为这些任务提供的梯度不同，会共同塑造更好的 scene representation。</p>
+<p>Table 9 is redrawn below with the original English fields.</p>
+<table>
+<thead>
+<tr>
+<th>w. <span class="katex"><span class="katex-mathml"><math><semantics><mrow><msub><mi mathvariant="script">L</mi><mtext>camera</mtext></msub></mrow><annotation encoding="application/x-tex">\mathcal{L}_\text{camera}</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.83333em;vertical-align:-0.15em;"></span><span class="mord"><span class="mord"><span class="mord mathcal">L</span></span><span class="msupsub"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height:0.151392em;"><span style="top:-2.5500000000000003em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord text mtight"><span class="mord mtight">camera</span></span></span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height:0.15em;"><span></span></span></span></span></span></span></span></span></span></th>
+<th>w. <span class="katex"><span class="katex-mathml"><math><semantics><mrow><msub><mi mathvariant="script">L</mi><mtext>depth</mtext></msub></mrow><annotation encoding="application/x-tex">\mathcal{L}_\text{depth}</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.969438em;vertical-align:-0.286108em;"></span><span class="mord"><span class="mord"><span class="mord mathcal">L</span></span><span class="msupsub"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height:0.3361079999999999em;"><span style="top:-2.5500000000000003em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord text mtight"><span class="mord mtight">depth</span></span></span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height:0.286108em;"><span></span></span></span></span></span></span></span></span></span></th>
+<th>w. <span class="katex"><span class="katex-mathml"><math><semantics><mrow><msub><mi mathvariant="script">L</mi><mtext>track</mtext></msub></mrow><annotation encoding="application/x-tex">\mathcal{L}_\text{track}</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.83333em;vertical-align:-0.15em;"></span><span class="mord"><span class="mord"><span class="mord mathcal">L</span></span><span class="msupsub"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height:0.33610799999999996em;"><span style="top:-2.5500000000000003em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord text mtight"><span class="mord mtight">track</span></span></span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height:0.15em;"><span></span></span></span></span></span></span></span></span></span></th>
+<th>Acc.<span class="katex"><span class="katex-mathml"><math><semantics><mrow><mo>↓</mo></mrow><annotation encoding="application/x-tex">\downarrow</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.8888799999999999em;vertical-align:-0.19444em;"></span><span class="mrel">↓</span></span></span></span></th>
+<th>Comp.<span class="katex"><span class="katex-mathml"><math><semantics><mrow><mo>↓</mo></mrow><annotation encoding="application/x-tex">\downarrow</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.8888799999999999em;vertical-align:-0.19444em;"></span><span class="mrel">↓</span></span></span></span></th>
+<th>Overall<span class="katex"><span class="katex-mathml"><math><semantics><mrow><mo>↓</mo></mrow><annotation encoding="application/x-tex">\downarrow</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.8888799999999999em;vertical-align:-0.19444em;"></span><span class="mrel">↓</span></span></span></span></th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>✗</td>
+<td>✓</td>
+<td>✓</td>
+<td>1.042</td>
+<td>0.627</td>
+<td>0.834</td>
+</tr>
+<tr>
+<td>✓</td>
+<td>✗</td>
+<td>✓</td>
+<td>0.920</td>
+<td>0.534</td>
+<td>0.727</td>
+</tr>
+<tr>
+<td>✓</td>
+<td>✓</td>
+<td>✗</td>
+<td>0.976</td>
+<td>0.603</td>
+<td>0.790</td>
+</tr>
+<tr>
+<td>✓</td>
+<td>✓</td>
+<td>✓</td>
+<td><strong>0.901</strong></td>
+<td><strong>0.518</strong></td>
+<td><strong>0.709</strong></td>
+</tr>
+</tbody>
+</table>
+<p><small>表源：<code>VGGT</code>，Table 9。原论文表格要点：camera、depth、track 同时训练时，ETH3D point map estimation 最好；去掉任一任务都会伤害最终 point map accuracy。</small></p>
+<p>这张表可以直接类比机器人多任务感知。相机、深度、点云和 correspondence 不应该被看作互不相干的 head；它们是同一个 3D scene belief 的不同投影。</p>
+<h2 id="核心结果"><a class="markdownIt-Anchor" href="#核心结果"></a> 核心结果</h2>
+<h3 id="camera-pose"><a class="markdownIt-Anchor" href="#camera-pose"></a> Camera pose</h3>
+<p>Table 1 is redrawn below with the original English fields.</p>
+<table>
+<thead>
+<tr>
+<th>Methods</th>
+<th>Re10K <em>(unseen)</em> AUC@30 <span class="katex"><span class="katex-mathml"><math><semantics><mrow><mo>↑</mo></mrow><annotation encoding="application/x-tex">\uparrow</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.8888799999999999em;vertical-align:-0.19444em;"></span><span class="mrel">↑</span></span></span></span></th>
+<th>CO3Dv2 AUC@30 <span class="katex"><span class="katex-mathml"><math><semantics><mrow><mo>↑</mo></mrow><annotation encoding="application/x-tex">\uparrow</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.8888799999999999em;vertical-align:-0.19444em;"></span><span class="mrel">↑</span></span></span></span></th>
+<th>Time</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Colmap+SPSG</td>
+<td>45.2</td>
+<td>25.3</td>
+<td>~15s</td>
+</tr>
+<tr>
+<td>PixSfM</td>
+<td>49.4</td>
+<td>30.1</td>
+<td>&gt;20s</td>
+</tr>
+<tr>
+<td>PoseDiff</td>
+<td>48.0</td>
+<td>66.5</td>
+<td>~7s</td>
+</tr>
+<tr>
+<td>DUSt3R</td>
+<td>67.7</td>
+<td>76.7</td>
+<td>~7s</td>
+</tr>
+<tr>
+<td>MASt3R</td>
+<td>76.4</td>
+<td>81.8</td>
+<td>~9s</td>
+</tr>
+<tr>
+<td>VGGSfM v2</td>
+<td>78.9</td>
+<td>83.4</td>
+<td>~10s</td>
+</tr>
+<tr>
+<td>MV-DUSt3R <span class="katex"><span class="katex-mathml"><math><semantics><mrow><msup><mrow></mrow><mo>‡</mo></msup></mrow><annotation encoding="application/x-tex">^{\ddagger}</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.8491079999999999em;vertical-align:0em;"></span><span class="mord"><span></span><span class="msupsub"><span class="vlist-t"><span class="vlist-r"><span class="vlist" style="height:0.8491079999999999em;"><span style="top:-3.063em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mtight"><span class="mord mtight">‡</span></span></span></span></span></span></span></span></span></span></span></span></td>
+<td>71.3</td>
+<td>69.5</td>
+<td>~0.6s</td>
+</tr>
+<tr>
+<td>CUT3R <span class="katex"><span class="katex-mathml"><math><semantics><mrow><msup><mrow></mrow><mo>‡</mo></msup></mrow><annotation encoding="application/x-tex">^{\ddagger}</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.8491079999999999em;vertical-align:0em;"></span><span class="mord"><span></span><span class="msupsub"><span class="vlist-t"><span class="vlist-r"><span class="vlist" style="height:0.8491079999999999em;"><span style="top:-3.063em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mtight"><span class="mord mtight">‡</span></span></span></span></span></span></span></span></span></span></span></span></td>
+<td>75.3</td>
+<td>82.8</td>
+<td>~0.6s</td>
+</tr>
+<tr>
+<td>FLARE <span class="katex"><span class="katex-mathml"><math><semantics><mrow><msup><mrow></mrow><mo>‡</mo></msup></mrow><annotation encoding="application/x-tex">^{\ddagger}</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.8491079999999999em;vertical-align:0em;"></span><span class="mord"><span></span><span class="msupsub"><span class="vlist-t"><span class="vlist-r"><span class="vlist" style="height:0.8491079999999999em;"><span style="top:-3.063em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mtight"><span class="mord mtight">‡</span></span></span></span></span></span></span></span></span></span></span></span></td>
+<td>78.8</td>
+<td>83.3</td>
+<td>~0.5s</td>
+</tr>
+<tr>
+<td>Fast3R <span class="katex"><span class="katex-mathml"><math><semantics><mrow><msup><mrow></mrow><mo>‡</mo></msup></mrow><annotation encoding="application/x-tex">^{\ddagger}</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.8491079999999999em;vertical-align:0em;"></span><span class="mord"><span></span><span class="msupsub"><span class="vlist-t"><span class="vlist-r"><span class="vlist" style="height:0.8491079999999999em;"><span style="top:-3.063em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mtight"><span class="mord mtight">‡</span></span></span></span></span></span></span></span></span></span></span></span></td>
+<td>72.7</td>
+<td>82.5</td>
+<td><strong>~0.2s</strong></td>
+</tr>
+<tr>
+<td>Ours (Feed-Forward)</td>
+<td>85.3</td>
+<td>88.2</td>
+<td><strong>~0.2s</strong></td>
+</tr>
+<tr>
+<td>Ours (with BA)</td>
+<td><strong>93.5</strong></td>
+<td><strong>91.8</strong></td>
+<td>~1.8s</td>
+</tr>
+</tbody>
+</table>
+<p><small>表源：<code>VGGT</code>，Table 1。原论文表格要点：在 10 random frames 的 camera pose estimation 上，VGGT feed-forward 已经强于多种优化型或并发 feed-forward 方法；加 BA 后精度继续上升但仍明显快于传统 pipeline。</small></p>
+<p>注意这里 Re10K 是 unseen。VGGT 没在 RealEstate10K 上训练，却在这个测试上有明显优势，这说明它学到的不是某个 dataset 的 camera 模板，而是更通用的多视角几何表征。</p>
+<h3 id="dense-mvs"><a class="markdownIt-Anchor" href="#dense-mvs"></a> Dense MVS</h3>
+<p>Table 2 is redrawn below with the original English fields.</p>
+<table>
+<thead>
+<tr>
+<th>Known GT camera</th>
+<th>Method</th>
+<th>Acc.<span class="katex"><span class="katex-mathml"><math><semantics><mrow><mo>↓</mo></mrow><annotation encoding="application/x-tex">\downarrow</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.8888799999999999em;vertical-align:-0.19444em;"></span><span class="mrel">↓</span></span></span></span></th>
+<th>Comp.<span class="katex"><span class="katex-mathml"><math><semantics><mrow><mo>↓</mo></mrow><annotation encoding="application/x-tex">\downarrow</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.8888799999999999em;vertical-align:-0.19444em;"></span><span class="mrel">↓</span></span></span></span></th>
+<th>Overall<span class="katex"><span class="katex-mathml"><math><semantics><mrow><mo>↓</mo></mrow><annotation encoding="application/x-tex">\downarrow</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.8888799999999999em;vertical-align:-0.19444em;"></span><span class="mrel">↓</span></span></span></span></th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>✓</td>
+<td>Gipuma</td>
+<td><strong>0.283</strong></td>
+<td>0.873</td>
+<td>0.578</td>
+</tr>
+<tr>
+<td>✓</td>
+<td>MVSNet</td>
+<td>0.396</td>
+<td>0.527</td>
+<td>0.462</td>
+</tr>
+<tr>
+<td>✓</td>
+<td>CIDER</td>
+<td>0.417</td>
+<td>0.437</td>
+<td>0.427</td>
+</tr>
+<tr>
+<td>✓</td>
+<td>PatchmatchNet</td>
+<td>0.427</td>
+<td>0.377</td>
+<td>0.417</td>
+</tr>
+<tr>
+<td>✓</td>
+<td>MASt3R</td>
+<td>0.403</td>
+<td>0.344</td>
+<td>0.374</td>
+</tr>
+<tr>
+<td>✓</td>
+<td>GeoMVSNet</td>
+<td>0.331</td>
+<td><strong>0.259</strong></td>
+<td><strong>0.295</strong></td>
+</tr>
+<tr>
+<td>✗</td>
+<td>DUSt3R</td>
+<td>2.677</td>
+<td>0.805</td>
+<td>1.741</td>
+</tr>
+<tr>
+<td>✗</td>
+<td>Ours</td>
+<td><strong>0.389</strong></td>
+<td><strong>0.374</strong></td>
+<td><strong>0.382</strong></td>
+</tr>
+</tbody>
+</table>
+<p><small>表源：<code>VGGT</code>，Table 2。原论文表格要点：在 DTU Dense MVS 上，VGGT 不使用 GT camera，仍大幅超过同样无 GT camera 的 DUSt3R，并接近部分使用 GT camera 的 MVS 方法。</small></p>
+<h3 id="point-map"><a class="markdownIt-Anchor" href="#point-map"></a> Point map</h3>
+<p>Table 3 is redrawn below with the original English fields.</p>
+<table>
+<thead>
+<tr>
+<th>Methods</th>
+<th>Acc.<span class="katex"><span class="katex-mathml"><math><semantics><mrow><mo>↓</mo></mrow><annotation encoding="application/x-tex">\downarrow</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.8888799999999999em;vertical-align:-0.19444em;"></span><span class="mrel">↓</span></span></span></span></th>
+<th>Comp.<span class="katex"><span class="katex-mathml"><math><semantics><mrow><mo>↓</mo></mrow><annotation encoding="application/x-tex">\downarrow</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.8888799999999999em;vertical-align:-0.19444em;"></span><span class="mrel">↓</span></span></span></span></th>
+<th>Overall<span class="katex"><span class="katex-mathml"><math><semantics><mrow><mo>↓</mo></mrow><annotation encoding="application/x-tex">\downarrow</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.8888799999999999em;vertical-align:-0.19444em;"></span><span class="mrel">↓</span></span></span></span></th>
+<th>Time</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>DUSt3R</td>
+<td>1.167</td>
+<td>0.842</td>
+<td>1.005</td>
+<td>~7s</td>
+</tr>
+<tr>
+<td>MASt3R</td>
+<td>0.968</td>
+<td>0.684</td>
+<td>0.826</td>
+<td>~9s</td>
+</tr>
+<tr>
+<td>Ours (Point)</td>
+<td>0.901</td>
+<td>0.518</td>
+<td>0.709</td>
+<td>~0.2s</td>
+</tr>
+<tr>
+<td>Ours (Depth + Cam)</td>
+<td><strong>0.873</strong></td>
+<td><strong>0.482</strong></td>
+<td><strong>0.677</strong></td>
+<td>~0.2s</td>
+</tr>
+</tbody>
+</table>
+<p><small>表源：<code>VGGT</code>，Table 3。原论文表格要点：在 ETH3D point map estimation 上，VGGT feed-forward 速度远快于 DUSt3R / MASt3R；并且用 depth + camera 构造点云比直接 point map head 更准。</small></p>
+<p>这个结果很有意思。虽然 VGGT 训练时显式预测 point map，但推理时组合 independent depth maps 和 camera parameters 反而更准。这也解释了为什么 over-complete outputs 有价值：不同 head 可以互相校验，工程上也可以选更可靠的组合。</p>
+<p><img  
+                     lazyload
+                     src="/images/loading.svg"
+                     data-src="/image/ai-notes/images/paper-deep-dives/embodied-ai/vggt/figure-4-vggt-dust3r.png"
+                      alt="VGGT vs DUSt3R 原论文图" 
+                ></p>
+<p><small>图源：<code>VGGT</code>，Qualitative comparison figure。原论文图意：VGGT 在 in-the-wild images 上比 DUSt3R 更稳，包括油画平面、无重叠双图场景和重复纹理场景；DUSt3R 在超过 32 frames 时还会出现内存限制。</small></p>
+<h3 id="runtime-and-memory"><a class="markdownIt-Anchor" href="#runtime-and-memory"></a> Runtime and memory</h3>
+<p>Table 7 is redrawn below with the original English fields.</p>
+<table>
+<thead>
+<tr>
+<th>Input Frames</th>
+<th>1</th>
+<th>2</th>
+<th>4</th>
+<th>8</th>
+<th>10</th>
+<th>20</th>
+<th>50</th>
+<th>100</th>
+<th>200</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Time (s)</td>
+<td>0.04</td>
+<td>0.05</td>
+<td>0.07</td>
+<td>0.11</td>
+<td>0.14</td>
+<td>0.31</td>
+<td>1.04</td>
+<td>3.12</td>
+<td>8.75</td>
+</tr>
+<tr>
+<td>Mem. (GB)</td>
+<td>1.88</td>
+<td>2.07</td>
+<td>2.45</td>
+<td>3.23</td>
+<td>3.63</td>
+<td>5.58</td>
+<td>11.41</td>
+<td>21.15</td>
+<td>40.63</td>
+</tr>
+</tbody>
+</table>
+<p><small>表源：<code>VGGT</code>，Runtime and peak GPU memory usage table。原论文表格要点：在单张 H100、336 x 518 图像分辨率下，backbone 可处理从 1 到 200 frames 的输入；frame 数越大，global attention 使显存增长明显。</small></p>
+<p>论文还补充：camera head 很轻，通常只占 feature backbone runtime 约 5%、GPU memory 约 2%；每个 DPT head 平均每帧约 0.03s 和 0.2GB。也就是说，真正的大头是跨帧 feature backbone。</p>
+<h2 id="下游vggt-作为-feature-backbone"><a class="markdownIt-Anchor" href="#下游vggt-作为-feature-backbone"></a> 下游：VGGT 作为 feature backbone</h2>
+<p>VGGT 不只作为几何预测器，还能作为下游任务的 feature backbone。</p>
+<p>在 dynamic point tracking 上，论文把 CoTracker2 的 backbone 替换为 VGGT 的 pretrained feature backbone，然后在 Kubric 上 fine-tune 整个 tracker。结果显示 TAP-Vid 上有明显提升。</p>
+<table>
+<thead>
+<tr>
+<th>Method</th>
+<th>Kinetics AJ</th>
+<th>Kinetics <span class="katex"><span class="katex-mathml"><math><semantics><mrow><msubsup><mi>δ</mi><mtext>vis</mtext><mtext>avg</mtext></msubsup></mrow><annotation encoding="application/x-tex">\delta^\text{avg}_\text{vis}</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:1.065002em;vertical-align:-0.282702em;"></span><span class="mord"><span class="mord mathdefault" style="margin-right:0.03785em;">δ</span><span class="msupsub"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height:0.7823em;"><span style="top:-2.417298em;margin-left:-0.03785em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord text mtight"><span class="mord mtight">vis</span></span></span></span><span style="top:-3.1809080000000005em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord text mtight"><span class="mord mtight">avg</span></span></span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height:0.282702em;"><span></span></span></span></span></span></span></span></span></span></th>
+<th>Kinetics OA</th>
+<th>RGB-S AJ</th>
+<th>RGB-S <span class="katex"><span class="katex-mathml"><math><semantics><mrow><msubsup><mi>δ</mi><mtext>vis</mtext><mtext>avg</mtext></msubsup></mrow><annotation encoding="application/x-tex">\delta^\text{avg}_\text{vis}</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:1.065002em;vertical-align:-0.282702em;"></span><span class="mord"><span class="mord mathdefault" style="margin-right:0.03785em;">δ</span><span class="msupsub"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height:0.7823em;"><span style="top:-2.417298em;margin-left:-0.03785em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord text mtight"><span class="mord mtight">vis</span></span></span></span><span style="top:-3.1809080000000005em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord text mtight"><span class="mord mtight">avg</span></span></span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height:0.282702em;"><span></span></span></span></span></span></span></span></span></span></th>
+<th>RGB-S OA</th>
+<th>DAVIS AJ</th>
+<th>DAVIS <span class="katex"><span class="katex-mathml"><math><semantics><mrow><msubsup><mi>δ</mi><mtext>vis</mtext><mtext>avg</mtext></msubsup></mrow><annotation encoding="application/x-tex">\delta^\text{avg}_\text{vis}</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:1.065002em;vertical-align:-0.282702em;"></span><span class="mord"><span class="mord mathdefault" style="margin-right:0.03785em;">δ</span><span class="msupsub"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height:0.7823em;"><span style="top:-2.417298em;margin-left:-0.03785em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord text mtight"><span class="mord mtight">vis</span></span></span></span><span style="top:-3.1809080000000005em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord text mtight"><span class="mord mtight">avg</span></span></span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height:0.282702em;"><span></span></span></span></span></span></span></span></span></span></th>
+<th>DAVIS OA</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>TAPTR</td>
+<td>49.0</td>
+<td>64.4</td>
+<td>85.2</td>
+<td>60.8</td>
+<td>76.2</td>
+<td>87.0</td>
+<td>63.0</td>
+<td>76.1</td>
+<td>91.1</td>
+</tr>
+<tr>
+<td>LocoTrack</td>
+<td>52.9</td>
+<td>66.8</td>
+<td>85.3</td>
+<td>69.7</td>
+<td>83.2</td>
+<td>89.5</td>
+<td>62.9</td>
+<td>75.3</td>
+<td>87.2</td>
+</tr>
+<tr>
+<td>BootsTAPIR</td>
+<td>54.6</td>
+<td>68.4</td>
+<td>86.5</td>
+<td>70.8</td>
+<td>83.0</td>
+<td>89.9</td>
+<td>61.4</td>
+<td>73.6</td>
+<td>88.7</td>
+</tr>
+<tr>
+<td>CoTracker</td>
+<td>49.6</td>
+<td>64.3</td>
+<td>83.3</td>
+<td>67.4</td>
+<td>78.9</td>
+<td>85.2</td>
+<td>61.8</td>
+<td>76.1</td>
+<td>88.3</td>
+</tr>
+<tr>
+<td>CoTracker + Ours</td>
+<td><strong>57.2</strong></td>
+<td><strong>69.0</strong></td>
+<td><strong>88.9</strong></td>
+<td><strong>72.1</strong></td>
+<td><strong>84.0</strong></td>
+<td><strong>91.6</strong></td>
+<td><strong>64.7</strong></td>
+<td><strong>77.5</strong></td>
+<td><strong>91.4</strong></td>
+</tr>
+</tbody>
+</table>
+<p><small>表源：<code>VGGT</code>，Dynamic Point Tracking Results on TAP-Vid。原论文表格要点：用 VGGT pretrained features 替换 CoTracker backbone 后，Kinetics、RGB-S、DAVIS 三个 benchmark 上多项指标达到最好。</small></p>
+<p><img  
+                     lazyload
+                     src="/images/loading.svg"
+                     data-src="/image/ai-notes/images/paper-deep-dives/embodied-ai/vggt/figure-5-dynamic-track.png"
+                      alt="VGGT tracking 原论文图" 
+                ></p>
+<p><small>图源：<code>VGGT</code>，Visualization of Rigid and Dynamic Point Tracking。原论文图意：上半部分展示 VGGT tracking module 在无序静态图像集合中输出 keypoint tracks；下半部分展示用 VGGT backbone 增强动态点跟踪器。</small></p>
+<h2 id="和-da3-dust3r-mast3r-的关系"><a class="markdownIt-Anchor" href="#和-da3-dust3r-mast3r-的关系"></a> 和 DA3、DUSt3R、MASt3R 的关系</h2>
+<p>VGGT 很容易和 <a href="/2026/05/11/ai-files-paper-deep-dives-embodied-ai-depth-anything-3/">Depth Anything 3</a> 放在一起读，但两者的哲学不同。</p>
+<table>
+<thead>
+<tr>
+<th>Dimension</th>
+<th>VGGT</th>
+<th>DA3</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Main target</td>
+<td>cameras + depth maps + point maps + 3D point tracks</td>
+<td>depth + ray + optional camera / 3D fusion</td>
+</tr>
+<tr>
+<td>Architecture style</td>
+<td>large feed-forward transformer with over-complete heads</td>
+<td>single pretrained DINOv2 backbone + cross-view attention + Dual-DPT</td>
+</tr>
+<tr>
+<td>Training emphasis</td>
+<td>multi-task 3D attributes and tracking features</td>
+<td>depth-ray representation and teacher-student depth supervision</td>
+</tr>
+<tr>
+<td>Strength</td>
+<td>direct all-in-one 3D attributes, fast geometry pipeline replacement</td>
+<td>depth/ray target更简洁，强调任意视角 visual space 和可融合几何</td>
+</tr>
+<tr>
+<td>Risk</td>
+<td>多 head 输出之间可能需要工程选择和一致性检查</td>
+<td>不直接覆盖 VGGT 那种 point tracking / over-complete heads</td>
+</tr>
+</tbody>
+</table>
+<p>DUSt3R / MASt3R 则是 VGGT 的直接前置线。它们证明 point maps 是很强的中间表示，但常需要 pairwise processing、global alignment 或更重的后处理。VGGT 的突破点是把多视角集合直接放进一个 Transformer，通过 global attention 一次处理多帧，尽量减少测试时优化。</p>
+<h2 id="具身系统里怎么用"><a class="markdownIt-Anchor" href="#具身系统里怎么用"></a> 具身系统里怎么用</h2>
+<p>在机器人里，VGGT 最适合作为“快速几何状态生成器”。</p>
+<table>
+<thead>
+<tr>
+<th>用法</th>
+<th>推荐程度</th>
+<th>原因</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>多视角相机/视频转点云和粗地图</td>
+<td>高</td>
+<td>一次前向得到 camera + depth / point maps，可作为 SLAM / reconstruction / planner 的 warm start</td>
+</tr>
+<tr>
+<td>VLA / 世界模型前的 3D state encoder</td>
+<td>高</td>
+<td>把 RGB history 转成 camera、depth、track 和点云，减少纯像素表征的几何盲点</td>
+</tr>
+<tr>
+<td>视角规划和主动感知</td>
+<td>中高</td>
+<td>camera pose 与 point map 能帮助判断哪里没看见、哪里遮挡、下一视角应去哪</td>
+</tr>
+<tr>
+<td>抓取前几何预处理</td>
+<td>中</td>
+<td>可提供物体粗 3D 形状和深度，但抓取还要结合尺度校准、接触模型和夹爪约束</td>
+</tr>
+<tr>
+<td>安全距离、碰撞制动</td>
+<td>低</td>
+<td>这类闭环仍需要可靠标定、实时传感器和安全冗余，不能只信 feed-forward 几何</td>
+</tr>
+</tbody>
+</table>
+<p>一句话总结：VGGT 把“看多张图恢复 3D”这件事从传统优化管线变成了大模型前向推理问题。对具身智能来说，它的价值不是替代控制器，而是把相机、深度、点和 track 变成一个更快、更统一的感知接口。</p>
+<h2 id="参考资料"><a class="markdownIt-Anchor" href="#参考资料"></a> 参考资料</h2>
+<ol>
+<li><a class="link"   target="_blank" rel="noopener" href="https://arxiv.org/abs/2503.11651" >VGGT: Visual Geometry Grounded Transformer<i class="fa-solid fa-arrow-up-right ml-[0.2em] font-light align-text-top text-[0.7em] link-icon"></i></a></li>
+<li><a class="link"   target="_blank" rel="noopener" href="https://vgg-t.github.io/" >VGGT project page<i class="fa-solid fa-arrow-up-right ml-[0.2em] font-light align-text-top text-[0.7em] link-icon"></i></a></li>
+<li><a class="link"   target="_blank" rel="noopener" href="https://github.com/facebookresearch/vggt" >facebookresearch/vggt<i class="fa-solid fa-arrow-up-right ml-[0.2em] font-light align-text-top text-[0.7em] link-icon"></i></a></li>
+</ol>
+
+		</div>
+
+		
+		<div class="post-copyright-info w-full my-8 px-2 sm:px-6 md:px-8">
+			<div class="article-copyright-info-container">
+    <ul>
+        <li><strong>Title:</strong> 论文专题讲解：VGGT：一次前向推理恢复相机、深度、点云与轨迹</li>
+        <li><strong>Author:</strong> Charles</li>
+        <li><strong>Created at
+                :</strong> 2025-11-02 09:00:00</li>
+        
+            <li>
+                <strong>Updated at
+                    :</strong> 2025-11-02 09:00:00
+            </li>
+        
+        <li>
+            <strong>Link:</strong> https://charles2530.github.io/2025/11/02/ai-files-paper-deep-dives-embodied-ai-vggt/
+        </li>
+        <li>
+            <strong>
+                License:
+            </strong>
+            
+
+            
+                This work is licensed under <a class="license" target="_blank" rel="noopener" href="https://creativecommons.org/licenses/by-nc-sa/4.0">CC BY-NC-SA 4.0</a>.
+            
+        </li>
+    </ul>
+</div>
+
+		</div>
+		
+
+		
+		<ul class="post-tags-box text-lg mt-1.5 flex-wrap justify-center flex md:hidden">
+			
+			<li class="tag-item mx-0.5">
+				<a href="/tags/AI/">#AI</a>&nbsp;
+			</li>
+			
+			<li class="tag-item mx-0.5">
+				<a href="/tags/%E5%85%B7%E8%BA%AB%E6%99%BA%E8%83%BD/">#具身智能</a>&nbsp;
+			</li>
+			
+			<li class="tag-item mx-0.5">
+				<a href="/tags/%E8%AE%BA%E6%96%87%E4%B8%93%E9%A2%98/">#论文专题</a>&nbsp;
+			</li>
+			
+		</ul>
+		
+
+		
+
+		
+		<div class="article-nav my-8 flex justify-between items-center px-2 sm:px-6 md:px-8">
+			
+			<div class="article-prev border-border-color shadow-redefine-flat shadow-shadow-color-2 rounded-medium px-4 py-2 hover:shadow-redefine-flat-hover hover:shadow-shadow-color-2">
+				<a class="prev" rel="prev" href="/2025/11/04/ai-files-paper-deep-dives-embodied-ai-video-prediction-policy/">
+					<span class="left arrow-icon flex justify-center items-center">
+						<i class="fa-solid fa-chevron-left"></i>
+					</span>
+					<span class="title flex justify-center items-center">
+						<span class="post-nav-title-item truncate max-w-48">论文专题讲解：Video Prediction Policy：预测视觉表征训练机器人策略</span>
+						<span class="post-nav-item">Prev posts</span>
+					</span>
+				</a>
+			</div>
+			
+			
+			<div class="article-next border-border-color shadow-redefine-flat shadow-shadow-color-2 rounded-medium px-4 py-2 hover:shadow-redefine-flat-hover hover:shadow-shadow-color-2">
+				<a class="next" rel="next" href="/2025/10/31/ai-files-paper-deep-dives-embodied-ai-spatialvla/">
+					<span class="title flex justify-center items-center">
+						<span class="post-nav-title-item truncate max-w-48">论文专题讲解：SpatialVLA：3D 空间表征接入 VLA</span>
+						<span class="post-nav-item">Next posts</span>
+					</span>
+					<span class="right arrow-icon flex justify-center items-center">
+						<i class="fa-solid fa-chevron-right"></i>
+					</span>
+				</a>
+			</div>
+			
+		</div>
+		
+
+
+		
+		<div class="comment-container px-2 sm:px-6 md:px-8 pb-8">
+			<div class="comments-container mt-10 w-full ">
+    <div id="comment-anchor" class="w-full h-2.5"></div>
+    <div class="comment-area-title w-full my-1.5 md:my-2.5 text-xl md:text-3xl font-bold">
+        Comments
+    </div>
+    
+
+        
+            
+    <div id="gitalk-container"></div>
+    <script data-swup-reload-script
+            src="https://cdnjs.cloudflare.com/ajax/libs/gitalk/1.8.0/gitalk.min.js"></script>
+    <script data-swup-reload-script>
+        (function() {
+            const startPath = location.pathname;
+            const startTime = Date.now();
+            const retryDelay = 200;
+            const retryLimit = 5000;
+
+            const runGitalk = () => {
+                if (location.pathname !== startPath) {
+                    return;
+                }
+
+                const container = document.getElementById('gitalk-container');
+                if (!container || typeof Gitalk === 'undefined') {
+                    if (Date.now() - startTime < retryLimit) {
+                        setTimeout(runGitalk, retryDelay);
+                    }
+                    return;
+                }
+
+                container.innerHTML = '';
+
+                let pageKey = decodeURI(location.pathname);
+                const maxLength = 50;
+                if (pageKey.length > maxLength) {
+                    pageKey = pageKey.substring(0, maxLength - 3) + '...';
+                }
+
+                try {
+                    new Gitalk({
+                        clientID: '8083299a8ee2aaf23879',
+                        clientSecret: 'a8161e81d4872181e884fdb69f7be24916b6a9d0',
+                        repo: 'Charles2530.github.io',
+                        owner: 'Charles2530',
+                        admin: ['Charles2530'],
+                        id: pageKey,
+                        language: 'en',
+                        proxy: 'https://github.com/login/oauth/access_token'
+                    }).render(container);
+                } catch (e) {
+                    window.Gitalk = null;
+                }
+            };
+
+            runGitalk();
+        })();
+    </script>
+
+
+
+        
+    
+</div>
+
+		</div>
+		
+	</div>
+
+	
+	<div class="toc-content-container">
+		<div class="post-toc-wrap">
+	<div class="post-toc">
+		<div class="toc-title">On this page</div>
+		<div class="page-title">论文专题讲解：VGGT：一次前向推理恢复相机、深度、点云与轨迹</div>
+		<ol class="nav"><li class="nav-item nav-level-2"><a class="nav-link" href="#%E5%AE%83%E7%9A%84%E6%95%88%E7%8E%87%E8%B4%A1%E7%8C%AE%E6%98%AF%E4%BB%80%E4%B9%88"><span class="nav-text"> 它的效率贡献是什么</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#%E8%AE%BA%E6%96%87%E4%BD%8D%E7%BD%AE"><span class="nav-text"> 论文位置</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#%E6%80%BB%E4%BD%93%E6%9E%B6%E6%9E%84"><span class="nav-text"> 总体架构</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#%E8%BE%93%E5%85%A5%E5%92%8C%E8%BE%93%E5%87%BA%E6%80%8E%E4%B9%88%E5%AE%9A%E4%B9%89"><span class="nav-text"> 输入和输出怎么定义</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#alternating-attention-%E4%B8%BA%E4%BB%80%E4%B9%88%E5%85%B3%E9%94%AE"><span class="nav-text"> Alternating-Attention 为什么关键</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#prediction-heads"><span class="nav-text"> Prediction Heads</span></a><ol class="nav-child"><li class="nav-item nav-level-3"><a class="nav-link" href="#camera-head"><span class="nav-text"> Camera head</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#dense-dpt-heads"><span class="nav-text"> Dense DPT heads</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#tracking-head"><span class="nav-text"> Tracking head</span></a></li></ol></li><li class="nav-item nav-level-2"><a class="nav-link" href="#%E8%AE%AD%E7%BB%83%E7%9B%AE%E6%A0%87"><span class="nav-text"> 训练目标</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#ground-truth-coordinate-normalization"><span class="nav-text"> Ground Truth Coordinate Normalization</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#%E8%AE%AD%E7%BB%83%E9%85%8D%E6%96%B9"><span class="nav-text"> 训练配方</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#%E8%AE%AD%E7%BB%83%E6%95%B0%E6%8D%AE"><span class="nav-text"> 训练数据</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#multi-task-%E4%B8%BA%E4%BB%80%E4%B9%88%E6%9C%89%E7%94%A8"><span class="nav-text"> Multi-task 为什么有用</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#%E6%A0%B8%E5%BF%83%E7%BB%93%E6%9E%9C"><span class="nav-text"> 核心结果</span></a><ol class="nav-child"><li class="nav-item nav-level-3"><a class="nav-link" href="#camera-pose"><span class="nav-text"> Camera pose</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#dense-mvs"><span class="nav-text"> Dense MVS</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#point-map"><span class="nav-text"> Point map</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#runtime-and-memory"><span class="nav-text"> Runtime and memory</span></a></li></ol></li><li class="nav-item nav-level-2"><a class="nav-link" href="#%E4%B8%8B%E6%B8%B8vggt-%E4%BD%9C%E4%B8%BA-feature-backbone"><span class="nav-text"> 下游：VGGT 作为 feature backbone</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#%E5%92%8C-da3-dust3r-mast3r-%E7%9A%84%E5%85%B3%E7%B3%BB"><span class="nav-text"> 和 DA3、DUSt3R、MASt3R 的关系</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#%E5%85%B7%E8%BA%AB%E7%B3%BB%E7%BB%9F%E9%87%8C%E6%80%8E%E4%B9%88%E7%94%A8"><span class="nav-text"> 具身系统里怎么用</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#%E5%8F%82%E8%80%83%E8%B5%84%E6%96%99"><span class="nav-text"> 参考资料</span></a></li></ol>
+
+	</div>
+</div>
+	</div>
+	
+</div>
+
+			</div>
+
+			
+		</div>
+
+		<div class="main-content-footer">
+			<footer class="footer mt-5 py-5 h-auto text-base text-third-text-color relative border-t-2 border-t-border-color">
+    <div class="info-container py-3 text-center">
+        
+        <div class="text-center">
+            &copy;
+            
+              <span>2022</span>
+              -
+            
+            2026&nbsp;&nbsp;<i class="fa-solid fa-heart fa-beat" style="--fa-animation-duration: 0.5s; color: #f54545"></i>&nbsp;&nbsp;<a href="/">Charles</a>
+            
+                
+                <p class="post-count space-x-0.5">
+                    <span>
+                        504 posts in total
+                    </span>
+                    
+                        <span>
+                            2011k words in total
+                        </span>
+                    
+                </p>
+            
+        </div>
+        
+            <script data-swup-reload-script src="https://cn.vercount.one/js"></script>
+            <div class="relative text-center lg:absolute lg:right-[20px] lg:top-1/2 lg:-translate-y-1/2 lg:text-right">
+                
+                    <span id="busuanzi_container_site_uv" class="lg:!block">
+                        <span class="text-sm">VISITOR COUNT</span>
+                        <span id="busuanzi_value_site_uv"></span>
+                    </span>
+                
+                
+                    <span id="busuanzi_container_site_pv" class="lg:!block">
+                        <span class="text-sm">TOTAL PAGE VIEWS</span>
+                        <span id="busuanzi_value_site_pv"></span>
+                    </span>
+                
+            </div>
+        
+        <div class="relative text-center lg:absolute lg:left-[20px] lg:top-1/2 lg:-translate-y-1/2 lg:text-left">
+            <span class="lg:block text-sm">POWERED BY <?xml version="1.0" encoding="utf-8"?><!DOCTYPE svg PUBLIC "-//W3C//DTD SVG 1.1//EN" "http://www.w3.org/Graphics/SVG/1.1/DTD/svg11.dtd"><svg class="relative top-[2px] inline-block align-baseline" version="1.1" id="圖層_1" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" x="0px" y="0px" width="1rem" height="1rem" viewBox="0 0 512 512" enable-background="new 0 0 512 512" xml:space="preserve"><path fill="#0E83CD" d="M256.4,25.8l-200,115.5L56,371.5l199.6,114.7l200-115.5l0.4-230.2L256.4,25.8z M349,354.6l-18.4,10.7l-18.6-11V275H200v79.6l-18.4,10.7l-18.6-11v-197l18.5-10.6l18.5,10.8V237h112v-79.6l18.5-10.6l18.5,10.8V354.6z"/></svg><a target="_blank" class="text-base" href="https://hexo.io">Hexo</a></span>
+            <span class="text-sm lg:block">THEME&nbsp;<a class="text-base" target="_blank" href="https://github.com/EvanNotFound/hexo-theme-redefine">Redefine v2.9.0</a></span>
+        </div>
+        
+        
+            <div>
+                Blog up for <span class="odometer" id="runtime_days" ></span> days <span class="odometer" id="runtime_hours"></span> hrs <span class="odometer" id="runtime_minutes"></span> Min <span class="odometer" id="runtime_seconds"></span> Sec
+            </div>
+        
+        
+            <script data-swup-reload-script>
+                try {
+                    function odometer_init() {
+                    const elements = document.querySelectorAll('.odometer');
+                    elements.forEach(el => {
+                        new Odometer({
+                            el,
+                            format: '( ddd).dd',
+                            duration: 200
+                        });
+                    });
+                    }
+                    odometer_init();
+                } catch (error) {}
+            </script>
+        
+        
+            
+                
+        
+                
+        
+                
+
+                    
+                        <script data-swup-reload-script type="text/javascript" src="/js/love.js"></script>
+                    
+        
+        
+    </div>  
+</footer>
+		</div>
+	</div>
+
+	
+	<div class="post-tools">
+		<div class="post-tools-container">
+	<ul class="article-tools-list">
+		<!-- TOC aside toggle -->
+		
+		<li class="right-bottom-tools page-aside-toggle">
+			<i class="fa-regular fa-outdent"></i>
+		</li>
+		
+
+		<!-- go comment -->
+		
+		<li class="go-comment">
+			<i class="fa-regular fa-comments"></i>
+		</li>
+		
+	</ul>
+</div>
+	</div>
+	
+
+	<div class="right-side-tools-container">
+		<div class="side-tools-container">
+	<ul class="hidden-tools-list">
+		<li class="right-bottom-tools tool-font-adjust-plus flex justify-center items-center">
+			<i class="fa-regular fa-magnifying-glass-plus"></i>
+		</li>
+
+		<li class="right-bottom-tools tool-font-adjust-minus flex justify-center items-center">
+			<i class="fa-regular fa-magnifying-glass-minus"></i>
+		</li>
+
+		<li class="right-bottom-tools tool-dark-light-toggle flex justify-center items-center">
+			<i class="fa-regular fa-moon"></i>
+		</li>
+
+		<!-- rss -->
+		
+		<li class="right-bottom-tools rss flex justify-center items-center">
+			<a class="flex justify-center items-center" href="/atom.xml" target="_blank">
+				<i class="fa-regular fa-rss"></i>
+			</a>
+		</li>
+		
+
+		
+
+		<li class="right-bottom-tools tool-scroll-to-bottom flex justify-center items-center">
+			<i class="fa-regular fa-arrow-down"></i>
+		</li>
+	</ul>
+
+	<ul class="visible-tools-list">
+		<li class="right-bottom-tools toggle-tools-list flex justify-center items-center">
+			<i class="fa-regular fa-cog fa-spin"></i>
+		</li>
+		
+		<li class="right-bottom-tools tool-scroll-to-top flex justify-center items-center">
+			<i class="arrow-up fas fa-arrow-up"></i>
+			<span class="percent"></span>
+		</li>
+		
+		
+	</ul>
+</div>
+	</div>
+
+	<div class="image-viewer-container" role="dialog" aria-modal="true" aria-label="Image viewer">
+	<button class="image-viewer-close" type="button" aria-label="Close">
+		<i class="fa-solid fa-xmark"></i>
+	</button>
+	<button class="image-viewer-prev" type="button" aria-label="Prev">
+		<i class="fa-solid fa-chevron-left"></i>
+	</button>
+	<div class="image-viewer-frame">
+		<img src="" alt="">
+	</div>
+	<div class="image-viewer-exif-panel hidden absolute left-1/2 bottom-20 -translate-x-1/2 w-[min(92vw,420px)] max-h-[60vh] overflow-hidden rounded-2xl bg-background-color-transparent-80 p-4 text-left shadow-redefine-flat backdrop-blur-md" role="dialog" aria-label="EXIF" aria-hidden="true">
+		<div class="flex items-center justify-between mb-3">
+			<span class="text-sm font-semibold text-first-text-color">EXIF</span>
+			<button class="image-viewer-exif-close flex h-8 w-8 items-center justify-center rounded-full bg-background-color-transparent-80 text-first-text-color transition hover:bg-background-color-transparent-40" type="button" aria-label="Close">
+				<i class="fa-solid fa-xmark text-[0.65rem]"></i>
+			</button>
+		</div>
+		<div class="image-viewer-exif-cards grid grid-cols-1 sm:grid-cols-2 gap-3 max-h-[50vh] overflow-y-auto pr-1 scrollbar-hide"></div>
+		<template class="image-viewer-exif-card-template">
+			<div class="rounded-lg bg-background-color-transparent-40 px-3 py-2">
+				<div class="image-viewer-exif-card-header flex items-center gap-2 mb-1">
+					<i class="image-viewer-exif-card-icon fa-solid fa-circle-info text-xs text-third-text-color"></i>
+					<div class="image-viewer-exif-card-title text-xs font-semibold text-first-text-color"></div>
+				</div>
+				<div class="image-viewer-exif-card-items flex flex-col gap-1"></div>
+			</div>
+		</template>
+	</div>
+	<button class="image-viewer-exif-toggle flex items-center gap-2 hidden absolute left-1/2 bottom-6 -translate-x-1/2 rounded-full border border-border-color bg-background-color-transparent-80 px-4 py-2 text-first-text-color backdrop-blur-md transition hover:bg-background-color-transparent-40" type="button" aria-label="EXIF" aria-expanded="false">
+		<i class="fa-solid fa-circle-info text-xs"></i>
+		<span class="text-xs font-semibold uppercase tracking-wider">EXIF</span>
+	</button>
+	<button class="image-viewer-next" type="button" aria-label="Next">
+		<i class="fa-solid fa-chevron-right"></i>
+	</button>
+</div>
+
+
+	
+	<div class="search-pop-overlay">
+	<div class="popup search-popup">
+		<div class="search-header">
+			<span class="search-input-field-pre">
+				<i class="fa-solid fa-keyboard"></i>
+			</span>
+			<div class="search-input-container">
+				<input autocomplete="off" autocorrect="off" autocapitalize="off" placeholder="Search..." spellcheck="false" type="search" class="search-input">
+			</div>
+			<span class="popup-btn-close">
+				<i class="fa-solid fa-times"></i>
+			</span>
+		</div>
+		<div id="search-result">
+			<div id="no-result">
+				<i class="fa-solid fa-spinner fa-spin-pulse fa-5x fa-fw"></i>
+			</div>
+		</div>
+	</div>
+</div>
+	
+
+</main>
+
+
+
+<script src="/js/build/libs/Swup.min.js"></script>
+
+<script src="/js/build/libs/SwupSlideTheme.min.js"></script>
+
+<script src="/js/build/libs/SwupScriptsPlugin.min.js"></script>
+
+<script src="/js/build/libs/SwupProgressPlugin.min.js"></script>
+
+<script src="/js/build/libs/SwupScrollPlugin.min.js"></script>
+
+<script src="/js/build/libs/SwupPreloadPlugin.min.js"></script>
+
+<script>
+    window.swup = new Swup({
+        plugins: [
+            new SwupScriptsPlugin({
+                optin: true,
+            }),
+            new SwupProgressPlugin(),
+            new SwupScrollPlugin({
+                offset: 80,
+            }),
+            new SwupSlideTheme({
+                mainElement: ".main-content-body",
+            }),
+            new SwupPreloadPlugin(),
+        ],
+        containers: ["#swup"],
+    });
+
+    window.dispatchEvent(
+        new CustomEvent("redefine:swup:ready", {
+            detail: {
+                swup: window.swup,
+            },
+        }),
+    );
+</script>
+
+
+
+
+	
+<script src="/js/build/main.js" type="module"></script>
+
+
+
+    
+<script src="/js/build/libs/odometer.min.js"></script>
+
+    
+<link rel="stylesheet" href="/assets/odometer-theme-minimal.css">
+
+
+
+
+
+
+
+  
+<script src="/js/build/libs/Typed.min.js"></script>
+<script src="/js/build/libs/minimasonry.min.js" data-swup-reload-script=""></script>
+
+
+
+
+<script src="/js/build/libs/moment-with-locales.min.js" data-swup-reload-script=""></script>
+
+
+
+	
+</body>
+
+</html>

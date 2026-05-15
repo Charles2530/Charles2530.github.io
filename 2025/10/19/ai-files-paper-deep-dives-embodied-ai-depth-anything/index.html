@@ -1,0 +1,2089 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="keywords" content="Charles">
+    
+    
+    <meta name="author" content="Charles">
+    
+    <!-- Completely eliminate flash of wrong theme -->
+    <script>
+        (function() {
+            const THEME_KEY = "REDEFINE-THEME-STATUS";
+            const DARK = "dark", LIGHT = "light";
+            
+            // Get preferred theme
+            function getTheme() {
+                try {
+                    const saved = localStorage.getItem(THEME_KEY);
+                    if (saved) {
+                        const { isDark } = JSON.parse(saved);
+                        return isDark ? DARK : LIGHT;
+                    }
+                } catch (e) {}
+                
+                return matchMedia("(prefers-color-scheme: dark)").matches ? DARK : LIGHT;
+            }
+            
+            // Apply theme to document
+            function applyTheme(theme) {
+                const isDark = theme === DARK;
+                const root = document.documentElement;
+                
+                // Set classes for compatibility
+                root.classList.add(theme);
+                root.classList.remove(isDark ? LIGHT : DARK);
+                root.style.colorScheme = theme;
+            }
+            
+            // Initial application
+            const theme = getTheme();
+            applyTheme(theme);
+            
+            // Listen for system preference changes
+            matchMedia("(prefers-color-scheme: dark)").addEventListener("change", ({ matches }) => {
+                // Only update if using system preference (no localStorage entry)
+                if (!localStorage.getItem(THEME_KEY)) {
+                    applyTheme(matches ? DARK : LIGHT);
+                }
+            });
+            
+            // Set body classes ASAP (before DOMContentLoaded)
+            (function() {
+                const addBodyClass = () => {
+                    const b = document.body;
+                    if (!b) return false;
+                    b.classList.add(theme + "-mode");
+                    return true;
+                };
+
+                // Try immediately
+                if (addBodyClass()) return;
+
+                // Observe until body exists
+                const mo = new MutationObserver(() => {
+                    if (addBodyClass()) mo.disconnect();
+                });
+                mo.observe(document.documentElement, { childList: true, subtree: true });
+            })();
+        })();
+    </script>
+    
+    <!-- preconnect -->
+<!--- Seo Part-->
+    
+    <link rel="canonical" href="https://charles2530.github.io/2025/10/19/ai-files-paper-deep-dives-embodied-ai-depth-anything/"/>
+    <meta name="robots" content="index,follow">
+    <meta name="googlebot" content="index,follow">
+    <meta name="revisit-after" content="1 days">
+    
+    
+        
+        <meta name="description" content="This is Charles&#39;s Castle.">
+<meta property="og:type" content="article">
+<meta property="og:title" content="论文专题讲解：Depth Anything：大规模无标注数据释放单目深度">
+<meta property="og:url" content="https://charles2530.github.io/2025/10/19/ai-files-paper-deep-dives-embodied-ai-depth-anything/index.html">
+<meta property="og:site_name" content="Charles&#39;s Castle">
+<meta property="og:description" content="This is Charles&#39;s Castle.">
+<meta property="og:locale" content="en_US">
+<meta property="og:image" content="https://charles2530.github.io/image/background/logo.jpg">
+<meta property="article:published_time" content="2025-10-19T01:00:00.000Z">
+<meta property="article:modified_time" content="2025-10-19T01:00:00.000Z">
+<meta property="article:author" content="Du Jinyang">
+<meta property="article:tag" content="AI">
+<meta property="article:tag" content="具身智能">
+<meta property="article:tag" content="数据与评测">
+<meta property="article:tag" content="论文专题">
+<meta name="twitter:card" content="summary">
+<meta name="twitter:image" content="https://charles2530.github.io/image/background/logo.jpg">
+    
+    
+    <!--- Icon Part-->
+    <link rel="icon" type="image/png" href="https://charles2530.github.io/image/background/favicon.png" sizes="192x192">
+    <link rel="apple-touch-icon" sizes="180x180" href="https://charles2530.github.io/image/background/favicon.png">
+    <meta name="theme-color" content="#A31F34">
+    <link rel="shortcut icon" href="https://charles2530.github.io/image/background/favicon.png">
+    <!--- Page Info-->
+    
+    <title>
+        
+            论文专题讲解：Depth Anything：大规模无标注数据释放单目深度 | Charles&#39;s Castle
+        
+    </title>
+
+    
+<link rel="stylesheet" href="/fonts/Chillax/chillax.css">
+
+
+    <!--- Inject Part-->
+    
+        
+            
+    
+            
+    
+            
+                
+                    <link rel="stylesheet" href="/katex/katex.min.css">
+                
+    
+            
+                
+                    <link rel="stylesheet" href="/css/site-polish-v2.css">
+                
+    
+            
+                
+                    <script data-swup-reload-script>
+(function() {
+  function loadBaiduAnalytics() {
+    if (window.__baiduAnalyticsLoaded) return;
+    window.__baiduAnalyticsLoaded = true;
+    window._hmt = window._hmt || [];
+    var hm = document.createElement("script");
+    hm.async = true;
+    hm.src = "https://hm.baidu.com/hm.js?8e0e5f382d14d87cbeadc33a36e71e86";
+    document.head.appendChild(hm);
+  }
+  if ("requestIdleCallback" in window) {
+    requestIdleCallback(loadBaiduAnalytics, { timeout: 3000 });
+  } else {
+    window.addEventListener("load", function() {
+      setTimeout(loadBaiduAnalytics, 1500);
+    });
+  }
+})();
+</script>
+
+                
+    
+
+    
+<link rel="stylesheet" href="/css/style.css">
+
+
+    
+        
+<link rel="stylesheet" href="/css/build/tailwind.css">
+
+    
+
+    
+<link rel="stylesheet" href="/fonts/GeistMono/geist-mono.css">
+
+    
+<link rel="stylesheet" href="/fonts/Geist/geist.css">
+
+    <!--- Font Part-->
+    
+    
+    
+    
+    
+    
+        
+<script src="/js/build/libs/anime.min.js"></script>
+
+    
+
+    <script id="hexo-configurations">
+    window.config = {"hostname":"charles2530.github.io","root":"/","language":"en","path":"search.xml"};
+    window.theme = {"articles":{"style":{"font_size":"16px","line_height":1.5,"image_border_radius":"14px","image_alignment":"center","image_caption":false,"link_icon":true,"delete_mask":false,"title_alignment":"left","headings_top_spacing":{"h1":"5rem","h2":"4rem","h3":"2.8rem","h4":"2.5rem","h5":"2.2rem","h6":"2rem"}},"word_count":{"enable":true,"count":true,"min2read":true},"author_label":{"enable":true,"auto":true,"list":["lol","Neo","God"]},"code_block":{"copy":true,"style":"mac","highlight_theme":{"light":"github","dark":"vs2015"},"font":{"enable":false,"family":null,"url":null}},"toc":{"enable":true,"max_depth":6,"number":false,"expand":true,"init_open":true},"copyright":{"enable":true,"default":"cc_by_nc_sa"},"lazyload":true,"pangu_js":false,"recommendation":{"enable":false,"title":"recommend_articles","limit":3,"mobile_limit":2,"placeholder":"https://charles2530.github.io/image/background/p3.jfif","skip_dirs":[]}},"colors":{"primary":"#A31F34","secondary":"#1890ff","default_mode":"light"},"global":{"fonts":{"chinese":{"enable":false,"family":null,"url":null},"english":{"enable":false,"family":null,"url":null},"title":{"enable":false,"family":null,"url":null}},"content_max_width":"1000px","sidebar_width":"210px","hover":{"shadow":true,"scale":true},"scroll_progress":{"bar":true,"percentage":true},"website_counter":{"url":"https://cn.vercount.one/js","enable":true,"site_pv":true,"site_uv":true,"post_pv":true},"single_page":true,"preloader":{"enable":true,"custom_message":null},"side_tools":{"gear_rotation":true,"auto_expand":false},"open_graph":{"enable":true,"image":"https://charles2530.github.io/image/background/logo.jpg","description":"This is Charles's Castle."},"google_analytics":{"enable":false,"id":null}},"home_banner":{"enable":true,"style":"fixed","image":{"light":"https://charles2530.github.io/image/background/background-light1.jpg","dark":"https://charles2530.github.io/image/background/background-dark1.jpg"},"title":"Charles's Castle","subtitle":{"text":["Happiness is best!","Never give up!","Everyday is a gift!"],"hitokoto":{"enable":false,"show_author":false,"api":"https://v1.hitokoto.cn"},"typing_speed":100,"backing_speed":80,"starting_delay":500,"backing_delay":1500,"loop":true,"smart_backspace":true},"text_color":{"light":"#000000","dark":"#d1d1b6"},"text_style":{"title_size":"3.2rem","subtitle_size":"1.5rem","line_height":1.2},"custom_font":{"enable":false,"family":null,"url":null},"social_links":{"enable":true,"style":"center","links":[{"icon":"fa-brands fa-github","url":"https://github.com/Charles2530/"},{"icon":"fa-brands fa-zhihu","url":"https://www.zhihu.com/people/yang-guang-xiao-zi-55-55"},{"icon":"fa-solid fa-at","url":"mailto:charles2530@163.com"},{"icon":"fa-brands fa-telegram","url":null},{"icon":"/images/custom-icon.svg","url":null}],"qrs":[{"icon":"fa-brands fa-weixin","qr":"https://charles2530.github.io/image/background/Wechat_icon.png"},{"icon":"/images/custom-icon.svg","qr":null}]}},"plugins":{"feed":{"enable":true},"aplayer":{"enable":false,"type":"fixed","audios":[{"name":null,"artist":null,"url":null,"cover":null,"lrc":null}]},"mermaid":{"enable":false,"version":"11.4.1","theme":{"light":"default","dark":"dark"}}},"version":"2.9.0","navbar":{"auto_hide":true,"color":{"left":"#f78736","right":"#367df7","transparency":35},"width":{"home":"1200px","pages":"1000px"},"links":{"Home":{"path":"/","icon":"fa-regular fa-house"},"Categories":{"path":"/categories","icon":"fas fa-bookmark"},"Tags":{"path":"/tags","icon":"fas fa-tags"},"About":{"icon":"fa-regular fa-user","submenus":{"Me":"https://jinyang-du.github.io/","Github":"https://github.com/Charles2530/","Blog":"https://charles2530.github.io","Statistics":"https://tongji.baidu.com/"}}},"search":{"enable":true,"preload":false}},"page_templates":{"friends_column":2,"tags_style":"blur","masonry":{"batch_size":12,"initial_batch_size":24}},"home":{"sidebar":{"enable":true,"position":"left","first_item":"menu","announcement":"This is Charles's Castle","show_on_mobile":true,"links":{"Archives":{"path":"/archives","icon":"fa-regular fa-archive"},"Photos":{"icon":"fa-solid fa-image","path":"/masonry/"},"Essays":{"icon":"fa-solid fa-message-lines","path":"/essay/"},"Friends":{"icon":"fa-solid fa-user-group","path":"/friends/"}}},"article_date_format":"auto","excerpt_length":200,"categories":{"enable":true,"limit":3},"tags":{"enable":true,"limit":3}},"footer":{"runtime":true,"icon":"<i class=\"fa-solid fa-heart fa-beat\" style=\"--fa-animation-duration: 0.5s; color: #f54545\"></i>","start":"2022/12/27 00:00:00","statistics":true,"customize":null,"icp":{"enable":false,"number":null,"url":null}},"footerStart":"2022/12/27 00:00:00","mermaid":{"style":{"light":"default","dark":"dark"}}};
+    window.lang_ago = {"second":"%s seconds ago","minute":"%s minutes ago","hour":"%s hours ago","day":"%s days ago","week":"%s weeks ago","month":"%s months ago","year":"%s years ago"};
+    window.i18n = {"search":"Search...","toc":"On this page","prev":"Prev","next":"Next","prev_posts":"Prev posts","next_posts":"Next posts","page":"Page %d","recent_posts":"Recent Posts","share":"Share","powered_by":"POWERED BY %s","theme":"THEME","rss_feed":"RSS Feed","category":"Category","categories":"Categories","tag":"Tag","tags":"Tags","post":"Post","posts":"Posts","tagcloud":"Tag Cloud","comment":"Comment","comments":"Comments","home":"Home","archive":"Archive","archives":"Archives","top":"TOP","sticky":"Sticky","go-back-home":"Go Back Home","masonry_loading":"Loading photos...","image_viewer":"Image viewer","close":"Close","exif":{"title":"EXIF","cards":{"camera":"Camera","lens":"Lens","exposure":"Exposure","other":"Other"},"fields":{"make":"Brand","model":"Model","date_taken":"Date taken","lens_model":"Lens","focal_length":"Focal length","focus_mode":"Focus mode","shutter":"Shutter","aperture":"Aperture","iso":"ISO","exposure_program":"Exposure program","exposure_compensation":"Exposure compensation","metering_mode":"Metering mode","flash":"Flash","white_balance":"White balance","latitude":"Latitude","longitude":"Longitude","altitude":"Altitude"},"status":{"loading":"Loading...","no_exif":"No EXIF available","library_missing":"EXIF library not loaded","image_source_missing":"Image source unavailable","unavailable":"EXIF unavailable (blocked by CORS or missing metadata)","flag_unavailable":"EXIF unavailable"}},"about":"About","changelog":"Changelog","links":"Links","link":"Link","friends":"Friends","friend":"Friend","timeline":"Timeline","shuoshuo":"Shuoshuo","bookmarks":"Bookmarks","site_uv":"VISITOR COUNT","site_pv":"TOTAL PAGE VIEWS","read_more":"Read more","wordcount":"Words","min2read":"Mins","status":"Status","runtime":"Blog up for","days":"days","hours":"hrs","minutes":"Min","seconds":"Sec","optimized_by":"and Optimized by Evan","rights":"All Rights Reserved","site_posts":"%s posts in total","site_wordcount":"%s words in total","copyright":{"author":"Author","title":"Title","link":"Link","create_time":"Created at","update_time":"Updated at","license_title":"License","license_content":"This work is licensed under %s.","all_rights_reserved":"All Rights Reserved &#169; %s","public_domain":"This work is in the public domain."},"ago":{"second":"%s seconds ago","minute":"%s minutes ago","hour":"%s hours ago","day":"%s days ago","week":"%s weeks ago","month":"%s months ago","year":"%s years ago"},"create_time":"Created","update_time":"Updated","expired":"This post is written %s days ago, and the content may not be up to date."};
+    window.data = {"masonry":true};
+  </script>
+    
+    <!--- Fontawesome Part-->
+    
+<link rel="stylesheet" href="/fontawesome/fontawesome.min.css">
+
+    
+<link rel="stylesheet" href="/fontawesome/brands.min.css">
+
+    
+<link rel="stylesheet" href="/fontawesome/solid.min.css">
+
+    
+<link rel="stylesheet" href="/fontawesome/regular.min.css">
+
+    
+    
+    
+    
+<meta name="generator" content="Hexo 6.3.0"><link rel="alternate" href="/atom.xml" title="Charles's Castle" type="application/atom+xml">
+<link rel="stylesheet" href="/css/prism-tomorrow.css" type="text/css"></head>
+
+
+<body>
+	<div class="progress-bar-container">
+	
+	<span class="scroll-progress-bar"></span>
+	
+
+	
+	<span class="pjax-progress-bar"></span>
+	<!--        <span class="swup-progress-icon">-->
+	<!--            <i class="fa-solid fa-circle-notch fa-spin"></i>-->
+	<!--        </span>-->
+	
+</div>
+
+<style>
+    :root {
+        --preloader-background-color: #fff;
+        --preloader-text-color: #000;
+    }
+
+    @media (prefers-color-scheme: dark) {
+        :root {
+            --preloader-background-color: #202124;
+            --preloader-text-color: #fff;
+        }
+    }
+
+    @media (prefers-color-scheme: light) {
+        :root {
+            --preloader-background-color: #fff;
+            --preloader-text-color: #000;
+        }
+    }
+
+    @media (max-width: 600px) {
+        .ml13 {
+            font-size: 2.6rem !important; /* Adjust this value as needed */
+        }
+    }
+
+    .preloader {
+        display: flex;
+        flex-direction: column;
+        gap: 1rem; /* Tailwind 'gap-4' is 1rem */
+        align-items: center;
+        justify-content: center;
+        position: fixed;
+        padding: 12px;
+        top: 0;
+        right: 0;
+        bottom: 0;
+        left: 0;
+        width: 100vw;
+        height: 100vh; /* 'h-screen' is 100% of the viewport height */
+        background-color: var(--preloader-background-color);
+        z-index: 1100; /* 'z-[1100]' sets the z-index */
+        transition: opacity 0.2s ease-in-out;
+    }
+
+    .ml13 {
+        font-size: 3.2rem;
+        /* text-transform: uppercase; */
+        color: var(--preloader-text-color);
+        letter-spacing: -1px;
+        font-weight: 500;
+        font-family: 'Chillax-Variable', sans-serif;
+        text-align: center;
+    }
+
+    .ml13 .word {
+        display: inline-flex;
+        flex-wrap: wrap;
+        white-space: nowrap;
+    }
+
+    .ml13 .letter {
+        display: inline-block;
+        line-height: 1em;
+    }
+</style>
+
+<div class="preloader">
+    <h2 class="ml13">
+        Charles&#39;s Castle
+    </h2>
+    <script>
+        var textWrapper = document.querySelector('.ml13');
+        // Split text into words
+        var words = textWrapper.textContent.trim().split(' ');
+
+        // Clear the existing content
+        textWrapper.innerHTML = '';
+
+        // Wrap each word and its letters in spans
+        words.forEach(function(word) {
+            var wordSpan = document.createElement('span');
+            wordSpan.classList.add('word');
+            wordSpan.innerHTML = word.replace(/\S/g, "<span class='letter'>$&</span>");
+            textWrapper.appendChild(wordSpan);
+            textWrapper.appendChild(document.createTextNode(' ')); // Add space between words
+        });
+
+        var animation = anime.timeline({ loop: true })
+            .add({
+                targets: '.ml13 .letter',
+                translateY: [20, 0],
+                translateZ: 0,
+                opacity: [0, 1],
+                filter: ['blur(5px)', 'blur(0px)'],
+                easing: "easeOutExpo",
+                duration: 1200,
+                delay: (el, i) => 300 + 20 * i,
+            })
+            .add({
+                targets: '.ml13 .letter',
+                translateY: [0, -20],
+                opacity: [1, 0],
+                filter: ['blur(0px)', 'blur(5px)'],
+                easing: "easeInExpo",
+                duration: 1000,
+                delay: (el, i) => 15 * i,
+                complete: function() {
+                    hidePreloader();
+                }
+            }, '-=700');
+
+
+        let themeStatus = JSON.parse(localStorage.getItem('REDEFINE-THEME-STATUS'))?.isDark;
+
+        // If the theme status is not found in local storage, check the preferred color scheme
+        if (themeStatus === undefined || themeStatus === null) {
+            if (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) {
+                themeStatus = 'dark';
+            } else {
+                themeStatus = 'light';
+            }
+        }
+
+        // Now you can use the themeStatus variable in your code
+        if (themeStatus) {
+            document.documentElement.style.setProperty('--preloader-background-color', '#202124');
+            document.documentElement.style.setProperty('--preloader-text-color', '#fff');
+        } else {
+            document.documentElement.style.setProperty('--preloader-background-color', '#fff');
+            document.documentElement.style.setProperty('--preloader-text-color', '#000');
+        }
+
+        window.addEventListener('load', function () {
+            setTimeout(hidePreloader, 5000); // Call hidePreloader after 5000 milliseconds if not already called by animation
+        });
+
+        function hidePreloader() {
+            var preloader = document.querySelector('.preloader');
+            preloader.style.opacity = '0';
+            setTimeout(function () {
+                preloader.style.display = 'none';
+            }, 200);
+        }
+    </script>
+</div>
+
+<main class="page-container" id="swup">
+
+	
+
+	<div class="main-content-container flex flex-col justify-between min-h-dvh">
+		<div class="main-content-header">
+			<header class="navbar-container px-6 md:px-12">
+    <div class="navbar-content transition-navbar ">
+        <div class="left">
+            
+                <a class="logo-image h-8 w-8 sm:w-10 sm:h-10 mr-3" href="/">
+                    <img src="https://charles2530.github.io/image/background/logo.jpg" class="w-full h-full rounded-xs">
+                </a>
+            
+            <a class="logo-title" href="/">
+                
+                Charles&#39;s Castle
+                
+            </a>
+        </div>
+
+        <div class="right">
+            <!-- PC -->
+            <div class="desktop">
+                <ul class="navbar-list">
+                    
+                        
+                            
+
+                            <li class="navbar-item">
+                                <!-- Menu -->
+                                <a class=""
+                                   href="/"
+                                        >
+                                    <i class="fa-regular fa-house fa-fw"></i>
+                                    HOME
+                                    
+                                </a>
+
+                                <!-- Submenu -->
+                                
+                            </li>
+                    
+                        
+                            
+
+                            <li class="navbar-item">
+                                <!-- Menu -->
+                                <a class=""
+                                   href="/categories"
+                                        >
+                                    <i class="fas fa-bookmark fa-fw"></i>
+                                    CATEGORIES
+                                    
+                                </a>
+
+                                <!-- Submenu -->
+                                
+                            </li>
+                    
+                        
+                            
+
+                            <li class="navbar-item">
+                                <!-- Menu -->
+                                <a class=""
+                                   href="/tags"
+                                        >
+                                    <i class="fas fa-tags fa-fw"></i>
+                                    TAGS
+                                    
+                                </a>
+
+                                <!-- Submenu -->
+                                
+                            </li>
+                    
+                        
+                            
+
+                            <li class="navbar-item">
+                                <!-- Menu -->
+                                <a class="has-dropdown"
+                                   href="#"
+                                        onClick=&#34;return false;&#34;>
+                                    <i class="fa-regular fa-user fa-fw"></i>
+                                    ABOUT
+                                    <i class="fa-solid fa-chevron-down fa-fw"></i>
+                                </a>
+
+                                <!-- Submenu -->
+                                
+                                    <ul class="sub-menu">
+                                        
+                                            <li>
+                                                <a target="_blank" rel="noopener" href="https://jinyang-du.github.io/">
+                                                    ME
+                                                </a>
+                                            </li>
+                                        
+                                            <li>
+                                                <a target="_blank" rel="noopener" href="https://github.com/Charles2530/">
+                                                    GITHUB
+                                                </a>
+                                            </li>
+                                        
+                                            <li>
+                                                <a href="https://charles2530.github.io">
+                                                    BLOG
+                                                </a>
+                                            </li>
+                                        
+                                            <li>
+                                                <a target="_blank" rel="noopener" href="https://tongji.baidu.com/">
+                                                    STATISTICS
+                                                </a>
+                                            </li>
+                                        
+                                    </ul>
+                                
+                            </li>
+                    
+                    
+                        <li class="navbar-item search search-popup-trigger">
+                            <i class="fa-solid fa-magnifying-glass"></i>
+                        </li>
+                    
+                </ul>
+            </div>
+            <!-- Mobile -->
+            <div class="mobile">
+                
+                    <div class="icon-item search search-popup-trigger"><i class="fa-solid fa-magnifying-glass"></i>
+                    </div>
+                
+                <div class="icon-item navbar-bar">
+                    <div class="navbar-bar-middle"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Mobile sheet -->
+    <div class="navbar-drawer h-dvh w-full absolute top-0 left-0 bg-background-color flex flex-col justify-between">
+        <ul class="drawer-navbar-list flex flex-col px-4 justify-center items-start">
+            
+                
+                    
+
+                    <li class="drawer-navbar-item text-base my-1.5 flex flex-col w-full">
+                        
+                        <a class="py-1.5 px-2 flex flex-row items-center justify-between gap-1 hover:!text-primary active:!text-primary text-2xl font-semibold group border-b border-border-color hover:border-primary w-full "
+                           href="/"
+                        >
+                            <span>
+                                HOME
+                            </span>
+                            
+                                <i class="fa-regular fa-house fa-sm fa-fw"></i>
+                            
+                        </a>
+                        
+
+                        
+                    </li>
+            
+                
+                    
+
+                    <li class="drawer-navbar-item text-base my-1.5 flex flex-col w-full">
+                        
+                        <a class="py-1.5 px-2 flex flex-row items-center justify-between gap-1 hover:!text-primary active:!text-primary text-2xl font-semibold group border-b border-border-color hover:border-primary w-full "
+                           href="/categories"
+                        >
+                            <span>
+                                CATEGORIES
+                            </span>
+                            
+                                <i class="fas fa-bookmark fa-sm fa-fw"></i>
+                            
+                        </a>
+                        
+
+                        
+                    </li>
+            
+                
+                    
+
+                    <li class="drawer-navbar-item text-base my-1.5 flex flex-col w-full">
+                        
+                        <a class="py-1.5 px-2 flex flex-row items-center justify-between gap-1 hover:!text-primary active:!text-primary text-2xl font-semibold group border-b border-border-color hover:border-primary w-full "
+                           href="/tags"
+                        >
+                            <span>
+                                TAGS
+                            </span>
+                            
+                                <i class="fas fa-tags fa-sm fa-fw"></i>
+                            
+                        </a>
+                        
+
+                        
+                    </li>
+            
+                
+                    
+
+                    <li class="drawer-navbar-item-sub text-base my-1.5 flex flex-col w-full">
+                        
+                        <div class="py-1.5 px-2 flex flex-row items-center justify-between gap-1 hover:!text-primary active:!text-primary cursor-pointer text-2xl font-semibold group border-b border-border-color hover:border-primary w-full "
+                             navbar-data-toggle="submenu-About"
+                        >
+                            <span>
+                                ABOUT
+                            </span>
+                            
+                                <i class="fa-solid fa-chevron-right fa-sm fa-fw transition-all"></i>
+                            
+                        </div>
+                        
+
+                        
+                            <div class="flex-col items-start px-2 py-2 hidden" data-target="submenu-About">
+                                
+                                    <div class="drawer-navbar-item text-base flex flex-col justify-center items-start hover:underline active:underline hover:underline-offset-1 rounded-3xl">
+                                        <a class=" text-third-text-color text-xl"
+                                           target="_blank" rel="noopener" href="https://jinyang-du.github.io/">ME</a>
+                                    </div>
+                                
+                                    <div class="drawer-navbar-item text-base flex flex-col justify-center items-start hover:underline active:underline hover:underline-offset-1 rounded-3xl">
+                                        <a class=" text-third-text-color text-xl"
+                                           target="_blank" rel="noopener" href="https://github.com/Charles2530/">GITHUB</a>
+                                    </div>
+                                
+                                    <div class="drawer-navbar-item text-base flex flex-col justify-center items-start hover:underline active:underline hover:underline-offset-1 rounded-3xl">
+                                        <a class=" text-third-text-color text-xl"
+                                           href="https://charles2530.github.io">BLOG</a>
+                                    </div>
+                                
+                                    <div class="drawer-navbar-item text-base flex flex-col justify-center items-start hover:underline active:underline hover:underline-offset-1 rounded-3xl">
+                                        <a class=" text-third-text-color text-xl"
+                                           target="_blank" rel="noopener" href="https://tongji.baidu.com/">STATISTICS</a>
+                                    </div>
+                                
+                            </div>
+                        
+                    </li>
+            
+
+            
+            
+                
+                    
+                    <li class="drawer-navbar-item text-base my-1.5 flex flex-col w-full">
+                        <a class="py-1.5 px-2 flex flex-row items-center justify-between gap-1 hover:!text-primary active:!text-primary text-2xl font-semibold group border-b border-border-color hover:border-primary w-full active"
+                           href="/archives"
+                        >
+                            <span>Archives</span>
+                            <i class="fa-regular fa-archive fa-sm fa-fw"></i>
+                        </a>
+                    </li>
+                
+                    
+                    <li class="drawer-navbar-item text-base my-1.5 flex flex-col w-full">
+                        <a class="py-1.5 px-2 flex flex-row items-center justify-between gap-1 hover:!text-primary active:!text-primary text-2xl font-semibold group border-b border-border-color hover:border-primary w-full active"
+                           href="/masonry/"
+                        >
+                            <span>Photos</span>
+                            <i class="fa-solid fa-image fa-sm fa-fw"></i>
+                        </a>
+                    </li>
+                
+                    
+                    <li class="drawer-navbar-item text-base my-1.5 flex flex-col w-full">
+                        <a class="py-1.5 px-2 flex flex-row items-center justify-between gap-1 hover:!text-primary active:!text-primary text-2xl font-semibold group border-b border-border-color hover:border-primary w-full active"
+                           href="/essay/"
+                        >
+                            <span>Essays</span>
+                            <i class="fa-solid fa-message-lines fa-sm fa-fw"></i>
+                        </a>
+                    </li>
+                
+                    
+                    <li class="drawer-navbar-item text-base my-1.5 flex flex-col w-full">
+                        <a class="py-1.5 px-2 flex flex-row items-center justify-between gap-1 hover:!text-primary active:!text-primary text-2xl font-semibold group border-b border-border-color hover:border-primary w-full active"
+                           href="/friends/"
+                        >
+                            <span>Friends</span>
+                            <i class="fa-solid fa-user-group fa-sm fa-fw"></i>
+                        </a>
+                    </li>
+                
+            
+        </ul>
+
+        <div class="statistics flex justify-around my-2.5">
+    <a class="item tag-count-item flex flex-col justify-center items-center w-20" href="/tags">
+        <div class="number text-2xl sm:text-xl text-second-text-color font-semibold">45</div>
+        <div class="label text-third-text-color text-sm">Tags</div>
+    </a>
+    <a class="item tag-count-item flex flex-col justify-center items-center w-20" href="/categories">
+        <div class="number text-2xl sm:text-xl text-second-text-color font-semibold">93</div>
+        <div class="label text-third-text-color text-sm">Categories</div>
+    </a>
+    <a class="item tag-count-item flex flex-col justify-center items-center w-20" href="/archives">
+        <div class="number text-2xl sm:text-xl text-second-text-color font-semibold">504</div>
+        <div class="label text-third-text-color text-sm">Posts</div>
+    </a>
+</div>
+    </div>
+
+    <div class="window-mask"></div>
+
+</header>
+
+
+		</div>
+
+		<div class="main-content-body transition-fade-up">
+			
+
+			<div class="main-content">
+				<div class="post-page-container flex relative justify-between box-border w-full h-full">
+	<div class="article-content-container">
+
+		<div class="article-title relative w-full">
+			
+			
+			
+			<img src="https://charles2530.github.io/image/background/background-light1.jpg" alt="论文专题讲解：Depth Anything：大规模无标注数据释放单目深度" class="w-full h-60 sm:h-72 md:h-80 object-cover sm:rounded-t-large dark:brightness-75" />
+			
+			<div class="w-full flex items-center absolute bottom-0 justify-start">
+				<h1 class="article-title-cover text-center mx-6 my-6 text-second-text-color bg-background-color-transparent px-4 py-3 text-3xl sm:text-4xl md:text-5xl font-semibold backdrop-blur-lg rounded-xl border border-border-color ">论文专题讲解：Depth Anything：大规模无标注数据释放单目深度</h1>
+			</div>
+			
+		</div>
+
+		
+		<div class="article-header flex flex-row gap-2 items-center px-2 sm:px-6 md:px-8">
+			<div class="avatar w-[46px] h-[46px] shrink-0 rounded-medium border border-border-color p-px">
+				<img src="https://charles2530.github.io/image/background/logo2.jpg">
+			</div>
+			<div class="info flex flex-col justify-between">
+				<div class="author flex items-center">
+					<span class="name text-default-text-color text-lg font-semibold">Charles</span>
+					
+					<span class="author-label ml-1.5 text-xs px-2 py-0.5 rounded-small text-third-text-color border border-shadow-color-1">Lv7</span>
+					
+				</div>
+				<div class="meta-info">
+					<div class="article-meta-info">
+    <span class="article-date article-meta-item">
+        <i class="fa-regular fa-pen-fancy"></i>&nbsp;
+        <span class="desktop">2025-10-19 09:00</span>
+        <span class="mobile">2025-10-19 09:00</span>
+        <span class="hover-info">Created</span>
+    </span>
+    
+        <span class="article-date article-meta-item">
+            <i class="fa-regular fa-wrench"></i>&nbsp;
+            <span class="desktop">2025-10-19 09:00</span>
+            <span class="mobile">2025-10-19 09:00</span>
+            <span class="hover-info">Updated</span>
+        </span>
+    
+
+    
+        <span class="article-categories article-meta-item">
+            <i class="fa-regular fa-folders"></i>&nbsp;
+            <ul>
+                
+                
+                    
+                        
+                        <li>
+                            <a href="/categories/AI/">AI</a>&nbsp;
+                        </li>
+                    
+                    
+                
+                    
+                        
+                            <li>></li>
+                        
+                        <li>
+                            <a href="/categories/AI/%E8%AE%BA%E6%96%87%E4%B8%93%E9%A2%98%E8%AE%B2%E8%A7%A3/">论文专题讲解</a>&nbsp;
+                        </li>
+                    
+                    
+                
+            </ul>
+        </span>
+    
+    
+        <span class="article-tags article-meta-item">
+            <i class="fa-regular fa-tags"></i>&nbsp;
+            <ul>
+                
+                    <li>
+                        <a href="/tags/AI/">AI</a>&nbsp;
+                    </li>
+                
+                    <li>
+                        | <a href="/tags/%E5%85%B7%E8%BA%AB%E6%99%BA%E8%83%BD/">具身智能</a>&nbsp;
+                    </li>
+                
+                    <li>
+                        | <a href="/tags/%E6%95%B0%E6%8D%AE%E4%B8%8E%E8%AF%84%E6%B5%8B/">数据与评测</a>&nbsp;
+                    </li>
+                
+                    <li>
+                        | <a href="/tags/%E8%AE%BA%E6%96%87%E4%B8%93%E9%A2%98/">论文专题</a>&nbsp;
+                    </li>
+                
+            </ul>
+        </span>
+    
+
+    
+    
+        <span class="article-wordcount article-meta-item">
+            <i class="fa-regular fa-typewriter"></i>&nbsp;<span>4.7k Words</span>
+        </span>
+    
+    
+        <span class="article-min2read article-meta-item">
+            <i class="fa-regular fa-clock"></i>&nbsp;<span>20 Mins</span>
+        </span>
+    
+    
+        <span class="article-pv article-meta-item">
+            <i class="fa-regular fa-eye"></i>&nbsp;<span id="busuanzi_value_page_pv"></span>
+        </span>
+    
+</div>
+
+				</div>
+			</div>
+		</div>
+		
+
+		
+
+
+		<div class="article-content markdown-body px-2 sm:px-6 md:px-8 pb-8">
+			<div class="callout callout--titled info mb-4 rounded-small shadow-redefine-flat bg-(--callout-bg-color) p-3 pl-1 relative flex flex-row gap-2"><div role="none" class="rounded-full self-stretch w-0.5 bg-(--callout-primary-color) shrink-0 opacity-60"></div><div class="flex flex-col gap-2"><div class="callout__title flex items-center gap-2 font-semibold tracking-tight">论文信息</div><div class="callout__content markdown-body flex-1 min-w-0"><ul>
+<li>论文：<code>Depth Anything: Unleashing the Power of Large-Scale Unlabeled Data</code></li>
+<li>系统：<code>Depth Anything / DA1</code></li>
+<li>链接：<a class="link"   target="_blank" rel="noopener" href="https://arxiv.org/abs/2401.10891" >arXiv:2401.10891<i class="fa-solid fa-arrow-up-right ml-[0.2em] font-light align-text-top text-[0.7em] link-icon"></i></a></li>
+<li>项目页：<a class="link"   target="_blank" rel="noopener" href="https://depth-anything.github.io/" >depth-anything.github.io<i class="fa-solid fa-arrow-up-right ml-[0.2em] font-light align-text-top text-[0.7em] link-icon"></i></a></li>
+<li>代码与模型：<a class="link"   target="_blank" rel="noopener" href="https://github.com/LiheYoung/Depth-Anything" >LiheYoung/Depth-Anything<i class="fa-solid fa-arrow-up-right ml-[0.2em] font-light align-text-top text-[0.7em] link-icon"></i></a></li>
+<li>关键词：monocular depth、unlabeled data、pseudo label、self-training、DINOv2、DPT、feature alignment、metric depth</li>
+</ul></div></div></div>
+<p>Depth Anything 放在具身智能专题里，是因为它补的是机器人闭环里最常被低估的一层：<strong>从普通 RGB 图像得到开放域、 dense、可复用的相对深度先验</strong>。它不直接输出动作，也不替代 RGB-D 或标定，但它能让 VLA、抓取、导航、重建、数据质检和仿真资产流程拥有更强的几何输入。</p>
+<p>这篇论文的主张很清楚：单目深度基础模型的瓶颈不只在结构，而在数据覆盖。作者没有设计一个复杂新架构，而是把训练数据从 1.5M labeled images 扩到 62M unlabeled images，并用 teacher-student、自训练强扰动和 DINOv2 feature alignment 让这些无标注图像真正产生增益。</p>
+<h2 id="它的效率贡献是什么"><a class="markdownIt-Anchor" href="#它的效率贡献是什么"></a> 它的效率贡献是什么</h2>
+<table>
+<thead>
+<tr>
+<th>维度</th>
+<th>贡献</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>节省的成本</td>
+<td>不再依赖大规模人工深度标注、LiDAR、stereo matching 或 SfM；先用 1.5M labeled images 训练 teacher，再自动给 62M unlabeled images 生成 dense pseudo depth labels</td>
+</tr>
+<tr>
+<td>核心机制</td>
+<td>DINOv2 encoder + DPT decoder、affine-invariant depth loss、teacher-student self-training、strong perturbation、CutMix、DINOv2 feature alignment</td>
+</tr>
+<tr>
+<td>对具身主线的意义</td>
+<td>给机器人视觉状态、VLA 视觉编码、几何规划、仿真资产检查和数据回流提供开放域单目深度底座</td>
+</tr>
+<tr>
+<td>主要风险</td>
+<td>基础模型输出主要是相对深度，不天然给厘米级绝对距离；单目先验仍可能在新相机、罕见物体、反光透明表面和尺度错觉中失真</td>
+</tr>
+<tr>
+<td>应接到本站哪里</td>
+<td><a href="/2026/05/11/ai-files-embodied-ai-cameras-depth-and-robot-vision/">相机、深度与机器人视觉</a>、<a href="/2026/05/11/ai-files-paper-deep-dives-embodied-ai-depth-anything-v2/">Depth Anything V2</a>、<a href="/2026/05/11/ai-files-paper-deep-dives-embodied-ai-depth-anything-3/">Depth Anything 3</a></td>
+</tr>
+</tbody>
+</table>
+<h2 id="论文位置"><a class="markdownIt-Anchor" href="#论文位置"></a> 论文位置</h2>
+<p>在 DA1 之前，MiDaS 已经证明了多数据集训练和 affine-invariant loss 能带来不错的 zero-shot relative depth。但 MiDaS 的数据覆盖有限，而且很多深度数据来自 stereo、LiDAR 或重建流程，采集和标注成本高，覆盖面也不够开放。</p>
+<p>Depth Anything 选择了另一条路线：</p>
+<div class="code-container" data-rel="Text"><figure class="iseeu highlight text"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br></pre></td><td class="code"><pre><span class="line">1.5M labeled images</span><br><span class="line">  -&gt; train a strong MDE teacher</span><br><span class="line">  -&gt; pseudo-label 62M unlabeled images</span><br><span class="line">  -&gt; retrain a student on labeled + pseudo-labeled data</span><br><span class="line">  -&gt; add hard perturbations and semantic feature alignment</span><br></pre></td></tr></table></figure></div>
+<p>这里最重要的不是“无标注数据更多”，而是作者发现：<strong>如果只是把 labeled 和 pseudo-labeled images 简单混起来，模型并不会明显变好</strong>。原因是 teacher 和 student 架构、预训练权重接近，学生很容易只复制 teacher 已经会的东西。DA1 的关键补丁，是在学习无标注图像时给 student 更难的优化目标，让它从同一张图里学到额外不变性和语义结构。</p>
+<p><img  
+                     lazyload
+                     src="/images/loading.svg"
+                     data-src="/image/ai-notes/images/paper-deep-dives/embodied-ai/depth-anything/figure-1-teaser.png"
+                      alt="Depth Anything teaser 原论文图" 
+                ></p>
+<p><small>图源：<code>Depth Anything</code>，Figure 1。原论文图意：Depth Anything 在 COCO、SA-1B hold-out 和作者自采图像等未见场景中展示深度泛化，覆盖低光、复杂多人场景、雾天城市和超远距离建筑。</small></p>
+<h2 id="数据引擎"><a class="markdownIt-Anchor" href="#数据引擎"></a> 数据引擎</h2>
+<p>论文把数据分成两层。</p>
+<p>第一层是 labeled images，用于训练 teacher。它们来自 6 个公开数据集，总量约 1.5M。作者刻意没有使用 KITTI 和 NYUv2 训练集，因为后面要把它们作为 zero-shot evaluation。第二层是 unlabeled images，来自 8 个大规模公开数据源，总量约 62M。它们没有使用原始任务标签，只作为视觉分布覆盖来用。</p>
+<p>Table 1 is redrawn below with the original English fields.</p>
+<table>
+<thead>
+<tr>
+<th>Dataset</th>
+<th>Indoor</th>
+<th>Outdoor</th>
+<th>Label</th>
+<th># Images</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Labeled Datasets</strong></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>BlendedMVS</td>
+<td>✓</td>
+<td>✓</td>
+<td>Stereo</td>
+<td>115K</td>
+</tr>
+<tr>
+<td>DIML</td>
+<td>✓</td>
+<td>✓</td>
+<td>Stereo</td>
+<td>927K</td>
+</tr>
+<tr>
+<td>HRWSI</td>
+<td>✓</td>
+<td>✓</td>
+<td>Stereo</td>
+<td>20K</td>
+</tr>
+<tr>
+<td>IRS</td>
+<td>✓</td>
+<td></td>
+<td>Stereo</td>
+<td>103K</td>
+</tr>
+<tr>
+<td>MegaDepth</td>
+<td></td>
+<td>✓</td>
+<td>SfM</td>
+<td>128K</td>
+</tr>
+<tr>
+<td>TartanAir</td>
+<td>✓</td>
+<td>✓</td>
+<td>Stereo</td>
+<td>306K</td>
+</tr>
+<tr>
+<td><strong>Unlabeled Datasets</strong></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>BDD100K</td>
+<td></td>
+<td>✓</td>
+<td>None</td>
+<td>8.2M</td>
+</tr>
+<tr>
+<td>Google Landmarks</td>
+<td></td>
+<td>✓</td>
+<td>None</td>
+<td>4.1M</td>
+</tr>
+<tr>
+<td>ImageNet-21K</td>
+<td>✓</td>
+<td>✓</td>
+<td>None</td>
+<td>13.1M</td>
+</tr>
+<tr>
+<td>LSUN</td>
+<td>✓</td>
+<td></td>
+<td>None</td>
+<td>9.8M</td>
+</tr>
+<tr>
+<td>Objects365</td>
+<td>✓</td>
+<td>✓</td>
+<td>None</td>
+<td>1.7M</td>
+</tr>
+<tr>
+<td>Open Images V7</td>
+<td>✓</td>
+<td>✓</td>
+<td>None</td>
+<td>7.8M</td>
+</tr>
+<tr>
+<td>Places365</td>
+<td>✓</td>
+<td>✓</td>
+<td>None</td>
+<td>6.5M</td>
+</tr>
+<tr>
+<td>SA-1B</td>
+<td>✓</td>
+<td>✓</td>
+<td>None</td>
+<td>11.1M</td>
+</tr>
+</tbody>
+</table>
+<p><small>表源：<code>Depth Anything</code>，Table 1。原论文表格要点：DA1 使用 1.5M labeled images 和 62M unlabeled images 联合训练；unlabeled sources 覆盖道路、地标、通用物体、场景、分割图像和大规模互联网视觉分布。</small></p>
+<p>这张表对具身智能的启发很直接：如果一个单目深度模型只见过室内 RGB-D 或固定自动驾驶相机，它很容易把“场景先验”误当成“几何能力”。DA1 用 62M 无标注图像补的不是更精确的深度标签，而是更宽的视觉分布。</p>
+<h2 id="训练总路线"><a class="markdownIt-Anchor" href="#训练总路线"></a> 训练总路线</h2>
+<p>论文 Figure 2 是整套方法的核心图。</p>
+<p><img  
+                     lazyload
+                     src="/images/loading.svg"
+                     data-src="/image/ai-notes/images/paper-deep-dives/embodied-ai/depth-anything/figure-2-pipeline.png"
+                      alt="Depth Anything pipeline 原论文图" 
+                ></p>
+<p><small>图源：<code>Depth Anything</code>，Figure 2。原论文图意：solid line 表示 labeled image 流程，dotted line 表示 unlabeled image 流程；无标注图像经 teacher 产生 pseudo label，student 在强扰动图像上学习，同时通过 frozen DINOv2 encoder 做 semantic preservation。</small></p>
+<div class="callout callout--titled info mb-4 rounded-small shadow-redefine-flat bg-(--callout-bg-color) p-3 pl-1 relative flex flex-row gap-2"><div role="none" class="rounded-full self-stretch w-0.5 bg-(--callout-primary-color) shrink-0 opacity-60"></div><div class="flex flex-col gap-2"><div class="callout__title flex items-center gap-2 font-semibold tracking-tight">这张图怎么读</div><div class="callout__content markdown-body flex-1 min-w-0"><p>上半部分是 labeled image：真实或重建得到的 depth label 监督 teacher / student 的深度输出。下半部分是 unlabeled image：teacher 对 clean image 产生 pseudo label，student 看到的却是经过强颜色扰动或 CutMix 的图像。这个错位是关键，它逼 student 学习对颜色、局部拼接和图像扰动不敏感的深度表征。</p>
+<p>图中粉色 <code>semantic preservation</code> 不是语义分割 head，而是把 student encoder 的特征向 frozen DINOv2 encoder 对齐。DA1 的判断是，离散 segmentation masks 会损失太多语义信息，不如直接保留 DINOv2 连续特征空间里的语义先验。</p></div></div></div>
+<h2 id="模型结构"><a class="markdownIt-Anchor" href="#模型结构"></a> 模型结构</h2>
+<p>DA1 的结构故意保持简单。</p>
+<table>
+<thead>
+<tr>
+<th>Component</th>
+<th>Depth Anything choice</th>
+<th>Why it matters</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Encoder</td>
+<td>DINOv2 ViT-S / ViT-B / ViT-L</td>
+<td>借用大规模自监督视觉预训练的开放域语义和纹理先验</td>
+</tr>
+<tr>
+<td>Decoder</td>
+<td>DPT</td>
+<td>沿用 MiDaS / DPT 系列的 dense depth regression head</td>
+</tr>
+<tr>
+<td>Output</td>
+<td>relative inverse depth / disparity-like map</td>
+<td>适合跨数据集训练和 zero-shot 相对深度，但不是绝对米制距离</td>
+</tr>
+<tr>
+<td>Model scales</td>
+<td>ViT-S 24.8M, ViT-B 97.5M, ViT-L 335.3M</td>
+<td>覆盖轻量部署、质量折中和高质量离线推理</td>
+</tr>
+</tbody>
+</table>
+<p>训练前，真实 depth value 会先转成 disparity space：</p>
+<p><span class="katex-display"><span class="katex"><span class="katex-mathml"><math><semantics><mrow><mi>d</mi><mo>=</mo><mn>1</mn><mi mathvariant="normal">/</mi><mi>t</mi></mrow><annotation encoding="application/x-tex">d = 1 / t
+</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.69444em;vertical-align:0em;"></span><span class="mord mathdefault">d</span><span class="mspace" style="margin-right:0.2777777777777778em;"></span><span class="mrel">=</span><span class="mspace" style="margin-right:0.2777777777777778em;"></span></span><span class="base"><span class="strut" style="height:1em;vertical-align:-0.25em;"></span><span class="mord">1</span><span class="mord">/</span><span class="mord mathdefault">t</span></span></span></span></span></p>
+<p>然后每张 depth map 单独归一化到 0 到 1。为了跨数据集训练，DA1 采用 affine-invariant mean absolute error，不要求不同数据源共享同一 scale 和 shift：</p>
+<p><span class="katex-display"><span class="katex"><span class="katex-mathml"><math><semantics><mrow><msub><mi mathvariant="script">L</mi><mi>l</mi></msub><mo>=</mo><mfrac><mn>1</mn><mrow><mi>H</mi><mi>W</mi></mrow></mfrac><munderover><mo>∑</mo><mrow><mi>i</mi><mo>=</mo><mn>1</mn></mrow><mrow><mi>H</mi><mi>W</mi></mrow></munderover><mi>ρ</mi><mo stretchy="false">(</mo><msubsup><mi>d</mi><mi>i</mi><mo>∗</mo></msubsup><mo separator="true">,</mo><msub><mi>d</mi><mi>i</mi></msub><mo stretchy="false">)</mo></mrow><annotation encoding="application/x-tex">\mathcal{L}_l = \frac{1}{HW}\sum_{i=1}^{HW}\rho(d_i^*, d_i)
+</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.83333em;vertical-align:-0.15em;"></span><span class="mord"><span class="mord"><span class="mord mathcal">L</span></span><span class="msupsub"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height:0.33610799999999996em;"><span style="top:-2.5500000000000003em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mathdefault mtight" style="margin-right:0.01968em;">l</span></span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height:0.15em;"><span></span></span></span></span></span></span><span class="mspace" style="margin-right:0.2777777777777778em;"></span><span class="mrel">=</span><span class="mspace" style="margin-right:0.2777777777777778em;"></span></span><span class="base"><span class="strut" style="height:3.106005em;vertical-align:-1.277669em;"></span><span class="mord"><span class="mopen nulldelimiter"></span><span class="mfrac"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height:1.32144em;"><span style="top:-2.314em;"><span class="pstrut" style="height:3em;"></span><span class="mord"><span class="mord mathdefault" style="margin-right:0.08125em;">H</span><span class="mord mathdefault" style="margin-right:0.13889em;">W</span></span></span><span style="top:-3.23em;"><span class="pstrut" style="height:3em;"></span><span class="frac-line" style="border-bottom-width:0.04em;"></span></span><span style="top:-3.677em;"><span class="pstrut" style="height:3em;"></span><span class="mord"><span class="mord">1</span></span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height:0.686em;"><span></span></span></span></span></span><span class="mclose nulldelimiter"></span></span><span class="mspace" style="margin-right:0.16666666666666666em;"></span><span class="mop op-limits"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height:1.8283360000000002em;"><span style="top:-1.872331em;margin-left:0em;"><span class="pstrut" style="height:3.05em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mtight"><span class="mord mathdefault mtight">i</span><span class="mrel mtight">=</span><span class="mord mtight">1</span></span></span></span><span style="top:-3.050005em;"><span class="pstrut" style="height:3.05em;"></span><span><span class="mop op-symbol large-op">∑</span></span></span><span style="top:-4.3000050000000005em;margin-left:0em;"><span class="pstrut" style="height:3.05em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mtight"><span class="mord mathdefault mtight" style="margin-right:0.08125em;">H</span><span class="mord mathdefault mtight" style="margin-right:0.13889em;">W</span></span></span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height:1.277669em;"><span></span></span></span></span></span><span class="mspace" style="margin-right:0.16666666666666666em;"></span><span class="mord mathdefault">ρ</span><span class="mopen">(</span><span class="mord"><span class="mord mathdefault">d</span><span class="msupsub"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height:0.7386959999999999em;"><span style="top:-2.4530000000000003em;margin-left:0em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mathdefault mtight">i</span></span></span><span style="top:-3.113em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mbin mtight">∗</span></span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height:0.247em;"><span></span></span></span></span></span></span><span class="mpunct">,</span><span class="mspace" style="margin-right:0.16666666666666666em;"></span><span class="mord"><span class="mord mathdefault">d</span><span class="msupsub"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height:0.31166399999999994em;"><span style="top:-2.5500000000000003em;margin-left:0em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mathdefault mtight">i</span></span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height:0.15em;"><span></span></span></span></span></span></span><span class="mclose">)</span></span></span></span></span></p>
+<p>其中 <span class="katex"><span class="katex-mathml"><math><semantics><mrow><mi>ρ</mi><mo stretchy="false">(</mo><msubsup><mi>d</mi><mi>i</mi><mo>∗</mo></msubsup><mo separator="true">,</mo><msub><mi>d</mi><mi>i</mi></msub><mo stretchy="false">)</mo><mo>=</mo><mi mathvariant="normal">∣</mi><msubsup><mover accent="true"><mi>d</mi><mo>^</mo></mover><mi>i</mi><mo>∗</mo></msubsup><mo>−</mo><msub><mover accent="true"><mi>d</mi><mo>^</mo></mover><mi>i</mi></msub><mi mathvariant="normal">∣</mi></mrow><annotation encoding="application/x-tex">\rho(d_i^*, d_i)=|\hat d_i^*-\hat d_i|</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:1.008664em;vertical-align:-0.258664em;"></span><span class="mord mathdefault">ρ</span><span class="mopen">(</span><span class="mord"><span class="mord mathdefault">d</span><span class="msupsub"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height:0.688696em;"><span style="top:-2.441336em;margin-left:0em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mathdefault mtight">i</span></span></span><span style="top:-3.063em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mbin mtight">∗</span></span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height:0.258664em;"><span></span></span></span></span></span></span><span class="mpunct">,</span><span class="mspace" style="margin-right:0.16666666666666666em;"></span><span class="mord"><span class="mord mathdefault">d</span><span class="msupsub"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height:0.31166399999999994em;"><span style="top:-2.5500000000000003em;margin-left:0em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mathdefault mtight">i</span></span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height:0.15em;"><span></span></span></span></span></span></span><span class="mclose">)</span><span class="mspace" style="margin-right:0.2777777777777778em;"></span><span class="mrel">=</span><span class="mspace" style="margin-right:0.2777777777777778em;"></span></span><span class="base"><span class="strut" style="height:1.2165439999999998em;vertical-align:-0.258664em;"></span><span class="mord">∣</span><span class="mord"><span class="mord accent"><span class="vlist-t"><span class="vlist-r"><span class="vlist" style="height:0.9578799999999998em;"><span style="top:-3em;"><span class="pstrut" style="height:3em;"></span><span class="mord mathdefault">d</span></span><span style="top:-3.26344em;"><span class="pstrut" style="height:3em;"></span><span class="accent-body" style="left:-0.08332999999999999em;">^</span></span></span></span></span></span><span class="msupsub"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height:0.688696em;"><span style="top:-2.441336em;margin-left:0em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mathdefault mtight">i</span></span></span><span style="top:-3.063em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mbin mtight">∗</span></span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height:0.258664em;"><span></span></span></span></span></span></span><span class="mspace" style="margin-right:0.2222222222222222em;"></span><span class="mbin">−</span><span class="mspace" style="margin-right:0.2222222222222222em;"></span></span><span class="base"><span class="strut" style="height:1.2078799999999998em;vertical-align:-0.25em;"></span><span class="mord"><span class="mord accent"><span class="vlist-t"><span class="vlist-r"><span class="vlist" style="height:0.9578799999999998em;"><span style="top:-3em;"><span class="pstrut" style="height:3em;"></span><span class="mord mathdefault">d</span></span><span style="top:-3.26344em;"><span class="pstrut" style="height:3em;"></span><span class="accent-body" style="left:-0.08332999999999999em;">^</span></span></span></span></span></span><span class="msupsub"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height:0.31166399999999994em;"><span style="top:-2.5500000000000003em;margin-left:0em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mathdefault mtight">i</span></span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height:0.15em;"><span></span></span></span></span></span></span><span class="mord">∣</span></span></span></span>，而 <span class="katex"><span class="katex-mathml"><math><semantics><mrow><mover accent="true"><mi>d</mi><mo>^</mo></mover></mrow><annotation encoding="application/x-tex">\hat d</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.9578799999999998em;vertical-align:0em;"></span><span class="mord accent"><span class="vlist-t"><span class="vlist-r"><span class="vlist" style="height:0.9578799999999998em;"><span style="top:-3em;"><span class="pstrut" style="height:3em;"></span><span class="mord mathdefault">d</span></span><span style="top:-3.26344em;"><span class="pstrut" style="height:3em;"></span><span class="accent-body" style="left:-0.08332999999999999em;">^</span></span></span></span></span></span></span></span></span> 会用 median 和 mean absolute deviation 做平移与尺度归一：</p>
+<p><span class="katex-display"><span class="katex"><span class="katex-mathml"><math><semantics><mrow><msub><mover accent="true"><mi>d</mi><mo>^</mo></mover><mi>i</mi></msub><mo>=</mo><mfrac><mrow><msub><mi>d</mi><mi>i</mi></msub><mo>−</mo><mi>t</mi><mo stretchy="false">(</mo><mi>d</mi><mo stretchy="false">)</mo></mrow><mrow><mi>s</mi><mo stretchy="false">(</mo><mi>d</mi><mo stretchy="false">)</mo></mrow></mfrac><mo separator="true">,</mo><mspace width="1em"/><mi>t</mi><mo stretchy="false">(</mo><mi>d</mi><mo stretchy="false">)</mo><mo>=</mo><mrow><mi mathvariant="normal">m</mi><mi mathvariant="normal">e</mi><mi mathvariant="normal">d</mi><mi mathvariant="normal">i</mi><mi mathvariant="normal">a</mi><mi mathvariant="normal">n</mi></mrow><mo stretchy="false">(</mo><mi>d</mi><mo stretchy="false">)</mo><mo separator="true">,</mo><mspace width="1em"/><mi>s</mi><mo stretchy="false">(</mo><mi>d</mi><mo stretchy="false">)</mo><mo>=</mo><mfrac><mn>1</mn><mrow><mi>H</mi><mi>W</mi></mrow></mfrac><munderover><mo>∑</mo><mrow><mi>i</mi><mo>=</mo><mn>1</mn></mrow><mrow><mi>H</mi><mi>W</mi></mrow></munderover><mi mathvariant="normal">∣</mi><msub><mi>d</mi><mi>i</mi></msub><mo>−</mo><mi>t</mi><mo stretchy="false">(</mo><mi>d</mi><mo stretchy="false">)</mo><mi mathvariant="normal">∣</mi></mrow><annotation encoding="application/x-tex">\hat d_i=\frac{d_i-t(d)}{s(d)}, \quad
+t(d)=\mathrm{median}(d), \quad
+s(d)=\frac{1}{HW}\sum_{i=1}^{HW}|d_i-t(d)|
+</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:1.1078799999999998em;vertical-align:-0.15em;"></span><span class="mord"><span class="mord accent"><span class="vlist-t"><span class="vlist-r"><span class="vlist" style="height:0.9578799999999998em;"><span style="top:-3em;"><span class="pstrut" style="height:3em;"></span><span class="mord mathdefault">d</span></span><span style="top:-3.26344em;"><span class="pstrut" style="height:3em;"></span><span class="accent-body" style="left:-0.08332999999999999em;">^</span></span></span></span></span></span><span class="msupsub"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height:0.31166399999999994em;"><span style="top:-2.5500000000000003em;margin-left:0em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mathdefault mtight">i</span></span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height:0.15em;"><span></span></span></span></span></span></span><span class="mspace" style="margin-right:0.2777777777777778em;"></span><span class="mrel">=</span><span class="mspace" style="margin-right:0.2777777777777778em;"></span></span><span class="base"><span class="strut" style="height:2.363em;vertical-align:-0.936em;"></span><span class="mord"><span class="mopen nulldelimiter"></span><span class="mfrac"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height:1.427em;"><span style="top:-2.314em;"><span class="pstrut" style="height:3em;"></span><span class="mord"><span class="mord mathdefault">s</span><span class="mopen">(</span><span class="mord mathdefault">d</span><span class="mclose">)</span></span></span><span style="top:-3.23em;"><span class="pstrut" style="height:3em;"></span><span class="frac-line" style="border-bottom-width:0.04em;"></span></span><span style="top:-3.677em;"><span class="pstrut" style="height:3em;"></span><span class="mord"><span class="mord"><span class="mord mathdefault">d</span><span class="msupsub"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height:0.31166399999999994em;"><span style="top:-2.5500000000000003em;margin-left:0em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mathdefault mtight">i</span></span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height:0.15em;"><span></span></span></span></span></span></span><span class="mspace" style="margin-right:0.2222222222222222em;"></span><span class="mbin">−</span><span class="mspace" style="margin-right:0.2222222222222222em;"></span><span class="mord mathdefault">t</span><span class="mopen">(</span><span class="mord mathdefault">d</span><span class="mclose">)</span></span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height:0.936em;"><span></span></span></span></span></span><span class="mclose nulldelimiter"></span></span><span class="mpunct">,</span><span class="mspace" style="margin-right:0.16666666666666666em;"></span><span class="mspace" style="margin-right:1em;"></span><span class="mord mathdefault">t</span><span class="mopen">(</span><span class="mord mathdefault">d</span><span class="mclose">)</span><span class="mspace" style="margin-right:0.2777777777777778em;"></span><span class="mrel">=</span><span class="mspace" style="margin-right:0.2777777777777778em;"></span></span><span class="base"><span class="strut" style="height:1em;vertical-align:-0.25em;"></span><span class="mord"><span class="mord mathrm">m</span><span class="mord mathrm">e</span><span class="mord mathrm">d</span><span class="mord mathrm">i</span><span class="mord mathrm">a</span><span class="mord mathrm">n</span></span><span class="mopen">(</span><span class="mord mathdefault">d</span><span class="mclose">)</span><span class="mpunct">,</span><span class="mspace" style="margin-right:0.16666666666666666em;"></span><span class="mspace" style="margin-right:1em;"></span><span class="mord mathdefault">s</span><span class="mopen">(</span><span class="mord mathdefault">d</span><span class="mclose">)</span><span class="mspace" style="margin-right:0.2777777777777778em;"></span><span class="mrel">=</span><span class="mspace" style="margin-right:0.2777777777777778em;"></span></span><span class="base"><span class="strut" style="height:3.106005em;vertical-align:-1.277669em;"></span><span class="mord"><span class="mopen nulldelimiter"></span><span class="mfrac"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height:1.32144em;"><span style="top:-2.314em;"><span class="pstrut" style="height:3em;"></span><span class="mord"><span class="mord mathdefault" style="margin-right:0.08125em;">H</span><span class="mord mathdefault" style="margin-right:0.13889em;">W</span></span></span><span style="top:-3.23em;"><span class="pstrut" style="height:3em;"></span><span class="frac-line" style="border-bottom-width:0.04em;"></span></span><span style="top:-3.677em;"><span class="pstrut" style="height:3em;"></span><span class="mord"><span class="mord">1</span></span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height:0.686em;"><span></span></span></span></span></span><span class="mclose nulldelimiter"></span></span><span class="mspace" style="margin-right:0.16666666666666666em;"></span><span class="mop op-limits"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height:1.8283360000000002em;"><span style="top:-1.872331em;margin-left:0em;"><span class="pstrut" style="height:3.05em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mtight"><span class="mord mathdefault mtight">i</span><span class="mrel mtight">=</span><span class="mord mtight">1</span></span></span></span><span style="top:-3.050005em;"><span class="pstrut" style="height:3.05em;"></span><span><span class="mop op-symbol large-op">∑</span></span></span><span style="top:-4.3000050000000005em;margin-left:0em;"><span class="pstrut" style="height:3.05em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mtight"><span class="mord mathdefault mtight" style="margin-right:0.08125em;">H</span><span class="mord mathdefault mtight" style="margin-right:0.13889em;">W</span></span></span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height:1.277669em;"><span></span></span></span></span></span><span class="mspace" style="margin-right:0.16666666666666666em;"></span><span class="mord">∣</span><span class="mord"><span class="mord mathdefault">d</span><span class="msupsub"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height:0.31166399999999994em;"><span style="top:-2.5500000000000003em;margin-left:0em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mathdefault mtight">i</span></span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height:0.15em;"><span></span></span></span></span></span></span><span class="mspace" style="margin-right:0.2222222222222222em;"></span><span class="mbin">−</span><span class="mspace" style="margin-right:0.2222222222222222em;"></span></span><span class="base"><span class="strut" style="height:1em;vertical-align:-0.25em;"></span><span class="mord mathdefault">t</span><span class="mopen">(</span><span class="mord mathdefault">d</span><span class="mclose">)</span><span class="mord">∣</span></span></span></span></span></p>
+<p>这也解释了 DA1 的使用边界：它很适合告诉机器人“哪里更近、哪里有边界、物体大致关系如何”，但如果任务要 3D 坐标、抓取距离或安全制动阈值，就要接相机标定、metric fine-tuning、多视角几何或真实 depth sensor。</p>
+<h2 id="训练细节"><a class="markdownIt-Anchor" href="#训练细节"></a> 训练细节</h2>
+<h3 id="1-teacher-stage"><a class="markdownIt-Anchor" href="#1-teacher-stage"></a> 1. Teacher stage</h3>
+<p>teacher 先只在 labeled images 上训练，目标是得到一个足够可靠的 MDE annotator。</p>
+<table>
+<thead>
+<tr>
+<th>Setting</th>
+<th>Value</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Architecture</td>
+<td>DINOv2 encoder + DPT decoder</td>
+</tr>
+<tr>
+<td>Training data</td>
+<td>1.5M labeled images from 6 public datasets</td>
+</tr>
+<tr>
+<td>Epochs</td>
+<td>20</td>
+</tr>
+<tr>
+<td>Labeled data sampling</td>
+<td>simply combined together without re-sampling</td>
+</tr>
+<tr>
+<td>Encoder initialization</td>
+<td>DINOv2 pre-trained weights</td>
+</tr>
+<tr>
+<td>Sky handling</td>
+<td>use a pre-trained semantic segmentation model to detect <code>sky</code>, then set its disparity to 0</td>
+</tr>
+</tbody>
+</table>
+<p><code>sky</code> 这个细节很实用。天空通常没有可靠深度，stereo / SfM / LiDAR 标签也容易缺失或噪声很大。DA1 把天空 disparity 设为 0，本质上是在告诉模型：天空应被看成最远背景，不要让数据噪声污染这类区域。</p>
+<h3 id="2-pseudo-labeling-stage"><a class="markdownIt-Anchor" href="#2-pseudo-labeling-stage"></a> 2. Pseudo-labeling stage</h3>
+<p>给定 teacher <span class="katex"><span class="katex-mathml"><math><semantics><mrow><mi>T</mi></mrow><annotation encoding="application/x-tex">T</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.68333em;vertical-align:0em;"></span><span class="mord mathdefault" style="margin-right:0.13889em;">T</span></span></span></span>，DA1 用一次前向推理为每张 unlabeled image 生成 pseudo depth：</p>
+<p><span class="katex-display"><span class="katex"><span class="katex-mathml"><math><semantics><mrow><msup><mover accent="true"><mi mathvariant="script">D</mi><mo>^</mo></mover><mi>u</mi></msup><mo>=</mo><mo stretchy="false">{</mo><mo stretchy="false">(</mo><msub><mi>u</mi><mi>i</mi></msub><mo separator="true">,</mo><mi>T</mi><mo stretchy="false">(</mo><msub><mi>u</mi><mi>i</mi></msub><mo stretchy="false">)</mo><mo stretchy="false">)</mo><mo>∣</mo><msub><mi>u</mi><mi>i</mi></msub><mo>∈</mo><msup><mi mathvariant="script">D</mi><mi>u</mi></msup><msubsup><mo stretchy="false">}</mo><mrow><mi>i</mi><mo>=</mo><mn>1</mn></mrow><mi>N</mi></msubsup></mrow><annotation encoding="application/x-tex">\hat{\mathcal{D}}^u = \{(u_i, T(u_i)) \mid u_i \in \mathcal{D}^u\}_{i=1}^{N}
+</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.9467699999999999em;vertical-align:0em;"></span><span class="mord"><span class="mord accent"><span class="vlist-t"><span class="vlist-r"><span class="vlist" style="height:0.9467699999999999em;"><span style="top:-3em;"><span class="pstrut" style="height:3em;"></span><span class="mord"><span class="mord"><span class="mord mathcal" style="margin-right:0.02778em;">D</span></span></span></span><span style="top:-3.25233em;"><span class="pstrut" style="height:3em;"></span><span class="accent-body" style="left:-0.19444em;">^</span></span></span></span></span></span><span class="msupsub"><span class="vlist-t"><span class="vlist-r"><span class="vlist" style="height:0.7143919999999999em;"><span style="top:-3.113em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mathdefault mtight">u</span></span></span></span></span></span></span></span><span class="mspace" style="margin-right:0.2777777777777778em;"></span><span class="mrel">=</span><span class="mspace" style="margin-right:0.2777777777777778em;"></span></span><span class="base"><span class="strut" style="height:1em;vertical-align:-0.25em;"></span><span class="mopen">{</span><span class="mopen">(</span><span class="mord"><span class="mord mathdefault">u</span><span class="msupsub"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height:0.31166399999999994em;"><span style="top:-2.5500000000000003em;margin-left:0em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mathdefault mtight">i</span></span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height:0.15em;"><span></span></span></span></span></span></span><span class="mpunct">,</span><span class="mspace" style="margin-right:0.16666666666666666em;"></span><span class="mord mathdefault" style="margin-right:0.13889em;">T</span><span class="mopen">(</span><span class="mord"><span class="mord mathdefault">u</span><span class="msupsub"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height:0.31166399999999994em;"><span style="top:-2.5500000000000003em;margin-left:0em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mathdefault mtight">i</span></span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height:0.15em;"><span></span></span></span></span></span></span><span class="mclose">)</span><span class="mclose">)</span><span class="mspace" style="margin-right:0.2777777777777778em;"></span><span class="mrel">∣</span><span class="mspace" style="margin-right:0.2777777777777778em;"></span></span><span class="base"><span class="strut" style="height:0.6891em;vertical-align:-0.15em;"></span><span class="mord"><span class="mord mathdefault">u</span><span class="msupsub"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height:0.31166399999999994em;"><span style="top:-2.5500000000000003em;margin-left:0em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mathdefault mtight">i</span></span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height:0.15em;"><span></span></span></span></span></span></span><span class="mspace" style="margin-right:0.2777777777777778em;"></span><span class="mrel">∈</span><span class="mspace" style="margin-right:0.2777777777777778em;"></span></span><span class="base"><span class="strut" style="height:1.1413309999999999em;vertical-align:-0.25em;"></span><span class="mord"><span class="mord"><span class="mord mathcal" style="margin-right:0.02778em;">D</span></span><span class="msupsub"><span class="vlist-t"><span class="vlist-r"><span class="vlist" style="height:0.7143919999999999em;"><span style="top:-3.113em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mathdefault mtight">u</span></span></span></span></span></span></span></span><span class="mclose"><span class="mclose">}</span><span class="msupsub"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height:0.8913309999999999em;"><span style="top:-2.4530000000000003em;margin-left:0em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mtight"><span class="mord mathdefault mtight">i</span><span class="mrel mtight">=</span><span class="mord mtight">1</span></span></span></span><span style="top:-3.113em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mtight"><span class="mord mathdefault mtight" style="margin-right:0.10903em;">N</span></span></span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height:0.247em;"><span></span></span></span></span></span></span></span></span></span></span></p>
+<p>这个阶段的好处是成本极低：不需要双目匹配，不需要 SfM，不需要 LiDAR，也不需要人工深度标注。对 62M 级别的数据来说，这正是 DA1 相对传统深度数据构建方式的效率来源。</p>
+<p>但论文明确说，普通 self-training 不够。直接把 labeled 和 pseudo-labeled images 合并训练，提升很有限，甚至可能没有提升。原因是 teacher 和 student 使用相似 architecture 与 DINOv2 initialization，student 只是在学习 teacher 已经会的预测，额外视觉知识没有被充分挖出来。</p>
+<h3 id="3-student-stage-strong-perturbation"><a class="markdownIt-Anchor" href="#3-student-stage-strong-perturbation"></a> 3. Student stage: strong perturbation</h3>
+<p>DA1 的修正是：对 unlabeled images 的 student input 加强扰动，但 teacher pseudo label 来自 clean image。</p>
+<table>
+<thead>
+<tr>
+<th>Perturbation</th>
+<th>Used on</th>
+<th>Purpose</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>color jittering</td>
+<td>unlabeled student input</td>
+<td>逼模型不要依赖颜色捷径</td>
+</tr>
+<tr>
+<td>Gaussian blurring</td>
+<td>unlabeled student input</td>
+<td>让深度结构对低频/模糊变化更稳</td>
+</tr>
+<tr>
+<td>CutMix</td>
+<td>unlabeled student input, 50% probability</td>
+<td>用空间拼接制造更难的局部几何目标</td>
+</tr>
+<tr>
+<td>clean image</td>
+<td>teacher pseudo-labeling</td>
+<td>保持 pseudo labels 尽量可靠</td>
+</tr>
+</tbody>
+</table>
+<p>CutMix 在 DA1 里不是简单分类增强，而是要让无标注深度监督在两个图像区域内分别对齐 teacher：</p>
+<p><span class="katex-display"><span class="katex"><span class="katex-mathml"><math><semantics><mrow><msub><mi>u</mi><mrow><mi>a</mi><mi>b</mi></mrow></msub><mo>=</mo><msub><mi>u</mi><mi>a</mi></msub><mo>⊙</mo><mi>M</mi><mo>+</mo><msub><mi>u</mi><mi>b</mi></msub><mo>⊙</mo><mo stretchy="false">(</mo><mn>1</mn><mo>−</mo><mi>M</mi><mo stretchy="false">)</mo></mrow><annotation encoding="application/x-tex">u_{ab}=u_a \odot M + u_b \odot (1-M)
+</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.58056em;vertical-align:-0.15em;"></span><span class="mord"><span class="mord mathdefault">u</span><span class="msupsub"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height:0.33610799999999996em;"><span style="top:-2.5500000000000003em;margin-left:0em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mtight"><span class="mord mathdefault mtight">a</span><span class="mord mathdefault mtight">b</span></span></span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height:0.15em;"><span></span></span></span></span></span></span><span class="mspace" style="margin-right:0.2777777777777778em;"></span><span class="mrel">=</span><span class="mspace" style="margin-right:0.2777777777777778em;"></span></span><span class="base"><span class="strut" style="height:0.73333em;vertical-align:-0.15em;"></span><span class="mord"><span class="mord mathdefault">u</span><span class="msupsub"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height:0.151392em;"><span style="top:-2.5500000000000003em;margin-left:0em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mathdefault mtight">a</span></span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height:0.15em;"><span></span></span></span></span></span></span><span class="mspace" style="margin-right:0.2222222222222222em;"></span><span class="mbin">⊙</span><span class="mspace" style="margin-right:0.2222222222222222em;"></span></span><span class="base"><span class="strut" style="height:0.76666em;vertical-align:-0.08333em;"></span><span class="mord mathdefault" style="margin-right:0.10903em;">M</span><span class="mspace" style="margin-right:0.2222222222222222em;"></span><span class="mbin">+</span><span class="mspace" style="margin-right:0.2222222222222222em;"></span></span><span class="base"><span class="strut" style="height:0.73333em;vertical-align:-0.15em;"></span><span class="mord"><span class="mord mathdefault">u</span><span class="msupsub"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height:0.33610799999999996em;"><span style="top:-2.5500000000000003em;margin-left:0em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mathdefault mtight">b</span></span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height:0.15em;"><span></span></span></span></span></span></span><span class="mspace" style="margin-right:0.2222222222222222em;"></span><span class="mbin">⊙</span><span class="mspace" style="margin-right:0.2222222222222222em;"></span></span><span class="base"><span class="strut" style="height:1em;vertical-align:-0.25em;"></span><span class="mopen">(</span><span class="mord">1</span><span class="mspace" style="margin-right:0.2222222222222222em;"></span><span class="mbin">−</span><span class="mspace" style="margin-right:0.2222222222222222em;"></span></span><span class="base"><span class="strut" style="height:1em;vertical-align:-0.25em;"></span><span class="mord mathdefault" style="margin-right:0.10903em;">M</span><span class="mclose">)</span></span></span></span></span></p>
+<p><span class="katex-display"><span class="katex"><span class="katex-mathml"><math><semantics><mrow><msubsup><mi mathvariant="script">L</mi><mi>u</mi><mi>M</mi></msubsup><mo>=</mo><mi>ρ</mi><mo stretchy="false">(</mo><mi>S</mi><mo stretchy="false">(</mo><msub><mi>u</mi><mrow><mi>a</mi><mi>b</mi></mrow></msub><mo stretchy="false">)</mo><mo>⊙</mo><mi>M</mi><mo separator="true">,</mo><mi>T</mi><mo stretchy="false">(</mo><msub><mi>u</mi><mi>a</mi></msub><mo stretchy="false">)</mo><mo>⊙</mo><mi>M</mi><mo stretchy="false">)</mo></mrow><annotation encoding="application/x-tex">\mathcal{L}^M_u=\rho(S(u_{ab}) \odot M, T(u_a)\odot M)
+</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:1.138331em;vertical-align:-0.247em;"></span><span class="mord"><span class="mord"><span class="mord mathcal">L</span></span><span class="msupsub"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height:0.8913309999999999em;"><span style="top:-2.4530000000000003em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mathdefault mtight">u</span></span></span><span style="top:-3.113em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mathdefault mtight" style="margin-right:0.10903em;">M</span></span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height:0.247em;"><span></span></span></span></span></span></span><span class="mspace" style="margin-right:0.2777777777777778em;"></span><span class="mrel">=</span><span class="mspace" style="margin-right:0.2777777777777778em;"></span></span><span class="base"><span class="strut" style="height:1em;vertical-align:-0.25em;"></span><span class="mord mathdefault">ρ</span><span class="mopen">(</span><span class="mord mathdefault" style="margin-right:0.05764em;">S</span><span class="mopen">(</span><span class="mord"><span class="mord mathdefault">u</span><span class="msupsub"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height:0.33610799999999996em;"><span style="top:-2.5500000000000003em;margin-left:0em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mtight"><span class="mord mathdefault mtight">a</span><span class="mord mathdefault mtight">b</span></span></span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height:0.15em;"><span></span></span></span></span></span></span><span class="mclose">)</span><span class="mspace" style="margin-right:0.2222222222222222em;"></span><span class="mbin">⊙</span><span class="mspace" style="margin-right:0.2222222222222222em;"></span></span><span class="base"><span class="strut" style="height:1em;vertical-align:-0.25em;"></span><span class="mord mathdefault" style="margin-right:0.10903em;">M</span><span class="mpunct">,</span><span class="mspace" style="margin-right:0.16666666666666666em;"></span><span class="mord mathdefault" style="margin-right:0.13889em;">T</span><span class="mopen">(</span><span class="mord"><span class="mord mathdefault">u</span><span class="msupsub"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height:0.151392em;"><span style="top:-2.5500000000000003em;margin-left:0em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mathdefault mtight">a</span></span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height:0.15em;"><span></span></span></span></span></span></span><span class="mclose">)</span><span class="mspace" style="margin-right:0.2222222222222222em;"></span><span class="mbin">⊙</span><span class="mspace" style="margin-right:0.2222222222222222em;"></span></span><span class="base"><span class="strut" style="height:1em;vertical-align:-0.25em;"></span><span class="mord mathdefault" style="margin-right:0.10903em;">M</span><span class="mclose">)</span></span></span></span></span></p>
+<p><span class="katex-display"><span class="katex"><span class="katex-mathml"><math><semantics><mrow><msubsup><mi mathvariant="script">L</mi><mi>u</mi><mrow><mn>1</mn><mo>−</mo><mi>M</mi></mrow></msubsup><mo>=</mo><mi>ρ</mi><mo stretchy="false">(</mo><mi>S</mi><mo stretchy="false">(</mo><msub><mi>u</mi><mrow><mi>a</mi><mi>b</mi></mrow></msub><mo stretchy="false">)</mo><mo>⊙</mo><mo stretchy="false">(</mo><mn>1</mn><mo>−</mo><mi>M</mi><mo stretchy="false">)</mo><mo separator="true">,</mo><mi>T</mi><mo stretchy="false">(</mo><msub><mi>u</mi><mi>b</mi></msub><mo stretchy="false">)</mo><mo>⊙</mo><mo stretchy="false">(</mo><mn>1</mn><mo>−</mo><mi>M</mi><mo stretchy="false">)</mo><mo stretchy="false">)</mo></mrow><annotation encoding="application/x-tex">\mathcal{L}^{1-M}_u=\rho(S(u_{ab}) \odot (1-M), T(u_b)\odot (1-M))
+</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:1.138331em;vertical-align:-0.247em;"></span><span class="mord"><span class="mord"><span class="mord mathcal">L</span></span><span class="msupsub"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height:0.8913309999999999em;"><span style="top:-2.4530000000000003em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mathdefault mtight">u</span></span></span><span style="top:-3.113em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mtight"><span class="mord mtight">1</span><span class="mbin mtight">−</span><span class="mord mathdefault mtight" style="margin-right:0.10903em;">M</span></span></span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height:0.247em;"><span></span></span></span></span></span></span><span class="mspace" style="margin-right:0.2777777777777778em;"></span><span class="mrel">=</span><span class="mspace" style="margin-right:0.2777777777777778em;"></span></span><span class="base"><span class="strut" style="height:1em;vertical-align:-0.25em;"></span><span class="mord mathdefault">ρ</span><span class="mopen">(</span><span class="mord mathdefault" style="margin-right:0.05764em;">S</span><span class="mopen">(</span><span class="mord"><span class="mord mathdefault">u</span><span class="msupsub"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height:0.33610799999999996em;"><span style="top:-2.5500000000000003em;margin-left:0em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mtight"><span class="mord mathdefault mtight">a</span><span class="mord mathdefault mtight">b</span></span></span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height:0.15em;"><span></span></span></span></span></span></span><span class="mclose">)</span><span class="mspace" style="margin-right:0.2222222222222222em;"></span><span class="mbin">⊙</span><span class="mspace" style="margin-right:0.2222222222222222em;"></span></span><span class="base"><span class="strut" style="height:1em;vertical-align:-0.25em;"></span><span class="mopen">(</span><span class="mord">1</span><span class="mspace" style="margin-right:0.2222222222222222em;"></span><span class="mbin">−</span><span class="mspace" style="margin-right:0.2222222222222222em;"></span></span><span class="base"><span class="strut" style="height:1em;vertical-align:-0.25em;"></span><span class="mord mathdefault" style="margin-right:0.10903em;">M</span><span class="mclose">)</span><span class="mpunct">,</span><span class="mspace" style="margin-right:0.16666666666666666em;"></span><span class="mord mathdefault" style="margin-right:0.13889em;">T</span><span class="mopen">(</span><span class="mord"><span class="mord mathdefault">u</span><span class="msupsub"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height:0.33610799999999996em;"><span style="top:-2.5500000000000003em;margin-left:0em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mathdefault mtight">b</span></span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height:0.15em;"><span></span></span></span></span></span></span><span class="mclose">)</span><span class="mspace" style="margin-right:0.2222222222222222em;"></span><span class="mbin">⊙</span><span class="mspace" style="margin-right:0.2222222222222222em;"></span></span><span class="base"><span class="strut" style="height:1em;vertical-align:-0.25em;"></span><span class="mopen">(</span><span class="mord">1</span><span class="mspace" style="margin-right:0.2222222222222222em;"></span><span class="mbin">−</span><span class="mspace" style="margin-right:0.2222222222222222em;"></span></span><span class="base"><span class="strut" style="height:1em;vertical-align:-0.25em;"></span><span class="mord mathdefault" style="margin-right:0.10903em;">M</span><span class="mclose">)</span><span class="mclose">)</span></span></span></span></span></p>
+<p><span class="katex-display"><span class="katex"><span class="katex-mathml"><math><semantics><mrow><msub><mi mathvariant="script">L</mi><mi>u</mi></msub><mo>=</mo><mfrac><mrow><mo>∑</mo><mi>M</mi></mrow><mrow><mi>H</mi><mi>W</mi></mrow></mfrac><msubsup><mi mathvariant="script">L</mi><mi>u</mi><mi>M</mi></msubsup><mo>+</mo><mfrac><mrow><mo>∑</mo><mo stretchy="false">(</mo><mn>1</mn><mo>−</mo><mi>M</mi><mo stretchy="false">)</mo></mrow><mrow><mi>H</mi><mi>W</mi></mrow></mfrac><msubsup><mi mathvariant="script">L</mi><mi>u</mi><mrow><mn>1</mn><mo>−</mo><mi>M</mi></mrow></msubsup></mrow><annotation encoding="application/x-tex">\mathcal{L}_u=\frac{\sum M}{HW}\mathcal{L}^M_u+
+\frac{\sum (1-M)}{HW}\mathcal{L}^{1-M}_u
+</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.83333em;vertical-align:-0.15em;"></span><span class="mord"><span class="mord"><span class="mord mathcal">L</span></span><span class="msupsub"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height:0.151392em;"><span style="top:-2.5500000000000003em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mathdefault mtight">u</span></span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height:0.15em;"><span></span></span></span></span></span></span><span class="mspace" style="margin-right:0.2777777777777778em;"></span><span class="mrel">=</span><span class="mspace" style="margin-right:0.2777777777777778em;"></span></span><span class="base"><span class="strut" style="height:2.113em;vertical-align:-0.686em;"></span><span class="mord"><span class="mopen nulldelimiter"></span><span class="mfrac"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height:1.427em;"><span style="top:-2.314em;"><span class="pstrut" style="height:3em;"></span><span class="mord"><span class="mord mathdefault" style="margin-right:0.08125em;">H</span><span class="mord mathdefault" style="margin-right:0.13889em;">W</span></span></span><span style="top:-3.23em;"><span class="pstrut" style="height:3em;"></span><span class="frac-line" style="border-bottom-width:0.04em;"></span></span><span style="top:-3.677em;"><span class="pstrut" style="height:3em;"></span><span class="mord"><span class="mop op-symbol small-op" style="position:relative;top:-0.0000050000000000050004em;">∑</span><span class="mspace" style="margin-right:0.16666666666666666em;"></span><span class="mord mathdefault" style="margin-right:0.10903em;">M</span></span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height:0.686em;"><span></span></span></span></span></span><span class="mclose nulldelimiter"></span></span><span class="mord"><span class="mord"><span class="mord mathcal">L</span></span><span class="msupsub"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height:0.8913309999999999em;"><span style="top:-2.4530000000000003em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mathdefault mtight">u</span></span></span><span style="top:-3.113em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mathdefault mtight" style="margin-right:0.10903em;">M</span></span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height:0.247em;"><span></span></span></span></span></span></span><span class="mspace" style="margin-right:0.2222222222222222em;"></span><span class="mbin">+</span><span class="mspace" style="margin-right:0.2222222222222222em;"></span></span><span class="base"><span class="strut" style="height:2.113em;vertical-align:-0.686em;"></span><span class="mord"><span class="mopen nulldelimiter"></span><span class="mfrac"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height:1.427em;"><span style="top:-2.314em;"><span class="pstrut" style="height:3em;"></span><span class="mord"><span class="mord mathdefault" style="margin-right:0.08125em;">H</span><span class="mord mathdefault" style="margin-right:0.13889em;">W</span></span></span><span style="top:-3.23em;"><span class="pstrut" style="height:3em;"></span><span class="frac-line" style="border-bottom-width:0.04em;"></span></span><span style="top:-3.677em;"><span class="pstrut" style="height:3em;"></span><span class="mord"><span class="mop op-symbol small-op" style="position:relative;top:-0.0000050000000000050004em;">∑</span><span class="mopen">(</span><span class="mord">1</span><span class="mspace" style="margin-right:0.2222222222222222em;"></span><span class="mbin">−</span><span class="mspace" style="margin-right:0.2222222222222222em;"></span><span class="mord mathdefault" style="margin-right:0.10903em;">M</span><span class="mclose">)</span></span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height:0.686em;"><span></span></span></span></span></span><span class="mclose nulldelimiter"></span></span><span class="mord"><span class="mord"><span class="mord mathcal">L</span></span><span class="msupsub"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height:0.8913309999999999em;"><span style="top:-2.4530000000000003em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mathdefault mtight">u</span></span></span><span style="top:-3.113em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mtight"><span class="mord mtight">1</span><span class="mbin mtight">−</span><span class="mord mathdefault mtight" style="margin-right:0.10903em;">M</span></span></span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height:0.247em;"><span></span></span></span></span></span></span></span></span></span></span></p>
+<p>这里的关键不是“把图拼起来更花”，而是让 student 在更难的输入分布上追 clean teacher 的局部 depth structure。这样无标注数据才从“复制 teacher”变成“学习鲁棒表征”。</p>
+<h3 id="4-semantic-feature-alignment"><a class="markdownIt-Anchor" href="#4-semantic-feature-alignment"></a> 4. Semantic feature alignment</h3>
+<p>DA1 还尝试过一条看起来更直观的路：用 RAM + GroundingDINO + HQ-SAM 给 unlabeled images 生成 semantic segmentation labels，经过后处理得到约 4K 类，在 joint-training 阶段让模型同时输出 depth 和 segmentation。结果没有带来增益。</p>
+<p>作者的解释是，离散 segmentation masks 会把连续语义空间压扁。对一个已经很强的深度模型来说，这种粗粒度类别监督反而不够信息量。于是他们改用 frozen DINOv2 encoder 的连续特征作为辅助监督：</p>
+<p><span class="katex-display"><span class="katex"><span class="katex-mathml"><math><semantics><mrow><msub><mi mathvariant="script">L</mi><mrow><mi>f</mi><mi>e</mi><mi>a</mi><mi>t</mi></mrow></msub><mo>=</mo><mn>1</mn><mo>−</mo><mfrac><mn>1</mn><mrow><mi>H</mi><mi>W</mi></mrow></mfrac><munderover><mo>∑</mo><mrow><mi>i</mi><mo>=</mo><mn>1</mn></mrow><mrow><mi>H</mi><mi>W</mi></mrow></munderover><mi>cos</mi><mo>⁡</mo><mo stretchy="false">(</mo><msub><mi>f</mi><mi>i</mi></msub><mo separator="true">,</mo><msubsup><mi>f</mi><mi>i</mi><mo mathvariant="normal">′</mo></msubsup><mo stretchy="false">)</mo></mrow><annotation encoding="application/x-tex">\mathcal{L}_{feat}=1-\frac{1}{HW}\sum_{i=1}^{HW}\cos(f_i, f&#x27;_i)
+</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.969438em;vertical-align:-0.286108em;"></span><span class="mord"><span class="mord"><span class="mord mathcal">L</span></span><span class="msupsub"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height:0.3361079999999999em;"><span style="top:-2.5500000000000003em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mtight"><span class="mord mathdefault mtight" style="margin-right:0.10764em;">f</span><span class="mord mathdefault mtight">e</span><span class="mord mathdefault mtight">a</span><span class="mord mathdefault mtight">t</span></span></span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height:0.286108em;"><span></span></span></span></span></span></span><span class="mspace" style="margin-right:0.2777777777777778em;"></span><span class="mrel">=</span><span class="mspace" style="margin-right:0.2777777777777778em;"></span></span><span class="base"><span class="strut" style="height:0.72777em;vertical-align:-0.08333em;"></span><span class="mord">1</span><span class="mspace" style="margin-right:0.2222222222222222em;"></span><span class="mbin">−</span><span class="mspace" style="margin-right:0.2222222222222222em;"></span></span><span class="base"><span class="strut" style="height:3.106005em;vertical-align:-1.277669em;"></span><span class="mord"><span class="mopen nulldelimiter"></span><span class="mfrac"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height:1.32144em;"><span style="top:-2.314em;"><span class="pstrut" style="height:3em;"></span><span class="mord"><span class="mord mathdefault" style="margin-right:0.08125em;">H</span><span class="mord mathdefault" style="margin-right:0.13889em;">W</span></span></span><span style="top:-3.23em;"><span class="pstrut" style="height:3em;"></span><span class="frac-line" style="border-bottom-width:0.04em;"></span></span><span style="top:-3.677em;"><span class="pstrut" style="height:3em;"></span><span class="mord"><span class="mord">1</span></span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height:0.686em;"><span></span></span></span></span></span><span class="mclose nulldelimiter"></span></span><span class="mspace" style="margin-right:0.16666666666666666em;"></span><span class="mop op-limits"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height:1.8283360000000002em;"><span style="top:-1.872331em;margin-left:0em;"><span class="pstrut" style="height:3.05em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mtight"><span class="mord mathdefault mtight">i</span><span class="mrel mtight">=</span><span class="mord mtight">1</span></span></span></span><span style="top:-3.050005em;"><span class="pstrut" style="height:3.05em;"></span><span><span class="mop op-symbol large-op">∑</span></span></span><span style="top:-4.3000050000000005em;margin-left:0em;"><span class="pstrut" style="height:3.05em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mtight"><span class="mord mathdefault mtight" style="margin-right:0.08125em;">H</span><span class="mord mathdefault mtight" style="margin-right:0.13889em;">W</span></span></span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height:1.277669em;"><span></span></span></span></span></span><span class="mspace" style="margin-right:0.16666666666666666em;"></span><span class="mop">cos</span><span class="mopen">(</span><span class="mord"><span class="mord mathdefault" style="margin-right:0.10764em;">f</span><span class="msupsub"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height:0.31166399999999994em;"><span style="top:-2.5500000000000003em;margin-left:-0.10764em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mathdefault mtight">i</span></span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height:0.15em;"><span></span></span></span></span></span></span><span class="mpunct">,</span><span class="mspace" style="margin-right:0.16666666666666666em;"></span><span class="mord"><span class="mord mathdefault" style="margin-right:0.10764em;">f</span><span class="msupsub"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height:0.8018919999999999em;"><span style="top:-2.4530000000000003em;margin-left:-0.10764em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mathdefault mtight">i</span></span></span><span style="top:-3.113em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mtight"><span class="mord mtight">′</span></span></span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height:0.247em;"><span></span></span></span></span></span></span><span class="mclose">)</span></span></span></span></span></p>
+<p>其中 <span class="katex"><span class="katex-mathml"><math><semantics><mrow><mi>f</mi></mrow><annotation encoding="application/x-tex">f</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.8888799999999999em;vertical-align:-0.19444em;"></span><span class="mord mathdefault" style="margin-right:0.10764em;">f</span></span></span></span> 来自 online student depth model，<span class="katex"><span class="katex-mathml"><math><semantics><mrow><msup><mi>f</mi><mo mathvariant="normal">′</mo></msup></mrow><annotation encoding="application/x-tex">f&#x27;</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.946332em;vertical-align:-0.19444em;"></span><span class="mord"><span class="mord mathdefault" style="margin-right:0.10764em;">f</span><span class="msupsub"><span class="vlist-t"><span class="vlist-r"><span class="vlist" style="height:0.751892em;"><span style="top:-3.063em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mtight"><span class="mord mtight">′</span></span></span></span></span></span></span></span></span></span></span></span> 来自 frozen DINOv2 encoder。DA1 没有额外加随机初始化 projector，因为初期 alignment loss 太大时会压过深度学习目标。</p>
+<p>更细的点是 tolerance margin <span class="katex"><span class="katex-mathml"><math><semantics><mrow><mi>α</mi></mrow><annotation encoding="application/x-tex">\alpha</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.43056em;vertical-align:0em;"></span><span class="mord mathdefault" style="margin-right:0.0037em;">α</span></span></span></span>。DINOv2 这类语义 encoder 会把同一物体不同部位的特征拉近，例如车头和车尾；但深度模型必须区分同一物体内部不同深度。DA1 因此只对 cosine similarity 低于 <span class="katex"><span class="katex-mathml"><math><semantics><mrow><mi>α</mi></mrow><annotation encoding="application/x-tex">\alpha</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.43056em;vertical-align:0em;"></span><span class="mord mathdefault" style="margin-right:0.0037em;">α</span></span></span></span> 的位置施加 feature loss，超过阈值就不再强行对齐。论文主设置为：</p>
+<table>
+<thead>
+<tr>
+<th>Setting</th>
+<th>Value</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Feature source</td>
+<td>frozen DINOv2 encoder</td>
+</tr>
+<tr>
+<td>Online feature</td>
+<td>student depth encoder feature</td>
+</tr>
+<tr>
+<td>Tolerance margin <span class="katex"><span class="katex-mathml"><math><semantics><mrow><mi>α</mi></mrow><annotation encoding="application/x-tex">\alpha</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.43056em;vertical-align:0em;"></span><span class="mord mathdefault" style="margin-right:0.0037em;">α</span></span></span></span></td>
+<td>0.85</td>
+</tr>
+<tr>
+<td>Overall loss</td>
+<td>average of <span class="katex"><span class="katex-mathml"><math><semantics><mrow><msub><mi mathvariant="script">L</mi><mi>l</mi></msub></mrow><annotation encoding="application/x-tex">\mathcal{L}_l</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.83333em;vertical-align:-0.15em;"></span><span class="mord"><span class="mord"><span class="mord mathcal">L</span></span><span class="msupsub"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height:0.33610799999999996em;"><span style="top:-2.5500000000000003em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mathdefault mtight" style="margin-right:0.01968em;">l</span></span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height:0.15em;"><span></span></span></span></span></span></span></span></span></span>, <span class="katex"><span class="katex-mathml"><math><semantics><mrow><msub><mi mathvariant="script">L</mi><mi>u</mi></msub></mrow><annotation encoding="application/x-tex">\mathcal{L}_u</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.83333em;vertical-align:-0.15em;"></span><span class="mord"><span class="mord"><span class="mord mathcal">L</span></span><span class="msupsub"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height:0.151392em;"><span style="top:-2.5500000000000003em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mathdefault mtight">u</span></span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height:0.15em;"><span></span></span></span></span></span></span></span></span></span>, <span class="katex"><span class="katex-mathml"><math><semantics><mrow><msub><mi mathvariant="script">L</mi><mrow><mi>f</mi><mi>e</mi><mi>a</mi><mi>t</mi></mrow></msub></mrow><annotation encoding="application/x-tex">\mathcal{L}_{feat}</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.969438em;vertical-align:-0.286108em;"></span><span class="mord"><span class="mord"><span class="mord mathcal">L</span></span><span class="msupsub"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height:0.3361079999999999em;"><span style="top:-2.5500000000000003em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mtight"><span class="mord mathdefault mtight" style="margin-right:0.10764em;">f</span><span class="mord mathdefault mtight">e</span><span class="mord mathdefault mtight">a</span><span class="mord mathdefault mtight">t</span></span></span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height:0.286108em;"><span></span></span></span></span></span></span></span></span></span></td>
+</tr>
+</tbody>
+</table>
+<p>这个设计对机器人很有意义：深度边界不能和物体语义边界完全脱钩，但也不能被语义特征抹平。feature alignment 的 margin 正是在这两者之间留空间。</p>
+<h3 id="5-implementation-details"><a class="markdownIt-Anchor" href="#5-implementation-details"></a> 5. Implementation details</h3>
+<table>
+<thead>
+<tr>
+<th>Setting</th>
+<th>Value</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Input preprocessing</td>
+<td>resize shorter side to 518, keep aspect ratio</td>
+</tr>
+<tr>
+<td>Training crop</td>
+<td>518 x 518</td>
+</tr>
+<tr>
+<td>Inference</td>
+<td>no crop, only make both sides multiples of 14</td>
+</tr>
+<tr>
+<td>Evaluation</td>
+<td>interpolate prediction to original resolution</td>
+</tr>
+<tr>
+<td>Zero-shot alignment</td>
+<td>manually align scale and shift with ground truth, following MiDaS</td>
+</tr>
+<tr>
+<td>Student training</td>
+<td>sweep across all unlabeled images for one time</td>
+</tr>
+<tr>
+<td>Batch ratio</td>
+<td>labeled : unlabeled = 1 : 2</td>
+</tr>
+<tr>
+<td>Optimizer</td>
+<td>AdamW</td>
+</tr>
+<tr>
+<td>Encoder LR</td>
+<td>5e-6</td>
+</tr>
+<tr>
+<td>Decoder LR</td>
+<td>10x encoder LR</td>
+</tr>
+<tr>
+<td>LR schedule</td>
+<td>linear decay</td>
+</tr>
+<tr>
+<td>Labeled augmentation</td>
+<td>horizontal flipping only</td>
+</tr>
+</tbody>
+</table>
+<p>后续把 DA encoder fine-tune 到 metric depth 时，论文采用 ZoeDepth codebase，只替换 MiDaS encoder。NYUv2 training resolution 为 <code>392 x 518</code>，KITTI 为 <code>384 x 768</code>，encoder learning rate 设为随机初始化 decoder 的 <code>1/50</code>，batch size 16，训练 5 epochs。</p>
+<p>把 encoder fine-tune 到 semantic segmentation 时，论文采用 MMSegmentation 和 Mask2Former。ADE20K / Cityscapes resolution 都是 <code>896 x 896</code>，encoder LR 为 <code>3e-6</code>，decoder LR 为 10 倍，ADE20K 训练 160K iterations，Cityscapes 训练 80K iterations，batch size 16，不使用 COCO 或 Mapillary pre-training。</p>
+<h2 id="关键结果"><a class="markdownIt-Anchor" href="#关键结果"></a> 关键结果</h2>
+<p>Table 2 is redrawn below with the original English fields.</p>
+<table>
+<thead>
+<tr>
+<th>Method</th>
+<th>Encoder</th>
+<th>KITTI AbsRel</th>
+<th>KITTI <span class="katex"><span class="katex-mathml"><math><semantics><mrow><msub><mi>δ</mi><mn>1</mn></msub></mrow><annotation encoding="application/x-tex">\delta_1</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.84444em;vertical-align:-0.15em;"></span><span class="mord"><span class="mord mathdefault" style="margin-right:0.03785em;">δ</span><span class="msupsub"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height:0.30110799999999993em;"><span style="top:-2.5500000000000003em;margin-left:-0.03785em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mtight">1</span></span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height:0.15em;"><span></span></span></span></span></span></span></span></span></span></th>
+<th>NYUv2 AbsRel</th>
+<th>NYUv2 <span class="katex"><span class="katex-mathml"><math><semantics><mrow><msub><mi>δ</mi><mn>1</mn></msub></mrow><annotation encoding="application/x-tex">\delta_1</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.84444em;vertical-align:-0.15em;"></span><span class="mord"><span class="mord mathdefault" style="margin-right:0.03785em;">δ</span><span class="msupsub"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height:0.30110799999999993em;"><span style="top:-2.5500000000000003em;margin-left:-0.03785em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mtight">1</span></span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height:0.15em;"><span></span></span></span></span></span></span></span></span></span></th>
+<th>Sintel AbsRel</th>
+<th>Sintel <span class="katex"><span class="katex-mathml"><math><semantics><mrow><msub><mi>δ</mi><mn>1</mn></msub></mrow><annotation encoding="application/x-tex">\delta_1</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.84444em;vertical-align:-0.15em;"></span><span class="mord"><span class="mord mathdefault" style="margin-right:0.03785em;">δ</span><span class="msupsub"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height:0.30110799999999993em;"><span style="top:-2.5500000000000003em;margin-left:-0.03785em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mtight">1</span></span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height:0.15em;"><span></span></span></span></span></span></span></span></span></span></th>
+<th>DDAD AbsRel</th>
+<th>DDAD <span class="katex"><span class="katex-mathml"><math><semantics><mrow><msub><mi>δ</mi><mn>1</mn></msub></mrow><annotation encoding="application/x-tex">\delta_1</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.84444em;vertical-align:-0.15em;"></span><span class="mord"><span class="mord mathdefault" style="margin-right:0.03785em;">δ</span><span class="msupsub"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height:0.30110799999999993em;"><span style="top:-2.5500000000000003em;margin-left:-0.03785em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mtight">1</span></span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height:0.15em;"><span></span></span></span></span></span></span></span></span></span></th>
+<th>ETH3D AbsRel</th>
+<th>ETH3D <span class="katex"><span class="katex-mathml"><math><semantics><mrow><msub><mi>δ</mi><mn>1</mn></msub></mrow><annotation encoding="application/x-tex">\delta_1</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.84444em;vertical-align:-0.15em;"></span><span class="mord"><span class="mord mathdefault" style="margin-right:0.03785em;">δ</span><span class="msupsub"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height:0.30110799999999993em;"><span style="top:-2.5500000000000003em;margin-left:-0.03785em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mtight">1</span></span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height:0.15em;"><span></span></span></span></span></span></span></span></span></span></th>
+<th>DIODE AbsRel</th>
+<th>DIODE <span class="katex"><span class="katex-mathml"><math><semantics><mrow><msub><mi>δ</mi><mn>1</mn></msub></mrow><annotation encoding="application/x-tex">\delta_1</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.84444em;vertical-align:-0.15em;"></span><span class="mord"><span class="mord mathdefault" style="margin-right:0.03785em;">δ</span><span class="msupsub"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height:0.30110799999999993em;"><span style="top:-2.5500000000000003em;margin-left:-0.03785em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mtight">1</span></span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height:0.15em;"><span></span></span></span></span></span></span></span></span></span></th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>MiDaS v3.1</td>
+<td>ViT-L</td>
+<td>0.127</td>
+<td>0.850</td>
+<td>0.048</td>
+<td>0.980</td>
+<td>0.587</td>
+<td>0.699</td>
+<td>0.251</td>
+<td>0.766</td>
+<td>0.139</td>
+<td>0.867</td>
+<td>0.075</td>
+<td>0.942</td>
+</tr>
+<tr>
+<td><strong>Depth Anything</strong></td>
+<td>ViT-S</td>
+<td>0.080</td>
+<td>0.936</td>
+<td>0.053</td>
+<td>0.972</td>
+<td>0.464</td>
+<td>0.739</td>
+<td>0.247</td>
+<td>0.768</td>
+<td>0.127</td>
+<td><strong>0.885</strong></td>
+<td>0.076</td>
+<td>0.939</td>
+</tr>
+<tr>
+<td><strong>Depth Anything</strong></td>
+<td>ViT-B</td>
+<td>0.080</td>
+<td>0.939</td>
+<td>0.046</td>
+<td>0.979</td>
+<td><strong>0.432</strong></td>
+<td>0.756</td>
+<td>0.232</td>
+<td>0.786</td>
+<td><strong>0.126</strong></td>
+<td>0.884</td>
+<td>0.069</td>
+<td>0.946</td>
+</tr>
+<tr>
+<td><strong>Depth Anything</strong></td>
+<td>ViT-L</td>
+<td><strong>0.076</strong></td>
+<td><strong>0.947</strong></td>
+<td><strong>0.043</strong></td>
+<td><strong>0.981</strong></td>
+<td>0.458</td>
+<td><strong>0.760</strong></td>
+<td><strong>0.230</strong></td>
+<td><strong>0.789</strong></td>
+<td>0.127</td>
+<td>0.882</td>
+<td><strong>0.066</strong></td>
+<td><strong>0.952</strong></td>
+</tr>
+</tbody>
+</table>
+<p><small>表源：<code>Depth Anything</code>，Table 2。原论文表格要点：在 six unseen datasets 上，DA1 ViT-L 大幅超过 MiDaS v3.1；即使 ViT-S 参数量不到 MiDaS ViT-L 的 1/10，也在多个 unseen datasets 上超过 MiDaS。</small></p>
+<p>两个结果特别值得记住。</p>
+<p>第一，DA1 没用 KITTI 和 NYUv2 的训练图像，但在这两个常用 benchmark 上仍强于 MiDaS。论文也提醒，MiDaS v3.1 对 KITTI 和 NYUv2 并不是严格 zero-shot，因为它使用了对应训练图像。</p>
+<p>第二，小模型已经很强。ViT-S 在 Sintel、DDAD、ETH3D 等 unseen sets 上能超过 MiDaS ViT-L，这说明数据 recipe 对资源受限场景很重要。机器人部署常常受延迟、显存和功耗限制，不能默认只上最大模型。</p>
+<p><img  
+                     lazyload
+                     src="/images/loading.svg"
+                     data-src="/image/ai-notes/images/paper-deep-dives/embodied-ai/depth-anything/figure-3-zeroshot-vis.png"
+                      alt="Depth Anything zero-shot qualitative 原论文图" 
+                ></p>
+<p><small>图源：<code>Depth Anything</code>，Figure 3。原论文图意：DA1 在 KITTI、NYUv2、Sintel、DDAD、ETH3D 和 DIODE 等 unseen datasets 上展示定性结果，强调跨室内、室外、合成、自动驾驶和真实 3D 数据的鲁棒性。</small></p>
+<h2 id="ablation-为什么强扰动和-feature-alignment-是关键"><a class="markdownIt-Anchor" href="#ablation-为什么强扰动和-feature-alignment-是关键"></a> Ablation: 为什么强扰动和 feature alignment 是关键</h2>
+<p>Table 8 is redrawn below with the original English fields.</p>
+<table>
+<thead>
+<tr>
+<th><span class="katex"><span class="katex-mathml"><math><semantics><mrow><msub><mi mathvariant="script">L</mi><mi>l</mi></msub></mrow><annotation encoding="application/x-tex">\mathcal{L}_l</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.83333em;vertical-align:-0.15em;"></span><span class="mord"><span class="mord"><span class="mord mathcal">L</span></span><span class="msupsub"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height:0.33610799999999996em;"><span style="top:-2.5500000000000003em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mathdefault mtight" style="margin-right:0.01968em;">l</span></span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height:0.15em;"><span></span></span></span></span></span></span></span></span></span></th>
+<th><span class="katex"><span class="katex-mathml"><math><semantics><mrow><msub><mi mathvariant="script">L</mi><mi>u</mi></msub></mrow><annotation encoding="application/x-tex">\mathcal{L}_u</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.83333em;vertical-align:-0.15em;"></span><span class="mord"><span class="mord"><span class="mord mathcal">L</span></span><span class="msupsub"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height:0.151392em;"><span style="top:-2.5500000000000003em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mathdefault mtight">u</span></span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height:0.15em;"><span></span></span></span></span></span></span></span></span></span></th>
+<th><span class="katex"><span class="katex-mathml"><math><semantics><mrow><mi mathvariant="script">S</mi></mrow><annotation encoding="application/x-tex">\mathcal{S}</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.68333em;vertical-align:0em;"></span><span class="mord"><span class="mord mathcal" style="margin-right:0.075em;">S</span></span></span></span></span></th>
+<th><span class="katex"><span class="katex-mathml"><math><semantics><mrow><msub><mi mathvariant="script">L</mi><mrow><mi>f</mi><mi>e</mi><mi>a</mi><mi>t</mi></mrow></msub></mrow><annotation encoding="application/x-tex">\mathcal{L}_{feat}</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.969438em;vertical-align:-0.286108em;"></span><span class="mord"><span class="mord"><span class="mord mathcal">L</span></span><span class="msupsub"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height:0.3361079999999999em;"><span style="top:-2.5500000000000003em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mtight"><span class="mord mathdefault mtight" style="margin-right:0.10764em;">f</span><span class="mord mathdefault mtight">e</span><span class="mord mathdefault mtight">a</span><span class="mord mathdefault mtight">t</span></span></span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height:0.286108em;"><span></span></span></span></span></span></span></span></span></span></th>
+<th>KI</th>
+<th>NY</th>
+<th>SI</th>
+<th>DD</th>
+<th>ET</th>
+<th>DI</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>✓</td>
+<td></td>
+<td></td>
+<td></td>
+<td>0.085</td>
+<td>0.053</td>
+<td>0.492</td>
+<td>0.245</td>
+<td>0.134</td>
+<td>0.070</td>
+</tr>
+<tr>
+<td>✓</td>
+<td>✓</td>
+<td></td>
+<td></td>
+<td>0.085</td>
+<td>0.054</td>
+<td>0.481</td>
+<td>0.242</td>
+<td>0.138</td>
+<td>0.073</td>
+</tr>
+<tr>
+<td>✓</td>
+<td>✓</td>
+<td>✓</td>
+<td></td>
+<td>0.081</td>
+<td>0.048</td>
+<td>0.469</td>
+<td>0.235</td>
+<td>0.134</td>
+<td>0.068</td>
+</tr>
+<tr>
+<td>✓</td>
+<td>✓</td>
+<td>✓</td>
+<td>✓</td>
+<td><strong>0.076</strong></td>
+<td><strong>0.043</strong></td>
+<td><strong>0.458</strong></td>
+<td><strong>0.230</strong></td>
+<td><strong>0.127</strong></td>
+<td><strong>0.066</strong></td>
+</tr>
+</tbody>
+</table>
+<p><small>表源：<code>Depth Anything</code>，Table 8。原论文表格要点：只加入 pseudo-labeled unlabeled images 并不稳定提升；加入 strong perturbations <span class="katex"><span class="katex-mathml"><math><semantics><mrow><mi mathvariant="script">S</mi></mrow><annotation encoding="application/x-tex">\mathcal{S}</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.68333em;vertical-align:0em;"></span><span class="mord"><span class="mord mathcal" style="margin-right:0.075em;">S</span></span></span></span></span> 后明显改善；再叠加 feature alignment <span class="katex"><span class="katex-mathml"><math><semantics><mrow><msub><mi mathvariant="script">L</mi><mrow><mi>f</mi><mi>e</mi><mi>a</mi><mi>t</mi></mrow></msub></mrow><annotation encoding="application/x-tex">\mathcal{L}_{feat}</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.969438em;vertical-align:-0.286108em;"></span><span class="mord"><span class="mord"><span class="mord mathcal">L</span></span><span class="msupsub"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height:0.3361079999999999em;"><span style="top:-2.5500000000000003em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mtight"><span class="mord mathdefault mtight" style="margin-right:0.10764em;">f</span><span class="mord mathdefault mtight">e</span><span class="mord mathdefault mtight">a</span><span class="mord mathdefault mtight">t</span></span></span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height:0.286108em;"><span></span></span></span></span></span></span></span></span></span> 得到最佳 AbsRel。</small></p>
+<p>这张表可以把 DA1 的训练逻辑讲透：</p>
+<ol>
+<li>只有 labeled loss 时，模型已经很强；</li>
+<li>直接加 unlabeled pseudo labels，收益很小，NY、ET、DI 甚至变差；</li>
+<li>对 unlabeled student input 加强扰动后，六个指标几乎全面变好；</li>
+<li>再加 DINOv2 feature alignment，所有 unseen datasets 的 AbsRel 都达到最好。</li>
+</ol>
+<p>附录进一步说明了 margin 和 feature loss 应该放在哪里。</p>
+<p>Table 9 is redrawn below with the original English fields.</p>
+<table>
+<thead>
+<tr>
+<th><span class="katex"><span class="katex-mathml"><math><semantics><mrow><mi>α</mi></mrow><annotation encoding="application/x-tex">\alpha</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.43056em;vertical-align:0em;"></span><span class="mord mathdefault" style="margin-right:0.0037em;">α</span></span></span></span></th>
+<th>KITTI</th>
+<th>NYU</th>
+<th>Sintel</th>
+<th>DDAD</th>
+<th>ETH3D</th>
+<th>DIODE</th>
+<th><strong>Mean</strong></th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>1.00</td>
+<td>0.085</td>
+<td>0.055</td>
+<td>0.523</td>
+<td>0.250</td>
+<td>0.134</td>
+<td>0.079</td>
+<td>0.188</td>
+</tr>
+<tr>
+<td>0.85</td>
+<td>0.080</td>
+<td><strong>0.053</strong></td>
+<td><strong>0.464</strong></td>
+<td><strong>0.247</strong></td>
+<td><strong>0.127</strong></td>
+<td><strong>0.076</strong></td>
+<td><strong>0.175</strong></td>
+</tr>
+<tr>
+<td>0.70</td>
+<td><strong>0.079</strong></td>
+<td>0.054</td>
+<td>0.482</td>
+<td>0.248</td>
+<td>0.127</td>
+<td>0.077</td>
+<td>0.178</td>
+</tr>
+</tbody>
+</table>
+<p><small>表源：<code>Depth Anything</code>，Table 9。原论文表格要点：<span class="katex"><span class="katex-mathml"><math><semantics><mrow><mi>α</mi><mo>=</mo><mn>1.00</mn></mrow><annotation encoding="application/x-tex">\alpha=1.00</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.43056em;vertical-align:0em;"></span><span class="mord mathdefault" style="margin-right:0.0037em;">α</span><span class="mspace" style="margin-right:0.2777777777777778em;"></span><span class="mrel">=</span><span class="mspace" style="margin-right:0.2777777777777778em;"></span></span><span class="base"><span class="strut" style="height:0.64444em;vertical-align:0em;"></span><span class="mord">1</span><span class="mord">.</span><span class="mord">0</span><span class="mord">0</span></span></span></span> 等于几乎强制更充分对齐 DINOv2 feature，反而会伤害深度；<span class="katex"><span class="katex-mathml"><math><semantics><mrow><mi>α</mi><mo>=</mo><mn>0.85</mn></mrow><annotation encoding="application/x-tex">\alpha=0.85</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.43056em;vertical-align:0em;"></span><span class="mord mathdefault" style="margin-right:0.0037em;">α</span><span class="mspace" style="margin-right:0.2777777777777778em;"></span><span class="mrel">=</span><span class="mspace" style="margin-right:0.2777777777777778em;"></span></span><span class="base"><span class="strut" style="height:0.64444em;vertical-align:0em;"></span><span class="mord">0</span><span class="mord">.</span><span class="mord">8</span><span class="mord">5</span></span></span></span> 在 mean AbsRel 上最好。</small></p>
+<p>Table 10 is redrawn below with the original English fields.</p>
+<table>
+<thead>
+<tr>
+<th>U</th>
+<th>L</th>
+<th>KITTI</th>
+<th>NYU</th>
+<th>Sintel</th>
+<th>DDAD</th>
+<th>ETH3D</th>
+<th>DIODE</th>
+<th><strong>Mean</strong></th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td></td>
+<td></td>
+<td>0.083</td>
+<td>0.055</td>
+<td>0.478</td>
+<td>0.249</td>
+<td>0.133</td>
+<td>0.080</td>
+<td>0.180</td>
+</tr>
+<tr>
+<td>✓</td>
+<td></td>
+<td><strong>0.080</strong></td>
+<td><strong>0.053</strong></td>
+<td><strong>0.464</strong></td>
+<td><strong>0.247</strong></td>
+<td><strong>0.127</strong></td>
+<td><strong>0.076</strong></td>
+<td><strong>0.175</strong></td>
+</tr>
+<tr>
+<td></td>
+<td>✓</td>
+<td>0.084</td>
+<td>0.054</td>
+<td>0.472</td>
+<td>0.252</td>
+<td>0.133</td>
+<td>0.081</td>
+<td>0.179</td>
+</tr>
+</tbody>
+</table>
+<p><small>表源：<code>Depth Anything</code>，Table 10。原论文表格要点：feature alignment 应该主要施加在 unlabeled data 上；对 labeled data 加这个辅助目标没有明显收益，可能干扰高质量深度标签的学习。</small></p>
+<p>这个结论很细，但对复现很重要：<span class="katex"><span class="katex-mathml"><math><semantics><mrow><msub><mi mathvariant="script">L</mi><mrow><mi>f</mi><mi>e</mi><mi>a</mi><mi>t</mi></mrow></msub></mrow><annotation encoding="application/x-tex">\mathcal{L}_{feat}</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.969438em;vertical-align:-0.286108em;"></span><span class="mord"><span class="mord"><span class="mord mathcal">L</span></span><span class="msupsub"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height:0.3361079999999999em;"><span style="top:-2.5500000000000003em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mtight"><span class="mord mathdefault mtight" style="margin-right:0.10764em;">f</span><span class="mord mathdefault mtight">e</span><span class="mord mathdefault mtight">a</span><span class="mord mathdefault mtight">t</span></span></span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height:0.286108em;"><span></span></span></span></span></span></span></span></span></span> 不是通用地“越多越好”。它最适合补 pseudo labels 的噪声和信息不足，而不是压过 labeled depth supervision。</p>
+<h2 id="下游迁移"><a class="markdownIt-Anchor" href="#下游迁移"></a> 下游迁移</h2>
+<p>DA1 不只把深度图做得更好，也把 encoder 做成了一个更好的视觉初始化。</p>
+<p>在 metric depth 上，论文把 DA encoder 放进 ZoeDepth pipeline，只替换原来的 MiDaS encoder。结果是在 NYUv2、KITTI 以及 zero-shot metric generalization 上都更好。对具身系统来说，这很关键：基础 DA 输出相对深度，但 encoder 可以作为 metric depth fine-tuning 的强初始化。</p>
+<p>在 semantic segmentation 上，DA1 用 MMSegmentation + Mask2Former fine-tune 到 ADE20K 和 Cityscapes。结果显示，经过大规模 MDE 训练和 feature alignment 后的 encoder 仍保留很强语义能力，甚至能超过一些大规模 ImageNet-21K 预训练 encoder。这说明 DA1 并不是把 DINOv2 语义先验“洗掉”成纯几何模型，而是在语义和几何之间做了更有用的折中。</p>
+<p><img  
+                     lazyload
+                     src="/images/loading.svg"
+                     data-src="/image/ai-notes/images/paper-deep-dives/embodied-ai/depth-anything/figure-4-synthesis.png"
+                      alt="Depth Anything depth-conditioned synthesis 原论文图" 
+                ></p>
+<p><small>图源：<code>Depth Anything</code>，Figure 4。原论文图意：作者比较 DA1 与 MiDaS 的 depth prediction，并把深度图作为 ControlNet 条件生成新图像；更准确的深度图能提供更稳定的图像/视频编辑控制信号。</small></p>
+<h2 id="和-da2-da3-的关系"><a class="markdownIt-Anchor" href="#和-da2-da3-的关系"></a> 和 DA2、DA3 的关系</h2>
+<p>Depth Anything 系列可以按训练监督的演进来读：</p>
+<table>
+<thead>
+<tr>
+<th>Version</th>
+<th>Core contribution</th>
+<th>Limitation</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Depth Anything / DA1</td>
+<td>用 62M unlabeled images、strong perturbation 和 DINOv2 feature alignment 建立开放域相对深度 foundation model</td>
+<td>细结构、透明/反光、复杂边界仍不够强；基础模型主要是相对深度</td>
+</tr>
+<tr>
+<td><a href="/2026/05/11/ai-files-paper-deep-dives-embodied-ai-depth-anything-v2/">Depth Anything V2 / DA2</a></td>
+<td>用 precise synthetic labels 训练最大 teacher，再把能力蒸馏到 pseudo-labeled real images，显著增强细节和效率</td>
+<td>仍主要处理单图深度，不直接解决多视角一致性和相机几何</td>
+</tr>
+<tr>
+<td><a href="/2026/05/11/ai-files-paper-deep-dives-embodied-ai-depth-anything-3/">Depth Anything 3 / DA3</a></td>
+<td>把单目深度扩展到任意视角 geometry，输出 depth、ray、camera 和可融合 3D 表示</td>
+<td>不直接解决动作、接触动力学、控制安全和机器人策略</td>
+</tr>
+</tbody>
+</table>
+<p>一句话总结：DA1 证明“大规模无标注图像可以让单目深度变成 foundation model”；DA2 修正标签质量和细节瓶颈；DA3 把单图深度进一步推到多视角视觉空间恢复。</p>
+<h2 id="具身应用时怎么用"><a class="markdownIt-Anchor" href="#具身应用时怎么用"></a> 具身应用时怎么用</h2>
+<p>在机器人系统里，DA1 更适合作为 perception prior，而不是最终测距器。</p>
+<table>
+<thead>
+<tr>
+<th>用法</th>
+<th>推荐程度</th>
+<th>原因</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>VLA / policy 的视觉辅助特征</td>
+<td>高</td>
+<td>深度边界和物体布局能补 RGB 语义特征的几何盲点</td>
+</tr>
+<tr>
+<td>数据质检和仿真资产检查</td>
+<td>高</td>
+<td>可以快速发现深度不连续、遮挡异常、薄结构缺失等问题</td>
+</tr>
+<tr>
+<td>低成本导航和避障辅助</td>
+<td>中</td>
+<td>相对深度有帮助，但安全距离仍需 metric calibration 或其他传感器</td>
+</tr>
+<tr>
+<td>抓取位姿直接回归</td>
+<td>中低</td>
+<td>抓取需要绝对尺度、接触几何和夹爪约束，单目相对深度不能单独承担</td>
+</tr>
+<tr>
+<td>安全制动 / 人机协作距离</td>
+<td>低</td>
+<td>这类闭环必须用可靠测距、标定和冗余安全层</td>
+</tr>
+</tbody>
+</table>
+<p>最稳的工程接法是：把 DA1/DA2/DA3 看作开放域视觉几何底座，再和 RGB-D、多视角、相机标定、SLAM、接触传感和控制器结合。它能显著降低“没有几何先验”的成本，但不能替代真实机器人闭环里的测量和安全约束。</p>
+<h2 id="参考资料"><a class="markdownIt-Anchor" href="#参考资料"></a> 参考资料</h2>
+<ol>
+<li><a class="link"   target="_blank" rel="noopener" href="https://arxiv.org/abs/2401.10891" >Depth Anything: Unleashing the Power of Large-Scale Unlabeled Data<i class="fa-solid fa-arrow-up-right ml-[0.2em] font-light align-text-top text-[0.7em] link-icon"></i></a></li>
+<li><a class="link"   target="_blank" rel="noopener" href="https://depth-anything.github.io/" >Depth Anything project page<i class="fa-solid fa-arrow-up-right ml-[0.2em] font-light align-text-top text-[0.7em] link-icon"></i></a></li>
+<li><a class="link"   target="_blank" rel="noopener" href="https://github.com/LiheYoung/Depth-Anything" >LiheYoung/Depth-Anything<i class="fa-solid fa-arrow-up-right ml-[0.2em] font-light align-text-top text-[0.7em] link-icon"></i></a></li>
+</ol>
+
+		</div>
+
+		
+		<div class="post-copyright-info w-full my-8 px-2 sm:px-6 md:px-8">
+			<div class="article-copyright-info-container">
+    <ul>
+        <li><strong>Title:</strong> 论文专题讲解：Depth Anything：大规模无标注数据释放单目深度</li>
+        <li><strong>Author:</strong> Charles</li>
+        <li><strong>Created at
+                :</strong> 2025-10-19 09:00:00</li>
+        
+            <li>
+                <strong>Updated at
+                    :</strong> 2025-10-19 09:00:00
+            </li>
+        
+        <li>
+            <strong>Link:</strong> https://charles2530.github.io/2025/10/19/ai-files-paper-deep-dives-embodied-ai-depth-anything/
+        </li>
+        <li>
+            <strong>
+                License:
+            </strong>
+            
+
+            
+                This work is licensed under <a class="license" target="_blank" rel="noopener" href="https://creativecommons.org/licenses/by-nc-sa/4.0">CC BY-NC-SA 4.0</a>.
+            
+        </li>
+    </ul>
+</div>
+
+		</div>
+		
+
+		
+		<ul class="post-tags-box text-lg mt-1.5 flex-wrap justify-center flex md:hidden">
+			
+			<li class="tag-item mx-0.5">
+				<a href="/tags/AI/">#AI</a>&nbsp;
+			</li>
+			
+			<li class="tag-item mx-0.5">
+				<a href="/tags/%E5%85%B7%E8%BA%AB%E6%99%BA%E8%83%BD/">#具身智能</a>&nbsp;
+			</li>
+			
+			<li class="tag-item mx-0.5">
+				<a href="/tags/%E6%95%B0%E6%8D%AE%E4%B8%8E%E8%AF%84%E6%B5%8B/">#数据与评测</a>&nbsp;
+			</li>
+			
+			<li class="tag-item mx-0.5">
+				<a href="/tags/%E8%AE%BA%E6%96%87%E4%B8%93%E9%A2%98/">#论文专题</a>&nbsp;
+			</li>
+			
+		</ul>
+		
+
+		
+
+		
+		<div class="article-nav my-8 flex justify-between items-center px-2 sm:px-6 md:px-8">
+			
+			<div class="article-prev border-border-color shadow-redefine-flat shadow-shadow-color-2 rounded-medium px-4 py-2 hover:shadow-redefine-flat-hover hover:shadow-shadow-color-2">
+				<a class="prev" rel="prev" href="/2025/10/21/ai-files-paper-deep-dives-embodied-ai-dreamzero/">
+					<span class="left arrow-icon flex justify-center items-center">
+						<i class="fa-solid fa-chevron-left"></i>
+					</span>
+					<span class="title flex justify-center items-center">
+						<span class="post-nav-title-item truncate max-w-48">论文专题讲解：DreamZero：WAM 零样本策略</span>
+						<span class="post-nav-item">Prev posts</span>
+					</span>
+				</a>
+			</div>
+			
+			
+			<div class="article-next border-border-color shadow-redefine-flat shadow-shadow-color-2 rounded-medium px-4 py-2 hover:shadow-redefine-flat-hover hover:shadow-shadow-color-2">
+				<a class="next" rel="next" href="/2025/10/17/ai-files-paper-deep-dives-embodied-ai-depth-anything-v2/">
+					<span class="title flex justify-center items-center">
+						<span class="post-nav-title-item truncate max-w-48">论文专题讲解：Depth Anything V2：单目深度的数据配方</span>
+						<span class="post-nav-item">Next posts</span>
+					</span>
+					<span class="right arrow-icon flex justify-center items-center">
+						<i class="fa-solid fa-chevron-right"></i>
+					</span>
+				</a>
+			</div>
+			
+		</div>
+		
+
+
+		
+		<div class="comment-container px-2 sm:px-6 md:px-8 pb-8">
+			<div class="comments-container mt-10 w-full ">
+    <div id="comment-anchor" class="w-full h-2.5"></div>
+    <div class="comment-area-title w-full my-1.5 md:my-2.5 text-xl md:text-3xl font-bold">
+        Comments
+    </div>
+    
+
+        
+            
+    <div id="gitalk-container"></div>
+    <script data-swup-reload-script
+            src="https://cdnjs.cloudflare.com/ajax/libs/gitalk/1.8.0/gitalk.min.js"></script>
+    <script data-swup-reload-script>
+        (function() {
+            const startPath = location.pathname;
+            const startTime = Date.now();
+            const retryDelay = 200;
+            const retryLimit = 5000;
+
+            const runGitalk = () => {
+                if (location.pathname !== startPath) {
+                    return;
+                }
+
+                const container = document.getElementById('gitalk-container');
+                if (!container || typeof Gitalk === 'undefined') {
+                    if (Date.now() - startTime < retryLimit) {
+                        setTimeout(runGitalk, retryDelay);
+                    }
+                    return;
+                }
+
+                container.innerHTML = '';
+
+                let pageKey = decodeURI(location.pathname);
+                const maxLength = 50;
+                if (pageKey.length > maxLength) {
+                    pageKey = pageKey.substring(0, maxLength - 3) + '...';
+                }
+
+                try {
+                    new Gitalk({
+                        clientID: '8083299a8ee2aaf23879',
+                        clientSecret: 'a8161e81d4872181e884fdb69f7be24916b6a9d0',
+                        repo: 'Charles2530.github.io',
+                        owner: 'Charles2530',
+                        admin: ['Charles2530'],
+                        id: pageKey,
+                        language: 'en',
+                        proxy: 'https://github.com/login/oauth/access_token'
+                    }).render(container);
+                } catch (e) {
+                    window.Gitalk = null;
+                }
+            };
+
+            runGitalk();
+        })();
+    </script>
+
+
+
+        
+    
+</div>
+
+		</div>
+		
+	</div>
+
+	
+	<div class="toc-content-container">
+		<div class="post-toc-wrap">
+	<div class="post-toc">
+		<div class="toc-title">On this page</div>
+		<div class="page-title">论文专题讲解：Depth Anything：大规模无标注数据释放单目深度</div>
+		<ol class="nav"><li class="nav-item nav-level-2"><a class="nav-link" href="#%E5%AE%83%E7%9A%84%E6%95%88%E7%8E%87%E8%B4%A1%E7%8C%AE%E6%98%AF%E4%BB%80%E4%B9%88"><span class="nav-text"> 它的效率贡献是什么</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#%E8%AE%BA%E6%96%87%E4%BD%8D%E7%BD%AE"><span class="nav-text"> 论文位置</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#%E6%95%B0%E6%8D%AE%E5%BC%95%E6%93%8E"><span class="nav-text"> 数据引擎</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#%E8%AE%AD%E7%BB%83%E6%80%BB%E8%B7%AF%E7%BA%BF"><span class="nav-text"> 训练总路线</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#%E6%A8%A1%E5%9E%8B%E7%BB%93%E6%9E%84"><span class="nav-text"> 模型结构</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#%E8%AE%AD%E7%BB%83%E7%BB%86%E8%8A%82"><span class="nav-text"> 训练细节</span></a><ol class="nav-child"><li class="nav-item nav-level-3"><a class="nav-link" href="#1-teacher-stage"><span class="nav-text"> 1. Teacher stage</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#2-pseudo-labeling-stage"><span class="nav-text"> 2. Pseudo-labeling stage</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#3-student-stage-strong-perturbation"><span class="nav-text"> 3. Student stage: strong perturbation</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#4-semantic-feature-alignment"><span class="nav-text"> 4. Semantic feature alignment</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#5-implementation-details"><span class="nav-text"> 5. Implementation details</span></a></li></ol></li><li class="nav-item nav-level-2"><a class="nav-link" href="#%E5%85%B3%E9%94%AE%E7%BB%93%E6%9E%9C"><span class="nav-text"> 关键结果</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#ablation-%E4%B8%BA%E4%BB%80%E4%B9%88%E5%BC%BA%E6%89%B0%E5%8A%A8%E5%92%8C-feature-alignment-%E6%98%AF%E5%85%B3%E9%94%AE"><span class="nav-text"> Ablation: 为什么强扰动和 feature alignment 是关键</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#%E4%B8%8B%E6%B8%B8%E8%BF%81%E7%A7%BB"><span class="nav-text"> 下游迁移</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#%E5%92%8C-da2-da3-%E7%9A%84%E5%85%B3%E7%B3%BB"><span class="nav-text"> 和 DA2、DA3 的关系</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#%E5%85%B7%E8%BA%AB%E5%BA%94%E7%94%A8%E6%97%B6%E6%80%8E%E4%B9%88%E7%94%A8"><span class="nav-text"> 具身应用时怎么用</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#%E5%8F%82%E8%80%83%E8%B5%84%E6%96%99"><span class="nav-text"> 参考资料</span></a></li></ol>
+
+	</div>
+</div>
+	</div>
+	
+</div>
+
+			</div>
+
+			
+		</div>
+
+		<div class="main-content-footer">
+			<footer class="footer mt-5 py-5 h-auto text-base text-third-text-color relative border-t-2 border-t-border-color">
+    <div class="info-container py-3 text-center">
+        
+        <div class="text-center">
+            &copy;
+            
+              <span>2022</span>
+              -
+            
+            2026&nbsp;&nbsp;<i class="fa-solid fa-heart fa-beat" style="--fa-animation-duration: 0.5s; color: #f54545"></i>&nbsp;&nbsp;<a href="/">Charles</a>
+            
+                
+                <p class="post-count space-x-0.5">
+                    <span>
+                        504 posts in total
+                    </span>
+                    
+                        <span>
+                            2011k words in total
+                        </span>
+                    
+                </p>
+            
+        </div>
+        
+            <script data-swup-reload-script src="https://cn.vercount.one/js"></script>
+            <div class="relative text-center lg:absolute lg:right-[20px] lg:top-1/2 lg:-translate-y-1/2 lg:text-right">
+                
+                    <span id="busuanzi_container_site_uv" class="lg:!block">
+                        <span class="text-sm">VISITOR COUNT</span>
+                        <span id="busuanzi_value_site_uv"></span>
+                    </span>
+                
+                
+                    <span id="busuanzi_container_site_pv" class="lg:!block">
+                        <span class="text-sm">TOTAL PAGE VIEWS</span>
+                        <span id="busuanzi_value_site_pv"></span>
+                    </span>
+                
+            </div>
+        
+        <div class="relative text-center lg:absolute lg:left-[20px] lg:top-1/2 lg:-translate-y-1/2 lg:text-left">
+            <span class="lg:block text-sm">POWERED BY <?xml version="1.0" encoding="utf-8"?><!DOCTYPE svg PUBLIC "-//W3C//DTD SVG 1.1//EN" "http://www.w3.org/Graphics/SVG/1.1/DTD/svg11.dtd"><svg class="relative top-[2px] inline-block align-baseline" version="1.1" id="圖層_1" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" x="0px" y="0px" width="1rem" height="1rem" viewBox="0 0 512 512" enable-background="new 0 0 512 512" xml:space="preserve"><path fill="#0E83CD" d="M256.4,25.8l-200,115.5L56,371.5l199.6,114.7l200-115.5l0.4-230.2L256.4,25.8z M349,354.6l-18.4,10.7l-18.6-11V275H200v79.6l-18.4,10.7l-18.6-11v-197l18.5-10.6l18.5,10.8V237h112v-79.6l18.5-10.6l18.5,10.8V354.6z"/></svg><a target="_blank" class="text-base" href="https://hexo.io">Hexo</a></span>
+            <span class="text-sm lg:block">THEME&nbsp;<a class="text-base" target="_blank" href="https://github.com/EvanNotFound/hexo-theme-redefine">Redefine v2.9.0</a></span>
+        </div>
+        
+        
+            <div>
+                Blog up for <span class="odometer" id="runtime_days" ></span> days <span class="odometer" id="runtime_hours"></span> hrs <span class="odometer" id="runtime_minutes"></span> Min <span class="odometer" id="runtime_seconds"></span> Sec
+            </div>
+        
+        
+            <script data-swup-reload-script>
+                try {
+                    function odometer_init() {
+                    const elements = document.querySelectorAll('.odometer');
+                    elements.forEach(el => {
+                        new Odometer({
+                            el,
+                            format: '( ddd).dd',
+                            duration: 200
+                        });
+                    });
+                    }
+                    odometer_init();
+                } catch (error) {}
+            </script>
+        
+        
+            
+                
+        
+                
+        
+                
+
+                    
+                        <script data-swup-reload-script type="text/javascript" src="/js/love.js"></script>
+                    
+        
+        
+    </div>  
+</footer>
+		</div>
+	</div>
+
+	
+	<div class="post-tools">
+		<div class="post-tools-container">
+	<ul class="article-tools-list">
+		<!-- TOC aside toggle -->
+		
+		<li class="right-bottom-tools page-aside-toggle">
+			<i class="fa-regular fa-outdent"></i>
+		</li>
+		
+
+		<!-- go comment -->
+		
+		<li class="go-comment">
+			<i class="fa-regular fa-comments"></i>
+		</li>
+		
+	</ul>
+</div>
+	</div>
+	
+
+	<div class="right-side-tools-container">
+		<div class="side-tools-container">
+	<ul class="hidden-tools-list">
+		<li class="right-bottom-tools tool-font-adjust-plus flex justify-center items-center">
+			<i class="fa-regular fa-magnifying-glass-plus"></i>
+		</li>
+
+		<li class="right-bottom-tools tool-font-adjust-minus flex justify-center items-center">
+			<i class="fa-regular fa-magnifying-glass-minus"></i>
+		</li>
+
+		<li class="right-bottom-tools tool-dark-light-toggle flex justify-center items-center">
+			<i class="fa-regular fa-moon"></i>
+		</li>
+
+		<!-- rss -->
+		
+		<li class="right-bottom-tools rss flex justify-center items-center">
+			<a class="flex justify-center items-center" href="/atom.xml" target="_blank">
+				<i class="fa-regular fa-rss"></i>
+			</a>
+		</li>
+		
+
+		
+
+		<li class="right-bottom-tools tool-scroll-to-bottom flex justify-center items-center">
+			<i class="fa-regular fa-arrow-down"></i>
+		</li>
+	</ul>
+
+	<ul class="visible-tools-list">
+		<li class="right-bottom-tools toggle-tools-list flex justify-center items-center">
+			<i class="fa-regular fa-cog fa-spin"></i>
+		</li>
+		
+		<li class="right-bottom-tools tool-scroll-to-top flex justify-center items-center">
+			<i class="arrow-up fas fa-arrow-up"></i>
+			<span class="percent"></span>
+		</li>
+		
+		
+	</ul>
+</div>
+	</div>
+
+	<div class="image-viewer-container" role="dialog" aria-modal="true" aria-label="Image viewer">
+	<button class="image-viewer-close" type="button" aria-label="Close">
+		<i class="fa-solid fa-xmark"></i>
+	</button>
+	<button class="image-viewer-prev" type="button" aria-label="Prev">
+		<i class="fa-solid fa-chevron-left"></i>
+	</button>
+	<div class="image-viewer-frame">
+		<img src="" alt="">
+	</div>
+	<div class="image-viewer-exif-panel hidden absolute left-1/2 bottom-20 -translate-x-1/2 w-[min(92vw,420px)] max-h-[60vh] overflow-hidden rounded-2xl bg-background-color-transparent-80 p-4 text-left shadow-redefine-flat backdrop-blur-md" role="dialog" aria-label="EXIF" aria-hidden="true">
+		<div class="flex items-center justify-between mb-3">
+			<span class="text-sm font-semibold text-first-text-color">EXIF</span>
+			<button class="image-viewer-exif-close flex h-8 w-8 items-center justify-center rounded-full bg-background-color-transparent-80 text-first-text-color transition hover:bg-background-color-transparent-40" type="button" aria-label="Close">
+				<i class="fa-solid fa-xmark text-[0.65rem]"></i>
+			</button>
+		</div>
+		<div class="image-viewer-exif-cards grid grid-cols-1 sm:grid-cols-2 gap-3 max-h-[50vh] overflow-y-auto pr-1 scrollbar-hide"></div>
+		<template class="image-viewer-exif-card-template">
+			<div class="rounded-lg bg-background-color-transparent-40 px-3 py-2">
+				<div class="image-viewer-exif-card-header flex items-center gap-2 mb-1">
+					<i class="image-viewer-exif-card-icon fa-solid fa-circle-info text-xs text-third-text-color"></i>
+					<div class="image-viewer-exif-card-title text-xs font-semibold text-first-text-color"></div>
+				</div>
+				<div class="image-viewer-exif-card-items flex flex-col gap-1"></div>
+			</div>
+		</template>
+	</div>
+	<button class="image-viewer-exif-toggle flex items-center gap-2 hidden absolute left-1/2 bottom-6 -translate-x-1/2 rounded-full border border-border-color bg-background-color-transparent-80 px-4 py-2 text-first-text-color backdrop-blur-md transition hover:bg-background-color-transparent-40" type="button" aria-label="EXIF" aria-expanded="false">
+		<i class="fa-solid fa-circle-info text-xs"></i>
+		<span class="text-xs font-semibold uppercase tracking-wider">EXIF</span>
+	</button>
+	<button class="image-viewer-next" type="button" aria-label="Next">
+		<i class="fa-solid fa-chevron-right"></i>
+	</button>
+</div>
+
+
+	
+	<div class="search-pop-overlay">
+	<div class="popup search-popup">
+		<div class="search-header">
+			<span class="search-input-field-pre">
+				<i class="fa-solid fa-keyboard"></i>
+			</span>
+			<div class="search-input-container">
+				<input autocomplete="off" autocorrect="off" autocapitalize="off" placeholder="Search..." spellcheck="false" type="search" class="search-input">
+			</div>
+			<span class="popup-btn-close">
+				<i class="fa-solid fa-times"></i>
+			</span>
+		</div>
+		<div id="search-result">
+			<div id="no-result">
+				<i class="fa-solid fa-spinner fa-spin-pulse fa-5x fa-fw"></i>
+			</div>
+		</div>
+	</div>
+</div>
+	
+
+</main>
+
+
+
+<script src="/js/build/libs/Swup.min.js"></script>
+
+<script src="/js/build/libs/SwupSlideTheme.min.js"></script>
+
+<script src="/js/build/libs/SwupScriptsPlugin.min.js"></script>
+
+<script src="/js/build/libs/SwupProgressPlugin.min.js"></script>
+
+<script src="/js/build/libs/SwupScrollPlugin.min.js"></script>
+
+<script src="/js/build/libs/SwupPreloadPlugin.min.js"></script>
+
+<script>
+    window.swup = new Swup({
+        plugins: [
+            new SwupScriptsPlugin({
+                optin: true,
+            }),
+            new SwupProgressPlugin(),
+            new SwupScrollPlugin({
+                offset: 80,
+            }),
+            new SwupSlideTheme({
+                mainElement: ".main-content-body",
+            }),
+            new SwupPreloadPlugin(),
+        ],
+        containers: ["#swup"],
+    });
+
+    window.dispatchEvent(
+        new CustomEvent("redefine:swup:ready", {
+            detail: {
+                swup: window.swup,
+            },
+        }),
+    );
+</script>
+
+
+
+
+	
+<script src="/js/build/main.js" type="module"></script>
+
+
+
+    
+<script src="/js/build/libs/odometer.min.js"></script>
+
+    
+<link rel="stylesheet" href="/assets/odometer-theme-minimal.css">
+
+
+
+
+
+
+
+  
+<script src="/js/build/libs/Typed.min.js"></script>
+<script src="/js/build/libs/minimasonry.min.js" data-swup-reload-script=""></script>
+
+
+
+
+<script src="/js/build/libs/moment-with-locales.min.js" data-swup-reload-script=""></script>
+
+
+
+	
+</body>
+
+</html>

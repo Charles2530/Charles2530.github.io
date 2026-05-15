@@ -1,0 +1,1381 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="keywords" content="Charles">
+    
+    
+    <meta name="author" content="Charles">
+    
+    <!-- Completely eliminate flash of wrong theme -->
+    <script>
+        (function() {
+            const THEME_KEY = "REDEFINE-THEME-STATUS";
+            const DARK = "dark", LIGHT = "light";
+            
+            // Get preferred theme
+            function getTheme() {
+                try {
+                    const saved = localStorage.getItem(THEME_KEY);
+                    if (saved) {
+                        const { isDark } = JSON.parse(saved);
+                        return isDark ? DARK : LIGHT;
+                    }
+                } catch (e) {}
+                
+                return matchMedia("(prefers-color-scheme: dark)").matches ? DARK : LIGHT;
+            }
+            
+            // Apply theme to document
+            function applyTheme(theme) {
+                const isDark = theme === DARK;
+                const root = document.documentElement;
+                
+                // Set classes for compatibility
+                root.classList.add(theme);
+                root.classList.remove(isDark ? LIGHT : DARK);
+                root.style.colorScheme = theme;
+            }
+            
+            // Initial application
+            const theme = getTheme();
+            applyTheme(theme);
+            
+            // Listen for system preference changes
+            matchMedia("(prefers-color-scheme: dark)").addEventListener("change", ({ matches }) => {
+                // Only update if using system preference (no localStorage entry)
+                if (!localStorage.getItem(THEME_KEY)) {
+                    applyTheme(matches ? DARK : LIGHT);
+                }
+            });
+            
+            // Set body classes ASAP (before DOMContentLoaded)
+            (function() {
+                const addBodyClass = () => {
+                    const b = document.body;
+                    if (!b) return false;
+                    b.classList.add(theme + "-mode");
+                    return true;
+                };
+
+                // Try immediately
+                if (addBodyClass()) return;
+
+                // Observe until body exists
+                const mo = new MutationObserver(() => {
+                    if (addBodyClass()) mo.disconnect();
+                });
+                mo.observe(document.documentElement, { childList: true, subtree: true });
+            })();
+        })();
+    </script>
+    
+    <!-- preconnect -->
+<!--- Seo Part-->
+    
+    <link rel="canonical" href="https://charles2530.github.io/2025/09/11/ai-files-operators-performance-anti-patterns-and-failure-modes/"/>
+    <meta name="robots" content="index,follow">
+    <meta name="googlebot" content="index,follow">
+    <meta name="revisit-after" content="1 days">
+    
+    
+        
+        <meta name="description" content="This is Charles&#39;s Castle.">
+<meta property="og:type" content="article">
+<meta property="og:title" content="算子与编译器：性能反模式与失败案例">
+<meta property="og:url" content="https://charles2530.github.io/2025/09/11/ai-files-operators-performance-anti-patterns-and-failure-modes/index.html">
+<meta property="og:site_name" content="Charles&#39;s Castle">
+<meta property="og:description" content="This is Charles&#39;s Castle.">
+<meta property="og:locale" content="en_US">
+<meta property="og:image" content="https://charles2530.github.io/image/background/logo.jpg">
+<meta property="article:published_time" content="2025-09-11T01:00:00.000Z">
+<meta property="article:modified_time" content="2025-09-11T01:00:00.000Z">
+<meta property="article:author" content="Du Jinyang">
+<meta property="article:tag" content="AI">
+<meta property="article:tag" content="GPU 系统">
+<meta property="article:tag" content="算子与编译器">
+<meta name="twitter:card" content="summary">
+<meta name="twitter:image" content="https://charles2530.github.io/image/background/logo.jpg">
+    
+    
+    <!--- Icon Part-->
+    <link rel="icon" type="image/png" href="https://charles2530.github.io/image/background/favicon.png" sizes="192x192">
+    <link rel="apple-touch-icon" sizes="180x180" href="https://charles2530.github.io/image/background/favicon.png">
+    <meta name="theme-color" content="#A31F34">
+    <link rel="shortcut icon" href="https://charles2530.github.io/image/background/favicon.png">
+    <!--- Page Info-->
+    
+    <title>
+        
+            算子与编译器：性能反模式与失败案例 | Charles&#39;s Castle
+        
+    </title>
+
+    
+<link rel="stylesheet" href="/fonts/Chillax/chillax.css">
+
+
+    <!--- Inject Part-->
+    
+        
+            
+    
+            
+    
+            
+                
+                    <link rel="stylesheet" href="/katex/katex.min.css">
+                
+    
+            
+                
+                    <link rel="stylesheet" href="/css/site-polish-v2.css">
+                
+    
+            
+                
+                    <script data-swup-reload-script>
+(function() {
+  function loadBaiduAnalytics() {
+    if (window.__baiduAnalyticsLoaded) return;
+    window.__baiduAnalyticsLoaded = true;
+    window._hmt = window._hmt || [];
+    var hm = document.createElement("script");
+    hm.async = true;
+    hm.src = "https://hm.baidu.com/hm.js?8e0e5f382d14d87cbeadc33a36e71e86";
+    document.head.appendChild(hm);
+  }
+  if ("requestIdleCallback" in window) {
+    requestIdleCallback(loadBaiduAnalytics, { timeout: 3000 });
+  } else {
+    window.addEventListener("load", function() {
+      setTimeout(loadBaiduAnalytics, 1500);
+    });
+  }
+})();
+</script>
+
+                
+    
+
+    
+<link rel="stylesheet" href="/css/style.css">
+
+
+    
+        
+<link rel="stylesheet" href="/css/build/tailwind.css">
+
+    
+
+    
+<link rel="stylesheet" href="/fonts/GeistMono/geist-mono.css">
+
+    
+<link rel="stylesheet" href="/fonts/Geist/geist.css">
+
+    <!--- Font Part-->
+    
+    
+    
+    
+    
+    
+        
+<script src="/js/build/libs/anime.min.js"></script>
+
+    
+
+    <script id="hexo-configurations">
+    window.config = {"hostname":"charles2530.github.io","root":"/","language":"en","path":"search.xml"};
+    window.theme = {"articles":{"style":{"font_size":"16px","line_height":1.5,"image_border_radius":"14px","image_alignment":"center","image_caption":false,"link_icon":true,"delete_mask":false,"title_alignment":"left","headings_top_spacing":{"h1":"5rem","h2":"4rem","h3":"2.8rem","h4":"2.5rem","h5":"2.2rem","h6":"2rem"}},"word_count":{"enable":true,"count":true,"min2read":true},"author_label":{"enable":true,"auto":true,"list":["lol","Neo","God"]},"code_block":{"copy":true,"style":"mac","highlight_theme":{"light":"github","dark":"vs2015"},"font":{"enable":false,"family":null,"url":null}},"toc":{"enable":true,"max_depth":6,"number":false,"expand":true,"init_open":true},"copyright":{"enable":true,"default":"cc_by_nc_sa"},"lazyload":true,"pangu_js":false,"recommendation":{"enable":false,"title":"recommend_articles","limit":3,"mobile_limit":2,"placeholder":"https://charles2530.github.io/image/background/p3.jfif","skip_dirs":[]}},"colors":{"primary":"#A31F34","secondary":"#1890ff","default_mode":"light"},"global":{"fonts":{"chinese":{"enable":false,"family":null,"url":null},"english":{"enable":false,"family":null,"url":null},"title":{"enable":false,"family":null,"url":null}},"content_max_width":"1000px","sidebar_width":"210px","hover":{"shadow":true,"scale":true},"scroll_progress":{"bar":true,"percentage":true},"website_counter":{"url":"https://cn.vercount.one/js","enable":true,"site_pv":true,"site_uv":true,"post_pv":true},"single_page":true,"preloader":{"enable":true,"custom_message":null},"side_tools":{"gear_rotation":true,"auto_expand":false},"open_graph":{"enable":true,"image":"https://charles2530.github.io/image/background/logo.jpg","description":"This is Charles's Castle."},"google_analytics":{"enable":false,"id":null}},"home_banner":{"enable":true,"style":"fixed","image":{"light":"https://charles2530.github.io/image/background/background-light1.jpg","dark":"https://charles2530.github.io/image/background/background-dark1.jpg"},"title":"Charles's Castle","subtitle":{"text":["Happiness is best!","Never give up!","Everyday is a gift!"],"hitokoto":{"enable":false,"show_author":false,"api":"https://v1.hitokoto.cn"},"typing_speed":100,"backing_speed":80,"starting_delay":500,"backing_delay":1500,"loop":true,"smart_backspace":true},"text_color":{"light":"#000000","dark":"#d1d1b6"},"text_style":{"title_size":"3.2rem","subtitle_size":"1.5rem","line_height":1.2},"custom_font":{"enable":false,"family":null,"url":null},"social_links":{"enable":true,"style":"center","links":[{"icon":"fa-brands fa-github","url":"https://github.com/Charles2530/"},{"icon":"fa-brands fa-zhihu","url":"https://www.zhihu.com/people/yang-guang-xiao-zi-55-55"},{"icon":"fa-solid fa-at","url":"mailto:charles2530@163.com"},{"icon":"fa-brands fa-telegram","url":null},{"icon":"/images/custom-icon.svg","url":null}],"qrs":[{"icon":"fa-brands fa-weixin","qr":"https://charles2530.github.io/image/background/Wechat_icon.png"},{"icon":"/images/custom-icon.svg","qr":null}]}},"plugins":{"feed":{"enable":true},"aplayer":{"enable":false,"type":"fixed","audios":[{"name":null,"artist":null,"url":null,"cover":null,"lrc":null}]},"mermaid":{"enable":false,"version":"11.4.1","theme":{"light":"default","dark":"dark"}}},"version":"2.9.0","navbar":{"auto_hide":true,"color":{"left":"#f78736","right":"#367df7","transparency":35},"width":{"home":"1200px","pages":"1000px"},"links":{"Home":{"path":"/","icon":"fa-regular fa-house"},"Categories":{"path":"/categories","icon":"fas fa-bookmark"},"Tags":{"path":"/tags","icon":"fas fa-tags"},"About":{"icon":"fa-regular fa-user","submenus":{"Me":"https://jinyang-du.github.io/","Github":"https://github.com/Charles2530/","Blog":"https://charles2530.github.io","Statistics":"https://tongji.baidu.com/"}}},"search":{"enable":true,"preload":false}},"page_templates":{"friends_column":2,"tags_style":"blur","masonry":{"batch_size":12,"initial_batch_size":24}},"home":{"sidebar":{"enable":true,"position":"left","first_item":"menu","announcement":"This is Charles's Castle","show_on_mobile":true,"links":{"Archives":{"path":"/archives","icon":"fa-regular fa-archive"},"Photos":{"icon":"fa-solid fa-image","path":"/masonry/"},"Essays":{"icon":"fa-solid fa-message-lines","path":"/essay/"},"Friends":{"icon":"fa-solid fa-user-group","path":"/friends/"}}},"article_date_format":"auto","excerpt_length":200,"categories":{"enable":true,"limit":3},"tags":{"enable":true,"limit":3}},"footer":{"runtime":true,"icon":"<i class=\"fa-solid fa-heart fa-beat\" style=\"--fa-animation-duration: 0.5s; color: #f54545\"></i>","start":"2022/12/27 00:00:00","statistics":true,"customize":null,"icp":{"enable":false,"number":null,"url":null}},"footerStart":"2022/12/27 00:00:00","mermaid":{"style":{"light":"default","dark":"dark"}}};
+    window.lang_ago = {"second":"%s seconds ago","minute":"%s minutes ago","hour":"%s hours ago","day":"%s days ago","week":"%s weeks ago","month":"%s months ago","year":"%s years ago"};
+    window.i18n = {"search":"Search...","toc":"On this page","prev":"Prev","next":"Next","prev_posts":"Prev posts","next_posts":"Next posts","page":"Page %d","recent_posts":"Recent Posts","share":"Share","powered_by":"POWERED BY %s","theme":"THEME","rss_feed":"RSS Feed","category":"Category","categories":"Categories","tag":"Tag","tags":"Tags","post":"Post","posts":"Posts","tagcloud":"Tag Cloud","comment":"Comment","comments":"Comments","home":"Home","archive":"Archive","archives":"Archives","top":"TOP","sticky":"Sticky","go-back-home":"Go Back Home","masonry_loading":"Loading photos...","image_viewer":"Image viewer","close":"Close","exif":{"title":"EXIF","cards":{"camera":"Camera","lens":"Lens","exposure":"Exposure","other":"Other"},"fields":{"make":"Brand","model":"Model","date_taken":"Date taken","lens_model":"Lens","focal_length":"Focal length","focus_mode":"Focus mode","shutter":"Shutter","aperture":"Aperture","iso":"ISO","exposure_program":"Exposure program","exposure_compensation":"Exposure compensation","metering_mode":"Metering mode","flash":"Flash","white_balance":"White balance","latitude":"Latitude","longitude":"Longitude","altitude":"Altitude"},"status":{"loading":"Loading...","no_exif":"No EXIF available","library_missing":"EXIF library not loaded","image_source_missing":"Image source unavailable","unavailable":"EXIF unavailable (blocked by CORS or missing metadata)","flag_unavailable":"EXIF unavailable"}},"about":"About","changelog":"Changelog","links":"Links","link":"Link","friends":"Friends","friend":"Friend","timeline":"Timeline","shuoshuo":"Shuoshuo","bookmarks":"Bookmarks","site_uv":"VISITOR COUNT","site_pv":"TOTAL PAGE VIEWS","read_more":"Read more","wordcount":"Words","min2read":"Mins","status":"Status","runtime":"Blog up for","days":"days","hours":"hrs","minutes":"Min","seconds":"Sec","optimized_by":"and Optimized by Evan","rights":"All Rights Reserved","site_posts":"%s posts in total","site_wordcount":"%s words in total","copyright":{"author":"Author","title":"Title","link":"Link","create_time":"Created at","update_time":"Updated at","license_title":"License","license_content":"This work is licensed under %s.","all_rights_reserved":"All Rights Reserved &#169; %s","public_domain":"This work is in the public domain."},"ago":{"second":"%s seconds ago","minute":"%s minutes ago","hour":"%s hours ago","day":"%s days ago","week":"%s weeks ago","month":"%s months ago","year":"%s years ago"},"create_time":"Created","update_time":"Updated","expired":"This post is written %s days ago, and the content may not be up to date."};
+    window.data = {"masonry":true};
+  </script>
+    
+    <!--- Fontawesome Part-->
+    
+<link rel="stylesheet" href="/fontawesome/fontawesome.min.css">
+
+    
+<link rel="stylesheet" href="/fontawesome/brands.min.css">
+
+    
+<link rel="stylesheet" href="/fontawesome/solid.min.css">
+
+    
+<link rel="stylesheet" href="/fontawesome/regular.min.css">
+
+    
+    
+    
+    
+<meta name="generator" content="Hexo 6.3.0"><link rel="alternate" href="/atom.xml" title="Charles's Castle" type="application/atom+xml">
+<link rel="stylesheet" href="/css/prism-tomorrow.css" type="text/css"></head>
+
+
+<body>
+	<div class="progress-bar-container">
+	
+	<span class="scroll-progress-bar"></span>
+	
+
+	
+	<span class="pjax-progress-bar"></span>
+	<!--        <span class="swup-progress-icon">-->
+	<!--            <i class="fa-solid fa-circle-notch fa-spin"></i>-->
+	<!--        </span>-->
+	
+</div>
+
+<style>
+    :root {
+        --preloader-background-color: #fff;
+        --preloader-text-color: #000;
+    }
+
+    @media (prefers-color-scheme: dark) {
+        :root {
+            --preloader-background-color: #202124;
+            --preloader-text-color: #fff;
+        }
+    }
+
+    @media (prefers-color-scheme: light) {
+        :root {
+            --preloader-background-color: #fff;
+            --preloader-text-color: #000;
+        }
+    }
+
+    @media (max-width: 600px) {
+        .ml13 {
+            font-size: 2.6rem !important; /* Adjust this value as needed */
+        }
+    }
+
+    .preloader {
+        display: flex;
+        flex-direction: column;
+        gap: 1rem; /* Tailwind 'gap-4' is 1rem */
+        align-items: center;
+        justify-content: center;
+        position: fixed;
+        padding: 12px;
+        top: 0;
+        right: 0;
+        bottom: 0;
+        left: 0;
+        width: 100vw;
+        height: 100vh; /* 'h-screen' is 100% of the viewport height */
+        background-color: var(--preloader-background-color);
+        z-index: 1100; /* 'z-[1100]' sets the z-index */
+        transition: opacity 0.2s ease-in-out;
+    }
+
+    .ml13 {
+        font-size: 3.2rem;
+        /* text-transform: uppercase; */
+        color: var(--preloader-text-color);
+        letter-spacing: -1px;
+        font-weight: 500;
+        font-family: 'Chillax-Variable', sans-serif;
+        text-align: center;
+    }
+
+    .ml13 .word {
+        display: inline-flex;
+        flex-wrap: wrap;
+        white-space: nowrap;
+    }
+
+    .ml13 .letter {
+        display: inline-block;
+        line-height: 1em;
+    }
+</style>
+
+<div class="preloader">
+    <h2 class="ml13">
+        Charles&#39;s Castle
+    </h2>
+    <script>
+        var textWrapper = document.querySelector('.ml13');
+        // Split text into words
+        var words = textWrapper.textContent.trim().split(' ');
+
+        // Clear the existing content
+        textWrapper.innerHTML = '';
+
+        // Wrap each word and its letters in spans
+        words.forEach(function(word) {
+            var wordSpan = document.createElement('span');
+            wordSpan.classList.add('word');
+            wordSpan.innerHTML = word.replace(/\S/g, "<span class='letter'>$&</span>");
+            textWrapper.appendChild(wordSpan);
+            textWrapper.appendChild(document.createTextNode(' ')); // Add space between words
+        });
+
+        var animation = anime.timeline({ loop: true })
+            .add({
+                targets: '.ml13 .letter',
+                translateY: [20, 0],
+                translateZ: 0,
+                opacity: [0, 1],
+                filter: ['blur(5px)', 'blur(0px)'],
+                easing: "easeOutExpo",
+                duration: 1200,
+                delay: (el, i) => 300 + 20 * i,
+            })
+            .add({
+                targets: '.ml13 .letter',
+                translateY: [0, -20],
+                opacity: [1, 0],
+                filter: ['blur(0px)', 'blur(5px)'],
+                easing: "easeInExpo",
+                duration: 1000,
+                delay: (el, i) => 15 * i,
+                complete: function() {
+                    hidePreloader();
+                }
+            }, '-=700');
+
+
+        let themeStatus = JSON.parse(localStorage.getItem('REDEFINE-THEME-STATUS'))?.isDark;
+
+        // If the theme status is not found in local storage, check the preferred color scheme
+        if (themeStatus === undefined || themeStatus === null) {
+            if (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) {
+                themeStatus = 'dark';
+            } else {
+                themeStatus = 'light';
+            }
+        }
+
+        // Now you can use the themeStatus variable in your code
+        if (themeStatus) {
+            document.documentElement.style.setProperty('--preloader-background-color', '#202124');
+            document.documentElement.style.setProperty('--preloader-text-color', '#fff');
+        } else {
+            document.documentElement.style.setProperty('--preloader-background-color', '#fff');
+            document.documentElement.style.setProperty('--preloader-text-color', '#000');
+        }
+
+        window.addEventListener('load', function () {
+            setTimeout(hidePreloader, 5000); // Call hidePreloader after 5000 milliseconds if not already called by animation
+        });
+
+        function hidePreloader() {
+            var preloader = document.querySelector('.preloader');
+            preloader.style.opacity = '0';
+            setTimeout(function () {
+                preloader.style.display = 'none';
+            }, 200);
+        }
+    </script>
+</div>
+
+<main class="page-container" id="swup">
+
+	
+
+	<div class="main-content-container flex flex-col justify-between min-h-dvh">
+		<div class="main-content-header">
+			<header class="navbar-container px-6 md:px-12">
+    <div class="navbar-content transition-navbar ">
+        <div class="left">
+            
+                <a class="logo-image h-8 w-8 sm:w-10 sm:h-10 mr-3" href="/">
+                    <img src="https://charles2530.github.io/image/background/logo.jpg" class="w-full h-full rounded-xs">
+                </a>
+            
+            <a class="logo-title" href="/">
+                
+                Charles&#39;s Castle
+                
+            </a>
+        </div>
+
+        <div class="right">
+            <!-- PC -->
+            <div class="desktop">
+                <ul class="navbar-list">
+                    
+                        
+                            
+
+                            <li class="navbar-item">
+                                <!-- Menu -->
+                                <a class=""
+                                   href="/"
+                                        >
+                                    <i class="fa-regular fa-house fa-fw"></i>
+                                    HOME
+                                    
+                                </a>
+
+                                <!-- Submenu -->
+                                
+                            </li>
+                    
+                        
+                            
+
+                            <li class="navbar-item">
+                                <!-- Menu -->
+                                <a class=""
+                                   href="/categories"
+                                        >
+                                    <i class="fas fa-bookmark fa-fw"></i>
+                                    CATEGORIES
+                                    
+                                </a>
+
+                                <!-- Submenu -->
+                                
+                            </li>
+                    
+                        
+                            
+
+                            <li class="navbar-item">
+                                <!-- Menu -->
+                                <a class=""
+                                   href="/tags"
+                                        >
+                                    <i class="fas fa-tags fa-fw"></i>
+                                    TAGS
+                                    
+                                </a>
+
+                                <!-- Submenu -->
+                                
+                            </li>
+                    
+                        
+                            
+
+                            <li class="navbar-item">
+                                <!-- Menu -->
+                                <a class="has-dropdown"
+                                   href="#"
+                                        onClick=&#34;return false;&#34;>
+                                    <i class="fa-regular fa-user fa-fw"></i>
+                                    ABOUT
+                                    <i class="fa-solid fa-chevron-down fa-fw"></i>
+                                </a>
+
+                                <!-- Submenu -->
+                                
+                                    <ul class="sub-menu">
+                                        
+                                            <li>
+                                                <a target="_blank" rel="noopener" href="https://jinyang-du.github.io/">
+                                                    ME
+                                                </a>
+                                            </li>
+                                        
+                                            <li>
+                                                <a target="_blank" rel="noopener" href="https://github.com/Charles2530/">
+                                                    GITHUB
+                                                </a>
+                                            </li>
+                                        
+                                            <li>
+                                                <a href="https://charles2530.github.io">
+                                                    BLOG
+                                                </a>
+                                            </li>
+                                        
+                                            <li>
+                                                <a target="_blank" rel="noopener" href="https://tongji.baidu.com/">
+                                                    STATISTICS
+                                                </a>
+                                            </li>
+                                        
+                                    </ul>
+                                
+                            </li>
+                    
+                    
+                        <li class="navbar-item search search-popup-trigger">
+                            <i class="fa-solid fa-magnifying-glass"></i>
+                        </li>
+                    
+                </ul>
+            </div>
+            <!-- Mobile -->
+            <div class="mobile">
+                
+                    <div class="icon-item search search-popup-trigger"><i class="fa-solid fa-magnifying-glass"></i>
+                    </div>
+                
+                <div class="icon-item navbar-bar">
+                    <div class="navbar-bar-middle"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Mobile sheet -->
+    <div class="navbar-drawer h-dvh w-full absolute top-0 left-0 bg-background-color flex flex-col justify-between">
+        <ul class="drawer-navbar-list flex flex-col px-4 justify-center items-start">
+            
+                
+                    
+
+                    <li class="drawer-navbar-item text-base my-1.5 flex flex-col w-full">
+                        
+                        <a class="py-1.5 px-2 flex flex-row items-center justify-between gap-1 hover:!text-primary active:!text-primary text-2xl font-semibold group border-b border-border-color hover:border-primary w-full "
+                           href="/"
+                        >
+                            <span>
+                                HOME
+                            </span>
+                            
+                                <i class="fa-regular fa-house fa-sm fa-fw"></i>
+                            
+                        </a>
+                        
+
+                        
+                    </li>
+            
+                
+                    
+
+                    <li class="drawer-navbar-item text-base my-1.5 flex flex-col w-full">
+                        
+                        <a class="py-1.5 px-2 flex flex-row items-center justify-between gap-1 hover:!text-primary active:!text-primary text-2xl font-semibold group border-b border-border-color hover:border-primary w-full "
+                           href="/categories"
+                        >
+                            <span>
+                                CATEGORIES
+                            </span>
+                            
+                                <i class="fas fa-bookmark fa-sm fa-fw"></i>
+                            
+                        </a>
+                        
+
+                        
+                    </li>
+            
+                
+                    
+
+                    <li class="drawer-navbar-item text-base my-1.5 flex flex-col w-full">
+                        
+                        <a class="py-1.5 px-2 flex flex-row items-center justify-between gap-1 hover:!text-primary active:!text-primary text-2xl font-semibold group border-b border-border-color hover:border-primary w-full "
+                           href="/tags"
+                        >
+                            <span>
+                                TAGS
+                            </span>
+                            
+                                <i class="fas fa-tags fa-sm fa-fw"></i>
+                            
+                        </a>
+                        
+
+                        
+                    </li>
+            
+                
+                    
+
+                    <li class="drawer-navbar-item-sub text-base my-1.5 flex flex-col w-full">
+                        
+                        <div class="py-1.5 px-2 flex flex-row items-center justify-between gap-1 hover:!text-primary active:!text-primary cursor-pointer text-2xl font-semibold group border-b border-border-color hover:border-primary w-full "
+                             navbar-data-toggle="submenu-About"
+                        >
+                            <span>
+                                ABOUT
+                            </span>
+                            
+                                <i class="fa-solid fa-chevron-right fa-sm fa-fw transition-all"></i>
+                            
+                        </div>
+                        
+
+                        
+                            <div class="flex-col items-start px-2 py-2 hidden" data-target="submenu-About">
+                                
+                                    <div class="drawer-navbar-item text-base flex flex-col justify-center items-start hover:underline active:underline hover:underline-offset-1 rounded-3xl">
+                                        <a class=" text-third-text-color text-xl"
+                                           target="_blank" rel="noopener" href="https://jinyang-du.github.io/">ME</a>
+                                    </div>
+                                
+                                    <div class="drawer-navbar-item text-base flex flex-col justify-center items-start hover:underline active:underline hover:underline-offset-1 rounded-3xl">
+                                        <a class=" text-third-text-color text-xl"
+                                           target="_blank" rel="noopener" href="https://github.com/Charles2530/">GITHUB</a>
+                                    </div>
+                                
+                                    <div class="drawer-navbar-item text-base flex flex-col justify-center items-start hover:underline active:underline hover:underline-offset-1 rounded-3xl">
+                                        <a class=" text-third-text-color text-xl"
+                                           href="https://charles2530.github.io">BLOG</a>
+                                    </div>
+                                
+                                    <div class="drawer-navbar-item text-base flex flex-col justify-center items-start hover:underline active:underline hover:underline-offset-1 rounded-3xl">
+                                        <a class=" text-third-text-color text-xl"
+                                           target="_blank" rel="noopener" href="https://tongji.baidu.com/">STATISTICS</a>
+                                    </div>
+                                
+                            </div>
+                        
+                    </li>
+            
+
+            
+            
+                
+                    
+                    <li class="drawer-navbar-item text-base my-1.5 flex flex-col w-full">
+                        <a class="py-1.5 px-2 flex flex-row items-center justify-between gap-1 hover:!text-primary active:!text-primary text-2xl font-semibold group border-b border-border-color hover:border-primary w-full active"
+                           href="/archives"
+                        >
+                            <span>Archives</span>
+                            <i class="fa-regular fa-archive fa-sm fa-fw"></i>
+                        </a>
+                    </li>
+                
+                    
+                    <li class="drawer-navbar-item text-base my-1.5 flex flex-col w-full">
+                        <a class="py-1.5 px-2 flex flex-row items-center justify-between gap-1 hover:!text-primary active:!text-primary text-2xl font-semibold group border-b border-border-color hover:border-primary w-full active"
+                           href="/masonry/"
+                        >
+                            <span>Photos</span>
+                            <i class="fa-solid fa-image fa-sm fa-fw"></i>
+                        </a>
+                    </li>
+                
+                    
+                    <li class="drawer-navbar-item text-base my-1.5 flex flex-col w-full">
+                        <a class="py-1.5 px-2 flex flex-row items-center justify-between gap-1 hover:!text-primary active:!text-primary text-2xl font-semibold group border-b border-border-color hover:border-primary w-full active"
+                           href="/essay/"
+                        >
+                            <span>Essays</span>
+                            <i class="fa-solid fa-message-lines fa-sm fa-fw"></i>
+                        </a>
+                    </li>
+                
+                    
+                    <li class="drawer-navbar-item text-base my-1.5 flex flex-col w-full">
+                        <a class="py-1.5 px-2 flex flex-row items-center justify-between gap-1 hover:!text-primary active:!text-primary text-2xl font-semibold group border-b border-border-color hover:border-primary w-full active"
+                           href="/friends/"
+                        >
+                            <span>Friends</span>
+                            <i class="fa-solid fa-user-group fa-sm fa-fw"></i>
+                        </a>
+                    </li>
+                
+            
+        </ul>
+
+        <div class="statistics flex justify-around my-2.5">
+    <a class="item tag-count-item flex flex-col justify-center items-center w-20" href="/tags">
+        <div class="number text-2xl sm:text-xl text-second-text-color font-semibold">45</div>
+        <div class="label text-third-text-color text-sm">Tags</div>
+    </a>
+    <a class="item tag-count-item flex flex-col justify-center items-center w-20" href="/categories">
+        <div class="number text-2xl sm:text-xl text-second-text-color font-semibold">93</div>
+        <div class="label text-third-text-color text-sm">Categories</div>
+    </a>
+    <a class="item tag-count-item flex flex-col justify-center items-center w-20" href="/archives">
+        <div class="number text-2xl sm:text-xl text-second-text-color font-semibold">504</div>
+        <div class="label text-third-text-color text-sm">Posts</div>
+    </a>
+</div>
+    </div>
+
+    <div class="window-mask"></div>
+
+</header>
+
+
+		</div>
+
+		<div class="main-content-body transition-fade-up">
+			
+
+			<div class="main-content">
+				<div class="post-page-container flex relative justify-between box-border w-full h-full">
+	<div class="article-content-container">
+
+		<div class="article-title relative w-full">
+			
+			
+			
+			<img src="https://charles2530.github.io/image/background/p3.png" alt="算子与编译器：性能反模式与失败案例" class="w-full h-60 sm:h-72 md:h-80 object-cover sm:rounded-t-large dark:brightness-75" />
+			
+			<div class="w-full flex items-center absolute bottom-0 justify-start">
+				<h1 class="article-title-cover text-center mx-6 my-6 text-second-text-color bg-background-color-transparent px-4 py-3 text-3xl sm:text-4xl md:text-5xl font-semibold backdrop-blur-lg rounded-xl border border-border-color ">算子与编译器：性能反模式与失败案例</h1>
+			</div>
+			
+		</div>
+
+		
+		<div class="article-header flex flex-row gap-2 items-center px-2 sm:px-6 md:px-8">
+			<div class="avatar w-[46px] h-[46px] shrink-0 rounded-medium border border-border-color p-px">
+				<img src="https://charles2530.github.io/image/background/logo2.jpg">
+			</div>
+			<div class="info flex flex-col justify-between">
+				<div class="author flex items-center">
+					<span class="name text-default-text-color text-lg font-semibold">Charles</span>
+					
+					<span class="author-label ml-1.5 text-xs px-2 py-0.5 rounded-small text-third-text-color border border-shadow-color-1">Lv7</span>
+					
+				</div>
+				<div class="meta-info">
+					<div class="article-meta-info">
+    <span class="article-date article-meta-item">
+        <i class="fa-regular fa-pen-fancy"></i>&nbsp;
+        <span class="desktop">2025-09-11 09:00</span>
+        <span class="mobile">2025-09-11 09:00</span>
+        <span class="hover-info">Created</span>
+    </span>
+    
+        <span class="article-date article-meta-item">
+            <i class="fa-regular fa-wrench"></i>&nbsp;
+            <span class="desktop">2025-09-11 09:00</span>
+            <span class="mobile">2025-09-11 09:00</span>
+            <span class="hover-info">Updated</span>
+        </span>
+    
+
+    
+        <span class="article-categories article-meta-item">
+            <i class="fa-regular fa-folders"></i>&nbsp;
+            <ul>
+                
+                
+                    
+                        
+                        <li>
+                            <a href="/categories/AI/">AI</a>&nbsp;
+                        </li>
+                    
+                    
+                
+                    
+                        
+                            <li>></li>
+                        
+                        <li>
+                            <a href="/categories/AI/%E7%AE%97%E5%AD%90%E4%B8%8E%E7%BC%96%E8%AF%91%E5%99%A8/">算子与编译器</a>&nbsp;
+                        </li>
+                    
+                    
+                
+            </ul>
+        </span>
+    
+    
+        <span class="article-tags article-meta-item">
+            <i class="fa-regular fa-tags"></i>&nbsp;
+            <ul>
+                
+                    <li>
+                        <a href="/tags/AI/">AI</a>&nbsp;
+                    </li>
+                
+                    <li>
+                        | <a href="/tags/GPU-%E7%B3%BB%E7%BB%9F/">GPU 系统</a>&nbsp;
+                    </li>
+                
+                    <li>
+                        | <a href="/tags/%E7%AE%97%E5%AD%90%E4%B8%8E%E7%BC%96%E8%AF%91%E5%99%A8/">算子与编译器</a>&nbsp;
+                    </li>
+                
+            </ul>
+        </span>
+    
+
+    
+    
+        <span class="article-wordcount article-meta-item">
+            <i class="fa-regular fa-typewriter"></i>&nbsp;<span>3.7k Words</span>
+        </span>
+    
+    
+        <span class="article-min2read article-meta-item">
+            <i class="fa-regular fa-clock"></i>&nbsp;<span>13 Mins</span>
+        </span>
+    
+    
+        <span class="article-pv article-meta-item">
+            <i class="fa-regular fa-eye"></i>&nbsp;<span id="busuanzi_value_page_pv"></span>
+        </span>
+    
+</div>
+
+				</div>
+			</div>
+		</div>
+		
+
+		
+
+
+		<div class="article-content markdown-body px-2 sm:px-6 md:px-8 pb-8">
+			<p>很多算子优化失败，并不是因为工程师不够努力，而是因为掉进了一些反复出现的性能反模式。它们的共同特点是：单看局部实现似乎合理，放到真实系统里却会不断放大损失，并且往往伴随“理论上应该更快，实际上却不快”的现象。</p>
+<p>把这些反模式单独列出来很有价值，因为它能帮助你少走很多弯路。</p>
+<div class="callout callout--titled info mb-4 rounded-small shadow-redefine-flat bg-(--callout-bg-color) p-3 pl-1 relative flex flex-row gap-2"><div role="none" class="rounded-full self-stretch w-0.5 bg-(--callout-primary-color) shrink-0 opacity-60"></div><div class="flex flex-col gap-2"><div class="callout__title flex items-center gap-2 font-semibold tracking-tight">初学者先抓住</div><div class="callout__content markdown-body flex-1 min-w-0"><p>性能反模式通常不是“看起来明显错误”的写法，而是局部合理、全局变慢的选择。看到理论 FLOPs 下降、融合更多、低精度更低时，都要回到真实数据流和端到端指标验证。</p></div></div></div>
+<div class="callout callout--titled info mb-4 rounded-small shadow-redefine-flat bg-(--callout-bg-color) p-3 pl-1 relative flex flex-row gap-2"><div role="none" class="rounded-full self-stretch w-0.5 bg-(--callout-primary-color) shrink-0 opacity-60"></div><div class="flex flex-col gap-2"><div class="callout__title flex items-center gap-2 font-semibold tracking-tight">难点解释：为什么局部最优会伤害系统</div><div class="callout__content markdown-body flex-1 min-w-0"><p>一个 kernel 为某个 shape 极致优化，可能增加 dispatch 复杂度、fallback 比例或维护成本；一次融合减少了 launch，却可能让寄存器溢出。系统性能看的是完整路径，不是单个指标漂亮。</p></div></div></div>
+<h2 id="1-反模式一只看-flops不看数据流"><a class="markdownIt-Anchor" href="#1-反模式一只看-flops不看数据流"></a> 1. 反模式一：只看 FLOPs，不看数据流</h2>
+<p><strong>最常见的误判是</strong>：算法 FLOPs 更少，所以实现也应该更快。现实里，如果这个算法引入了更多中间张量、更多 layout 变换、更多不连续访存或更多 launch，那么它完全可能比“FLOPs 更多”的老方法更慢。</p>
+<h2 id="2-反模式二为了融合而过度融合"><a class="markdownIt-Anchor" href="#2-反模式二为了融合而过度融合"></a> 2. 反模式二：为了融合而过度融合</h2>
+<p>Fusion 通常是好事，但并不是越多越好。过度融合常导致 register pressure 爆炸、occupancy 下降、autotune 空间失控、边界 case 极难维护，某些 shape 上甚至反而更慢。</p>
+<p>因此融合的判断标准应该是“是否减少了真正昂贵的数据移动”，而不是“是否把更多逻辑塞进一个 kernel”。</p>
+<h2 id="3-反模式三把训练优化直接照搬到服务"><a class="markdownIt-Anchor" href="#3-反模式三把训练优化直接照搬到服务"></a> 3. 反模式三：把训练优化直接照搬到服务</h2>
+<p>训练里有效的优化，放到服务里未必有效。例如把大 batch GEMM 思路直接搬到 decode，把训练 attention 路径直接搬到 paged KV，或者只看平均吞吐、不看 TTFT 和 tail latency，都会把训练负载和在线服务负载混为一谈。</p>
+<p>这种反模式在推理服务系统里非常常见，因为训练和推理的负载画像本来就不同。</p>
+<h2 id="4-反模式四只测最漂亮的-shape"><a class="markdownIt-Anchor" href="#4-反模式四只测最漂亮的-shape"></a> 4. 反模式四：只测最漂亮的 shape</h2>
+<p>如果一个 kernel 只在完美对齐 shape、固定 batch、单一 dtype 和最适合的设备上测试，那么它的结果很难说明真实系统收益。<br />
+真实 workload 往往是 shape 分布，而不是单点 shape。</p>
+<h2 id="5-反模式五没有-fallback-却做大量特化"><a class="markdownIt-Anchor" href="#5-反模式五没有-fallback-却做大量特化"></a> 5. 反模式五：没有 fallback 却做大量特化</h2>
+<p>shape specialization 是有价值的，但如果没有 fallback，就会出现低频边界 shape 无法处理、新模型结构一改就断、线上因为某个罕见请求直接回退失败等问题。</p>
+<p>成熟系统通常是“热点 shape 特化 + 低频 shape 保守 fallback”，而不是彻底抛弃通用路径。</p>
+<h2 id="6-反模式六把-profile-结果看成单层真相"><a class="markdownIt-Anchor" href="#6-反模式六把-profile-结果看成单层真相"></a> 6. 反模式六：把 profile 结果看成单层真相</h2>
+<p>只看一个 profile 维度很容易误判：系统级 trace 只能看到慢，不一定知道为什么慢；单 kernel profile 只能看到局部，不一定看到全局瓶颈；微架构级指标很细，但不一定说明端到端最值得优化的地方。真正稳妥的做法，是把系统级、kernel 级和微架构级三层信息串起来看。</p>
+<p>实践中可以把一次性能分析拆成三问：端到端 trace 里用户等待在哪里，热点 kernel 里时间花在算力、带宽、同步还是 launch，微架构指标是否支持这个判断。三层证据一致时再动手改 kernel；如果三层证据相互矛盾，优先补测 workload 和 shape 分布，而不是立刻写新实现。</p>
+<h2 id="7-反模式七忽略维护成本"><a class="markdownIt-Anchor" href="#7-反模式七忽略维护成本"></a> 7. 反模式七：忽略维护成本</h2>
+<p>一个 kernel 即使很快，如果只支持一代 GPU、一升级框架就坏、很难调试、没有回归基线，那么它也很难成为真正的系统资产。<br />
+这类问题短期内不显眼，长期却最致命。</p>
+<h3 id="71-把反模式写进评审"><a class="markdownIt-Anchor" href="#71-把反模式写进评审"></a> 7.1 把反模式写进评审</h3>
+<p>性能评审最好不要只问“快了多少”，还要问“慢在哪里被转移了”。一次优化如果增加了 layout 变换、编译版本、dispatch 分支或 fallback 风险，就应该把这些代价写进评审记录。这样后续出现 tail latency、冷启动或兼容性问题时，团队能回到当初的取舍，而不是重新猜一遍。</p>
+<p>一个简单但有效的做法是为每次性能优化附带反例：哪些 shape 不受益，哪些硬件不支持，哪些路径要禁用，什么指标触发回滚。反模式一旦被制度化记录，就不再只是经验教训，而会变成后续设计的护栏。</p>
+<p>这也解释了为什么性能优化要有“退出条件”。如果一个方案只能在单点 benchmark 上赢，但在真实流量下需要大量特判、复杂 fallback 和额外监控，它可能仍然值得放进实验分支，却不一定适合进主服务路径。好的性能工程会把收益、适用范围和代价一起交付。</p>
+<h2 id="8-一个形象比喻"><a class="markdownIt-Anchor" href="#8-一个形象比喻"></a> 8. 一个形象比喻</h2>
+<p>这些反模式就像赛车改装中的典型误区：只换更大马力的引擎却不管传动和轮胎，只在理想赛道测试却忽略真实天气，只追求极端轻量化却不考虑长期可靠性。算子优化也是一样，真正的工程能力不是“做出最极端的一次加速”，而是避开这些高频反模式，稳定地把收益带到真实系统里。</p>
+<h2 id="9-小结"><a class="markdownIt-Anchor" href="#9-小结"></a> 9. 小结</h2>
+<p>性能反模式之所以值得专门总结，是因为它们往往比“正向技巧”更能帮助团队建立判断力。知道哪些思路看起来对、实际常错，往往比多背几个优化技巧更重要。高性能系统最终拼的，不只是会做什么优化，更是知道什么优化不该做、什么时候该停下来回到 profile 和 workload 本身。</p>
+<h2 id="工程收束"><a class="markdownIt-Anchor" href="#工程收束"></a> 工程收束</h2>
+<p>性能反模式要围绕无效搬运、错误融合、坏布局、过度特化和同步放大来排查。不要只优化单个指标，也不要把问题藏进复杂 kernel；更稳的做法是为反模式建立案例库，每次优化写反例，将失败模式纳入 code review，并做端到端回归。</p>
+<p>这类页面的价值在于帮团队建立“停下来”的判断：当一次优化开始牺牲可解释性、可维护性或尾部稳定性时，应该先回到 profile 和 workload，而不是继续往 kernel 里堆复杂度。</p>
+<p>长期看，反模式库本身就是性能团队的知识资产，能让新人少重复踩坑。</p>
+<p>它也能让 code review 从“感觉会不会快”变成“哪些代价已经被显式记录”。</p>
+<h2 id="真实排查案例低比特路径省显存却拖慢首-token"><a class="markdownIt-Anchor" href="#真实排查案例低比特路径省显存却拖慢首-token"></a> 真实排查案例：低比特路径省显存，却拖慢首 token</h2>
+<p><strong>输入症状</strong>：把一个 13B 服务从 FP16 切到 W4A16 后，显存占用下降明显，但 TTFT 从 820ms 增到 1.25s，短问答用户感知变差。</p>
+<p><strong>关键指标</strong>：权重显存下降约一半，batch 上限提高；但短请求 prefill latency 上升，dequant kernel 占比升高，小 batch 下 Tensor Core 利用率下降；长输出请求的 TPOT 反而略有改善。</p>
+<p><strong>Nsight / trace 观察</strong>：trace 显示每层 linear 前后多出 dequant / layout 转换片段；长 decode 中权重带宽收益能摊薄这些开销，短 prefill 中额外 kernel launch 和转换成本更显眼。</p>
+<p><strong>判断</strong>：这是“只看显存，不看请求桶”的反模式。W4A16 并非全局更优，它把瓶颈从显存容量转移到低 batch 的解量化和 kernel 支持上。</p>
+<p><strong>修复</strong>：按请求桶启用量化：长上下文和高并发租户走 W4A16，短问答保留 FP8/FP16 或使用更成熟的 W8A8 路径；把 TTFT、TPOT、显存水位、质量掉点放进同一张验收表。</p>
+<p><strong>反例</strong>：如果服务主要是长输出、高并发、decode 带宽受限，且 runtime 有成熟 fused dequant GEMM，低比特路径可能同时省显存和提吞吐。反模式不是量化本身，而是把一个桶的收益套到所有桶。</p>
+<h2 id="真实排查案例kernel-launch-太碎gpu-看着忙但吞吐不涨"><a class="markdownIt-Anchor" href="#真实排查案例kernel-launch-太碎gpu-看着忙但吞吐不涨"></a> 真实排查案例：kernel launch 太碎，GPU 看着忙但吞吐不涨</h2>
+<p><strong>输入症状</strong>：给视频世界模型加了 action head、risk head 和若干 mask 处理后，单步训练从 <code>1.8s</code> 涨到 <code>2.4s</code>。GPU utilization 面板看起来不低，但 tokens/s 明显下降，CPU 侧也开始出现周期性尖峰。</p>
+<p><strong>关键指标</strong>：每 step kernel launch 数从约 <code>3k</code> 增到 <code>12k</code>；大量 kernel 的持续时间低于 <code>20us</code>；SM active 并不稳定，GPU trace 里出现细密的空洞；PyTorch profiler 中 dispatcher、shape check、cast、contiguous 的 self time 上升。</p>
+<p><strong>Nsight / trace 观察</strong>：热点不在某一个大 GEMM，而在 <code>permute -&gt; contiguous -&gt; mask fill -&gt; cast -&gt; small reduce -&gt; scatter</code> 这类碎片链路。每个小算子本身都不慢，但它们反复打断主干 GEMM 和 attention，CPU launch 和 HBM 往返被放大。</p>
+<p><strong>判断</strong>：这是 launch-bound 和 memory-movement-bound，不是 compute-bound。继续调大 GEMM tile 或换更激进的 attention kernel 不会解决主因。</p>
+<p><strong>修复</strong>：把 mask 构造提前到 GPU 常驻 buffer；按固定 shape bucket 做 graph capture；把 residual、norm、cast、quant/dequant 放进融合 epilogue；把多个小 head 合并成一次 batched projection；让 action/risk 旁路共享已经存在的 hidden state，避免重复 materialize。</p>
+<p><strong>反例</strong>：如果处在模型探索期、shape 每天变化，过早 CUDA graph 和深度融合会拖慢迭代。此时先做 profile guard 和少量高频链路融合，比一次性写专用 kernel 更稳。</p>
+<h2 id="真实排查案例attention-mask-让部分-rank-一直等"><a class="markdownIt-Anchor" href="#真实排查案例attention-mask-让部分-rank-一直等"></a> 真实排查案例：attention mask 让部分 rank 一直等</h2>
+<p><img  
+                     lazyload
+                     src="/images/loading.svg"
+                     data-src="/image/ai-notes/images/paper-deep-dives/foundations/magiattention/figure-2-ring-attention-load-balance.png"
+                      alt="MagiAttention ring attention load balance 原论文图" 
+                ></p>
+<p><small>图源：<a class="link"   target="_blank" rel="noopener" href="https://arxiv.org/abs/2506.09394" >MagiAttention: A Distributed Attention System for Hyper-Scale Long Context Training<i class="fa-solid fa-arrow-up-right ml-[0.2em] font-light align-text-top text-[0.7em] link-icon"></i></a>，Figure 2。原论文图意：不同 attention 切分策略会导致计算块在设备间分布不均，长上下文训练需要显式处理 mask 与负载均衡。</small></p>
+<p><strong>输入症状</strong>：把单样本多视角视频、语言指令和动作历史 pack 到同一条长序列后，平均 step time 只涨一点，但 p95 step time 明显变差；多卡训练里经常看到部分 GPU 先算完，随后等待其它 rank。</p>
+<p><strong>关键指标</strong>：不同 rank 的有效 attention block 数差异超过 <code>2x</code>；padding rate 表面不高，但 dense block 集中在少数样本；NCCL wait time 上升；CP 或 ring attention 的每 stage 耗时出现长尾。</p>
+<p><strong>Nsight / trace 观察</strong>：视觉历史段、动作段和语言段的 mask 密度不同。某些 rank 分到的块接近 dense attention，另一些 rank 分到大量空块或短块。通信必须等慢 rank 完成，于是整体吞吐由最重的 mask 分片决定。</p>
+<p><strong>判断</strong>：这是 attention mask topology 和负载均衡问题，不是单卡 kernel 不够快。长上下文训练里 <span class="katex"><span class="katex-mathml"><math><semantics><mrow><mi>L</mi></mrow><annotation encoding="application/x-tex">L</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.68333em;vertical-align:0em;"></span><span class="mord mathdefault">L</span></span></span></span> 相同不代表工作量相同，mask 形状会改变每个 rank 的真实计算。</p>
+<p><strong>修复</strong>：按 mask 类型和有效长度做 bucket；把 dense 视频段、causal 文本段、局部动作段拆成更可调度的 attention slices；使用能感知异构 mask 的 dispatch/load-balance 方案；减少无效 padding；把高密度段和低密度段错开分配，避免慢 rank 固定出现。</p>
+<p><strong>反例</strong>：如果所有样本长度和 mask 都很规则，简单 sequence parallel 或 context parallel 可能已经足够。复杂 load-balance solver 只有在异构 mask 成为 p95 瓶颈时才值得引入。</p>
+<h2 id="真实排查案例通信-overlap-失败扩到多机后更慢"><a class="markdownIt-Anchor" href="#真实排查案例通信-overlap-失败扩到多机后更慢"></a> 真实排查案例：通信 overlap 失败，扩到多机后更慢</h2>
+<p><img  
+                     lazyload
+                     src="/images/loading.svg"
+                     data-src="/image/ai-notes/images/paper-deep-dives/technical-reports/deepseek-v3/figure-5-dualpipe.png"
+                      alt="DeepSeek-V3 DualPipe 原论文图" 
+                ></p>
+<p><small>图源：<a class="link"   target="_blank" rel="noopener" href="https://arxiv.org/abs/2412.19437" >DeepSeek-V3 Technical Report<i class="fa-solid fa-arrow-up-right ml-[0.2em] font-light align-text-top text-[0.7em] link-icon"></i></a>，Figure 5。原论文图意：DualPipe 通过更细粒度地组织前向、反向、通信与 pipeline 阶段，减少流水线气泡并提高通信和计算重叠。</small></p>
+<p><strong>输入症状</strong>：8 卡单机训练吞吐正常，扩到 64 卡多机后 scaling efficiency 掉到 <code>45%</code> 左右。显存没满，单卡 kernel 看起来也不慢，但 step time 被 NCCL 片段拉长。</p>
+<p><strong>关键指标</strong>：all-gather 或 reduce-scatter 紧跟在大 GEMM 后串行出现；overlap ratio 低；网络带宽没有跑满；不同 pipeline stage 的 bubble 扩大；梯度 bucket 的 ready time 分布很散。</p>
+<p><strong>Nsight / trace 观察</strong>：collective 没有在 backward 早期启动，而是等一大段反向算完后集中发出。部分 stream 之间存在不必要依赖，MoE dispatch、activation recompute 和 gradient reduce 互相抢同一段窗口。</p>
+<p><strong>判断</strong>：问题不是“通信本身不可避免”，而是通信没有被调度到计算窗口里。分布式训练的瓶颈从单卡算子转成了 schedule、bucket、拓扑和 stream dependency。</p>
+<p><strong>修复</strong>：按层切小 gradient bucket，让 reduce-scatter 在梯度 ready 后尽早启动；把 TP/PP/CP/EP 的通信映射到更贴近硬件拓扑的组；拆开过大的 all-gather；为通信和计算使用独立 stream 并清理多余同步；必要时采用类似 DualPipe 的流水线组织，把前向、反向和通信交错起来。</p>
+<p><strong>反例</strong>：小模型、单机训练或网络很空闲时，过度 overlap 调度会增加复杂度和调试成本。只有当 trace 显示 collective 占据端到端关键路径时，才应该把工程复杂度花在这里。</p>
+<h2 id="真实排查案例fp8-训练长跑后突然数值爆炸"><a class="markdownIt-Anchor" href="#真实排查案例fp8-训练长跑后突然数值爆炸"></a> 真实排查案例：FP8 训练长跑后突然数值爆炸</h2>
+<p><strong>输入症状</strong>：短跑 <code>5k</code> step 的 FP8 世界模型训练和 BF16 对齐，但完整训练到中后期后 loss 突然 spike，随后出现 NaN。问题集中在长视频 bucket、接触密集任务和高亮度相机视角。</p>
+<p><strong>关键指标</strong>：某些层 activation amax 长时间贴近 scale 上限；SwiGLU 或 attention output 的 percentile 尾部变厚；gradient norm 在 spike 前数百 step 开始抬升；BF16 shadow run 没有同步爆炸。</p>
+<p><strong>Nsight / trace 观察</strong>：异常前没有明显性能回退，说明不是单纯 kernel 超时。逐层 dump 发现少数 outlier token 经过 FP8 quant/dequant 后误差被放大，随后在 residual 分支和反向梯度里累积。</p>
+<p><strong>判断</strong>：这是数值动态问题，不是吞吐问题。低精度训练的风险会随数据分布、序列长度和训练阶段变化，短实验稳定不能证明长训练稳定。</p>
+<p><strong>修复</strong>：对高风险层保留 BF16 或使用更细粒度 scale；给 activation scale 加滞后和上限监控；对长视频 bucket 单独做 loss/amax dashboard；在 attention output、SwiGLU、final norm 等敏感位置加入高精度保护；保留 BF16 shadow batch 做周期性对照。</p>
+<p><strong>反例</strong>：如果 loss spike 同时伴随数据 loader 重试、坏样本集中或 learning rate schedule 变化，不能先把锅甩给 FP8。数值排查要把数据、优化器、scale 和 kernel 版本一起对齐。</p>
+
+		</div>
+
+		
+		<div class="post-copyright-info w-full my-8 px-2 sm:px-6 md:px-8">
+			<div class="article-copyright-info-container">
+    <ul>
+        <li><strong>Title:</strong> 算子与编译器：性能反模式与失败案例</li>
+        <li><strong>Author:</strong> Charles</li>
+        <li><strong>Created at
+                :</strong> 2025-09-11 09:00:00</li>
+        
+            <li>
+                <strong>Updated at
+                    :</strong> 2025-09-11 09:00:00
+            </li>
+        
+        <li>
+            <strong>Link:</strong> https://charles2530.github.io/2025/09/11/ai-files-operators-performance-anti-patterns-and-failure-modes/
+        </li>
+        <li>
+            <strong>
+                License:
+            </strong>
+            
+
+            
+                This work is licensed under <a class="license" target="_blank" rel="noopener" href="https://creativecommons.org/licenses/by-nc-sa/4.0">CC BY-NC-SA 4.0</a>.
+            
+        </li>
+    </ul>
+</div>
+
+		</div>
+		
+
+		
+		<ul class="post-tags-box text-lg mt-1.5 flex-wrap justify-center flex md:hidden">
+			
+			<li class="tag-item mx-0.5">
+				<a href="/tags/AI/">#AI</a>&nbsp;
+			</li>
+			
+			<li class="tag-item mx-0.5">
+				<a href="/tags/GPU-%E7%B3%BB%E7%BB%9F/">#GPU 系统</a>&nbsp;
+			</li>
+			
+			<li class="tag-item mx-0.5">
+				<a href="/tags/%E7%AE%97%E5%AD%90%E4%B8%8E%E7%BC%96%E8%AF%91%E5%99%A8/">#算子与编译器</a>&nbsp;
+			</li>
+			
+		</ul>
+		
+
+		
+
+		
+		<div class="article-nav my-8 flex justify-between items-center px-2 sm:px-6 md:px-8">
+			
+			<div class="article-prev border-border-color shadow-redefine-flat shadow-shadow-color-2 rounded-medium px-4 py-2 hover:shadow-redefine-flat-hover hover:shadow-shadow-color-2">
+				<a class="prev" rel="prev" href="/2025/09/13/ai-files-operators-profiling-debugging-and-numerical-stability/">
+					<span class="left arrow-icon flex justify-center items-center">
+						<i class="fa-solid fa-chevron-left"></i>
+					</span>
+					<span class="title flex justify-center items-center">
+						<span class="post-nav-title-item truncate max-w-48">算子与编译器：Profiling、调试与数值稳定</span>
+						<span class="post-nav-item">Prev posts</span>
+					</span>
+				</a>
+			</div>
+			
+			
+			<div class="article-next border-border-color shadow-redefine-flat shadow-shadow-color-2 rounded-medium px-4 py-2 hover:shadow-redefine-flat-hover hover:shadow-shadow-color-2">
+				<a class="next" rel="next" href="/2025/09/09/ai-files-operators-moe-routing-and-sparse-kernels/">
+					<span class="title flex justify-center items-center">
+						<span class="post-nav-title-item truncate max-w-48">算子与编译器：MoE 路由与稀疏 Kernel</span>
+						<span class="post-nav-item">Next posts</span>
+					</span>
+					<span class="right arrow-icon flex justify-center items-center">
+						<i class="fa-solid fa-chevron-right"></i>
+					</span>
+				</a>
+			</div>
+			
+		</div>
+		
+
+
+		
+		<div class="comment-container px-2 sm:px-6 md:px-8 pb-8">
+			<div class="comments-container mt-10 w-full ">
+    <div id="comment-anchor" class="w-full h-2.5"></div>
+    <div class="comment-area-title w-full my-1.5 md:my-2.5 text-xl md:text-3xl font-bold">
+        Comments
+    </div>
+    
+
+        
+            
+    <div id="gitalk-container"></div>
+    <script data-swup-reload-script
+            src="https://cdnjs.cloudflare.com/ajax/libs/gitalk/1.8.0/gitalk.min.js"></script>
+    <script data-swup-reload-script>
+        (function() {
+            const startPath = location.pathname;
+            const startTime = Date.now();
+            const retryDelay = 200;
+            const retryLimit = 5000;
+
+            const runGitalk = () => {
+                if (location.pathname !== startPath) {
+                    return;
+                }
+
+                const container = document.getElementById('gitalk-container');
+                if (!container || typeof Gitalk === 'undefined') {
+                    if (Date.now() - startTime < retryLimit) {
+                        setTimeout(runGitalk, retryDelay);
+                    }
+                    return;
+                }
+
+                container.innerHTML = '';
+
+                let pageKey = decodeURI(location.pathname);
+                const maxLength = 50;
+                if (pageKey.length > maxLength) {
+                    pageKey = pageKey.substring(0, maxLength - 3) + '...';
+                }
+
+                try {
+                    new Gitalk({
+                        clientID: '8083299a8ee2aaf23879',
+                        clientSecret: 'a8161e81d4872181e884fdb69f7be24916b6a9d0',
+                        repo: 'Charles2530.github.io',
+                        owner: 'Charles2530',
+                        admin: ['Charles2530'],
+                        id: pageKey,
+                        language: 'en',
+                        proxy: 'https://github.com/login/oauth/access_token'
+                    }).render(container);
+                } catch (e) {
+                    window.Gitalk = null;
+                }
+            };
+
+            runGitalk();
+        })();
+    </script>
+
+
+
+        
+    
+</div>
+
+		</div>
+		
+	</div>
+
+	
+	<div class="toc-content-container">
+		<div class="post-toc-wrap">
+	<div class="post-toc">
+		<div class="toc-title">On this page</div>
+		<div class="page-title">算子与编译器：性能反模式与失败案例</div>
+		<ol class="nav"><li class="nav-item nav-level-2"><a class="nav-link" href="#1-%E5%8F%8D%E6%A8%A1%E5%BC%8F%E4%B8%80%E5%8F%AA%E7%9C%8B-flops%E4%B8%8D%E7%9C%8B%E6%95%B0%E6%8D%AE%E6%B5%81"><span class="nav-text"> 1. 反模式一：只看 FLOPs，不看数据流</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#2-%E5%8F%8D%E6%A8%A1%E5%BC%8F%E4%BA%8C%E4%B8%BA%E4%BA%86%E8%9E%8D%E5%90%88%E8%80%8C%E8%BF%87%E5%BA%A6%E8%9E%8D%E5%90%88"><span class="nav-text"> 2. 反模式二：为了融合而过度融合</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#3-%E5%8F%8D%E6%A8%A1%E5%BC%8F%E4%B8%89%E6%8A%8A%E8%AE%AD%E7%BB%83%E4%BC%98%E5%8C%96%E7%9B%B4%E6%8E%A5%E7%85%A7%E6%90%AC%E5%88%B0%E6%9C%8D%E5%8A%A1"><span class="nav-text"> 3. 反模式三：把训练优化直接照搬到服务</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#4-%E5%8F%8D%E6%A8%A1%E5%BC%8F%E5%9B%9B%E5%8F%AA%E6%B5%8B%E6%9C%80%E6%BC%82%E4%BA%AE%E7%9A%84-shape"><span class="nav-text"> 4. 反模式四：只测最漂亮的 shape</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#5-%E5%8F%8D%E6%A8%A1%E5%BC%8F%E4%BA%94%E6%B2%A1%E6%9C%89-fallback-%E5%8D%B4%E5%81%9A%E5%A4%A7%E9%87%8F%E7%89%B9%E5%8C%96"><span class="nav-text"> 5. 反模式五：没有 fallback 却做大量特化</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#6-%E5%8F%8D%E6%A8%A1%E5%BC%8F%E5%85%AD%E6%8A%8A-profile-%E7%BB%93%E6%9E%9C%E7%9C%8B%E6%88%90%E5%8D%95%E5%B1%82%E7%9C%9F%E7%9B%B8"><span class="nav-text"> 6. 反模式六：把 profile 结果看成单层真相</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#7-%E5%8F%8D%E6%A8%A1%E5%BC%8F%E4%B8%83%E5%BF%BD%E7%95%A5%E7%BB%B4%E6%8A%A4%E6%88%90%E6%9C%AC"><span class="nav-text"> 7. 反模式七：忽略维护成本</span></a><ol class="nav-child"><li class="nav-item nav-level-3"><a class="nav-link" href="#71-%E6%8A%8A%E5%8F%8D%E6%A8%A1%E5%BC%8F%E5%86%99%E8%BF%9B%E8%AF%84%E5%AE%A1"><span class="nav-text"> 7.1 把反模式写进评审</span></a></li></ol></li><li class="nav-item nav-level-2"><a class="nav-link" href="#8-%E4%B8%80%E4%B8%AA%E5%BD%A2%E8%B1%A1%E6%AF%94%E5%96%BB"><span class="nav-text"> 8. 一个形象比喻</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#9-%E5%B0%8F%E7%BB%93"><span class="nav-text"> 9. 小结</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#%E5%B7%A5%E7%A8%8B%E6%94%B6%E6%9D%9F"><span class="nav-text"> 工程收束</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#%E7%9C%9F%E5%AE%9E%E6%8E%92%E6%9F%A5%E6%A1%88%E4%BE%8B%E4%BD%8E%E6%AF%94%E7%89%B9%E8%B7%AF%E5%BE%84%E7%9C%81%E6%98%BE%E5%AD%98%E5%8D%B4%E6%8B%96%E6%85%A2%E9%A6%96-token"><span class="nav-text"> 真实排查案例：低比特路径省显存，却拖慢首 token</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#%E7%9C%9F%E5%AE%9E%E6%8E%92%E6%9F%A5%E6%A1%88%E4%BE%8Bkernel-launch-%E5%A4%AA%E7%A2%8Egpu-%E7%9C%8B%E7%9D%80%E5%BF%99%E4%BD%86%E5%90%9E%E5%90%90%E4%B8%8D%E6%B6%A8"><span class="nav-text"> 真实排查案例：kernel launch 太碎，GPU 看着忙但吞吐不涨</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#%E7%9C%9F%E5%AE%9E%E6%8E%92%E6%9F%A5%E6%A1%88%E4%BE%8Battention-mask-%E8%AE%A9%E9%83%A8%E5%88%86-rank-%E4%B8%80%E7%9B%B4%E7%AD%89"><span class="nav-text"> 真实排查案例：attention mask 让部分 rank 一直等</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#%E7%9C%9F%E5%AE%9E%E6%8E%92%E6%9F%A5%E6%A1%88%E4%BE%8B%E9%80%9A%E4%BF%A1-overlap-%E5%A4%B1%E8%B4%A5%E6%89%A9%E5%88%B0%E5%A4%9A%E6%9C%BA%E5%90%8E%E6%9B%B4%E6%85%A2"><span class="nav-text"> 真实排查案例：通信 overlap 失败，扩到多机后更慢</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#%E7%9C%9F%E5%AE%9E%E6%8E%92%E6%9F%A5%E6%A1%88%E4%BE%8Bfp8-%E8%AE%AD%E7%BB%83%E9%95%BF%E8%B7%91%E5%90%8E%E7%AA%81%E7%84%B6%E6%95%B0%E5%80%BC%E7%88%86%E7%82%B8"><span class="nav-text"> 真实排查案例：FP8 训练长跑后突然数值爆炸</span></a></li></ol>
+
+	</div>
+</div>
+	</div>
+	
+</div>
+
+			</div>
+
+			
+		</div>
+
+		<div class="main-content-footer">
+			<footer class="footer mt-5 py-5 h-auto text-base text-third-text-color relative border-t-2 border-t-border-color">
+    <div class="info-container py-3 text-center">
+        
+        <div class="text-center">
+            &copy;
+            
+              <span>2022</span>
+              -
+            
+            2026&nbsp;&nbsp;<i class="fa-solid fa-heart fa-beat" style="--fa-animation-duration: 0.5s; color: #f54545"></i>&nbsp;&nbsp;<a href="/">Charles</a>
+            
+                
+                <p class="post-count space-x-0.5">
+                    <span>
+                        504 posts in total
+                    </span>
+                    
+                        <span>
+                            2011k words in total
+                        </span>
+                    
+                </p>
+            
+        </div>
+        
+            <script data-swup-reload-script src="https://cn.vercount.one/js"></script>
+            <div class="relative text-center lg:absolute lg:right-[20px] lg:top-1/2 lg:-translate-y-1/2 lg:text-right">
+                
+                    <span id="busuanzi_container_site_uv" class="lg:!block">
+                        <span class="text-sm">VISITOR COUNT</span>
+                        <span id="busuanzi_value_site_uv"></span>
+                    </span>
+                
+                
+                    <span id="busuanzi_container_site_pv" class="lg:!block">
+                        <span class="text-sm">TOTAL PAGE VIEWS</span>
+                        <span id="busuanzi_value_site_pv"></span>
+                    </span>
+                
+            </div>
+        
+        <div class="relative text-center lg:absolute lg:left-[20px] lg:top-1/2 lg:-translate-y-1/2 lg:text-left">
+            <span class="lg:block text-sm">POWERED BY <?xml version="1.0" encoding="utf-8"?><!DOCTYPE svg PUBLIC "-//W3C//DTD SVG 1.1//EN" "http://www.w3.org/Graphics/SVG/1.1/DTD/svg11.dtd"><svg class="relative top-[2px] inline-block align-baseline" version="1.1" id="圖層_1" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" x="0px" y="0px" width="1rem" height="1rem" viewBox="0 0 512 512" enable-background="new 0 0 512 512" xml:space="preserve"><path fill="#0E83CD" d="M256.4,25.8l-200,115.5L56,371.5l199.6,114.7l200-115.5l0.4-230.2L256.4,25.8z M349,354.6l-18.4,10.7l-18.6-11V275H200v79.6l-18.4,10.7l-18.6-11v-197l18.5-10.6l18.5,10.8V237h112v-79.6l18.5-10.6l18.5,10.8V354.6z"/></svg><a target="_blank" class="text-base" href="https://hexo.io">Hexo</a></span>
+            <span class="text-sm lg:block">THEME&nbsp;<a class="text-base" target="_blank" href="https://github.com/EvanNotFound/hexo-theme-redefine">Redefine v2.9.0</a></span>
+        </div>
+        
+        
+            <div>
+                Blog up for <span class="odometer" id="runtime_days" ></span> days <span class="odometer" id="runtime_hours"></span> hrs <span class="odometer" id="runtime_minutes"></span> Min <span class="odometer" id="runtime_seconds"></span> Sec
+            </div>
+        
+        
+            <script data-swup-reload-script>
+                try {
+                    function odometer_init() {
+                    const elements = document.querySelectorAll('.odometer');
+                    elements.forEach(el => {
+                        new Odometer({
+                            el,
+                            format: '( ddd).dd',
+                            duration: 200
+                        });
+                    });
+                    }
+                    odometer_init();
+                } catch (error) {}
+            </script>
+        
+        
+            
+                
+        
+                
+        
+                
+
+                    
+                        <script data-swup-reload-script type="text/javascript" src="/js/love.js"></script>
+                    
+        
+        
+    </div>  
+</footer>
+		</div>
+	</div>
+
+	
+	<div class="post-tools">
+		<div class="post-tools-container">
+	<ul class="article-tools-list">
+		<!-- TOC aside toggle -->
+		
+		<li class="right-bottom-tools page-aside-toggle">
+			<i class="fa-regular fa-outdent"></i>
+		</li>
+		
+
+		<!-- go comment -->
+		
+		<li class="go-comment">
+			<i class="fa-regular fa-comments"></i>
+		</li>
+		
+	</ul>
+</div>
+	</div>
+	
+
+	<div class="right-side-tools-container">
+		<div class="side-tools-container">
+	<ul class="hidden-tools-list">
+		<li class="right-bottom-tools tool-font-adjust-plus flex justify-center items-center">
+			<i class="fa-regular fa-magnifying-glass-plus"></i>
+		</li>
+
+		<li class="right-bottom-tools tool-font-adjust-minus flex justify-center items-center">
+			<i class="fa-regular fa-magnifying-glass-minus"></i>
+		</li>
+
+		<li class="right-bottom-tools tool-dark-light-toggle flex justify-center items-center">
+			<i class="fa-regular fa-moon"></i>
+		</li>
+
+		<!-- rss -->
+		
+		<li class="right-bottom-tools rss flex justify-center items-center">
+			<a class="flex justify-center items-center" href="/atom.xml" target="_blank">
+				<i class="fa-regular fa-rss"></i>
+			</a>
+		</li>
+		
+
+		
+
+		<li class="right-bottom-tools tool-scroll-to-bottom flex justify-center items-center">
+			<i class="fa-regular fa-arrow-down"></i>
+		</li>
+	</ul>
+
+	<ul class="visible-tools-list">
+		<li class="right-bottom-tools toggle-tools-list flex justify-center items-center">
+			<i class="fa-regular fa-cog fa-spin"></i>
+		</li>
+		
+		<li class="right-bottom-tools tool-scroll-to-top flex justify-center items-center">
+			<i class="arrow-up fas fa-arrow-up"></i>
+			<span class="percent"></span>
+		</li>
+		
+		
+	</ul>
+</div>
+	</div>
+
+	<div class="image-viewer-container" role="dialog" aria-modal="true" aria-label="Image viewer">
+	<button class="image-viewer-close" type="button" aria-label="Close">
+		<i class="fa-solid fa-xmark"></i>
+	</button>
+	<button class="image-viewer-prev" type="button" aria-label="Prev">
+		<i class="fa-solid fa-chevron-left"></i>
+	</button>
+	<div class="image-viewer-frame">
+		<img src="" alt="">
+	</div>
+	<div class="image-viewer-exif-panel hidden absolute left-1/2 bottom-20 -translate-x-1/2 w-[min(92vw,420px)] max-h-[60vh] overflow-hidden rounded-2xl bg-background-color-transparent-80 p-4 text-left shadow-redefine-flat backdrop-blur-md" role="dialog" aria-label="EXIF" aria-hidden="true">
+		<div class="flex items-center justify-between mb-3">
+			<span class="text-sm font-semibold text-first-text-color">EXIF</span>
+			<button class="image-viewer-exif-close flex h-8 w-8 items-center justify-center rounded-full bg-background-color-transparent-80 text-first-text-color transition hover:bg-background-color-transparent-40" type="button" aria-label="Close">
+				<i class="fa-solid fa-xmark text-[0.65rem]"></i>
+			</button>
+		</div>
+		<div class="image-viewer-exif-cards grid grid-cols-1 sm:grid-cols-2 gap-3 max-h-[50vh] overflow-y-auto pr-1 scrollbar-hide"></div>
+		<template class="image-viewer-exif-card-template">
+			<div class="rounded-lg bg-background-color-transparent-40 px-3 py-2">
+				<div class="image-viewer-exif-card-header flex items-center gap-2 mb-1">
+					<i class="image-viewer-exif-card-icon fa-solid fa-circle-info text-xs text-third-text-color"></i>
+					<div class="image-viewer-exif-card-title text-xs font-semibold text-first-text-color"></div>
+				</div>
+				<div class="image-viewer-exif-card-items flex flex-col gap-1"></div>
+			</div>
+		</template>
+	</div>
+	<button class="image-viewer-exif-toggle flex items-center gap-2 hidden absolute left-1/2 bottom-6 -translate-x-1/2 rounded-full border border-border-color bg-background-color-transparent-80 px-4 py-2 text-first-text-color backdrop-blur-md transition hover:bg-background-color-transparent-40" type="button" aria-label="EXIF" aria-expanded="false">
+		<i class="fa-solid fa-circle-info text-xs"></i>
+		<span class="text-xs font-semibold uppercase tracking-wider">EXIF</span>
+	</button>
+	<button class="image-viewer-next" type="button" aria-label="Next">
+		<i class="fa-solid fa-chevron-right"></i>
+	</button>
+</div>
+
+
+	
+	<div class="search-pop-overlay">
+	<div class="popup search-popup">
+		<div class="search-header">
+			<span class="search-input-field-pre">
+				<i class="fa-solid fa-keyboard"></i>
+			</span>
+			<div class="search-input-container">
+				<input autocomplete="off" autocorrect="off" autocapitalize="off" placeholder="Search..." spellcheck="false" type="search" class="search-input">
+			</div>
+			<span class="popup-btn-close">
+				<i class="fa-solid fa-times"></i>
+			</span>
+		</div>
+		<div id="search-result">
+			<div id="no-result">
+				<i class="fa-solid fa-spinner fa-spin-pulse fa-5x fa-fw"></i>
+			</div>
+		</div>
+	</div>
+</div>
+	
+
+</main>
+
+
+
+<script src="/js/build/libs/Swup.min.js"></script>
+
+<script src="/js/build/libs/SwupSlideTheme.min.js"></script>
+
+<script src="/js/build/libs/SwupScriptsPlugin.min.js"></script>
+
+<script src="/js/build/libs/SwupProgressPlugin.min.js"></script>
+
+<script src="/js/build/libs/SwupScrollPlugin.min.js"></script>
+
+<script src="/js/build/libs/SwupPreloadPlugin.min.js"></script>
+
+<script>
+    window.swup = new Swup({
+        plugins: [
+            new SwupScriptsPlugin({
+                optin: true,
+            }),
+            new SwupProgressPlugin(),
+            new SwupScrollPlugin({
+                offset: 80,
+            }),
+            new SwupSlideTheme({
+                mainElement: ".main-content-body",
+            }),
+            new SwupPreloadPlugin(),
+        ],
+        containers: ["#swup"],
+    });
+
+    window.dispatchEvent(
+        new CustomEvent("redefine:swup:ready", {
+            detail: {
+                swup: window.swup,
+            },
+        }),
+    );
+</script>
+
+
+
+
+	
+<script src="/js/build/main.js" type="module"></script>
+
+
+
+    
+<script src="/js/build/libs/odometer.min.js"></script>
+
+    
+<link rel="stylesheet" href="/assets/odometer-theme-minimal.css">
+
+
+
+
+
+
+
+  
+<script src="/js/build/libs/Typed.min.js"></script>
+<script src="/js/build/libs/minimasonry.min.js" data-swup-reload-script=""></script>
+
+
+
+
+<script src="/js/build/libs/moment-with-locales.min.js" data-swup-reload-script=""></script>
+
+
+
+	
+</body>
+
+</html>
