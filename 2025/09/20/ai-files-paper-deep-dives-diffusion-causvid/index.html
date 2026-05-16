@@ -1,0 +1,2175 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="keywords" content="Charles">
+    
+    
+    <meta name="author" content="Charles">
+    
+    <!-- Completely eliminate flash of wrong theme -->
+    <script>
+        (function() {
+            const THEME_KEY = "REDEFINE-THEME-STATUS";
+            const DARK = "dark", LIGHT = "light";
+            
+            // Get preferred theme
+            function getTheme() {
+                try {
+                    const saved = localStorage.getItem(THEME_KEY);
+                    if (saved) {
+                        const { isDark } = JSON.parse(saved);
+                        return isDark ? DARK : LIGHT;
+                    }
+                } catch (e) {}
+                
+                return matchMedia("(prefers-color-scheme: dark)").matches ? DARK : LIGHT;
+            }
+            
+            // Apply theme to document
+            function applyTheme(theme) {
+                const isDark = theme === DARK;
+                const root = document.documentElement;
+                
+                // Set classes for compatibility
+                root.classList.add(theme);
+                root.classList.remove(isDark ? LIGHT : DARK);
+                root.style.colorScheme = theme;
+            }
+            
+            // Initial application
+            const theme = getTheme();
+            applyTheme(theme);
+            
+            // Listen for system preference changes
+            matchMedia("(prefers-color-scheme: dark)").addEventListener("change", ({ matches }) => {
+                // Only update if using system preference (no localStorage entry)
+                if (!localStorage.getItem(THEME_KEY)) {
+                    applyTheme(matches ? DARK : LIGHT);
+                }
+            });
+            
+            // Set body classes ASAP (before DOMContentLoaded)
+            (function() {
+                const addBodyClass = () => {
+                    const b = document.body;
+                    if (!b) return false;
+                    b.classList.add(theme + "-mode");
+                    return true;
+                };
+
+                // Try immediately
+                if (addBodyClass()) return;
+
+                // Observe until body exists
+                const mo = new MutationObserver(() => {
+                    if (addBodyClass()) mo.disconnect();
+                });
+                mo.observe(document.documentElement, { childList: true, subtree: true });
+            })();
+        })();
+    </script>
+    
+    <!-- preconnect -->
+<!--- Seo Part-->
+    
+    <link rel="canonical" href="https://charles2530.github.io/2025/09/20/ai-files-paper-deep-dives-diffusion-causvid/"/>
+    <meta name="robots" content="index,follow">
+    <meta name="googlebot" content="index,follow">
+    <meta name="revisit-after" content="1 days">
+    
+    
+        
+        <meta name="description" content="This is Charles&#39;s Castle.">
+<meta property="og:type" content="article">
+<meta property="og:title" content="论文专题讲解：CausVid：流式自回归视频扩散">
+<meta property="og:url" content="https://charles2530.github.io/2025/09/20/ai-files-paper-deep-dives-diffusion-causvid/index.html">
+<meta property="og:site_name" content="Charles&#39;s Castle">
+<meta property="og:description" content="This is Charles&#39;s Castle.">
+<meta property="og:locale" content="en_US">
+<meta property="og:image" content="https://charles2530.github.io/image/background/logo.jpg">
+<meta property="article:published_time" content="2025-09-20T01:00:00.000Z">
+<meta property="article:modified_time" content="2025-09-20T01:00:00.000Z">
+<meta property="article:author" content="Du Jinyang">
+<meta property="article:tag" content="AI">
+<meta property="article:tag" content="扩散模型">
+<meta property="article:tag" content="论文专题">
+<meta name="twitter:card" content="summary">
+<meta name="twitter:image" content="https://charles2530.github.io/image/background/logo.jpg">
+    
+    
+    <!--- Icon Part-->
+    <link rel="icon" type="image/png" href="https://charles2530.github.io/image/background/favicon.png" sizes="192x192">
+    <link rel="apple-touch-icon" sizes="180x180" href="https://charles2530.github.io/image/background/favicon.png">
+    <meta name="theme-color" content="#A31F34">
+    <link rel="shortcut icon" href="https://charles2530.github.io/image/background/favicon.png">
+    <!--- Page Info-->
+    
+    <title>
+        
+            论文专题讲解：CausVid：流式自回归视频扩散 | Charles&#39;s Castle
+        
+    </title>
+
+    
+<link rel="stylesheet" href="/fonts/Chillax/chillax.css">
+
+
+    <!--- Inject Part-->
+    
+        
+            
+    
+            
+    
+            
+                
+                    <link rel="stylesheet" href="/katex/katex.min.css">
+                
+    
+            
+                
+                    <link rel="stylesheet" href="/css/site-polish-v2.css">
+                
+    
+            
+                
+                    <script data-swup-reload-script>
+(function() {
+  function loadBaiduAnalytics() {
+    if (window.__baiduAnalyticsLoaded) return;
+    window.__baiduAnalyticsLoaded = true;
+    window._hmt = window._hmt || [];
+    var hm = document.createElement("script");
+    hm.async = true;
+    hm.src = "https://hm.baidu.com/hm.js?8e0e5f382d14d87cbeadc33a36e71e86";
+    document.head.appendChild(hm);
+  }
+  if ("requestIdleCallback" in window) {
+    requestIdleCallback(loadBaiduAnalytics, { timeout: 3000 });
+  } else {
+    window.addEventListener("load", function() {
+      setTimeout(loadBaiduAnalytics, 1500);
+    });
+  }
+})();
+</script>
+
+                
+    
+
+    
+<link rel="stylesheet" href="/css/style.css">
+
+
+    
+        
+<link rel="stylesheet" href="/css/build/tailwind.css">
+
+    
+
+    
+<link rel="stylesheet" href="/fonts/GeistMono/geist-mono.css">
+
+    
+<link rel="stylesheet" href="/fonts/Geist/geist.css">
+
+    <!--- Font Part-->
+    
+    
+    
+    
+    
+    
+        
+<script src="/js/build/libs/anime.min.js"></script>
+
+    
+
+    <script id="hexo-configurations">
+    window.config = {"hostname":"charles2530.github.io","root":"/","language":"en","path":"search.xml"};
+    window.theme = {"articles":{"style":{"font_size":"16px","line_height":1.5,"image_border_radius":"14px","image_alignment":"center","image_caption":false,"link_icon":true,"delete_mask":false,"title_alignment":"left","headings_top_spacing":{"h1":"5rem","h2":"4rem","h3":"2.8rem","h4":"2.5rem","h5":"2.2rem","h6":"2rem"}},"word_count":{"enable":true,"count":true,"min2read":true},"author_label":{"enable":true,"auto":true,"list":["lol","Neo","God"]},"code_block":{"copy":true,"style":"mac","highlight_theme":{"light":"github","dark":"vs2015"},"font":{"enable":false,"family":null,"url":null}},"toc":{"enable":true,"max_depth":6,"number":false,"expand":true,"init_open":true},"copyright":{"enable":true,"default":"cc_by_nc_sa"},"lazyload":true,"pangu_js":false,"recommendation":{"enable":false,"title":"recommend_articles","limit":3,"mobile_limit":2,"placeholder":"https://charles2530.github.io/image/background/p3.jfif","skip_dirs":[]}},"colors":{"primary":"#A31F34","secondary":"#1890ff","default_mode":"light"},"global":{"fonts":{"chinese":{"enable":false,"family":null,"url":null},"english":{"enable":false,"family":null,"url":null},"title":{"enable":false,"family":null,"url":null}},"content_max_width":"1000px","sidebar_width":"210px","hover":{"shadow":true,"scale":true},"scroll_progress":{"bar":true,"percentage":true},"website_counter":{"url":"https://cn.vercount.one/js","enable":true,"site_pv":true,"site_uv":true,"post_pv":true},"single_page":true,"preloader":{"enable":true,"custom_message":null},"side_tools":{"gear_rotation":true,"auto_expand":false},"open_graph":{"enable":true,"image":"https://charles2530.github.io/image/background/logo.jpg","description":"This is Charles's Castle."},"google_analytics":{"enable":false,"id":null}},"home_banner":{"enable":true,"style":"fixed","image":{"light":"https://charles2530.github.io/image/background/background-light1.jpg","dark":"https://charles2530.github.io/image/background/background-dark1.jpg"},"title":"Charles's Castle","subtitle":{"text":["Happiness is best!","Never give up!","Everyday is a gift!"],"hitokoto":{"enable":false,"show_author":false,"api":"https://v1.hitokoto.cn"},"typing_speed":100,"backing_speed":80,"starting_delay":500,"backing_delay":1500,"loop":true,"smart_backspace":true},"text_color":{"light":"#000000","dark":"#d1d1b6"},"text_style":{"title_size":"3.2rem","subtitle_size":"1.5rem","line_height":1.2},"custom_font":{"enable":false,"family":null,"url":null},"social_links":{"enable":true,"style":"center","links":[{"icon":"fa-brands fa-github","url":"https://github.com/Charles2530/"},{"icon":"fa-brands fa-zhihu","url":"https://www.zhihu.com/people/yang-guang-xiao-zi-55-55"},{"icon":"fa-solid fa-at","url":"mailto:charles2530@163.com"},{"icon":"fa-brands fa-telegram","url":null},{"icon":"/images/custom-icon.svg","url":null}],"qrs":[{"icon":"fa-brands fa-weixin","qr":"https://charles2530.github.io/image/background/Wechat_icon.png"},{"icon":"/images/custom-icon.svg","qr":null}]}},"plugins":{"feed":{"enable":true},"aplayer":{"enable":false,"type":"fixed","audios":[{"name":null,"artist":null,"url":null,"cover":null,"lrc":null}]},"mermaid":{"enable":false,"version":"11.4.1","theme":{"light":"default","dark":"dark"}}},"version":"2.9.0","navbar":{"auto_hide":true,"color":{"left":"#f78736","right":"#367df7","transparency":35},"width":{"home":"1200px","pages":"1000px"},"links":{"Home":{"path":"/","icon":"fa-regular fa-house"},"Categories":{"path":"/categories","icon":"fas fa-bookmark"},"Tags":{"path":"/tags","icon":"fas fa-tags"},"About":{"icon":"fa-regular fa-user","submenus":{"Me":"https://jinyang-du.github.io/","Github":"https://github.com/Charles2530/","Blog":"https://charles2530.github.io","Statistics":"https://tongji.baidu.com/"}}},"search":{"enable":true,"preload":false}},"page_templates":{"friends_column":2,"tags_style":"blur","masonry":{"batch_size":12,"initial_batch_size":24}},"home":{"sidebar":{"enable":true,"position":"left","first_item":"menu","announcement":"This is Charles's Castle","show_on_mobile":true,"links":{"Archives":{"path":"/archives","icon":"fa-regular fa-archive"},"Photos":{"icon":"fa-solid fa-image","path":"/masonry/"},"Essays":{"icon":"fa-solid fa-message-lines","path":"/essay/"},"Friends":{"icon":"fa-solid fa-user-group","path":"/friends/"}}},"article_date_format":"auto","excerpt_length":200,"categories":{"enable":true,"limit":3},"tags":{"enable":true,"limit":3}},"footer":{"runtime":true,"icon":"<i class=\"fa-solid fa-heart fa-beat\" style=\"--fa-animation-duration: 0.5s; color: #f54545\"></i>","start":"2022/12/27 00:00:00","statistics":true,"customize":null,"icp":{"enable":false,"number":null,"url":null}},"footerStart":"2022/12/27 00:00:00","mermaid":{"style":{"light":"default","dark":"dark"}}};
+    window.lang_ago = {"second":"%s seconds ago","minute":"%s minutes ago","hour":"%s hours ago","day":"%s days ago","week":"%s weeks ago","month":"%s months ago","year":"%s years ago"};
+    window.i18n = {"search":"Search...","toc":"On this page","prev":"Prev","next":"Next","prev_posts":"Prev posts","next_posts":"Next posts","page":"Page %d","recent_posts":"Recent Posts","share":"Share","powered_by":"POWERED BY %s","theme":"THEME","rss_feed":"RSS Feed","category":"Category","categories":"Categories","tag":"Tag","tags":"Tags","post":"Post","posts":"Posts","tagcloud":"Tag Cloud","comment":"Comment","comments":"Comments","home":"Home","archive":"Archive","archives":"Archives","top":"TOP","sticky":"Sticky","go-back-home":"Go Back Home","masonry_loading":"Loading photos...","image_viewer":"Image viewer","close":"Close","exif":{"title":"EXIF","cards":{"camera":"Camera","lens":"Lens","exposure":"Exposure","other":"Other"},"fields":{"make":"Brand","model":"Model","date_taken":"Date taken","lens_model":"Lens","focal_length":"Focal length","focus_mode":"Focus mode","shutter":"Shutter","aperture":"Aperture","iso":"ISO","exposure_program":"Exposure program","exposure_compensation":"Exposure compensation","metering_mode":"Metering mode","flash":"Flash","white_balance":"White balance","latitude":"Latitude","longitude":"Longitude","altitude":"Altitude"},"status":{"loading":"Loading...","no_exif":"No EXIF available","library_missing":"EXIF library not loaded","image_source_missing":"Image source unavailable","unavailable":"EXIF unavailable (blocked by CORS or missing metadata)","flag_unavailable":"EXIF unavailable"}},"about":"About","changelog":"Changelog","links":"Links","link":"Link","friends":"Friends","friend":"Friend","timeline":"Timeline","shuoshuo":"Shuoshuo","bookmarks":"Bookmarks","site_uv":"VISITOR COUNT","site_pv":"TOTAL PAGE VIEWS","read_more":"Read more","wordcount":"Words","min2read":"Mins","status":"Status","runtime":"Blog up for","days":"days","hours":"hrs","minutes":"Min","seconds":"Sec","optimized_by":"and Optimized by Evan","rights":"All Rights Reserved","site_posts":"%s posts in total","site_wordcount":"%s words in total","copyright":{"author":"Author","title":"Title","link":"Link","create_time":"Created at","update_time":"Updated at","license_title":"License","license_content":"This work is licensed under %s.","all_rights_reserved":"All Rights Reserved &#169; %s","public_domain":"This work is in the public domain."},"ago":{"second":"%s seconds ago","minute":"%s minutes ago","hour":"%s hours ago","day":"%s days ago","week":"%s weeks ago","month":"%s months ago","year":"%s years ago"},"create_time":"Created","update_time":"Updated","expired":"This post is written %s days ago, and the content may not be up to date."};
+    window.data = {"masonry":true};
+  </script>
+    
+    <!--- Fontawesome Part-->
+    
+<link rel="stylesheet" href="/fontawesome/fontawesome.min.css">
+
+    
+<link rel="stylesheet" href="/fontawesome/brands.min.css">
+
+    
+<link rel="stylesheet" href="/fontawesome/solid.min.css">
+
+    
+<link rel="stylesheet" href="/fontawesome/regular.min.css">
+
+    
+    
+    
+    
+<meta name="generator" content="Hexo 6.3.0"><link rel="alternate" href="/atom.xml" title="Charles's Castle" type="application/atom+xml">
+<link rel="stylesheet" href="/css/prism-tomorrow.css" type="text/css"></head>
+
+
+<body>
+	<div class="progress-bar-container">
+	
+	<span class="scroll-progress-bar"></span>
+	
+
+	
+	<span class="pjax-progress-bar"></span>
+	<!--        <span class="swup-progress-icon">-->
+	<!--            <i class="fa-solid fa-circle-notch fa-spin"></i>-->
+	<!--        </span>-->
+	
+</div>
+
+<style>
+    :root {
+        --preloader-background-color: #fff;
+        --preloader-text-color: #000;
+    }
+
+    @media (prefers-color-scheme: dark) {
+        :root {
+            --preloader-background-color: #202124;
+            --preloader-text-color: #fff;
+        }
+    }
+
+    @media (prefers-color-scheme: light) {
+        :root {
+            --preloader-background-color: #fff;
+            --preloader-text-color: #000;
+        }
+    }
+
+    @media (max-width: 600px) {
+        .ml13 {
+            font-size: 2.6rem !important; /* Adjust this value as needed */
+        }
+    }
+
+    .preloader {
+        display: flex;
+        flex-direction: column;
+        gap: 1rem; /* Tailwind 'gap-4' is 1rem */
+        align-items: center;
+        justify-content: center;
+        position: fixed;
+        padding: 12px;
+        top: 0;
+        right: 0;
+        bottom: 0;
+        left: 0;
+        width: 100vw;
+        height: 100vh; /* 'h-screen' is 100% of the viewport height */
+        background-color: var(--preloader-background-color);
+        z-index: 1100; /* 'z-[1100]' sets the z-index */
+        transition: opacity 0.2s ease-in-out;
+    }
+
+    .ml13 {
+        font-size: 3.2rem;
+        /* text-transform: uppercase; */
+        color: var(--preloader-text-color);
+        letter-spacing: -1px;
+        font-weight: 500;
+        font-family: 'Chillax-Variable', sans-serif;
+        text-align: center;
+    }
+
+    .ml13 .word {
+        display: inline-flex;
+        flex-wrap: wrap;
+        white-space: nowrap;
+    }
+
+    .ml13 .letter {
+        display: inline-block;
+        line-height: 1em;
+    }
+</style>
+
+<div class="preloader">
+    <h2 class="ml13">
+        Charles&#39;s Castle
+    </h2>
+    <script>
+        var textWrapper = document.querySelector('.ml13');
+        // Split text into words
+        var words = textWrapper.textContent.trim().split(' ');
+
+        // Clear the existing content
+        textWrapper.innerHTML = '';
+
+        // Wrap each word and its letters in spans
+        words.forEach(function(word) {
+            var wordSpan = document.createElement('span');
+            wordSpan.classList.add('word');
+            wordSpan.innerHTML = word.replace(/\S/g, "<span class='letter'>$&</span>");
+            textWrapper.appendChild(wordSpan);
+            textWrapper.appendChild(document.createTextNode(' ')); // Add space between words
+        });
+
+        var animation = anime.timeline({ loop: true })
+            .add({
+                targets: '.ml13 .letter',
+                translateY: [20, 0],
+                translateZ: 0,
+                opacity: [0, 1],
+                filter: ['blur(5px)', 'blur(0px)'],
+                easing: "easeOutExpo",
+                duration: 1200,
+                delay: (el, i) => 300 + 20 * i,
+            })
+            .add({
+                targets: '.ml13 .letter',
+                translateY: [0, -20],
+                opacity: [1, 0],
+                filter: ['blur(0px)', 'blur(5px)'],
+                easing: "easeInExpo",
+                duration: 1000,
+                delay: (el, i) => 15 * i,
+                complete: function() {
+                    hidePreloader();
+                }
+            }, '-=700');
+
+
+        let themeStatus = JSON.parse(localStorage.getItem('REDEFINE-THEME-STATUS'))?.isDark;
+
+        // If the theme status is not found in local storage, check the preferred color scheme
+        if (themeStatus === undefined || themeStatus === null) {
+            if (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) {
+                themeStatus = 'dark';
+            } else {
+                themeStatus = 'light';
+            }
+        }
+
+        // Now you can use the themeStatus variable in your code
+        if (themeStatus) {
+            document.documentElement.style.setProperty('--preloader-background-color', '#202124');
+            document.documentElement.style.setProperty('--preloader-text-color', '#fff');
+        } else {
+            document.documentElement.style.setProperty('--preloader-background-color', '#fff');
+            document.documentElement.style.setProperty('--preloader-text-color', '#000');
+        }
+
+        window.addEventListener('load', function () {
+            setTimeout(hidePreloader, 5000); // Call hidePreloader after 5000 milliseconds if not already called by animation
+        });
+
+        function hidePreloader() {
+            var preloader = document.querySelector('.preloader');
+            preloader.style.opacity = '0';
+            setTimeout(function () {
+                preloader.style.display = 'none';
+            }, 200);
+        }
+    </script>
+</div>
+
+<main class="page-container" id="swup">
+
+	
+
+	<div class="main-content-container flex flex-col justify-between min-h-dvh">
+		<div class="main-content-header">
+			<header class="navbar-container px-6 md:px-12">
+    <div class="navbar-content transition-navbar ">
+        <div class="left">
+            
+                <a class="logo-image h-8 w-8 sm:w-10 sm:h-10 mr-3" href="/">
+                    <img src="https://charles2530.github.io/image/background/logo.jpg" class="w-full h-full rounded-xs">
+                </a>
+            
+            <a class="logo-title" href="/">
+                
+                Charles&#39;s Castle
+                
+            </a>
+        </div>
+
+        <div class="right">
+            <!-- PC -->
+            <div class="desktop">
+                <ul class="navbar-list">
+                    
+                        
+                            
+
+                            <li class="navbar-item">
+                                <!-- Menu -->
+                                <a class=""
+                                   href="/"
+                                        >
+                                    <i class="fa-regular fa-house fa-fw"></i>
+                                    HOME
+                                    
+                                </a>
+
+                                <!-- Submenu -->
+                                
+                            </li>
+                    
+                        
+                            
+
+                            <li class="navbar-item">
+                                <!-- Menu -->
+                                <a class=""
+                                   href="/categories"
+                                        >
+                                    <i class="fas fa-bookmark fa-fw"></i>
+                                    CATEGORIES
+                                    
+                                </a>
+
+                                <!-- Submenu -->
+                                
+                            </li>
+                    
+                        
+                            
+
+                            <li class="navbar-item">
+                                <!-- Menu -->
+                                <a class=""
+                                   href="/tags"
+                                        >
+                                    <i class="fas fa-tags fa-fw"></i>
+                                    TAGS
+                                    
+                                </a>
+
+                                <!-- Submenu -->
+                                
+                            </li>
+                    
+                        
+                            
+
+                            <li class="navbar-item">
+                                <!-- Menu -->
+                                <a class="has-dropdown"
+                                   href="#"
+                                        onClick=&#34;return false;&#34;>
+                                    <i class="fa-regular fa-user fa-fw"></i>
+                                    ABOUT
+                                    <i class="fa-solid fa-chevron-down fa-fw"></i>
+                                </a>
+
+                                <!-- Submenu -->
+                                
+                                    <ul class="sub-menu">
+                                        
+                                            <li>
+                                                <a target="_blank" rel="noopener" href="https://jinyang-du.github.io/">
+                                                    ME
+                                                </a>
+                                            </li>
+                                        
+                                            <li>
+                                                <a target="_blank" rel="noopener" href="https://github.com/Charles2530/">
+                                                    GITHUB
+                                                </a>
+                                            </li>
+                                        
+                                            <li>
+                                                <a href="https://charles2530.github.io">
+                                                    BLOG
+                                                </a>
+                                            </li>
+                                        
+                                            <li>
+                                                <a target="_blank" rel="noopener" href="https://tongji.baidu.com/">
+                                                    STATISTICS
+                                                </a>
+                                            </li>
+                                        
+                                    </ul>
+                                
+                            </li>
+                    
+                    
+                        <li class="navbar-item search search-popup-trigger">
+                            <i class="fa-solid fa-magnifying-glass"></i>
+                        </li>
+                    
+                </ul>
+            </div>
+            <!-- Mobile -->
+            <div class="mobile">
+                
+                    <div class="icon-item search search-popup-trigger"><i class="fa-solid fa-magnifying-glass"></i>
+                    </div>
+                
+                <div class="icon-item navbar-bar">
+                    <div class="navbar-bar-middle"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Mobile sheet -->
+    <div class="navbar-drawer h-dvh w-full absolute top-0 left-0 bg-background-color flex flex-col justify-between">
+        <ul class="drawer-navbar-list flex flex-col px-4 justify-center items-start">
+            
+                
+                    
+
+                    <li class="drawer-navbar-item text-base my-1.5 flex flex-col w-full">
+                        
+                        <a class="py-1.5 px-2 flex flex-row items-center justify-between gap-1 hover:!text-primary active:!text-primary text-2xl font-semibold group border-b border-border-color hover:border-primary w-full "
+                           href="/"
+                        >
+                            <span>
+                                HOME
+                            </span>
+                            
+                                <i class="fa-regular fa-house fa-sm fa-fw"></i>
+                            
+                        </a>
+                        
+
+                        
+                    </li>
+            
+                
+                    
+
+                    <li class="drawer-navbar-item text-base my-1.5 flex flex-col w-full">
+                        
+                        <a class="py-1.5 px-2 flex flex-row items-center justify-between gap-1 hover:!text-primary active:!text-primary text-2xl font-semibold group border-b border-border-color hover:border-primary w-full "
+                           href="/categories"
+                        >
+                            <span>
+                                CATEGORIES
+                            </span>
+                            
+                                <i class="fas fa-bookmark fa-sm fa-fw"></i>
+                            
+                        </a>
+                        
+
+                        
+                    </li>
+            
+                
+                    
+
+                    <li class="drawer-navbar-item text-base my-1.5 flex flex-col w-full">
+                        
+                        <a class="py-1.5 px-2 flex flex-row items-center justify-between gap-1 hover:!text-primary active:!text-primary text-2xl font-semibold group border-b border-border-color hover:border-primary w-full "
+                           href="/tags"
+                        >
+                            <span>
+                                TAGS
+                            </span>
+                            
+                                <i class="fas fa-tags fa-sm fa-fw"></i>
+                            
+                        </a>
+                        
+
+                        
+                    </li>
+            
+                
+                    
+
+                    <li class="drawer-navbar-item-sub text-base my-1.5 flex flex-col w-full">
+                        
+                        <div class="py-1.5 px-2 flex flex-row items-center justify-between gap-1 hover:!text-primary active:!text-primary cursor-pointer text-2xl font-semibold group border-b border-border-color hover:border-primary w-full "
+                             navbar-data-toggle="submenu-About"
+                        >
+                            <span>
+                                ABOUT
+                            </span>
+                            
+                                <i class="fa-solid fa-chevron-right fa-sm fa-fw transition-all"></i>
+                            
+                        </div>
+                        
+
+                        
+                            <div class="flex-col items-start px-2 py-2 hidden" data-target="submenu-About">
+                                
+                                    <div class="drawer-navbar-item text-base flex flex-col justify-center items-start hover:underline active:underline hover:underline-offset-1 rounded-3xl">
+                                        <a class=" text-third-text-color text-xl"
+                                           target="_blank" rel="noopener" href="https://jinyang-du.github.io/">ME</a>
+                                    </div>
+                                
+                                    <div class="drawer-navbar-item text-base flex flex-col justify-center items-start hover:underline active:underline hover:underline-offset-1 rounded-3xl">
+                                        <a class=" text-third-text-color text-xl"
+                                           target="_blank" rel="noopener" href="https://github.com/Charles2530/">GITHUB</a>
+                                    </div>
+                                
+                                    <div class="drawer-navbar-item text-base flex flex-col justify-center items-start hover:underline active:underline hover:underline-offset-1 rounded-3xl">
+                                        <a class=" text-third-text-color text-xl"
+                                           href="https://charles2530.github.io">BLOG</a>
+                                    </div>
+                                
+                                    <div class="drawer-navbar-item text-base flex flex-col justify-center items-start hover:underline active:underline hover:underline-offset-1 rounded-3xl">
+                                        <a class=" text-third-text-color text-xl"
+                                           target="_blank" rel="noopener" href="https://tongji.baidu.com/">STATISTICS</a>
+                                    </div>
+                                
+                            </div>
+                        
+                    </li>
+            
+
+            
+            
+                
+                    
+                    <li class="drawer-navbar-item text-base my-1.5 flex flex-col w-full">
+                        <a class="py-1.5 px-2 flex flex-row items-center justify-between gap-1 hover:!text-primary active:!text-primary text-2xl font-semibold group border-b border-border-color hover:border-primary w-full active"
+                           href="/archives"
+                        >
+                            <span>Archives</span>
+                            <i class="fa-regular fa-archive fa-sm fa-fw"></i>
+                        </a>
+                    </li>
+                
+                    
+                    <li class="drawer-navbar-item text-base my-1.5 flex flex-col w-full">
+                        <a class="py-1.5 px-2 flex flex-row items-center justify-between gap-1 hover:!text-primary active:!text-primary text-2xl font-semibold group border-b border-border-color hover:border-primary w-full active"
+                           href="/masonry/"
+                        >
+                            <span>Photos</span>
+                            <i class="fa-solid fa-image fa-sm fa-fw"></i>
+                        </a>
+                    </li>
+                
+                    
+                    <li class="drawer-navbar-item text-base my-1.5 flex flex-col w-full">
+                        <a class="py-1.5 px-2 flex flex-row items-center justify-between gap-1 hover:!text-primary active:!text-primary text-2xl font-semibold group border-b border-border-color hover:border-primary w-full active"
+                           href="/essay/"
+                        >
+                            <span>Essays</span>
+                            <i class="fa-solid fa-message-lines fa-sm fa-fw"></i>
+                        </a>
+                    </li>
+                
+                    
+                    <li class="drawer-navbar-item text-base my-1.5 flex flex-col w-full">
+                        <a class="py-1.5 px-2 flex flex-row items-center justify-between gap-1 hover:!text-primary active:!text-primary text-2xl font-semibold group border-b border-border-color hover:border-primary w-full active"
+                           href="/friends/"
+                        >
+                            <span>Friends</span>
+                            <i class="fa-solid fa-user-group fa-sm fa-fw"></i>
+                        </a>
+                    </li>
+                
+            
+        </ul>
+
+        <div class="statistics flex justify-around my-2.5">
+    <a class="item tag-count-item flex flex-col justify-center items-center w-20" href="/tags">
+        <div class="number text-2xl sm:text-xl text-second-text-color font-semibold">45</div>
+        <div class="label text-third-text-color text-sm">Tags</div>
+    </a>
+    <a class="item tag-count-item flex flex-col justify-center items-center w-20" href="/categories">
+        <div class="number text-2xl sm:text-xl text-second-text-color font-semibold">93</div>
+        <div class="label text-third-text-color text-sm">Categories</div>
+    </a>
+    <a class="item tag-count-item flex flex-col justify-center items-center w-20" href="/archives">
+        <div class="number text-2xl sm:text-xl text-second-text-color font-semibold">519</div>
+        <div class="label text-third-text-color text-sm">Posts</div>
+    </a>
+</div>
+    </div>
+
+    <div class="window-mask"></div>
+
+</header>
+
+
+		</div>
+
+		<div class="main-content-body transition-fade-up">
+			
+
+			<div class="main-content">
+				<div class="post-page-container flex relative justify-between box-border w-full h-full">
+	<div class="article-content-container">
+
+		<div class="article-title relative w-full">
+			
+			
+			
+			<img src="https://charles2530.github.io/image/background/p1.jfif" alt="论文专题讲解：CausVid：流式自回归视频扩散" class="w-full h-60 sm:h-72 md:h-80 object-cover sm:rounded-t-large dark:brightness-75" />
+			
+			<div class="w-full flex items-center absolute bottom-0 justify-start">
+				<h1 class="article-title-cover text-center mx-6 my-6 text-second-text-color bg-background-color-transparent px-4 py-3 text-3xl sm:text-4xl md:text-5xl font-semibold backdrop-blur-lg rounded-xl border border-border-color ">论文专题讲解：CausVid：流式自回归视频扩散</h1>
+			</div>
+			
+		</div>
+
+		
+		<div class="article-header flex flex-row gap-2 items-center px-2 sm:px-6 md:px-8">
+			<div class="avatar w-[46px] h-[46px] shrink-0 rounded-medium border border-border-color p-px">
+				<img src="https://charles2530.github.io/image/background/logo2.jpg">
+			</div>
+			<div class="info flex flex-col justify-between">
+				<div class="author flex items-center">
+					<span class="name text-default-text-color text-lg font-semibold">Charles</span>
+					
+					<span class="author-label ml-1.5 text-xs px-2 py-0.5 rounded-small text-third-text-color border border-shadow-color-1">Lv8</span>
+					
+				</div>
+				<div class="meta-info">
+					<div class="article-meta-info">
+    <span class="article-date article-meta-item">
+        <i class="fa-regular fa-pen-fancy"></i>&nbsp;
+        <span class="desktop">2025-09-20 09:00</span>
+        <span class="mobile">2025-09-20 09:00</span>
+        <span class="hover-info">Created</span>
+    </span>
+    
+        <span class="article-date article-meta-item">
+            <i class="fa-regular fa-wrench"></i>&nbsp;
+            <span class="desktop">2025-09-20 09:00</span>
+            <span class="mobile">2025-09-20 09:00</span>
+            <span class="hover-info">Updated</span>
+        </span>
+    
+
+    
+        <span class="article-categories article-meta-item">
+            <i class="fa-regular fa-folders"></i>&nbsp;
+            <ul>
+                
+                
+                    
+                        
+                        <li>
+                            <a href="/categories/AI/">AI</a>&nbsp;
+                        </li>
+                    
+                    
+                
+                    
+                        
+                            <li>></li>
+                        
+                        <li>
+                            <a href="/categories/AI/%E8%AE%BA%E6%96%87%E4%B8%93%E9%A2%98%E8%AE%B2%E8%A7%A3/">论文专题讲解</a>&nbsp;
+                        </li>
+                    
+                    
+                
+            </ul>
+        </span>
+    
+    
+        <span class="article-tags article-meta-item">
+            <i class="fa-regular fa-tags"></i>&nbsp;
+            <ul>
+                
+                    <li>
+                        <a href="/tags/AI/">AI</a>&nbsp;
+                    </li>
+                
+                    <li>
+                        | <a href="/tags/%E6%89%A9%E6%95%A3%E6%A8%A1%E5%9E%8B/">扩散模型</a>&nbsp;
+                    </li>
+                
+                    <li>
+                        | <a href="/tags/%E8%AE%BA%E6%96%87%E4%B8%93%E9%A2%98/">论文专题</a>&nbsp;
+                    </li>
+                
+            </ul>
+        </span>
+    
+
+    
+    
+        <span class="article-wordcount article-meta-item">
+            <i class="fa-regular fa-typewriter"></i>&nbsp;<span>6.1k Words</span>
+        </span>
+    
+    
+        <span class="article-min2read article-meta-item">
+            <i class="fa-regular fa-clock"></i>&nbsp;<span>26 Mins</span>
+        </span>
+    
+    
+        <span class="article-pv article-meta-item">
+            <i class="fa-regular fa-eye"></i>&nbsp;<span id="busuanzi_value_page_pv"></span>
+        </span>
+    
+</div>
+
+				</div>
+			</div>
+		</div>
+		
+
+		
+
+
+		<div class="article-content markdown-body px-2 sm:px-6 md:px-8 pb-8">
+			<div class="callout callout--titled info mb-4 rounded-small shadow-redefine-flat bg-(--callout-bg-color) p-3 pl-1 relative flex flex-row gap-2"><div role="none" class="rounded-full self-stretch w-0.5 bg-(--callout-primary-color) shrink-0 opacity-60"></div><div class="flex flex-col gap-2"><div class="callout__title flex items-center gap-2 font-semibold tracking-tight">论文信息</div><div class="callout__content markdown-body flex-1 min-w-0"><ul>
+<li>论文：<code>From Slow Bidirectional to Fast Autoregressive Video Diffusion Models</code></li>
+<li>系统：<code>CausVid</code></li>
+<li>链接：<a class="link"   target="_blank" rel="noopener" href="https://arxiv.org/abs/2412.07772" >arXiv:2412.07772<i class="fa-solid fa-arrow-up-right ml-[0.2em] font-light align-text-top text-[0.7em] link-icon"></i></a></li>
+<li>版本：2024-12-10 首次提交，2025-09-23 更新到 v4</li>
+<li>会议：CVPR 2025</li>
+<li>项目页：<a class="link"   target="_blank" rel="noopener" href="https://causvid.github.io/" >CausVid<i class="fa-solid fa-arrow-up-right ml-[0.2em] font-light align-text-top text-[0.7em] link-icon"></i></a></li>
+<li>代码：<a class="link"   target="_blank" rel="noopener" href="https://github.com/tianweiy/CausVid" >GitHub<i class="fa-solid fa-arrow-up-right ml-[0.2em] font-light align-text-top text-[0.7em] link-icon"></i></a></li>
+<li>关键词：视频扩散、DiT、因果注意力、KV cache、DMD、few-step distillation、streaming generation</li>
+</ul></div></div></div>
+<p>这篇论文的核心价值在于给出了一条很清楚的工程路线：<strong>不要从零训练一个自回归视频模型，而是把已有高质量双向视频 DiT 改造成因果学生模型，再用双向教师做非对称 DMD 蒸馏，把 50 步视频扩散压成 4 步流式生成器。</strong></p>
+<p>如果说 <a href="/2026/05/11/ai-files-paper-deep-dives-diffusion-diffusion-forcing/">Diffusion Forcing</a> 重点回答“序列扩散应该怎样表达不同时间 token 的不确定性”，CausVid 更进一步回答：“怎样把这种因果序列扩散真正做成低延迟视频生成系统”。</p>
+<h2 id="它的效率贡献是什么"><a class="markdownIt-Anchor" href="#它的效率贡献是什么"></a> 它的效率贡献是什么</h2>
+<table>
+<thead>
+<tr>
+<th>维度</th>
+<th>贡献</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>节省的成本</td>
+<td>把多步双向视频扩散压成少步 causal streaming 生成，主要节省 rollout 推理延迟和长视频生成成本</td>
+</tr>
+<tr>
+<td>核心机制</td>
+<td>双向 teacher 提供视频质量，causal student 满足流式依赖，KV cache 降低自回归 rollout 成本，DMD 蒸馏减少采样步数</td>
+</tr>
+<tr>
+<td>对世界模型主线的意义</td>
+<td>交互式世界模型不能等完整视频离线生成；CausVid 展示了视频扩散如何被改造成可流式、可缓存、低延迟的 rollout 模块</td>
+</tr>
+<tr>
+<td>主要风险</td>
+<td>causal student 会面对误差累积和 chunk discontinuity；若缺少动作条件和闭环评测，它仍可能只是流式视频生成器，不一定是可决策世界模型</td>
+</tr>
+<tr>
+<td>应接到本站哪里</td>
+<td><a href="/2026/05/11/ai-files-world-models-efficient-training-roadmap/">世界模型高效训练技术路线图</a>、<a href="/2026/05/11/ai-files-world-models-action-conditioned-video-world-model-training-case/">动作条件视频世界模型端到端训练案例</a>、<a href="/2026/05/11/ai-files-inference-cost-modeling-and-slo-design/">推理成本建模</a></td>
+</tr>
+</tbody>
+</table>
+<h2 id="证据等级与外推边界"><a class="markdownIt-Anchor" href="#证据等级与外推边界"></a> 证据等级与外推边界</h2>
+<p>CausVid 的证据强在流式视频生成质量、延迟和少步蒸馏链路；它弱在动作条件和闭环决策，因为论文目标仍是视频生成系统。读它时要把“可流式生成未来视频”和“可用于世界模型规划”分开。</p>
+<div class="callout callout--titled info mb-4 rounded-small shadow-redefine-flat bg-(--callout-bg-color) p-3 pl-1 relative flex flex-row gap-2"><div role="none" class="rounded-full self-stretch w-0.5 bg-(--callout-primary-color) shrink-0 opacity-60"></div><div class="flex flex-col gap-2"><div class="callout__title flex items-center gap-2 font-semibold tracking-tight">事实版本</div><div class="callout__content markdown-body flex-1 min-w-0"><table>
+<thead>
+<tr>
+<th>Checked Date</th>
+<th>Official Source</th>
+<th>Repro Status</th>
+<th>Notes</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>2026-05-16</td>
+<td><a class="link"   target="_blank" rel="noopener" href="https://arxiv.org/abs/2412.07772" >arXiv:2412.07772<i class="fa-solid fa-arrow-up-right ml-[0.2em] font-light align-text-top text-[0.7em] link-icon"></i></a></td>
+<td>Author Code / Official Repo</td>
+<td>未见本站记录的第三方独立复现；按当前官方材料保守引用。</td>
+</tr>
+</tbody>
+</table></div></div></div>
+<h2 id="evidence-snapshot"><a class="markdownIt-Anchor" href="#evidence-snapshot"></a> Evidence Snapshot</h2>
+<table>
+<thead>
+<tr>
+<th>Claim</th>
+<th>Direct Source</th>
+<th>Figure/Table/Setting</th>
+<th>Evidence Type</th>
+<th>Repro Status</th>
+<th>Can Support</th>
+<th>Cannot Prove</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>双向视频 DiT 可蒸馏为少步 causal streaming student</td>
+<td><a class="link"   target="_blank" rel="noopener" href="https://arxiv.org/abs/2412.07772" >arXiv:2412.07772<i class="fa-solid fa-arrow-up-right ml-[0.2em] font-light align-text-top text-[0.7em] link-icon"></i></a>, <a class="link"   target="_blank" rel="noopener" href="https://github.com/tianweiy/CausVid" >GitHub<i class="fa-solid fa-arrow-up-right ml-[0.2em] font-light align-text-top text-[0.7em] link-icon"></i></a></td>
+<td>Figure 1/5, latency and VBench settings</td>
+<td>Paper Result</td>
+<td>Author Code / Official Repo</td>
+<td>视频 rollout 可通过因果化、KV cache 和 DMD 少步化降低延迟</td>
+<td>不证明动作因果性、规划收益或真实机器人闭环</td>
+</tr>
+<tr>
+<td>本站将其接到 world model rollout 服务链</td>
+<td>本页与 <a href="/2026/05/11/ai-files-world-models-rollout-serving-quantization-kernel-case/">Rollout 服务案例</a></td>
+<td>工程归纳</td>
+<td>Site Inference</td>
+<td>Site Inference</td>
+<td>可作为低延迟视频模拟模块设计参考</td>
+<td>不等于完整行动世界模型</td>
+</tr>
+</tbody>
+</table>
+<table>
+<thead>
+<tr>
+<th>论文结论</th>
+<th>证据来源</th>
+<th>证据等级</th>
+<th>可外推到世界模型高效训练</th>
+<th>不能直接外推</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>双向视频 DiT 可以蒸馏成 causal student</td>
+<td>ODE initialization、asymmetric DMD、视频样例和指标</td>
+<td>Benchmark + Ablation</td>
+<td>世界模型可先借强双向 teacher，再改造成流式 causal rollout</td>
+<td>不能证明动作因果性和真实控制收益</td>
+</tr>
+<tr>
+<td>few-step student 降低流式延迟</td>
+<td>50-step teacher 到 4-step student、首块延迟和 FPS</td>
+<td>System throughput</td>
+<td>交互式 world model 必须同时优化 causal mask、KV cache 和采样步数</td>
+<td>不能把视频 FPS 直接等同于机器人控制频率</td>
+</tr>
+<tr>
+<td>KV cache 支持长视频自回归 rollout</td>
+<td>block-wise causal attention 和 streaming inference</td>
+<td>System design</td>
+<td>rollout runtime 应保留过去 chunk KV，避免重复算历史</td>
+<td>不能证明低精 KV 或长时 memory 不会损伤一致性</td>
+</tr>
+<tr>
+<td>asymmetric teacher 保留视频质量</td>
+<td>bidirectional teacher 监督 causal student 的训练设计</td>
+<td>Ablation</td>
+<td>部署形态可以 causal，但训练监督可来自更强离线模型</td>
+<td>不能替代反事实动作评测和风险校准</td>
+</tr>
+<tr>
+<td>仍可能有误差累积和 chunk discontinuity</td>
+<td>causal autoregressive 结构的内在风险</td>
+<td>Boundary condition</td>
+<td>world model 要单独做长 horizon drift、chunk seam 和恢复评测</td>
+<td>不能只看短视频主观质量</td>
+</tr>
+</tbody>
+</table>
+<p>对本站主线，CausVid 提供的是“视频世界模型如何变成低延迟 rollout 模块”的证据，而不是“它已经是完整行动世界模型”的证据。要把它用于 VLA，还必须补动作条件、失败 replay、闭环成功率和 risk head 验收。</p>
+<h2 id="论文位置"><a class="markdownIt-Anchor" href="#论文位置"></a> 论文位置</h2>
+<p>当前强视频扩散模型大多是 bidirectional video diffusion：模型在生成当前帧时会看整段视频 token，包括未来帧。这对离线生成很好，因为全局注意力能提高一致性；但对交互式应用很糟，因为用户必须等整段视频生成完，不能边生成边看，也不能在中途改变输入。</p>
+<p>CausVid 的目标不是单纯提高 VBench 分数，而是改变视频扩散的系统形态：</p>
+<table>
+<thead>
+<tr>
+<th>Dimension</th>
+<th>Bidirectional video diffusion</th>
+<th>CausVid</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Attention dependency</td>
+<td>current chunk can attend to future chunks</td>
+<td>current chunk only attends to previous chunks and itself</td>
+</tr>
+<tr>
+<td>Generation mode</td>
+<td>fixed clip, wait for full video</td>
+<td>streaming chunks, watch as generated</td>
+</tr>
+<tr>
+<td>Latency</td>
+<td>entire video must finish first</td>
+<td>first chunk after about 1.3s</td>
+</tr>
+<tr>
+<td>Sampling steps</td>
+<td>many-step teacher, 50 steps in paper description</td>
+<td>few-step causal student, 4 steps</td>
+</tr>
+<tr>
+<td>Long video</td>
+<td>expensive full-sequence or sliding windows</td>
+<td>autoregressive rollout with KV cache</td>
+</tr>
+<tr>
+<td>Main risk</td>
+<td>high latency, fixed horizon</td>
+<td>error accumulation and chunk discontinuity</td>
+</tr>
+</tbody>
+</table>
+<p><img  
+                     lazyload
+                     src="/images/loading.svg"
+                     data-src="https://causvid.github.io/images/teaser.png"
+                      alt="CausVid teaser 原图" 
+                ></p>
+<p><small>图源：<code>CausVid</code> 官方项目页，对应论文 Figure 1。原图对比传统 bidirectional diffusion 生成完整 128-frame 视频需要 219s，而 CausVid 通过 asymmetric distillation with DMD 得到 causal student，初始延迟 1.3s，随后约 9.4 FPS 流式生成。</small></p>
+<div class="callout callout--titled info mb-4 rounded-small shadow-redefine-flat bg-(--callout-bg-color) p-3 pl-1 relative flex flex-row gap-2"><div role="none" class="rounded-full self-stretch w-0.5 bg-(--callout-primary-color) shrink-0 opacity-60"></div><div class="flex flex-col gap-2"><div class="callout__title flex items-center gap-2 font-semibold tracking-tight">图解：CausVid teaser 要同时看因果性和延迟</div><div class="callout__content markdown-body flex-1 min-w-0"><p>这张图的关键不是“更快”这个单点，而是两个约束同时成立。第一，模型必须 causal：生成当前 chunk 时不能依赖未来 chunk，否则无法流式交互。第二，模型必须 few-step：即使结构上已经 causal，如果每个 chunk 还要几十步扩散采样，也达不到交互帧率。CausVid 的路线是用双向 teacher 保留视频先验，用 causal student 和 KV cache 满足部署形态，再用 DMD 把采样步数压下来。</p></div></div></div>
+<h2 id="核心问题"><a class="markdownIt-Anchor" href="#核心问题"></a> 核心问题</h2>
+<p>视频扩散模型通常在 latent video 上训练一个 denoiser：</p>
+<p><span class="katex-display"><span class="katex"><span class="katex-mathml"><math><semantics><mrow><msub><mi>x</mi><mi>t</mi></msub><mo>=</mo><msub><mi>α</mi><mi>t</mi></msub><msub><mi>x</mi><mn>0</mn></msub><mo>+</mo><msub><mi>σ</mi><mi>t</mi></msub><mi>ϵ</mi><mo separator="true">,</mo><mspace width="2em"/><mi>ϵ</mi><mo>∼</mo><mi mathvariant="script">N</mi><mo stretchy="false">(</mo><mn>0</mn><mo separator="true">,</mo><mi>I</mi><mo stretchy="false">)</mo><mi mathvariant="normal">.</mi></mrow><annotation encoding="application/x-tex">x_t = \alpha_t x_0 + \sigma_t \epsilon,
+\qquad
+\epsilon \sim \mathcal N(0,I).
+</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.58056em;vertical-align:-0.15em;"></span><span class="mord"><span class="mord mathdefault">x</span><span class="msupsub"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height:0.2805559999999999em;"><span style="top:-2.5500000000000003em;margin-left:0em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mathdefault mtight">t</span></span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height:0.15em;"><span></span></span></span></span></span></span><span class="mspace" style="margin-right:0.2777777777777778em;"></span><span class="mrel">=</span><span class="mspace" style="margin-right:0.2777777777777778em;"></span></span><span class="base"><span class="strut" style="height:0.73333em;vertical-align:-0.15em;"></span><span class="mord"><span class="mord mathdefault" style="margin-right:0.0037em;">α</span><span class="msupsub"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height:0.2805559999999999em;"><span style="top:-2.5500000000000003em;margin-left:-0.0037em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mathdefault mtight">t</span></span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height:0.15em;"><span></span></span></span></span></span></span><span class="mord"><span class="mord mathdefault">x</span><span class="msupsub"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height:0.30110799999999993em;"><span style="top:-2.5500000000000003em;margin-left:0em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mtight">0</span></span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height:0.15em;"><span></span></span></span></span></span></span><span class="mspace" style="margin-right:0.2222222222222222em;"></span><span class="mbin">+</span><span class="mspace" style="margin-right:0.2222222222222222em;"></span></span><span class="base"><span class="strut" style="height:0.625em;vertical-align:-0.19444em;"></span><span class="mord"><span class="mord mathdefault" style="margin-right:0.03588em;">σ</span><span class="msupsub"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height:0.2805559999999999em;"><span style="top:-2.5500000000000003em;margin-left:-0.03588em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mathdefault mtight">t</span></span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height:0.15em;"><span></span></span></span></span></span></span><span class="mord mathdefault">ϵ</span><span class="mpunct">,</span><span class="mspace" style="margin-right:0.16666666666666666em;"></span><span class="mspace" style="margin-right:2em;"></span><span class="mord mathdefault">ϵ</span><span class="mspace" style="margin-right:0.2777777777777778em;"></span><span class="mrel">∼</span><span class="mspace" style="margin-right:0.2777777777777778em;"></span></span><span class="base"><span class="strut" style="height:1em;vertical-align:-0.25em;"></span><span class="mord mathcal" style="margin-right:0.14736em;">N</span><span class="mopen">(</span><span class="mord">0</span><span class="mpunct">,</span><span class="mspace" style="margin-right:0.16666666666666666em;"></span><span class="mord mathdefault" style="margin-right:0.07847em;">I</span><span class="mclose">)</span><span class="mord">.</span></span></span></span></span></p>
+<p>如果视频 latent 被组织成多个 chunk：</p>
+<p><span class="katex-display"><span class="katex"><span class="katex-mathml"><math><semantics><mrow><mi>x</mi><mo>=</mo><mo stretchy="false">(</mo><msup><mi>x</mi><mrow><mo stretchy="false">(</mo><mn>1</mn><mo stretchy="false">)</mo></mrow></msup><mo separator="true">,</mo><msup><mi>x</mi><mrow><mo stretchy="false">(</mo><mn>2</mn><mo stretchy="false">)</mo></mrow></msup><mo separator="true">,</mo><mo>…</mo><mo separator="true">,</mo><msup><mi>x</mi><mrow><mo stretchy="false">(</mo><mi>N</mi><mo stretchy="false">)</mo></mrow></msup><mo stretchy="false">)</mo><mo separator="true">,</mo></mrow><annotation encoding="application/x-tex">x = (x^{(1)}, x^{(2)}, \dots, x^{(N)}),
+</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.43056em;vertical-align:0em;"></span><span class="mord mathdefault">x</span><span class="mspace" style="margin-right:0.2777777777777778em;"></span><span class="mrel">=</span><span class="mspace" style="margin-right:0.2777777777777778em;"></span></span><span class="base"><span class="strut" style="height:1.188em;vertical-align:-0.25em;"></span><span class="mopen">(</span><span class="mord"><span class="mord mathdefault">x</span><span class="msupsub"><span class="vlist-t"><span class="vlist-r"><span class="vlist" style="height:0.938em;"><span style="top:-3.113em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mtight"><span class="mopen mtight">(</span><span class="mord mtight">1</span><span class="mclose mtight">)</span></span></span></span></span></span></span></span></span><span class="mpunct">,</span><span class="mspace" style="margin-right:0.16666666666666666em;"></span><span class="mord"><span class="mord mathdefault">x</span><span class="msupsub"><span class="vlist-t"><span class="vlist-r"><span class="vlist" style="height:0.938em;"><span style="top:-3.113em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mtight"><span class="mopen mtight">(</span><span class="mord mtight">2</span><span class="mclose mtight">)</span></span></span></span></span></span></span></span></span><span class="mpunct">,</span><span class="mspace" style="margin-right:0.16666666666666666em;"></span><span class="minner">…</span><span class="mspace" style="margin-right:0.16666666666666666em;"></span><span class="mpunct">,</span><span class="mspace" style="margin-right:0.16666666666666666em;"></span><span class="mord"><span class="mord mathdefault">x</span><span class="msupsub"><span class="vlist-t"><span class="vlist-r"><span class="vlist" style="height:0.938em;"><span style="top:-3.113em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mtight"><span class="mopen mtight">(</span><span class="mord mathdefault mtight" style="margin-right:0.10903em;">N</span><span class="mclose mtight">)</span></span></span></span></span></span></span></span></span><span class="mclose">)</span><span class="mpunct">,</span></span></span></span></span></p>
+<p>双向 DiT 的 self-attention 默认允许任意 chunk 互相看见。于是生成第 <span class="katex"><span class="katex-mathml"><math><semantics><mrow><mi>i</mi></mrow><annotation encoding="application/x-tex">i</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.65952em;vertical-align:0em;"></span><span class="mord mathdefault">i</span></span></span></span> 个 chunk 时，模型实际依赖：</p>
+<p><span class="katex-display"><span class="katex"><span class="katex-mathml"><math><semantics><mrow><msup><mi>x</mi><mrow><mo stretchy="false">(</mo><mn>1</mn><mo stretchy="false">)</mo></mrow></msup><mo separator="true">,</mo><mo>…</mo><mo separator="true">,</mo><msup><mi>x</mi><mrow><mo stretchy="false">(</mo><mi>i</mi><mo stretchy="false">)</mo></mrow></msup><mo separator="true">,</mo><mo>…</mo><mo separator="true">,</mo><msup><mi>x</mi><mrow><mo stretchy="false">(</mo><mi>N</mi><mo stretchy="false">)</mo></mrow></msup><mi mathvariant="normal">.</mi></mrow><annotation encoding="application/x-tex">x^{(1)}, \dots, x^{(i)}, \dots, x^{(N)}.
+</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:1.13244em;vertical-align:-0.19444em;"></span><span class="mord"><span class="mord mathdefault">x</span><span class="msupsub"><span class="vlist-t"><span class="vlist-r"><span class="vlist" style="height:0.938em;"><span style="top:-3.113em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mtight"><span class="mopen mtight">(</span><span class="mord mtight">1</span><span class="mclose mtight">)</span></span></span></span></span></span></span></span></span><span class="mpunct">,</span><span class="mspace" style="margin-right:0.16666666666666666em;"></span><span class="minner">…</span><span class="mspace" style="margin-right:0.16666666666666666em;"></span><span class="mpunct">,</span><span class="mspace" style="margin-right:0.16666666666666666em;"></span><span class="mord"><span class="mord mathdefault">x</span><span class="msupsub"><span class="vlist-t"><span class="vlist-r"><span class="vlist" style="height:0.938em;"><span style="top:-3.113em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mtight"><span class="mopen mtight">(</span><span class="mord mathdefault mtight">i</span><span class="mclose mtight">)</span></span></span></span></span></span></span></span></span><span class="mpunct">,</span><span class="mspace" style="margin-right:0.16666666666666666em;"></span><span class="minner">…</span><span class="mspace" style="margin-right:0.16666666666666666em;"></span><span class="mpunct">,</span><span class="mspace" style="margin-right:0.16666666666666666em;"></span><span class="mord"><span class="mord mathdefault">x</span><span class="msupsub"><span class="vlist-t"><span class="vlist-r"><span class="vlist" style="height:0.938em;"><span style="top:-3.113em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mtight"><span class="mopen mtight">(</span><span class="mord mathdefault mtight" style="margin-right:0.10903em;">N</span><span class="mclose mtight">)</span></span></span></span></span></span></span></span></span><span class="mord">.</span></span></span></span></span></p>
+<p>交互式视频生成需要的却是：</p>
+<p><span class="katex-display"><span class="katex"><span class="katex-mathml"><math><semantics><mrow><mi>p</mi><mo stretchy="false">(</mo><msup><mi>x</mi><mrow><mo stretchy="false">(</mo><mi>i</mi><mo stretchy="false">)</mo></mrow></msup><mo>∣</mo><msup><mi>x</mi><mrow><mo stretchy="false">(</mo><mo>&lt;</mo><mi>i</mi><mo stretchy="false">)</mo></mrow></msup><mo separator="true">,</mo><mtext>text prompt</mtext><mo separator="true">,</mo><mtext>optional input stream</mtext><mo stretchy="false">)</mo><mi mathvariant="normal">.</mi></mrow><annotation encoding="application/x-tex">p(x^{(i)} \mid x^{(&lt;i)}, \text{text prompt}, \text{optional input stream}).
+</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:1.188em;vertical-align:-0.25em;"></span><span class="mord mathdefault">p</span><span class="mopen">(</span><span class="mord"><span class="mord mathdefault">x</span><span class="msupsub"><span class="vlist-t"><span class="vlist-r"><span class="vlist" style="height:0.938em;"><span style="top:-3.113em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mtight"><span class="mopen mtight">(</span><span class="mord mathdefault mtight">i</span><span class="mclose mtight">)</span></span></span></span></span></span></span></span></span><span class="mspace" style="margin-right:0.2777777777777778em;"></span><span class="mrel">∣</span><span class="mspace" style="margin-right:0.2777777777777778em;"></span></span><span class="base"><span class="strut" style="height:1.188em;vertical-align:-0.25em;"></span><span class="mord"><span class="mord mathdefault">x</span><span class="msupsub"><span class="vlist-t"><span class="vlist-r"><span class="vlist" style="height:0.938em;"><span style="top:-3.113em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mtight"><span class="mopen mtight">(</span><span class="mrel mtight">&lt;</span><span class="mord mathdefault mtight">i</span><span class="mclose mtight">)</span></span></span></span></span></span></span></span></span><span class="mpunct">,</span><span class="mspace" style="margin-right:0.16666666666666666em;"></span><span class="mord text"><span class="mord">text prompt</span></span><span class="mpunct">,</span><span class="mspace" style="margin-right:0.16666666666666666em;"></span><span class="mord text"><span class="mord">optional input stream</span></span><span class="mclose">)</span><span class="mord">.</span></span></span></span></span></p>
+<p>也就是说，当前 chunk 不能依赖未来 chunk。CausVid 要解决的核心矛盾是：</p>
+<ol>
+<li>双向视频 DiT 质量高，但不是流式；</li>
+<li>自回归视频模型可以流式，但容易误差累积；</li>
+<li>多步扩散质量好，但推理太慢；</li>
+<li>少步学生快，但直接训练因果学生会不稳定。</li>
+</ol>
+<p>论文的答案是三件事一起做：</p>
+<div class="code-container" data-rel="Text"><figure class="iseeu highlight text"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br></pre></td><td class="code"><pre><span class="line">pretrained bidirectional video DiT</span><br><span class="line">  -&gt; block-wise causal student architecture</span><br><span class="line">  -&gt; ODE trajectory initialization</span><br><span class="line">  -&gt; asymmetric DMD distillation from bidirectional teacher</span><br><span class="line">  -&gt; KV-cache streaming inference</span><br></pre></td></tr></table></figure></div>
+<h2 id="方法总览"><a class="markdownIt-Anchor" href="#方法总览"></a> 方法总览</h2>
+<p><img  
+                     lazyload
+                     src="/images/loading.svg"
+                     data-src="https://causvid.github.io/images/methods.jpg"
+                      alt="CausVid method 原图" 
+                ></p>
+<p><small>图源：<code>CausVid</code> 官方项目页，对应论文 Figure 5。该图展示两阶段训练：先用 bidirectional teacher 的 ODE solution pairs 初始化 causal student，再用 bidirectional teacher 对 causal student 做 asymmetric DMD distillation。</small></p>
+<div class="callout callout--titled info mb-4 rounded-small shadow-redefine-flat bg-(--callout-bg-color) p-3 pl-1 relative flex flex-row gap-2"><div role="none" class="rounded-full self-stretch w-0.5 bg-(--callout-primary-color) shrink-0 opacity-60"></div><div class="flex flex-col gap-2"><div class="callout__title flex items-center gap-2 font-semibold tracking-tight">这张方法图怎么读</div><div class="callout__content markdown-body flex-1 min-w-0"><p>图里的关键是“先初始化，再分布匹配”，而不是直接把双向模型改成 causal 后开训。第一阶段的 ODE initialization 用 bidirectional teacher 生成的轨迹点训练 causal student，让它先学会在 causal attention 约束下走一条合理的去噪路径。这个阶段更像把学生放到一个不会崩的初始区域。</p>
+<p>第二阶段才是 asymmetric DMD：student 是 causal 的，但 teacher score 来自 bidirectional teacher。这个不对称很重要，因为 causal teacher 自己会有未来信息缺失和误差累积问题，如果再拿它蒸馏 causal student，会把弱点传下去。CausVid 的图实际表达的是一个工程判断：<strong>部署形态必须 causal，但监督信号可以继续利用 bidirectional teacher 的强视频先验</strong>。</p></div></div></div>
+<p>方法可以拆成四层。</p>
+<table>
+<thead>
+<tr>
+<th>Layer</th>
+<th>Design</th>
+<th>Why it matters</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Latent video representation</td>
+<td>3D VAE encodes video chunks into latent chunks</td>
+<td>avoid raw-pixel video diffusion cost</td>
+</tr>
+<tr>
+<td>Causal DiT</td>
+<td>block-wise causal attention across chunks, bidirectional attention within chunk</td>
+<td>preserve local temporal consistency while enforcing streaming causality</td>
+</tr>
+<tr>
+<td>ODE initialization</td>
+<td>fit student on teacher-generated ODE solution pairs</td>
+<td>stabilize few-step causal student before DMD</td>
+</tr>
+<tr>
+<td>Asymmetric DMD</td>
+<td>causal student is supervised by bidirectional teacher</td>
+<td>keep teacher quality while making student causal and fast</td>
+</tr>
+</tbody>
+</table>
+<p>这篇论文最值得学的点在第三、四层。直接把 bidirectional DiT 加上 causal mask 后微调，会明显掉质量；直接用 DMD 训 causal student 又容易不稳。作者因此先用 teacher ODE trajectory 做初始化，再用强的 bidirectional teacher 做分布匹配蒸馏。</p>
+<h2 id="因果架构"><a class="markdownIt-Anchor" href="#因果架构"></a> 因果架构</h2>
+<p>CausVid 使用 3D VAE 压缩视频。论文的实现中，3D VAE 把 16 个视频帧编码成一个包含 5 个 latent frames 的 latent chunk。DiT 在 latent space 上生成 chunk。</p>
+<p>注意力 mask 是 block-wise causal：</p>
+<p><span class="katex-display"><span class="katex"><span class="katex-mathml"><math><semantics><mrow><msub><mi>M</mi><mrow><mi>i</mi><mo separator="true">,</mo><mi>j</mi></mrow></msub><mo>=</mo><mrow><mo fence="true">{</mo><mtable rowspacing="0.3599999999999999em" columnalign="left left" columnspacing="1em"><mtr><mtd><mstyle scriptlevel="0" displaystyle="false"><mrow><mn>1</mn><mo separator="true">,</mo></mrow></mstyle></mtd><mtd><mstyle scriptlevel="0" displaystyle="false"><mrow><mrow><mo fence="true">⌊</mo><mfrac><mi>j</mi><mi>k</mi></mfrac><mo fence="true">⌋</mo></mrow><mo>≤</mo><mrow><mo fence="true">⌊</mo><mfrac><mi>i</mi><mi>k</mi></mfrac><mo fence="true">⌋</mo></mrow></mrow></mstyle></mtd></mtr><mtr><mtd><mstyle scriptlevel="0" displaystyle="false"><mrow><mn>0</mn><mo separator="true">,</mo></mrow></mstyle></mtd><mtd><mstyle scriptlevel="0" displaystyle="false"><mtext>otherwise</mtext></mstyle></mtd></mtr></mtable></mrow></mrow><annotation encoding="application/x-tex">M_{i,j} =
+\begin{cases}
+1, &amp; \left\lfloor \frac{j}{k} \right\rfloor \le
+     \left\lfloor \frac{i}{k} \right\rfloor \\
+0, &amp; \text{otherwise}
+\end{cases}
+</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.969438em;vertical-align:-0.286108em;"></span><span class="mord"><span class="mord mathdefault" style="margin-right:0.10903em;">M</span><span class="msupsub"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height:0.311664em;"><span style="top:-2.5500000000000003em;margin-left:-0.10903em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mtight"><span class="mord mathdefault mtight">i</span><span class="mpunct mtight">,</span><span class="mord mathdefault mtight" style="margin-right:0.05724em;">j</span></span></span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height:0.286108em;"><span></span></span></span></span></span></span><span class="mspace" style="margin-right:0.2777777777777778em;"></span><span class="mrel">=</span><span class="mspace" style="margin-right:0.2777777777777778em;"></span></span><span class="base"><span class="strut" style="height:3.0000299999999998em;vertical-align:-1.25003em;"></span><span class="minner"><span class="mopen delimcenter" style="top:0em;"><span class="delimsizing size4">{</span></span><span class="mord"><span class="mtable"><span class="col-align-l"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height:1.69em;"><span style="top:-3.69em;"><span class="pstrut" style="height:3.008em;"></span><span class="mord"><span class="mord">1</span><span class="mpunct">,</span></span></span><span style="top:-2.25em;"><span class="pstrut" style="height:3.008em;"></span><span class="mord"><span class="mord">0</span><span class="mpunct">,</span></span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height:1.19em;"><span></span></span></span></span></span><span class="arraycolsep" style="width:1em;"></span><span class="col-align-l"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height:1.69em;"><span style="top:-3.69em;"><span class="pstrut" style="height:3.008em;"></span><span class="mord"><span class="minner"><span class="mopen delimcenter" style="top:0em;"><span class="delimsizing size1">⌊</span></span><span class="mord"><span class="mopen nulldelimiter"></span><span class="mfrac"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height:0.907772em;"><span style="top:-2.6550000000000002em;"><span class="pstrut" style="height:3em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mtight"><span class="mord mathdefault mtight" style="margin-right:0.03148em;">k</span></span></span></span><span style="top:-3.23em;"><span class="pstrut" style="height:3em;"></span><span class="frac-line" style="border-bottom-width:0.04em;"></span></span><span style="top:-3.446108em;"><span class="pstrut" style="height:3em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mtight"><span class="mord mathdefault mtight" style="margin-right:0.05724em;">j</span></span></span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height:0.345em;"><span></span></span></span></span></span><span class="mclose nulldelimiter"></span></span><span class="mclose delimcenter" style="top:0em;"><span class="delimsizing size1">⌋</span></span></span><span class="mspace" style="margin-right:0.2777777777777778em;"></span><span class="mrel">≤</span><span class="mspace" style="margin-right:0.2777777777777778em;"></span><span class="minner"><span class="mopen delimcenter" style="top:0em;"><span class="delimsizing size1">⌊</span></span><span class="mord"><span class="mopen nulldelimiter"></span><span class="mfrac"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height:0.855664em;"><span style="top:-2.6550000000000002em;"><span class="pstrut" style="height:3em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mtight"><span class="mord mathdefault mtight" style="margin-right:0.03148em;">k</span></span></span></span><span style="top:-3.23em;"><span class="pstrut" style="height:3em;"></span><span class="frac-line" style="border-bottom-width:0.04em;"></span></span><span style="top:-3.394em;"><span class="pstrut" style="height:3em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mtight"><span class="mord mathdefault mtight">i</span></span></span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height:0.345em;"><span></span></span></span></span></span><span class="mclose nulldelimiter"></span></span><span class="mclose delimcenter" style="top:0em;"><span class="delimsizing size1">⌋</span></span></span></span></span><span style="top:-2.25em;"><span class="pstrut" style="height:3.008em;"></span><span class="mord"><span class="mord text"><span class="mord">otherwise</span></span></span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height:1.19em;"><span></span></span></span></span></span></span></span><span class="mclose nulldelimiter"></span></span></span></span></span></span></p>
+<p>其中 <span class="katex"><span class="katex-mathml"><math><semantics><mrow><mi>i</mi><mo separator="true">,</mo><mi>j</mi></mrow><annotation encoding="application/x-tex">i,j</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.85396em;vertical-align:-0.19444em;"></span><span class="mord mathdefault">i</span><span class="mpunct">,</span><span class="mspace" style="margin-right:0.16666666666666666em;"></span><span class="mord mathdefault" style="margin-right:0.05724em;">j</span></span></span></span> 是 frame 或 latent token 的时间索引，<span class="katex"><span class="katex-mathml"><math><semantics><mrow><mi>k</mi></mrow><annotation encoding="application/x-tex">k</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.69444em;vertical-align:0em;"></span><span class="mord mathdefault" style="margin-right:0.03148em;">k</span></span></span></span> 是 chunk size。</p>
+<p>这意味着：</p>
+<ol>
+<li>同一个 chunk 内部可以双向注意力，保证局部视频连续；</li>
+<li>当前 chunk 可以看过去 chunk；</li>
+<li>当前 chunk 不能看未来 chunk；</li>
+<li>推理时按 chunk 生成，过去 chunk 的 key/value 可以缓存。</li>
+</ol>
+<p>这个设计比逐帧完全 causal 更现实，因为 VAE 解码本身也需要一个 latent block 才能输出像素。换句话说，系统的真实最低延迟不是单帧，而是一个 VAE chunk。</p>
+<h2 id="非对称-dmd-蒸馏"><a class="markdownIt-Anchor" href="#非对称-dmd-蒸馏"></a> 非对称 DMD 蒸馏</h2>
+<p>CausVid 用的是 DMD / DMD2 路线：不要求学生逐步模仿 teacher 的每一步轨迹，而是用 score difference 近似 reverse KL，让学生输出分布贴近数据分布。</p>
+<p>普通 DMD 有两个 score：</p>
+<table>
+<thead>
+<tr>
+<th>Score</th>
+<th>Role</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><span class="katex"><span class="katex-mathml"><math><semantics><mrow><msub><mi>s</mi><mtext>data</mtext></msub></mrow><annotation encoding="application/x-tex">s_{\text{data}}</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.58056em;vertical-align:-0.15em;"></span><span class="mord"><span class="mord mathdefault">s</span><span class="msupsub"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height:0.33610799999999996em;"><span style="top:-2.5500000000000003em;margin-left:0em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mtight"><span class="mord text mtight"><span class="mord mtight">data</span></span></span></span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height:0.15em;"><span></span></span></span></span></span></span></span></span></span></td>
+<td>frozen teacher score, approximates data distribution</td>
+</tr>
+<tr>
+<td><span class="katex"><span class="katex-mathml"><math><semantics><mrow><msub><mi>s</mi><mtext>fake</mtext></msub></mrow><annotation encoding="application/x-tex">s_{\text{fake}}</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.58056em;vertical-align:-0.15em;"></span><span class="mord"><span class="mord mathdefault">s</span><span class="msupsub"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height:0.33610799999999996em;"><span style="top:-2.5500000000000003em;margin-left:0em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mtight"><span class="mord text mtight"><span class="mord mtight">fake</span></span></span></span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height:0.15em;"><span></span></span></span></span></span></span></span></span></span></td>
+<td>trainable score on student-generated distribution</td>
+</tr>
+</tbody>
+</table>
+<p>生成器更新方向来自二者差异。直觉上，如果 student 输出落在低数据密度区域，<span class="katex"><span class="katex-mathml"><math><semantics><mrow><msub><mi>s</mi><mtext>data</mtext></msub></mrow><annotation encoding="application/x-tex">s_{\text{data}}</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.58056em;vertical-align:-0.15em;"></span><span class="mord"><span class="mord mathdefault">s</span><span class="msupsub"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height:0.33610799999999996em;"><span style="top:-2.5500000000000003em;margin-left:0em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mtight"><span class="mord text mtight"><span class="mord mtight">data</span></span></span></span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height:0.15em;"><span></span></span></span></span></span></span></span></span></span> 会把它往真实视频分布推；<span class="katex"><span class="katex-mathml"><math><semantics><mrow><msub><mi>s</mi><mtext>fake</mtext></msub></mrow><annotation encoding="application/x-tex">s_{\text{fake}}</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.58056em;vertical-align:-0.15em;"></span><span class="mord"><span class="mord mathdefault">s</span><span class="msupsub"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height:0.33610799999999996em;"><span style="top:-2.5500000000000003em;margin-left:0em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mtight"><span class="mord text mtight"><span class="mord mtight">fake</span></span></span></span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height:0.15em;"><span></span></span></span></span></span></span></span></span></span> 用来校正 generator 自己分布的梯度。</p>
+<p>CausVid 的关键改动是 <strong>asymmetric</strong>：</p>
+<table>
+<thead>
+<tr>
+<th>Component</th>
+<th>Attention</th>
+<th>Function</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Teacher <span class="katex"><span class="katex-mathml"><math><semantics><mrow><msub><mi>s</mi><mtext>data</mtext></msub></mrow><annotation encoding="application/x-tex">s_{\text{data}}</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.58056em;vertical-align:-0.15em;"></span><span class="mord"><span class="mord mathdefault">s</span><span class="msupsub"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height:0.33610799999999996em;"><span style="top:-2.5500000000000003em;margin-left:0em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mtight"><span class="mord text mtight"><span class="mord mtight">data</span></span></span></span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height:0.15em;"><span></span></span></span></span></span></span></span></span></span></td>
+<td>bidirectional</td>
+<td>provide strong video prior and distribution-level supervision</td>
+</tr>
+<tr>
+<td>Student <span class="katex"><span class="katex-mathml"><math><semantics><mrow><msub><mi>G</mi><mi>ϕ</mi></msub></mrow><annotation encoding="application/x-tex">G_\phi</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.969438em;vertical-align:-0.286108em;"></span><span class="mord"><span class="mord mathdefault">G</span><span class="msupsub"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height:0.3361079999999999em;"><span style="top:-2.5500000000000003em;margin-left:0em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mathdefault mtight">ϕ</span></span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height:0.286108em;"><span></span></span></span></span></span></span></span></span></span></td>
+<td>causal</td>
+<td>generate chunks autoregressively</td>
+</tr>
+<tr>
+<td>Fake score <span class="katex"><span class="katex-mathml"><math><semantics><mrow><msub><mi>s</mi><mtext>fake</mtext></msub></mrow><annotation encoding="application/x-tex">s_{\text{fake}}</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.58056em;vertical-align:-0.15em;"></span><span class="mord"><span class="mord mathdefault">s</span><span class="msupsub"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height:0.33610799999999996em;"><span style="top:-2.5500000000000003em;margin-left:0em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mtight"><span class="mord text mtight"><span class="mord mtight">fake</span></span></span></span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height:0.15em;"><span></span></span></span></span></span></span></span></span></span></td>
+<td>trained on student outputs</td>
+<td>approximate generator distribution score</td>
+</tr>
+</tbody>
+</table>
+<p>为什么不能用 causal teacher？论文的消融显示 causal teacher 本身更容易误差累积，蒸馏给学生会把这个缺陷传下去。用 bidirectional teacher 则保留了强模型的全局视频先验，让 causal student 学到更好的局部质量和长期稳定性。</p>
+<h2 id="学生初始化"><a class="markdownIt-Anchor" href="#学生初始化"></a> 学生初始化</h2>
+<p>直接用 DMD loss 训练 causal student 会不稳定，主要因为 teacher 和 student 的架构、依赖关系都不同。CausVid 先做 ODE initialization。</p>
+<p>初始化流程：</p>
+<div class="code-container" data-rel="Text"><figure class="iseeu highlight text"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br></pre></td><td class="code"><pre><span class="line">sample Gaussian noise sequence</span><br><span class="line">  -&gt; run bidirectional teacher ODE solver</span><br><span class="line">  -&gt; collect ODE trajectory points at student timesteps</span><br><span class="line">  -&gt; train causal student with MSE regression to clean target</span><br><span class="line">  -&gt; use this student as DMD initialization</span><br></pre></td></tr></table></figure></div>
+<p>训练损失可以理解为：</p>
+<p><span class="katex-display"><span class="katex"><span class="katex-mathml"><math><semantics><mrow><msub><mi mathvariant="script">L</mi><mtext>init</mtext></msub><mo>=</mo><mi mathvariant="double-struck">E</mi><mrow><mo fence="true">[</mo><msubsup><mrow><mo fence="true">∥</mo><msub><mi>G</mi><mi>ϕ</mi></msub><mo stretchy="false">(</mo><mo stretchy="false">{</mo><msubsup><mi>x</mi><msub><mi>t</mi><mi>i</mi></msub><mrow><mo stretchy="false">(</mo><mi>i</mi><mo stretchy="false">)</mo></mrow></msubsup><msubsup><mo stretchy="false">}</mo><mrow><mi>i</mi><mo>=</mo><mn>1</mn></mrow><mi>N</mi></msubsup><mo separator="true">,</mo><mo stretchy="false">{</mo><msub><mi>t</mi><mi>i</mi></msub><msubsup><mo stretchy="false">}</mo><mrow><mi>i</mi><mo>=</mo><mn>1</mn></mrow><mi>N</mi></msubsup><mo stretchy="false">)</mo><mo>−</mo><mo stretchy="false">{</mo><msubsup><mi>x</mi><mn>0</mn><mrow><mo stretchy="false">(</mo><mi>i</mi><mo stretchy="false">)</mo></mrow></msubsup><msubsup><mo stretchy="false">}</mo><mrow><mi>i</mi><mo>=</mo><mn>1</mn></mrow><mi>N</mi></msubsup><mo fence="true">∥</mo></mrow><mn>2</mn><mn>2</mn></msubsup><mo fence="true">]</mo></mrow><mi mathvariant="normal">.</mi></mrow><annotation encoding="application/x-tex">\mathcal L_{\text{init}}
+=
+\mathbb E
+\left[
+\left\lVert
+G_\phi(\{x_{t_i}^{(i)}\}_{i=1}^{N}, \{t_i\}_{i=1}^{N})
+-
+\{x_0^{(i)}\}_{i=1}^{N}
+\right\rVert_2^2
+\right].
+</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.83333em;vertical-align:-0.15em;"></span><span class="mord"><span class="mord mathcal">L</span><span class="msupsub"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height:0.31750199999999995em;"><span style="top:-2.5500000000000003em;margin-left:0em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mtight"><span class="mord text mtight"><span class="mord mtight">init</span></span></span></span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height:0.15em;"><span></span></span></span></span></span></span><span class="mspace" style="margin-right:0.2777777777777778em;"></span><span class="mrel">=</span><span class="mspace" style="margin-right:0.2777777777777778em;"></span></span><span class="base"><span class="strut" style="height:2.40003em;vertical-align:-0.95003em;"></span><span class="mord mathbb">E</span><span class="mspace" style="margin-right:0.16666666666666666em;"></span><span class="minner"><span class="mopen delimcenter" style="top:0em;"><span class="delimsizing size3">[</span></span><span class="minner"><span class="minner"><span class="mopen"><span class="delimsizing mult"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height:1.167985em;"><span style="top:-1.955985em;"><span class="pstrut" style="height:2.606em;"></span><span class="delimsizinginner delim-size1"><span>∥</span></span></span><span style="top:-2.561985em;"><span class="pstrut" style="height:2.606em;"></span><span class="delimsizinginner delim-size1"><span>∥</span></span></span><span style="top:-3.167985em;"><span class="pstrut" style="height:2.606em;"></span><span class="delimsizinginner delim-size1"><span>∥</span></span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height:0.6500149999999999em;"><span></span></span></span></span></span></span><span class="mord"><span class="mord mathdefault">G</span><span class="msupsub"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height:0.3361079999999999em;"><span style="top:-2.5500000000000003em;margin-left:0em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mathdefault mtight">ϕ</span></span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height:0.286108em;"><span></span></span></span></span></span></span><span class="mopen">(</span><span class="mopen">{</span><span class="mord"><span class="mord mathdefault">x</span><span class="msupsub"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height:1.0448em;"><span style="top:-2.454244em;margin-left:0em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mtight"><span class="mord mtight"><span class="mord mathdefault mtight">t</span><span class="msupsub"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height:0.3280857142857143em;"><span style="top:-2.357em;margin-left:0em;margin-right:0.07142857142857144em;"><span class="pstrut" style="height:2.5em;"></span><span class="sizing reset-size3 size1 mtight"><span class="mord mathdefault mtight">i</span></span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height:0.143em;"><span></span></span></span></span></span></span></span></span></span><span style="top:-3.2198em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mtight"><span class="mopen mtight">(</span><span class="mord mathdefault mtight">i</span><span class="mclose mtight">)</span></span></span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height:0.34585599999999994em;"><span></span></span></span></span></span></span><span class="mclose"><span class="mclose">}</span><span class="msupsub"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height:0.8913309999999999em;"><span style="top:-2.4530000000000003em;margin-left:0em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mtight"><span class="mord mathdefault mtight">i</span><span class="mrel mtight">=</span><span class="mord mtight">1</span></span></span></span><span style="top:-3.113em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mtight"><span class="mord mathdefault mtight" style="margin-right:0.10903em;">N</span></span></span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height:0.247em;"><span></span></span></span></span></span></span><span class="mpunct">,</span><span class="mspace" style="margin-right:0.16666666666666666em;"></span><span class="mopen">{</span><span class="mord"><span class="mord mathdefault">t</span><span class="msupsub"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height:0.31166399999999994em;"><span style="top:-2.5500000000000003em;margin-left:0em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mathdefault mtight">i</span></span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height:0.15em;"><span></span></span></span></span></span></span><span class="mclose"><span class="mclose">}</span><span class="msupsub"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height:0.8913309999999999em;"><span style="top:-2.4530000000000003em;margin-left:0em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mtight"><span class="mord mathdefault mtight">i</span><span class="mrel mtight">=</span><span class="mord mtight">1</span></span></span></span><span style="top:-3.113em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mtight"><span class="mord mathdefault mtight" style="margin-right:0.10903em;">N</span></span></span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height:0.247em;"><span></span></span></span></span></span></span><span class="mclose">)</span><span class="mspace" style="margin-right:0.2222222222222222em;"></span><span class="mbin">−</span><span class="mspace" style="margin-right:0.2222222222222222em;"></span><span class="mopen">{</span><span class="mord"><span class="mord mathdefault">x</span><span class="msupsub"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height:1.0448em;"><span style="top:-2.433692em;margin-left:0em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mtight">0</span></span></span><span style="top:-3.2198em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mtight"><span class="mopen mtight">(</span><span class="mord mathdefault mtight">i</span><span class="mclose mtight">)</span></span></span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height:0.266308em;"><span></span></span></span></span></span></span><span class="mclose"><span class="mclose">}</span><span class="msupsub"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height:0.8913309999999999em;"><span style="top:-2.4530000000000003em;margin-left:0em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mtight"><span class="mord mathdefault mtight">i</span><span class="mrel mtight">=</span><span class="mord mtight">1</span></span></span></span><span style="top:-3.113em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mtight"><span class="mord mathdefault mtight" style="margin-right:0.10903em;">N</span></span></span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height:0.247em;"><span></span></span></span></span></span></span><span class="mclose"><span class="delimsizing mult"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height:1.167985em;"><span style="top:-1.955985em;"><span class="pstrut" style="height:2.606em;"></span><span class="delimsizinginner delim-size1"><span>∥</span></span></span><span style="top:-2.561985em;"><span class="pstrut" style="height:2.606em;"></span><span class="delimsizinginner delim-size1"><span>∥</span></span></span><span style="top:-3.167985em;"><span class="pstrut" style="height:2.606em;"></span><span class="delimsizinginner delim-size1"><span>∥</span></span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height:0.6500149999999999em;"><span></span></span></span></span></span></span></span><span class="msupsub"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height:1.371993em;"><span style="top:-2.0002850000000003em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mtight">2</span></span></span><span style="top:-3.6208850000000004em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mtight">2</span></span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height:0.6997149999999999em;"><span></span></span></span></span></span></span><span class="mclose delimcenter" style="top:0em;"><span class="delimsizing size3">]</span></span></span><span class="mspace" style="margin-right:0.16666666666666666em;"></span><span class="mord">.</span></span></span></span></span></p>
+<p>这一步不是最终目标，只是把 causal student 放到一个“会沿 teacher ODE 轨迹还原视频”的初始区域。后续 DMD 才负责分布级对齐。</p>
+<h2 id="推理kv-cache-和流式-chunk"><a class="markdownIt-Anchor" href="#推理kv-cache-和流式-chunk"></a> 推理：KV cache 和流式 chunk</h2>
+<p>推理时，CausVid 按 chunk 自回归生成：</p>
+<div class="code-container" data-rel="Text"><figure class="iseeu highlight text"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br></pre></td><td class="code"><pre><span class="line">initialize KV cache</span><br><span class="line">for each latent chunk:</span><br><span class="line">  initialize chunk noise</span><br><span class="line">  run 4 denoising steps</span><br><span class="line">  append generated chunk to KV cache</span><br><span class="line">  decode chunk with 3D VAE</span><br><span class="line">  stream pixels to user</span><br></pre></td></tr></table></figure></div>
+<p>KV cache 的意义和 LLM 类似：过去 chunk 已经计算过的 key/value 不必重复计算。论文还指出，因为推理时有 KV cache，训练里的 block-wise causal attention mask 不再需要以同样形式执行，可以使用更快的 bidirectional attention implementation 来处理当前 chunk。</p>
+<p>这解释了为什么它能从 bidirectional teacher 的 219.2s 降到 1.3s initial latency 和 9.4 FPS throughput。不是只靠少步采样，也不是只靠 causal mask，而是：</p>
+<div class="code-container" data-rel="Text"><figure class="iseeu highlight text"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">4-step DMD student + causal chunking + KV cache + latent video representation</span><br></pre></td></tr></table></figure></div>
+<p>四者叠加。</p>
+<h2 id="训练细节"><a class="markdownIt-Anchor" href="#训练细节"></a> 训练细节</h2>
+<p>论文训练细节很值得单独记，因为它说明 CausVid 不是“随便把 mask 换成 causal”。</p>
+<table>
+<thead>
+<tr>
+<th>Item</th>
+<th>Detail</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Teacher</td>
+<td>bidirectional DiT, architecture similar to CogVideoX</td>
+</tr>
+<tr>
+<td>Student</td>
+<td>same DiT backbone but with causal attention across chunks</td>
+</tr>
+<tr>
+<td>VAE</td>
+<td>3D VAE, encodes 16 video frames into 5 latent frames</td>
+</tr>
+<tr>
+<td>Chunk</td>
+<td>each chunk contains 5 latent frames</td>
+</tr>
+<tr>
+<td>Training video length</td>
+<td>10 seconds</td>
+</tr>
+<tr>
+<td>Training FPS</td>
+<td>12 FPS</td>
+</tr>
+<tr>
+<td>Training resolution</td>
+<td>352 x 640</td>
+</tr>
+<tr>
+<td>Student inference steps</td>
+<td>4 denoising steps</td>
+</tr>
+<tr>
+<td>Student timesteps</td>
+<td><code>[999, 748, 502, 247]</code></td>
+</tr>
+<tr>
+<td>Efficient attention</td>
+<td>FlexAttention during training</td>
+</tr>
+<tr>
+<td>Data</td>
+<td>mixed image and video datasets following CogVideoX</td>
+</tr>
+<tr>
+<td>Internal videos</td>
+<td>around 400K single-shot videos with full copyright</td>
+</tr>
+<tr>
+<td>Filtering</td>
+<td>safety and aesthetic score filtering</td>
+</tr>
+<tr>
+<td>ODE initialization data</td>
+<td>1000 ODE pairs</td>
+</tr>
+<tr>
+<td>ODE init optimization</td>
+<td>3000 iterations, AdamW, learning rate <code>5e-6</code></td>
+</tr>
+<tr>
+<td>DMD optimization</td>
+<td>6000 iterations, AdamW, learning rate <code>2e-6</code></td>
+</tr>
+<tr>
+<td>Guidance scale</td>
+<td>3.5</td>
+</tr>
+<tr>
+<td>TTUR ratio</td>
+<td>5, following DMD2</td>
+</tr>
+<tr>
+<td>Compute</td>
+<td>about 2 days on 64 H100 GPUs</td>
+</tr>
+</tbody>
+</table>
+<p>这组配置里有几个实践信号：</p>
+<ol>
+<li>训练分辨率是 <code>352 x 640</code>，不是靠低分辨率玩具视频证明速度；</li>
+<li>student 与 teacher 主体结构相同，只改 causal attention，这降低了从预训练 teacher 迁移的难度；</li>
+<li>ODE init 只用 1000 pairs 和 3000 iterations，说明它是稳定器，不是主训练阶段；</li>
+<li>DMD 只训 6000 iterations，但算力很大，说明数据和 teacher 质量仍然是核心前提；</li>
+<li>推理用 4 steps，论文摘要表述为把 50-step diffusion model 蒸馏成 4-step generator。</li>
+</ol>
+<p>开源代码需要和论文实验区分开看。论文主实验使用内部约 400K single-shot videos；当前 GitHub 是工作中代码库，README 说明实现 largely based on Wan model suite，并提供 MixKit 6K videos 作为 toy distillation dataset。也就是说，repo 对理解流程很有用，但不能把 toy dataset 训练效果等同于论文主结果。</p>
+<h2 id="实验结果"><a class="markdownIt-Anchor" href="#实验结果"></a> 实验结果</h2>
+<h3 id="table-1-evaluation-of-text-to-short-video-generation"><a class="markdownIt-Anchor" href="#table-1-evaluation-of-text-to-short-video-generation"></a> Table 1: Evaluation of text-to-short-video generation</h3>
+<p>论文用 VBench 评估 10 秒附近的短视频生成。表格保留英文格式。</p>
+<table>
+<thead>
+<tr>
+<th>Method</th>
+<th style="text-align:right">Length (s)</th>
+<th style="text-align:right">Temporal Quality</th>
+<th style="text-align:right">Frame Quality</th>
+<th style="text-align:right">Text Alignment</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>CogVideoX-5B</td>
+<td style="text-align:right">6</td>
+<td style="text-align:right">89.9</td>
+<td style="text-align:right">59.8</td>
+<td style="text-align:right">29.1</td>
+</tr>
+<tr>
+<td>OpenSORA</td>
+<td style="text-align:right">8</td>
+<td style="text-align:right">88.4</td>
+<td style="text-align:right">52.0</td>
+<td style="text-align:right">28.4</td>
+</tr>
+<tr>
+<td>Pyramid Flow</td>
+<td style="text-align:right">10</td>
+<td style="text-align:right">89.6</td>
+<td style="text-align:right">55.9</td>
+<td style="text-align:right">27.1</td>
+</tr>
+<tr>
+<td>MovieGen</td>
+<td style="text-align:right">10</td>
+<td style="text-align:right">91.5</td>
+<td style="text-align:right">61.1</td>
+<td style="text-align:right">28.8</td>
+</tr>
+<tr>
+<td>CausVid (Ours)</td>
+<td style="text-align:right">10</td>
+<td style="text-align:right">94.7</td>
+<td style="text-align:right">64.4</td>
+<td style="text-align:right">30.1</td>
+</tr>
+</tbody>
+</table>
+<p><small>表源：<code>From Slow Bidirectional to Fast Autoregressive Video Diffusion Models</code>，Table 1。原论文表格要点：该表在 text-to-short-video 生成上比较 CogVideoX、OpenSORA、Pyramid Flow、MovieGen 和 CausVid；CausVid 在 temporal quality、frame quality 和 text alignment 上都取得最高分，说明因果少步学生没有牺牲短视频质量。</small></p>
+<p>这张表说明 CausVid 不只是快：在短视频 VBench 口径下，它的 temporal quality、frame quality 和 text alignment 都很强。尤其是 temporal quality，因果模型没有因为自回归而明显掉一致性。</p>
+<h3 id="table-2-evaluation-of-text-to-long-video-generation"><a class="markdownIt-Anchor" href="#table-2-evaluation-of-text-to-long-video-generation"></a> Table 2: Evaluation of text-to-long-video generation</h3>
+<p>长视频更能检验 error accumulation。</p>
+<table>
+<thead>
+<tr>
+<th>Method</th>
+<th style="text-align:right">Temporal Quality</th>
+<th style="text-align:right">Frame Quality</th>
+<th style="text-align:right">Text Alignment</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Gen-L-Video</td>
+<td style="text-align:right">86.7</td>
+<td style="text-align:right">52.3</td>
+<td style="text-align:right">28.7</td>
+</tr>
+<tr>
+<td>FreeNoise</td>
+<td style="text-align:right">86.2</td>
+<td style="text-align:right">54.8</td>
+<td style="text-align:right">28.7</td>
+</tr>
+<tr>
+<td>StreamingT2V</td>
+<td style="text-align:right">89.2</td>
+<td style="text-align:right">46.1</td>
+<td style="text-align:right">27.2</td>
+</tr>
+<tr>
+<td>FIFO-Diffusion</td>
+<td style="text-align:right">93.1</td>
+<td style="text-align:right">57.9</td>
+<td style="text-align:right">29.9</td>
+</tr>
+<tr>
+<td>Pyramid Flow</td>
+<td style="text-align:right">89.0</td>
+<td style="text-align:right">48.3</td>
+<td style="text-align:right">24.4</td>
+</tr>
+<tr>
+<td>CausVid (Ours)</td>
+<td style="text-align:right">94.9</td>
+<td style="text-align:right">63.4</td>
+<td style="text-align:right">28.9</td>
+</tr>
+</tbody>
+</table>
+<p><small>表源：<code>From Slow Bidirectional to Fast Autoregressive Video Diffusion Models</code>，Table 2。原论文表格要点：该表比较长视频生成方法的 VBench 指标；CausVid 在 temporal quality 和 frame quality 上最高，说明 asymmetric DMD 与 causal rollout 能缓解长视频生成中的误差累积和画质衰减。</small></p>
+<p>这里 CausVid 的 frame quality 优势很明显。它说明 bidirectional teacher 的蒸馏确实缓解了普通 autoregressive model 的质量衰减问题。</p>
+<h3 id="table-3-latency-and-throughput"><a class="markdownIt-Anchor" href="#table-3-latency-and-throughput"></a> Table 3: Latency and throughput</h3>
+<table>
+<thead>
+<tr>
+<th>Method</th>
+<th style="text-align:right">Latency (s)</th>
+<th style="text-align:right">Throughput (FPS)</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>CogVideoX-5B</td>
+<td style="text-align:right">208.6</td>
+<td style="text-align:right">0.6</td>
+</tr>
+<tr>
+<td>Pyramid Flow</td>
+<td style="text-align:right">6.7</td>
+<td style="text-align:right">2.5</td>
+</tr>
+<tr>
+<td>Bidirectional Teacher</td>
+<td style="text-align:right">219.2</td>
+<td style="text-align:right">0.6</td>
+</tr>
+<tr>
+<td>CausVid (Ours)</td>
+<td style="text-align:right">1.3</td>
+<td style="text-align:right">9.4</td>
+</tr>
+</tbody>
+</table>
+<p><small>表源：<code>From Slow Bidirectional to Fast Autoregressive Video Diffusion Models</code>，Table 3。原论文表格要点：该表报告 10-second、120-frame、<code>640 x 352</code> 视频生成的 initial latency 和 throughput；CausVid 相比 bidirectional teacher 把首段延迟从约 <code>219s</code> 降到 <code>1.3s</code>，吞吐提升到 <code>9.4 FPS</code>。</small></p>
+<p>论文测的是生成 10-second、120-frame、<code>640 x 352</code> 视频，总时间包含 text encoder、diffusion model 和 VAE decoder。这个表最重要：CausVid 相对类似规模 CogVideoX 有约 160x latency reduction 和 16x throughput improvement。</p>
+<h3 id="table-4-ablation-studies"><a class="markdownIt-Anchor" href="#table-4-ablation-studies"></a> Table 4: Ablation studies</h3>
+<table>
+<thead>
+<tr>
+<th>Many-step models</th>
+<th>Causal Generator?</th>
+<th style="text-align:right"># Fwd Pass</th>
+<th style="text-align:right">Temporal Quality</th>
+<th style="text-align:right">Frame Quality</th>
+<th style="text-align:right">Text Alignment</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Bidirectional</td>
+<td>✗</td>
+<td style="text-align:right">100</td>
+<td style="text-align:right">94.6</td>
+<td style="text-align:right">62.7</td>
+<td style="text-align:right">29.6</td>
+</tr>
+<tr>
+<td>Causal</td>
+<td>✓</td>
+<td style="text-align:right">100</td>
+<td style="text-align:right">92.4</td>
+<td style="text-align:right">60.1</td>
+<td style="text-align:right">28.5</td>
+</tr>
+</tbody>
+</table>
+<table>
+<thead>
+<tr>
+<th>Few-step models</th>
+<th>ODE Init.</th>
+<th>Teacher</th>
+<th>Causal Generator?</th>
+<th style="text-align:right"># Fwd Pass</th>
+<th style="text-align:right">Temporal Quality</th>
+<th style="text-align:right">Frame Quality</th>
+<th style="text-align:right">Text Alignment</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td></td>
+<td>✗</td>
+<td>Bidirectional</td>
+<td>✓</td>
+<td style="text-align:right">4</td>
+<td style="text-align:right">93.4</td>
+<td style="text-align:right">60.6</td>
+<td style="text-align:right">29.4</td>
+</tr>
+<tr>
+<td></td>
+<td>✓</td>
+<td>None</td>
+<td>✓</td>
+<td style="text-align:right">4</td>
+<td style="text-align:right">92.9</td>
+<td style="text-align:right">48.1</td>
+<td style="text-align:right">25.3</td>
+</tr>
+<tr>
+<td></td>
+<td>✓</td>
+<td>Causal</td>
+<td>✓</td>
+<td style="text-align:right">4</td>
+<td style="text-align:right">91.9</td>
+<td style="text-align:right">61.7</td>
+<td style="text-align:right">28.2</td>
+</tr>
+<tr>
+<td></td>
+<td>✓</td>
+<td>Bidirectional</td>
+<td>✓</td>
+<td style="text-align:right">4</td>
+<td style="text-align:right">94.7</td>
+<td style="text-align:right">64.4</td>
+<td style="text-align:right">30.1</td>
+</tr>
+</tbody>
+</table>
+<p><small>表源：<code>From Slow Bidirectional to Fast Autoregressive Video Diffusion Models</code>，Table 4。原论文表格要点：该表对 many-step causalization、ODE initialization 和 teacher 类型做消融；最终 <code>ODE Init. + Bidirectional Teacher + causal generator + 4 fwd pass</code> 的组合最好，说明初始化和非对称 teacher 都不可省。</small></p>
+<div class="callout callout--titled info mb-4 rounded-small shadow-redefine-flat bg-(--callout-bg-color) p-3 pl-1 relative flex flex-row gap-2"><div role="none" class="rounded-full self-stretch w-0.5 bg-(--callout-primary-color) shrink-0 opacity-60"></div><div class="flex flex-col gap-2"><div class="callout__title flex items-center gap-2 font-semibold tracking-tight">这张消融表怎么读</div><div class="callout__content markdown-body flex-1 min-w-0"><p>这张表在回答一个很具体的问题：CausVid 的提升到底来自 causal architecture、ODE init，还是 DMD teacher？上半部分说明，只把 many-step bidirectional model 改成 causal 会掉质量，尤其 temporal quality 和 text alignment 都下降，说明 causal mask 本身不是免费午餐。</p>
+<p>下半部分更关键。没有 ODE init 时，4-step causal student 还能跑，但质量不稳；只有 ODE init、没有 DMD teacher 时，frame quality 掉到 48.1，说明初始化不能替代分布匹配蒸馏；用 causal teacher 又不如 bidirectional teacher，说明强 teacher 的全局视频先验仍然必要。最终最佳组合是 causal student + ODE init + bidirectional teacher DMD。这个表支撑了论文的“asymmetric distillation”主张。</p></div></div></div>
+<p>这张消融把论文主张支撑得很扎实：</p>
+<ol>
+<li>直接把 bidirectional 模型改成 causal many-step，会掉质量；</li>
+<li>只做 ODE init、没有 teacher DMD，frame quality 很差；</li>
+<li>用 causal teacher 蒸馏不如 bidirectional teacher；</li>
+<li>最终方案必须是 <code>ODE Init. + Bidirectional Teacher + causal student + 4 fwd pass</code>。</li>
+</ol>
+<p><img  
+                     lazyload
+                     src="/images/loading.svg"
+                     data-src="https://causvid.github.io/images/preference.jpg"
+                      alt="CausVid preference 原图" 
+                ></p>
+<p><small>图源：<code>CausVid</code> 官方项目页，对应论文的人类偏好实验可视化。CausVid 在偏好研究中相对 PyramidFlow、CogVideoX、MovieGen 取得明显优势，并与 bidirectional teacher 接近。</small></p>
+<p><img  
+                     lazyload
+                     src="/images/loading.svg"
+                     data-src="https://causvid.github.io/images/radar.jpg"
+                      alt="CausVid radar 原图" 
+                ></p>
+<p><small>图源：<code>CausVid</code> 官方项目页。Radar plot 展示 CausVid 在 VBench 多项指标上的表现，项目页报告其 VBench 总分为 84.27。</small></p>
+<div class="callout callout--titled info mb-4 rounded-small shadow-redefine-flat bg-(--callout-bg-color) p-3 pl-1 relative flex flex-row gap-2"><div role="none" class="rounded-full self-stretch w-0.5 bg-(--callout-primary-color) shrink-0 opacity-60"></div><div class="flex flex-col gap-2"><div class="callout__title flex items-center gap-2 font-semibold tracking-tight">图解：preference 和 radar 图要分开读</div><div class="callout__content markdown-body flex-1 min-w-0"><p>Preference 图回答“人在两两比较时更喜欢谁”，更接近真实观感和交互体验；radar 图回答“VBench 多个自动维度上哪里强、哪里弱”，更适合定位能力结构。CausVid 要证明的不是单项指标最高，而是 causal streaming 约束下仍接近 bidirectional teacher：人评接近 teacher 说明质量没有因流式化严重崩掉，radar 图则检查 temporal quality、frame quality、alignment 等维度是否均衡。</p></div></div></div>
+<h3 id="table-5-evaluation-of-streaming-video-to-video-translation"><a class="markdownIt-Anchor" href="#table-5-evaluation-of-streaming-video-to-video-translation"></a> Table 5: Evaluation of streaming video-to-video translation</h3>
+<table>
+<thead>
+<tr>
+<th>Method</th>
+<th style="text-align:right">Temporal Quality</th>
+<th style="text-align:right">Frame Quality</th>
+<th style="text-align:right">Text Alignment</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>StreamV2V</td>
+<td style="text-align:right">92.5</td>
+<td style="text-align:right">59.3</td>
+<td style="text-align:right">26.9</td>
+</tr>
+<tr>
+<td>CausVid (Ours)</td>
+<td style="text-align:right">93.2</td>
+<td style="text-align:right">61.7</td>
+<td style="text-align:right">27.7</td>
+</tr>
+</tbody>
+</table>
+<p><small>表源：<code>From Slow Bidirectional to Fast Autoregressive Video Diffusion Models</code>，Table 5。原论文表格要点：该表比较 streaming video-to-video translation；CausVid 在 temporal quality、frame quality 和 text alignment 上均高于 StreamV2V，说明视频扩散先验比逐帧 image diffusion 更适合流式视频编辑。</small></p>
+<p>streaming V2V 的设置是：对每个输入视频 chunk 注入噪声，再根据文本条件一步去噪。这很像 SDEdit 的流式版本。CausVid 胜过 StreamV2V 的核心原因是它有视频先验，而不是只靠 image diffusion 逐帧编辑。</p>
+<h3 id="table-6-evaluation-of-image-to-video-generation"><a class="markdownIt-Anchor" href="#table-6-evaluation-of-image-to-video-generation"></a> Table 6: Evaluation of image-to-video generation</h3>
+<table>
+<thead>
+<tr>
+<th>Method</th>
+<th style="text-align:right">Temporal Quality</th>
+<th style="text-align:right">Frame Quality</th>
+<th style="text-align:right">Text Alignment</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>CogVideoX-5B</td>
+<td style="text-align:right">87.0</td>
+<td style="text-align:right">64.9</td>
+<td style="text-align:right">28.9</td>
+</tr>
+<tr>
+<td>Pyramid Flow</td>
+<td style="text-align:right">88.4</td>
+<td style="text-align:right">60.3</td>
+<td style="text-align:right">27.6</td>
+</tr>
+<tr>
+<td>CausVid (Ours)</td>
+<td style="text-align:right">92.0</td>
+<td style="text-align:right">65.0</td>
+<td style="text-align:right">28.9</td>
+</tr>
+</tbody>
+</table>
+<p><small>表源：<code>From Slow Bidirectional to Fast Autoregressive Video Diffusion Models</code>，Table 6。原论文表格要点：该表评估 zero-shot image-to-video；CausVid 只训练 text-to-video，但通过把输入图像作为初始 chunk 仍能在 temporal quality 和 frame quality 上取得强结果。</small></p>
+<p>这一项更有意思：CausVid 只训练 text-to-video，却可以 zero-shot image-to-video。做法很简单：把输入图像复制成第一段 frames，作为初始 chunk，后续由模型自回归扩展。这说明因果视频生成器天然适合把“已知起始观测”当成上下文。</p>
+<h2 id="和-diffusion-forcing-的关系"><a class="markdownIt-Anchor" href="#和-diffusion-forcing-的关系"></a> 和 Diffusion Forcing 的关系</h2>
+<p>CausVid 明确和 Diffusion Forcing 属于同一大方向，但解决层级不同。</p>
+<table>
+<thead>
+<tr>
+<th>Dimension</th>
+<th>Diffusion Forcing</th>
+<th>CausVid</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Core idea</td>
+<td>independent noise level per token</td>
+<td>causal video DiT distilled from bidirectional teacher</td>
+</tr>
+<tr>
+<td>Main object</td>
+<td>generic sequence tokens</td>
+<td>latent video chunks</td>
+</tr>
+<tr>
+<td>Training objective</td>
+<td>denoising objective over variable token noise</td>
+<td>ODE init + asymmetric DMD</td>
+</tr>
+<tr>
+<td>Architecture in paper</td>
+<td>small causal RNN / sequence model</td>
+<td>DiT with block-wise causal attention</td>
+</tr>
+<tr>
+<td>Primary outcome</td>
+<td>stable sequence rollout and planning</td>
+<td>high-quality low-latency streaming video</td>
+</tr>
+<tr>
+<td>Speed focus</td>
+<td>not the main contribution</td>
+<td>central contribution, 4-step generator + KV cache</td>
+</tr>
+</tbody>
+</table>
+<p>可以把 Diffusion Forcing 看成“序列扩散的训练范式”，CausVid 看成“视频生成系统里的落地版本之一”。CausVid 也使用了每个 chunk 独立噪声 timestep 的思想，但它的关键突破是非对称蒸馏：用强 bidirectional teacher 训练 causal student，而不是让 causal teacher 自己教自己。</p>
+<h2 id="和-lingbot-world-的关系"><a class="markdownIt-Anchor" href="#和-lingbot-world-的关系"></a> 和 LingBot-World 的关系</h2>
+<p>LingBot-World 想把视频生成模型变成可交互世界模拟器，CausVid 则提供了非常关键的生成器侧技术：</p>
+<table>
+<thead>
+<tr>
+<th>Requirement for interactive world model</th>
+<th>CausVid contribution</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>low initial latency</td>
+<td>first output after about 1.3s</td>
+</tr>
+<tr>
+<td>streaming rollout</td>
+<td>causal chunks with KV cache</td>
+</tr>
+<tr>
+<td>long horizon</td>
+<td>autoregressive sliding-window generation</td>
+</tr>
+<tr>
+<td>few-step generation</td>
+<td>DMD distillation to 4 steps</td>
+</tr>
+<tr>
+<td>dynamic user input</td>
+<td>dynamic prompting and streaming V2V</td>
+</tr>
+</tbody>
+</table>
+<p>但 CausVid 本身还不是完整世界模型。它主要解决“视频生成如何低延迟流式化”，不是解决“动作如何改变世界状态”。要变成 LingBot-World 那样的交互模拟器，还需要动作条件数据、控制接口、闭环评测和长期记忆机制。</p>
+<h2 id="最值得复用的设计经验"><a class="markdownIt-Anchor" href="#最值得复用的设计经验"></a> 最值得复用的设计经验</h2>
+<h3 id="1-不要用弱-causal-teacher-蒸馏-causal-student"><a class="markdownIt-Anchor" href="#1-不要用弱-causal-teacher-蒸馏-causal-student"></a> 1. 不要用弱 causal teacher 蒸馏 causal student</h3>
+<p>直觉上，student 是 causal，teacher 也 causal 好像更一致。但论文实验反而显示，causal teacher 会把自己的误差累积问题传给 student。更好的方案是用强 bidirectional teacher 提供质量，再让 student 承担 causal 约束。</p>
+<h3 id="2-先初始化再-dmd"><a class="markdownIt-Anchor" href="#2-先初始化再-dmd"></a> 2. 先初始化，再 DMD</h3>
+<p>DMD 是分布级目标，直接上可能不稳定。CausVid 用少量 ODE solution pairs 让 student 先学会 teacher 的粗去噪映射，再进入 DMD。这个顺序很适合迁移到其他 few-step / causal distillation 项目。</p>
+<h3 id="3-延迟是模型-vae-cache-的系统问题"><a class="markdownIt-Anchor" href="#3-延迟是模型-vae-cache-的系统问题"></a> 3. 延迟是模型、VAE、cache 的系统问题</h3>
+<p>只说“4 steps”不足以解释 9.4 FPS。CausVid 的速度来自四处：</p>
+<ol>
+<li>少步 DMD；</li>
+<li>latent diffusion；</li>
+<li>chunk-wise causal generation；</li>
+<li>KV cache。</li>
+</ol>
+<p>实际部署时，VAE chunk 大小甚至会成为最低延迟下限。</p>
+<h3 id="4-训练短视频推理长视频需要正视-memory-truncation"><a class="markdownIt-Anchor" href="#4-训练短视频推理长视频需要正视-memory-truncation"></a> 4. 训练短视频，推理长视频，需要正视 memory truncation</h3>
+<p>CausVid 可以生成 30 秒高质量视频，但极长视频仍会退化。论文讨论指出 sliding window 会丢弃 10 秒以外的上下文，远处物体或场景重现时可能不一致。这对世界模型尤其重要：流式生成不等于长期记忆。</p>
+<h2 id="局限与风险"><a class="markdownIt-Anchor" href="#局限与风险"></a> 局限与风险</h2>
+<ol>
+<li><strong>极长视频仍会退化</strong>：论文承认超过 30 秒或更长时仍存在质量下降和 error accumulation。</li>
+<li><strong>chunk 边界可能不连续</strong>：连续视频 segment 之间会有 discontinuities，可能需要 VAE 或 generator 的跨块设计改进。</li>
+<li><strong>VAE 限制最低延迟</strong>：当前 VAE 需要生成 5 个 latent frames 才能输出像素，frame-wise VAE 才可能进一步降延迟。</li>
+<li><strong>DMD 可能降低多样性</strong>：reverse KL / distribution matching 常见问题是样本多样性略降。</li>
+<li><strong>动作条件不足</strong>：CausVid 支持动态 prompt 和 streaming V2V，但不是动作条件世界模型。</li>
+<li><strong>论文主训练数据不可完全复现</strong>：主结果使用内部 400K single-shot videos；开源 repo 当前给出 Wan-based 工作中实现和 toy MixKit distillation 流程。</li>
+</ol>
+<h2 id="读完应该记住什么"><a class="markdownIt-Anchor" href="#读完应该记住什么"></a> 读完应该记住什么</h2>
+<p>CausVid 的关键贡献是证明：<strong>高质量视频扩散不一定只能双向、离线、慢速生成。</strong> 通过 block-wise causal DiT、ODE initialization、bidirectional-teacher asymmetric DMD 和 KV cache，可以把强双向视频扩散模型转成 few-step 流式生成器。</p>
+<p>从工程角度看，这篇论文最值得带走的不是某个单独 trick，而是一条组合路线：</p>
+<div class="code-container" data-rel="Text"><figure class="iseeu highlight text"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br></pre></td><td class="code"><pre><span class="line">strong bidirectional teacher</span><br><span class="line">  -&gt; causal student with same backbone</span><br><span class="line">  -&gt; ODE init to avoid unstable start</span><br><span class="line">  -&gt; asymmetric DMD to recover quality</span><br><span class="line">  -&gt; KV cache to make causality translate into real latency</span><br></pre></td></tr></table></figure></div>
+<p>这条路线很适合接在 Diffusion Forcing、视频世界模型和少步蒸馏之后读。它把“因果视频扩散”从概念推进到了一个可测延迟、可跑 benchmark、能支持 streaming UI 的系统形态。</p>
+<h2 id="参考资料"><a class="markdownIt-Anchor" href="#参考资料"></a> 参考资料</h2>
+<ol>
+<li>Yin et al. <a class="link"   target="_blank" rel="noopener" href="https://arxiv.org/abs/2412.07772" >From Slow Bidirectional to Fast Autoregressive Video Diffusion Models<i class="fa-solid fa-arrow-up-right ml-[0.2em] font-light align-text-top text-[0.7em] link-icon"></i></a>. arXiv:2412.07772.</li>
+<li>官方项目页：<a class="link"   target="_blank" rel="noopener" href="https://causvid.github.io/" >CausVid<i class="fa-solid fa-arrow-up-right ml-[0.2em] font-light align-text-top text-[0.7em] link-icon"></i></a>.</li>
+<li>官方代码：<a class="link"   target="_blank" rel="noopener" href="https://github.com/tianweiy/CausVid" >tianweiy/CausVid<i class="fa-solid fa-arrow-up-right ml-[0.2em] font-light align-text-top text-[0.7em] link-icon"></i></a>.</li>
+<li>论文 HTML 版本：<a class="link"   target="_blank" rel="noopener" href="https://ar5iv.labs.arxiv.org/html/2412.07772v4" >ar5iv:2412.07772v4<i class="fa-solid fa-arrow-up-right ml-[0.2em] font-light align-text-top text-[0.7em] link-icon"></i></a>.</li>
+</ol>
+
+		</div>
+
+		
+		<div class="post-copyright-info w-full my-8 px-2 sm:px-6 md:px-8">
+			<div class="article-copyright-info-container">
+    <ul>
+        <li><strong>Title:</strong> 论文专题讲解：CausVid：流式自回归视频扩散</li>
+        <li><strong>Author:</strong> Charles</li>
+        <li><strong>Created at
+                :</strong> 2025-09-20 09:00:00</li>
+        
+            <li>
+                <strong>Updated at
+                    :</strong> 2025-09-20 09:00:00
+            </li>
+        
+        <li>
+            <strong>Link:</strong> https://charles2530.github.io/2025/09/20/ai-files-paper-deep-dives-diffusion-causvid/
+        </li>
+        <li>
+            <strong>
+                License:
+            </strong>
+            
+
+            
+                This work is licensed under <a class="license" target="_blank" rel="noopener" href="https://creativecommons.org/licenses/by-nc-sa/4.0">CC BY-NC-SA 4.0</a>.
+            
+        </li>
+    </ul>
+</div>
+
+		</div>
+		
+
+		
+		<ul class="post-tags-box text-lg mt-1.5 flex-wrap justify-center flex md:hidden">
+			
+			<li class="tag-item mx-0.5">
+				<a href="/tags/AI/">#AI</a>&nbsp;
+			</li>
+			
+			<li class="tag-item mx-0.5">
+				<a href="/tags/%E6%89%A9%E6%95%A3%E6%A8%A1%E5%9E%8B/">#扩散模型</a>&nbsp;
+			</li>
+			
+			<li class="tag-item mx-0.5">
+				<a href="/tags/%E8%AE%BA%E6%96%87%E4%B8%93%E9%A2%98/">#论文专题</a>&nbsp;
+			</li>
+			
+		</ul>
+		
+
+		
+
+		
+		<div class="article-nav my-8 flex justify-between items-center px-2 sm:px-6 md:px-8">
+			
+			<div class="article-prev border-border-color shadow-redefine-flat shadow-shadow-color-2 rounded-medium px-4 py-2 hover:shadow-redefine-flat-hover hover:shadow-shadow-color-2">
+				<a class="prev" rel="prev" href="/2025/09/22/ai-files-paper-deep-dives-diffusion-diffusion-forcing/">
+					<span class="left arrow-icon flex justify-center items-center">
+						<i class="fa-solid fa-chevron-left"></i>
+					</span>
+					<span class="title flex justify-center items-center">
+						<span class="post-nav-title-item truncate max-w-48">论文专题讲解：Diffusion Forcing：next-token 与全序列扩散</span>
+						<span class="post-nav-item">Prev posts</span>
+					</span>
+				</a>
+			</div>
+			
+			
+			<div class="article-next border-border-color shadow-redefine-flat shadow-shadow-color-2 rounded-medium px-4 py-2 hover:shadow-redefine-flat-hover hover:shadow-shadow-color-2">
+				<a class="next" rel="next" href="/2025/09/18/ai-files-operators-workload-modeling-and-shape-buckets/">
+					<span class="title flex justify-center items-center">
+						<span class="post-nav-title-item truncate max-w-48">算子与编译器：Workload 建模与 Shape Bucketing</span>
+						<span class="post-nav-item">Next posts</span>
+					</span>
+					<span class="right arrow-icon flex justify-center items-center">
+						<i class="fa-solid fa-chevron-right"></i>
+					</span>
+				</a>
+			</div>
+			
+		</div>
+		
+
+
+		
+		<div class="comment-container px-2 sm:px-6 md:px-8 pb-8">
+			<div class="comments-container mt-10 w-full ">
+    <div id="comment-anchor" class="w-full h-2.5"></div>
+    <div class="comment-area-title w-full my-1.5 md:my-2.5 text-xl md:text-3xl font-bold">
+        Comments
+    </div>
+    
+
+        
+            
+    <div id="gitalk-container"></div>
+    <script data-swup-reload-script
+            src="https://cdnjs.cloudflare.com/ajax/libs/gitalk/1.8.0/gitalk.min.js"></script>
+    <script data-swup-reload-script>
+        (function() {
+            const startPath = location.pathname;
+            const startTime = Date.now();
+            const retryDelay = 200;
+            const retryLimit = 5000;
+
+            const runGitalk = () => {
+                if (location.pathname !== startPath) {
+                    return;
+                }
+
+                const container = document.getElementById('gitalk-container');
+                if (!container || typeof Gitalk === 'undefined') {
+                    if (Date.now() - startTime < retryLimit) {
+                        setTimeout(runGitalk, retryDelay);
+                    }
+                    return;
+                }
+
+                container.innerHTML = '';
+
+                let pageKey = decodeURI(location.pathname);
+                const maxLength = 50;
+                if (pageKey.length > maxLength) {
+                    pageKey = pageKey.substring(0, maxLength - 3) + '...';
+                }
+
+                try {
+                    new Gitalk({
+                        clientID: '8083299a8ee2aaf23879',
+                        clientSecret: 'a8161e81d4872181e884fdb69f7be24916b6a9d0',
+                        repo: 'Charles2530.github.io',
+                        owner: 'Charles2530',
+                        admin: ['Charles2530'],
+                        id: pageKey,
+                        language: 'en',
+                        proxy: 'https://github.com/login/oauth/access_token'
+                    }).render(container);
+                } catch (e) {
+                    window.Gitalk = null;
+                }
+            };
+
+            runGitalk();
+        })();
+    </script>
+
+
+
+        
+    
+</div>
+
+		</div>
+		
+	</div>
+
+	
+	<div class="toc-content-container">
+		<div class="post-toc-wrap">
+	<div class="post-toc">
+		<div class="toc-title">On this page</div>
+		<div class="page-title">论文专题讲解：CausVid：流式自回归视频扩散</div>
+		<ol class="nav"><li class="nav-item nav-level-2"><a class="nav-link" href="#%E5%AE%83%E7%9A%84%E6%95%88%E7%8E%87%E8%B4%A1%E7%8C%AE%E6%98%AF%E4%BB%80%E4%B9%88"><span class="nav-text"> 它的效率贡献是什么</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#%E8%AF%81%E6%8D%AE%E7%AD%89%E7%BA%A7%E4%B8%8E%E5%A4%96%E6%8E%A8%E8%BE%B9%E7%95%8C"><span class="nav-text"> 证据等级与外推边界</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#evidence-snapshot"><span class="nav-text"> Evidence Snapshot</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#%E8%AE%BA%E6%96%87%E4%BD%8D%E7%BD%AE"><span class="nav-text"> 论文位置</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#%E6%A0%B8%E5%BF%83%E9%97%AE%E9%A2%98"><span class="nav-text"> 核心问题</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#%E6%96%B9%E6%B3%95%E6%80%BB%E8%A7%88"><span class="nav-text"> 方法总览</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#%E5%9B%A0%E6%9E%9C%E6%9E%B6%E6%9E%84"><span class="nav-text"> 因果架构</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#%E9%9D%9E%E5%AF%B9%E7%A7%B0-dmd-%E8%92%B8%E9%A6%8F"><span class="nav-text"> 非对称 DMD 蒸馏</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#%E5%AD%A6%E7%94%9F%E5%88%9D%E5%A7%8B%E5%8C%96"><span class="nav-text"> 学生初始化</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#%E6%8E%A8%E7%90%86kv-cache-%E5%92%8C%E6%B5%81%E5%BC%8F-chunk"><span class="nav-text"> 推理：KV cache 和流式 chunk</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#%E8%AE%AD%E7%BB%83%E7%BB%86%E8%8A%82"><span class="nav-text"> 训练细节</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#%E5%AE%9E%E9%AA%8C%E7%BB%93%E6%9E%9C"><span class="nav-text"> 实验结果</span></a><ol class="nav-child"><li class="nav-item nav-level-3"><a class="nav-link" href="#table-1-evaluation-of-text-to-short-video-generation"><span class="nav-text"> Table 1: Evaluation of text-to-short-video generation</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#table-2-evaluation-of-text-to-long-video-generation"><span class="nav-text"> Table 2: Evaluation of text-to-long-video generation</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#table-3-latency-and-throughput"><span class="nav-text"> Table 3: Latency and throughput</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#table-4-ablation-studies"><span class="nav-text"> Table 4: Ablation studies</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#table-5-evaluation-of-streaming-video-to-video-translation"><span class="nav-text"> Table 5: Evaluation of streaming video-to-video translation</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#table-6-evaluation-of-image-to-video-generation"><span class="nav-text"> Table 6: Evaluation of image-to-video generation</span></a></li></ol></li><li class="nav-item nav-level-2"><a class="nav-link" href="#%E5%92%8C-diffusion-forcing-%E7%9A%84%E5%85%B3%E7%B3%BB"><span class="nav-text"> 和 Diffusion Forcing 的关系</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#%E5%92%8C-lingbot-world-%E7%9A%84%E5%85%B3%E7%B3%BB"><span class="nav-text"> 和 LingBot-World 的关系</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#%E6%9C%80%E5%80%BC%E5%BE%97%E5%A4%8D%E7%94%A8%E7%9A%84%E8%AE%BE%E8%AE%A1%E7%BB%8F%E9%AA%8C"><span class="nav-text"> 最值得复用的设计经验</span></a><ol class="nav-child"><li class="nav-item nav-level-3"><a class="nav-link" href="#1-%E4%B8%8D%E8%A6%81%E7%94%A8%E5%BC%B1-causal-teacher-%E8%92%B8%E9%A6%8F-causal-student"><span class="nav-text"> 1. 不要用弱 causal teacher 蒸馏 causal student</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#2-%E5%85%88%E5%88%9D%E5%A7%8B%E5%8C%96%E5%86%8D-dmd"><span class="nav-text"> 2. 先初始化，再 DMD</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#3-%E5%BB%B6%E8%BF%9F%E6%98%AF%E6%A8%A1%E5%9E%8B-vae-cache-%E7%9A%84%E7%B3%BB%E7%BB%9F%E9%97%AE%E9%A2%98"><span class="nav-text"> 3. 延迟是模型、VAE、cache 的系统问题</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#4-%E8%AE%AD%E7%BB%83%E7%9F%AD%E8%A7%86%E9%A2%91%E6%8E%A8%E7%90%86%E9%95%BF%E8%A7%86%E9%A2%91%E9%9C%80%E8%A6%81%E6%AD%A3%E8%A7%86-memory-truncation"><span class="nav-text"> 4. 训练短视频，推理长视频，需要正视 memory truncation</span></a></li></ol></li><li class="nav-item nav-level-2"><a class="nav-link" href="#%E5%B1%80%E9%99%90%E4%B8%8E%E9%A3%8E%E9%99%A9"><span class="nav-text"> 局限与风险</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#%E8%AF%BB%E5%AE%8C%E5%BA%94%E8%AF%A5%E8%AE%B0%E4%BD%8F%E4%BB%80%E4%B9%88"><span class="nav-text"> 读完应该记住什么</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#%E5%8F%82%E8%80%83%E8%B5%84%E6%96%99"><span class="nav-text"> 参考资料</span></a></li></ol>
+
+	</div>
+</div>
+	</div>
+	
+</div>
+
+			</div>
+
+			
+		</div>
+
+		<div class="main-content-footer">
+			<footer class="footer mt-5 py-5 h-auto text-base text-third-text-color relative border-t-2 border-t-border-color">
+    <div class="info-container py-3 text-center">
+        
+        <div class="text-center">
+            &copy;
+            
+              <span>2022</span>
+              -
+            
+            2026&nbsp;&nbsp;<i class="fa-solid fa-heart fa-beat" style="--fa-animation-duration: 0.5s; color: #f54545"></i>&nbsp;&nbsp;<a href="/">Charles</a>
+            
+                
+                <p class="post-count space-x-0.5">
+                    <span>
+                        519 posts in total
+                    </span>
+                    
+                        <span>
+                            2066.9k words in total
+                        </span>
+                    
+                </p>
+            
+        </div>
+        
+            <script data-swup-reload-script src="https://cn.vercount.one/js"></script>
+            <div class="relative text-center lg:absolute lg:right-[20px] lg:top-1/2 lg:-translate-y-1/2 lg:text-right">
+                
+                    <span id="busuanzi_container_site_uv" class="lg:!block">
+                        <span class="text-sm">VISITOR COUNT</span>
+                        <span id="busuanzi_value_site_uv"></span>
+                    </span>
+                
+                
+                    <span id="busuanzi_container_site_pv" class="lg:!block">
+                        <span class="text-sm">TOTAL PAGE VIEWS</span>
+                        <span id="busuanzi_value_site_pv"></span>
+                    </span>
+                
+            </div>
+        
+        <div class="relative text-center lg:absolute lg:left-[20px] lg:top-1/2 lg:-translate-y-1/2 lg:text-left">
+            <span class="lg:block text-sm">POWERED BY <?xml version="1.0" encoding="utf-8"?><!DOCTYPE svg PUBLIC "-//W3C//DTD SVG 1.1//EN" "http://www.w3.org/Graphics/SVG/1.1/DTD/svg11.dtd"><svg class="relative top-[2px] inline-block align-baseline" version="1.1" id="圖層_1" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" x="0px" y="0px" width="1rem" height="1rem" viewBox="0 0 512 512" enable-background="new 0 0 512 512" xml:space="preserve"><path fill="#0E83CD" d="M256.4,25.8l-200,115.5L56,371.5l199.6,114.7l200-115.5l0.4-230.2L256.4,25.8z M349,354.6l-18.4,10.7l-18.6-11V275H200v79.6l-18.4,10.7l-18.6-11v-197l18.5-10.6l18.5,10.8V237h112v-79.6l18.5-10.6l18.5,10.8V354.6z"/></svg><a target="_blank" class="text-base" href="https://hexo.io">Hexo</a></span>
+            <span class="text-sm lg:block">THEME&nbsp;<a class="text-base" target="_blank" href="https://github.com/EvanNotFound/hexo-theme-redefine">Redefine v2.9.0</a></span>
+        </div>
+        
+        
+            <div>
+                Blog up for <span class="odometer" id="runtime_days" ></span> days <span class="odometer" id="runtime_hours"></span> hrs <span class="odometer" id="runtime_minutes"></span> Min <span class="odometer" id="runtime_seconds"></span> Sec
+            </div>
+        
+        
+            <script data-swup-reload-script>
+                try {
+                    function odometer_init() {
+                    const elements = document.querySelectorAll('.odometer');
+                    elements.forEach(el => {
+                        new Odometer({
+                            el,
+                            format: '( ddd).dd',
+                            duration: 200
+                        });
+                    });
+                    }
+                    odometer_init();
+                } catch (error) {}
+            </script>
+        
+        
+            
+                
+        
+                
+        
+                
+
+                    
+                        <script data-swup-reload-script type="text/javascript" src="/js/love.js"></script>
+                    
+        
+        
+    </div>  
+</footer>
+		</div>
+	</div>
+
+	
+	<div class="post-tools">
+		<div class="post-tools-container">
+	<ul class="article-tools-list">
+		<!-- TOC aside toggle -->
+		
+		<li class="right-bottom-tools page-aside-toggle">
+			<i class="fa-regular fa-outdent"></i>
+		</li>
+		
+
+		<!-- go comment -->
+		
+		<li class="go-comment">
+			<i class="fa-regular fa-comments"></i>
+		</li>
+		
+	</ul>
+</div>
+	</div>
+	
+
+	<div class="right-side-tools-container">
+		<div class="side-tools-container">
+	<ul class="hidden-tools-list">
+		<li class="right-bottom-tools tool-font-adjust-plus flex justify-center items-center">
+			<i class="fa-regular fa-magnifying-glass-plus"></i>
+		</li>
+
+		<li class="right-bottom-tools tool-font-adjust-minus flex justify-center items-center">
+			<i class="fa-regular fa-magnifying-glass-minus"></i>
+		</li>
+
+		<li class="right-bottom-tools tool-dark-light-toggle flex justify-center items-center">
+			<i class="fa-regular fa-moon"></i>
+		</li>
+
+		<!-- rss -->
+		
+		<li class="right-bottom-tools rss flex justify-center items-center">
+			<a class="flex justify-center items-center" href="/atom.xml" target="_blank">
+				<i class="fa-regular fa-rss"></i>
+			</a>
+		</li>
+		
+
+		
+
+		<li class="right-bottom-tools tool-scroll-to-bottom flex justify-center items-center">
+			<i class="fa-regular fa-arrow-down"></i>
+		</li>
+	</ul>
+
+	<ul class="visible-tools-list">
+		<li class="right-bottom-tools toggle-tools-list flex justify-center items-center">
+			<i class="fa-regular fa-cog fa-spin"></i>
+		</li>
+		
+		<li class="right-bottom-tools tool-scroll-to-top flex justify-center items-center">
+			<i class="arrow-up fas fa-arrow-up"></i>
+			<span class="percent"></span>
+		</li>
+		
+		
+	</ul>
+</div>
+	</div>
+
+	<div class="image-viewer-container" role="dialog" aria-modal="true" aria-label="Image viewer">
+	<button class="image-viewer-close" type="button" aria-label="Close">
+		<i class="fa-solid fa-xmark"></i>
+	</button>
+	<button class="image-viewer-prev" type="button" aria-label="Prev">
+		<i class="fa-solid fa-chevron-left"></i>
+	</button>
+	<div class="image-viewer-frame">
+		<img src="" alt="">
+	</div>
+	<div class="image-viewer-exif-panel hidden absolute left-1/2 bottom-20 -translate-x-1/2 w-[min(92vw,420px)] max-h-[60vh] overflow-hidden rounded-2xl bg-background-color-transparent-80 p-4 text-left shadow-redefine-flat backdrop-blur-md" role="dialog" aria-label="EXIF" aria-hidden="true">
+		<div class="flex items-center justify-between mb-3">
+			<span class="text-sm font-semibold text-first-text-color">EXIF</span>
+			<button class="image-viewer-exif-close flex h-8 w-8 items-center justify-center rounded-full bg-background-color-transparent-80 text-first-text-color transition hover:bg-background-color-transparent-40" type="button" aria-label="Close">
+				<i class="fa-solid fa-xmark text-[0.65rem]"></i>
+			</button>
+		</div>
+		<div class="image-viewer-exif-cards grid grid-cols-1 sm:grid-cols-2 gap-3 max-h-[50vh] overflow-y-auto pr-1 scrollbar-hide"></div>
+		<template class="image-viewer-exif-card-template">
+			<div class="rounded-lg bg-background-color-transparent-40 px-3 py-2">
+				<div class="image-viewer-exif-card-header flex items-center gap-2 mb-1">
+					<i class="image-viewer-exif-card-icon fa-solid fa-circle-info text-xs text-third-text-color"></i>
+					<div class="image-viewer-exif-card-title text-xs font-semibold text-first-text-color"></div>
+				</div>
+				<div class="image-viewer-exif-card-items flex flex-col gap-1"></div>
+			</div>
+		</template>
+	</div>
+	<button class="image-viewer-exif-toggle flex items-center gap-2 hidden absolute left-1/2 bottom-6 -translate-x-1/2 rounded-full border border-border-color bg-background-color-transparent-80 px-4 py-2 text-first-text-color backdrop-blur-md transition hover:bg-background-color-transparent-40" type="button" aria-label="EXIF" aria-expanded="false">
+		<i class="fa-solid fa-circle-info text-xs"></i>
+		<span class="text-xs font-semibold uppercase tracking-wider">EXIF</span>
+	</button>
+	<button class="image-viewer-next" type="button" aria-label="Next">
+		<i class="fa-solid fa-chevron-right"></i>
+	</button>
+</div>
+
+
+	
+	<div class="search-pop-overlay">
+	<div class="popup search-popup">
+		<div class="search-header">
+			<span class="search-input-field-pre">
+				<i class="fa-solid fa-keyboard"></i>
+			</span>
+			<div class="search-input-container">
+				<input autocomplete="off" autocorrect="off" autocapitalize="off" placeholder="Search..." spellcheck="false" type="search" class="search-input">
+			</div>
+			<span class="popup-btn-close">
+				<i class="fa-solid fa-times"></i>
+			</span>
+		</div>
+		<div id="search-result">
+			<div id="no-result">
+				<i class="fa-solid fa-spinner fa-spin-pulse fa-5x fa-fw"></i>
+			</div>
+		</div>
+	</div>
+</div>
+	
+
+</main>
+
+
+
+<script src="/js/build/libs/Swup.min.js"></script>
+
+<script src="/js/build/libs/SwupSlideTheme.min.js"></script>
+
+<script src="/js/build/libs/SwupScriptsPlugin.min.js"></script>
+
+<script src="/js/build/libs/SwupProgressPlugin.min.js"></script>
+
+<script src="/js/build/libs/SwupScrollPlugin.min.js"></script>
+
+<script src="/js/build/libs/SwupPreloadPlugin.min.js"></script>
+
+<script>
+    window.swup = new Swup({
+        plugins: [
+            new SwupScriptsPlugin({
+                optin: true,
+            }),
+            new SwupProgressPlugin(),
+            new SwupScrollPlugin({
+                offset: 80,
+            }),
+            new SwupSlideTheme({
+                mainElement: ".main-content-body",
+            }),
+            new SwupPreloadPlugin(),
+        ],
+        containers: ["#swup"],
+    });
+
+    window.dispatchEvent(
+        new CustomEvent("redefine:swup:ready", {
+            detail: {
+                swup: window.swup,
+            },
+        }),
+    );
+</script>
+
+
+
+
+	
+<script src="/js/build/main.js" type="module"></script>
+
+
+
+    
+<script src="/js/build/libs/odometer.min.js"></script>
+
+    
+<link rel="stylesheet" href="/assets/odometer-theme-minimal.css">
+
+
+
+
+
+
+
+  
+<script src="/js/build/libs/Typed.min.js"></script>
+<script src="/js/build/libs/minimasonry.min.js" data-swup-reload-script=""></script>
+
+
+
+
+<script src="/js/build/libs/moment-with-locales.min.js" data-swup-reload-script=""></script>
+
+
+
+	
+</body>
+
+</html>
