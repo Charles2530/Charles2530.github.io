@@ -1,0 +1,1763 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="keywords" content="Charles">
+    
+    
+    <meta name="author" content="Charles">
+    
+    <!-- Completely eliminate flash of wrong theme -->
+    <script>
+        (function() {
+            const THEME_KEY = "REDEFINE-THEME-STATUS";
+            const DARK = "dark", LIGHT = "light";
+            
+            // Get preferred theme
+            function getTheme() {
+                try {
+                    const saved = localStorage.getItem(THEME_KEY);
+                    if (saved) {
+                        const { isDark } = JSON.parse(saved);
+                        return isDark ? DARK : LIGHT;
+                    }
+                } catch (e) {}
+                
+                return matchMedia("(prefers-color-scheme: dark)").matches ? DARK : LIGHT;
+            }
+            
+            // Apply theme to document
+            function applyTheme(theme) {
+                const isDark = theme === DARK;
+                const root = document.documentElement;
+                
+                // Set classes for compatibility
+                root.classList.add(theme);
+                root.classList.remove(isDark ? LIGHT : DARK);
+                root.style.colorScheme = theme;
+            }
+            
+            // Initial application
+            const theme = getTheme();
+            applyTheme(theme);
+            
+            // Listen for system preference changes
+            matchMedia("(prefers-color-scheme: dark)").addEventListener("change", ({ matches }) => {
+                // Only update if using system preference (no localStorage entry)
+                if (!localStorage.getItem(THEME_KEY)) {
+                    applyTheme(matches ? DARK : LIGHT);
+                }
+            });
+            
+            // Set body classes ASAP (before DOMContentLoaded)
+            (function() {
+                const addBodyClass = () => {
+                    const b = document.body;
+                    if (!b) return false;
+                    b.classList.add(theme + "-mode");
+                    return true;
+                };
+
+                // Try immediately
+                if (addBodyClass()) return;
+
+                // Observe until body exists
+                const mo = new MutationObserver(() => {
+                    if (addBodyClass()) mo.disconnect();
+                });
+                mo.observe(document.documentElement, { childList: true, subtree: true });
+            })();
+        })();
+    </script>
+    
+    <!-- preconnect -->
+<!--- Seo Part-->
+    
+    <link rel="canonical" href="https://charles2530.github.io/2026/02/13/ai-files-training-low-bit-training-and-numerics/"/>
+    <meta name="robots" content="index,follow">
+    <meta name="googlebot" content="index,follow">
+    <meta name="revisit-after" content="1 days">
+    
+    
+        
+        <meta name="description" content="This is Charles&#39;s Castle.">
+<meta property="og:type" content="article">
+<meta property="og:title" content="训练：低比特训练与数值格式">
+<meta property="og:url" content="https://charles2530.github.io/2026/02/13/ai-files-training-low-bit-training-and-numerics/index.html">
+<meta property="og:site_name" content="Charles&#39;s Castle">
+<meta property="og:description" content="This is Charles&#39;s Castle.">
+<meta property="og:locale" content="en_US">
+<meta property="og:image" content="https://charles2530.github.io/image/background/logo.jpg">
+<meta property="article:published_time" content="2026-02-13T01:00:00.000Z">
+<meta property="article:modified_time" content="2026-02-13T01:00:00.000Z">
+<meta property="article:author" content="Du Jinyang">
+<meta property="article:tag" content="AI">
+<meta property="article:tag" content="训练">
+<meta property="article:tag" content="量化">
+<meta name="twitter:card" content="summary">
+<meta name="twitter:image" content="https://charles2530.github.io/image/background/logo.jpg">
+    
+    
+    <!--- Icon Part-->
+    <link rel="icon" type="image/png" href="https://charles2530.github.io/image/background/favicon.png" sizes="192x192">
+    <link rel="apple-touch-icon" sizes="180x180" href="https://charles2530.github.io/image/background/favicon.png">
+    <meta name="theme-color" content="#A31F34">
+    <link rel="shortcut icon" href="https://charles2530.github.io/image/background/favicon.png">
+    <!--- Page Info-->
+    
+    <title>
+        
+            训练：低比特训练与数值格式 | Charles&#39;s Castle
+        
+    </title>
+
+    
+<link rel="stylesheet" href="/fonts/Chillax/chillax.css">
+
+
+    <!--- Inject Part-->
+    
+        
+            
+    
+            
+    
+            
+                
+                    <link rel="stylesheet" href="/katex/katex.min.css">
+                
+    
+            
+                
+                    <link rel="stylesheet" href="/css/site-polish-v2.css">
+                
+    
+            
+                
+                    <script data-swup-reload-script>
+(function() {
+  function loadBaiduAnalytics() {
+    if (window.__baiduAnalyticsLoaded) return;
+    window.__baiduAnalyticsLoaded = true;
+    window._hmt = window._hmt || [];
+    var hm = document.createElement("script");
+    hm.async = true;
+    hm.src = "https://hm.baidu.com/hm.js?8e0e5f382d14d87cbeadc33a36e71e86";
+    document.head.appendChild(hm);
+  }
+  if ("requestIdleCallback" in window) {
+    requestIdleCallback(loadBaiduAnalytics, { timeout: 3000 });
+  } else {
+    window.addEventListener("load", function() {
+      setTimeout(loadBaiduAnalytics, 1500);
+    });
+  }
+})();
+</script>
+
+                
+    
+
+    
+<link rel="stylesheet" href="/css/style.css">
+
+
+    
+        
+<link rel="stylesheet" href="/css/build/tailwind.css">
+
+    
+
+    
+<link rel="stylesheet" href="/fonts/GeistMono/geist-mono.css">
+
+    
+<link rel="stylesheet" href="/fonts/Geist/geist.css">
+
+    <!--- Font Part-->
+    
+    
+    
+    
+    
+    
+        
+<script src="/js/build/libs/anime.min.js"></script>
+
+    
+
+    <script id="hexo-configurations">
+    window.config = {"hostname":"charles2530.github.io","root":"/","language":"en","path":"search.xml"};
+    window.theme = {"articles":{"style":{"font_size":"16px","line_height":1.5,"image_border_radius":"14px","image_alignment":"center","image_caption":false,"link_icon":true,"delete_mask":false,"title_alignment":"left","headings_top_spacing":{"h1":"5rem","h2":"4rem","h3":"2.8rem","h4":"2.5rem","h5":"2.2rem","h6":"2rem"}},"word_count":{"enable":true,"count":true,"min2read":true},"author_label":{"enable":true,"auto":true,"list":["lol","Neo","God"]},"code_block":{"copy":true,"style":"mac","highlight_theme":{"light":"github","dark":"vs2015"},"font":{"enable":false,"family":null,"url":null}},"toc":{"enable":true,"max_depth":6,"number":false,"expand":true,"init_open":true},"copyright":{"enable":true,"default":"cc_by_nc_sa"},"lazyload":true,"pangu_js":false,"recommendation":{"enable":false,"title":"recommend_articles","limit":3,"mobile_limit":2,"placeholder":"https://charles2530.github.io/image/background/p3.jfif","skip_dirs":[]}},"colors":{"primary":"#A31F34","secondary":"#1890ff","default_mode":"light"},"global":{"fonts":{"chinese":{"enable":false,"family":null,"url":null},"english":{"enable":false,"family":null,"url":null},"title":{"enable":false,"family":null,"url":null}},"content_max_width":"1000px","sidebar_width":"210px","hover":{"shadow":true,"scale":true},"scroll_progress":{"bar":true,"percentage":true},"website_counter":{"url":"https://cn.vercount.one/js","enable":true,"site_pv":true,"site_uv":true,"post_pv":true},"single_page":true,"preloader":{"enable":true,"custom_message":null},"side_tools":{"gear_rotation":true,"auto_expand":false},"open_graph":{"enable":true,"image":"https://charles2530.github.io/image/background/logo.jpg","description":"This is Charles's Castle."},"google_analytics":{"enable":false,"id":null}},"home_banner":{"enable":true,"style":"fixed","image":{"light":"https://charles2530.github.io/image/background/background-light1.jpg","dark":"https://charles2530.github.io/image/background/background-dark1.jpg"},"title":"Charles's Castle","subtitle":{"text":["Happiness is best!","Never give up!","Everyday is a gift!"],"hitokoto":{"enable":false,"show_author":false,"api":"https://v1.hitokoto.cn"},"typing_speed":100,"backing_speed":80,"starting_delay":500,"backing_delay":1500,"loop":true,"smart_backspace":true},"text_color":{"light":"#000000","dark":"#d1d1b6"},"text_style":{"title_size":"3.2rem","subtitle_size":"1.5rem","line_height":1.2},"custom_font":{"enable":false,"family":null,"url":null},"social_links":{"enable":true,"style":"center","links":[{"icon":"fa-brands fa-github","url":"https://github.com/Charles2530/"},{"icon":"fa-brands fa-zhihu","url":"https://www.zhihu.com/people/yang-guang-xiao-zi-55-55"},{"icon":"fa-solid fa-at","url":"mailto:charles2530@163.com"},{"icon":"fa-brands fa-telegram","url":null},{"icon":"/images/custom-icon.svg","url":null}],"qrs":[{"icon":"fa-brands fa-weixin","qr":"https://charles2530.github.io/image/background/Wechat_icon.png"},{"icon":"/images/custom-icon.svg","qr":null}]}},"plugins":{"feed":{"enable":true},"aplayer":{"enable":false,"type":"fixed","audios":[{"name":null,"artist":null,"url":null,"cover":null,"lrc":null}]},"mermaid":{"enable":false,"version":"11.4.1","theme":{"light":"default","dark":"dark"}}},"version":"2.9.0","navbar":{"auto_hide":true,"color":{"left":"#f78736","right":"#367df7","transparency":35},"width":{"home":"1200px","pages":"1000px"},"links":{"Home":{"path":"/","icon":"fa-regular fa-house"},"Categories":{"path":"/categories","icon":"fas fa-bookmark"},"Tags":{"path":"/tags","icon":"fas fa-tags"},"About":{"icon":"fa-regular fa-user","submenus":{"Me":"https://jinyang-du.github.io/","Github":"https://github.com/Charles2530/","Blog":"https://charles2530.github.io","Statistics":"https://tongji.baidu.com/"}}},"search":{"enable":true,"preload":false}},"page_templates":{"friends_column":2,"tags_style":"blur","masonry":{"batch_size":12,"initial_batch_size":24}},"home":{"sidebar":{"enable":true,"position":"left","first_item":"menu","announcement":"This is Charles's Castle","show_on_mobile":true,"links":{"Archives":{"path":"/archives","icon":"fa-regular fa-archive"},"Photos":{"icon":"fa-solid fa-image","path":"/masonry/"},"Essays":{"icon":"fa-solid fa-message-lines","path":"/essay/"},"Friends":{"icon":"fa-solid fa-user-group","path":"/friends/"}}},"article_date_format":"auto","excerpt_length":200,"categories":{"enable":true,"limit":3},"tags":{"enable":true,"limit":3}},"footer":{"runtime":true,"icon":"<i class=\"fa-solid fa-heart fa-beat\" style=\"--fa-animation-duration: 0.5s; color: #f54545\"></i>","start":"2022/12/27 00:00:00","statistics":true,"customize":null,"icp":{"enable":false,"number":null,"url":null}},"footerStart":"2022/12/27 00:00:00","mermaid":{"style":{"light":"default","dark":"dark"}}};
+    window.lang_ago = {"second":"%s seconds ago","minute":"%s minutes ago","hour":"%s hours ago","day":"%s days ago","week":"%s weeks ago","month":"%s months ago","year":"%s years ago"};
+    window.i18n = {"search":"Search...","toc":"On this page","prev":"Prev","next":"Next","prev_posts":"Prev posts","next_posts":"Next posts","page":"Page %d","recent_posts":"Recent Posts","share":"Share","powered_by":"POWERED BY %s","theme":"THEME","rss_feed":"RSS Feed","category":"Category","categories":"Categories","tag":"Tag","tags":"Tags","post":"Post","posts":"Posts","tagcloud":"Tag Cloud","comment":"Comment","comments":"Comments","home":"Home","archive":"Archive","archives":"Archives","top":"TOP","sticky":"Sticky","go-back-home":"Go Back Home","masonry_loading":"Loading photos...","image_viewer":"Image viewer","close":"Close","exif":{"title":"EXIF","cards":{"camera":"Camera","lens":"Lens","exposure":"Exposure","other":"Other"},"fields":{"make":"Brand","model":"Model","date_taken":"Date taken","lens_model":"Lens","focal_length":"Focal length","focus_mode":"Focus mode","shutter":"Shutter","aperture":"Aperture","iso":"ISO","exposure_program":"Exposure program","exposure_compensation":"Exposure compensation","metering_mode":"Metering mode","flash":"Flash","white_balance":"White balance","latitude":"Latitude","longitude":"Longitude","altitude":"Altitude"},"status":{"loading":"Loading...","no_exif":"No EXIF available","library_missing":"EXIF library not loaded","image_source_missing":"Image source unavailable","unavailable":"EXIF unavailable (blocked by CORS or missing metadata)","flag_unavailable":"EXIF unavailable"}},"about":"About","changelog":"Changelog","links":"Links","link":"Link","friends":"Friends","friend":"Friend","timeline":"Timeline","shuoshuo":"Shuoshuo","bookmarks":"Bookmarks","site_uv":"VISITOR COUNT","site_pv":"TOTAL PAGE VIEWS","read_more":"Read more","wordcount":"Words","min2read":"Mins","status":"Status","runtime":"Blog up for","days":"days","hours":"hrs","minutes":"Min","seconds":"Sec","optimized_by":"and Optimized by Evan","rights":"All Rights Reserved","site_posts":"%s posts in total","site_wordcount":"%s words in total","copyright":{"author":"Author","title":"Title","link":"Link","create_time":"Created at","update_time":"Updated at","license_title":"License","license_content":"This work is licensed under %s.","all_rights_reserved":"All Rights Reserved &#169; %s","public_domain":"This work is in the public domain."},"ago":{"second":"%s seconds ago","minute":"%s minutes ago","hour":"%s hours ago","day":"%s days ago","week":"%s weeks ago","month":"%s months ago","year":"%s years ago"},"create_time":"Created","update_time":"Updated","expired":"This post is written %s days ago, and the content may not be up to date."};
+    window.data = {"masonry":true};
+  </script>
+    
+    <!--- Fontawesome Part-->
+    
+<link rel="stylesheet" href="/fontawesome/fontawesome.min.css">
+
+    
+<link rel="stylesheet" href="/fontawesome/brands.min.css">
+
+    
+<link rel="stylesheet" href="/fontawesome/solid.min.css">
+
+    
+<link rel="stylesheet" href="/fontawesome/regular.min.css">
+
+    
+    
+    
+    
+<meta name="generator" content="Hexo 6.3.0"><link rel="alternate" href="/atom.xml" title="Charles's Castle" type="application/atom+xml">
+<link rel="stylesheet" href="/css/prism-tomorrow.css" type="text/css"></head>
+
+
+<body>
+	<div class="progress-bar-container">
+	
+	<span class="scroll-progress-bar"></span>
+	
+
+	
+	<span class="pjax-progress-bar"></span>
+	<!--        <span class="swup-progress-icon">-->
+	<!--            <i class="fa-solid fa-circle-notch fa-spin"></i>-->
+	<!--        </span>-->
+	
+</div>
+
+<style>
+    :root {
+        --preloader-background-color: #fff;
+        --preloader-text-color: #000;
+    }
+
+    @media (prefers-color-scheme: dark) {
+        :root {
+            --preloader-background-color: #202124;
+            --preloader-text-color: #fff;
+        }
+    }
+
+    @media (prefers-color-scheme: light) {
+        :root {
+            --preloader-background-color: #fff;
+            --preloader-text-color: #000;
+        }
+    }
+
+    @media (max-width: 600px) {
+        .ml13 {
+            font-size: 2.6rem !important; /* Adjust this value as needed */
+        }
+    }
+
+    .preloader {
+        display: flex;
+        flex-direction: column;
+        gap: 1rem; /* Tailwind 'gap-4' is 1rem */
+        align-items: center;
+        justify-content: center;
+        position: fixed;
+        padding: 12px;
+        top: 0;
+        right: 0;
+        bottom: 0;
+        left: 0;
+        width: 100vw;
+        height: 100vh; /* 'h-screen' is 100% of the viewport height */
+        background-color: var(--preloader-background-color);
+        z-index: 1100; /* 'z-[1100]' sets the z-index */
+        transition: opacity 0.2s ease-in-out;
+    }
+
+    .ml13 {
+        font-size: 3.2rem;
+        /* text-transform: uppercase; */
+        color: var(--preloader-text-color);
+        letter-spacing: -1px;
+        font-weight: 500;
+        font-family: 'Chillax-Variable', sans-serif;
+        text-align: center;
+    }
+
+    .ml13 .word {
+        display: inline-flex;
+        flex-wrap: wrap;
+        white-space: nowrap;
+    }
+
+    .ml13 .letter {
+        display: inline-block;
+        line-height: 1em;
+    }
+</style>
+
+<div class="preloader">
+    <h2 class="ml13">
+        Charles&#39;s Castle
+    </h2>
+    <script>
+        var textWrapper = document.querySelector('.ml13');
+        // Split text into words
+        var words = textWrapper.textContent.trim().split(' ');
+
+        // Clear the existing content
+        textWrapper.innerHTML = '';
+
+        // Wrap each word and its letters in spans
+        words.forEach(function(word) {
+            var wordSpan = document.createElement('span');
+            wordSpan.classList.add('word');
+            wordSpan.innerHTML = word.replace(/\S/g, "<span class='letter'>$&</span>");
+            textWrapper.appendChild(wordSpan);
+            textWrapper.appendChild(document.createTextNode(' ')); // Add space between words
+        });
+
+        var animation = anime.timeline({ loop: true })
+            .add({
+                targets: '.ml13 .letter',
+                translateY: [20, 0],
+                translateZ: 0,
+                opacity: [0, 1],
+                filter: ['blur(5px)', 'blur(0px)'],
+                easing: "easeOutExpo",
+                duration: 1200,
+                delay: (el, i) => 300 + 20 * i,
+            })
+            .add({
+                targets: '.ml13 .letter',
+                translateY: [0, -20],
+                opacity: [1, 0],
+                filter: ['blur(0px)', 'blur(5px)'],
+                easing: "easeInExpo",
+                duration: 1000,
+                delay: (el, i) => 15 * i,
+                complete: function() {
+                    hidePreloader();
+                }
+            }, '-=700');
+
+
+        let themeStatus = JSON.parse(localStorage.getItem('REDEFINE-THEME-STATUS'))?.isDark;
+
+        // If the theme status is not found in local storage, check the preferred color scheme
+        if (themeStatus === undefined || themeStatus === null) {
+            if (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) {
+                themeStatus = 'dark';
+            } else {
+                themeStatus = 'light';
+            }
+        }
+
+        // Now you can use the themeStatus variable in your code
+        if (themeStatus) {
+            document.documentElement.style.setProperty('--preloader-background-color', '#202124');
+            document.documentElement.style.setProperty('--preloader-text-color', '#fff');
+        } else {
+            document.documentElement.style.setProperty('--preloader-background-color', '#fff');
+            document.documentElement.style.setProperty('--preloader-text-color', '#000');
+        }
+
+        window.addEventListener('load', function () {
+            setTimeout(hidePreloader, 5000); // Call hidePreloader after 5000 milliseconds if not already called by animation
+        });
+
+        function hidePreloader() {
+            var preloader = document.querySelector('.preloader');
+            preloader.style.opacity = '0';
+            setTimeout(function () {
+                preloader.style.display = 'none';
+            }, 200);
+        }
+    </script>
+</div>
+
+<main class="page-container" id="swup">
+
+	
+
+	<div class="main-content-container flex flex-col justify-between min-h-dvh">
+		<div class="main-content-header">
+			<header class="navbar-container px-6 md:px-12">
+    <div class="navbar-content transition-navbar ">
+        <div class="left">
+            
+                <a class="logo-image h-8 w-8 sm:w-10 sm:h-10 mr-3" href="/">
+                    <img src="https://charles2530.github.io/image/background/logo.jpg" class="w-full h-full rounded-xs">
+                </a>
+            
+            <a class="logo-title" href="/">
+                
+                Charles&#39;s Castle
+                
+            </a>
+        </div>
+
+        <div class="right">
+            <!-- PC -->
+            <div class="desktop">
+                <ul class="navbar-list">
+                    
+                        
+                            
+
+                            <li class="navbar-item">
+                                <!-- Menu -->
+                                <a class=""
+                                   href="/"
+                                        >
+                                    <i class="fa-regular fa-house fa-fw"></i>
+                                    HOME
+                                    
+                                </a>
+
+                                <!-- Submenu -->
+                                
+                            </li>
+                    
+                        
+                            
+
+                            <li class="navbar-item">
+                                <!-- Menu -->
+                                <a class=""
+                                   href="/categories"
+                                        >
+                                    <i class="fas fa-bookmark fa-fw"></i>
+                                    CATEGORIES
+                                    
+                                </a>
+
+                                <!-- Submenu -->
+                                
+                            </li>
+                    
+                        
+                            
+
+                            <li class="navbar-item">
+                                <!-- Menu -->
+                                <a class=""
+                                   href="/tags"
+                                        >
+                                    <i class="fas fa-tags fa-fw"></i>
+                                    TAGS
+                                    
+                                </a>
+
+                                <!-- Submenu -->
+                                
+                            </li>
+                    
+                        
+                            
+
+                            <li class="navbar-item">
+                                <!-- Menu -->
+                                <a class="has-dropdown"
+                                   href="#"
+                                        onClick=&#34;return false;&#34;>
+                                    <i class="fa-regular fa-user fa-fw"></i>
+                                    ABOUT
+                                    <i class="fa-solid fa-chevron-down fa-fw"></i>
+                                </a>
+
+                                <!-- Submenu -->
+                                
+                                    <ul class="sub-menu">
+                                        
+                                            <li>
+                                                <a target="_blank" rel="noopener" href="https://jinyang-du.github.io/">
+                                                    ME
+                                                </a>
+                                            </li>
+                                        
+                                            <li>
+                                                <a target="_blank" rel="noopener" href="https://github.com/Charles2530/">
+                                                    GITHUB
+                                                </a>
+                                            </li>
+                                        
+                                            <li>
+                                                <a href="https://charles2530.github.io">
+                                                    BLOG
+                                                </a>
+                                            </li>
+                                        
+                                            <li>
+                                                <a target="_blank" rel="noopener" href="https://tongji.baidu.com/">
+                                                    STATISTICS
+                                                </a>
+                                            </li>
+                                        
+                                    </ul>
+                                
+                            </li>
+                    
+                    
+                        <li class="navbar-item search search-popup-trigger">
+                            <i class="fa-solid fa-magnifying-glass"></i>
+                        </li>
+                    
+                </ul>
+            </div>
+            <!-- Mobile -->
+            <div class="mobile">
+                
+                    <div class="icon-item search search-popup-trigger"><i class="fa-solid fa-magnifying-glass"></i>
+                    </div>
+                
+                <div class="icon-item navbar-bar">
+                    <div class="navbar-bar-middle"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Mobile sheet -->
+    <div class="navbar-drawer h-dvh w-full absolute top-0 left-0 bg-background-color flex flex-col justify-between">
+        <ul class="drawer-navbar-list flex flex-col px-4 justify-center items-start">
+            
+                
+                    
+
+                    <li class="drawer-navbar-item text-base my-1.5 flex flex-col w-full">
+                        
+                        <a class="py-1.5 px-2 flex flex-row items-center justify-between gap-1 hover:!text-primary active:!text-primary text-2xl font-semibold group border-b border-border-color hover:border-primary w-full "
+                           href="/"
+                        >
+                            <span>
+                                HOME
+                            </span>
+                            
+                                <i class="fa-regular fa-house fa-sm fa-fw"></i>
+                            
+                        </a>
+                        
+
+                        
+                    </li>
+            
+                
+                    
+
+                    <li class="drawer-navbar-item text-base my-1.5 flex flex-col w-full">
+                        
+                        <a class="py-1.5 px-2 flex flex-row items-center justify-between gap-1 hover:!text-primary active:!text-primary text-2xl font-semibold group border-b border-border-color hover:border-primary w-full "
+                           href="/categories"
+                        >
+                            <span>
+                                CATEGORIES
+                            </span>
+                            
+                                <i class="fas fa-bookmark fa-sm fa-fw"></i>
+                            
+                        </a>
+                        
+
+                        
+                    </li>
+            
+                
+                    
+
+                    <li class="drawer-navbar-item text-base my-1.5 flex flex-col w-full">
+                        
+                        <a class="py-1.5 px-2 flex flex-row items-center justify-between gap-1 hover:!text-primary active:!text-primary text-2xl font-semibold group border-b border-border-color hover:border-primary w-full "
+                           href="/tags"
+                        >
+                            <span>
+                                TAGS
+                            </span>
+                            
+                                <i class="fas fa-tags fa-sm fa-fw"></i>
+                            
+                        </a>
+                        
+
+                        
+                    </li>
+            
+                
+                    
+
+                    <li class="drawer-navbar-item-sub text-base my-1.5 flex flex-col w-full">
+                        
+                        <div class="py-1.5 px-2 flex flex-row items-center justify-between gap-1 hover:!text-primary active:!text-primary cursor-pointer text-2xl font-semibold group border-b border-border-color hover:border-primary w-full "
+                             navbar-data-toggle="submenu-About"
+                        >
+                            <span>
+                                ABOUT
+                            </span>
+                            
+                                <i class="fa-solid fa-chevron-right fa-sm fa-fw transition-all"></i>
+                            
+                        </div>
+                        
+
+                        
+                            <div class="flex-col items-start px-2 py-2 hidden" data-target="submenu-About">
+                                
+                                    <div class="drawer-navbar-item text-base flex flex-col justify-center items-start hover:underline active:underline hover:underline-offset-1 rounded-3xl">
+                                        <a class=" text-third-text-color text-xl"
+                                           target="_blank" rel="noopener" href="https://jinyang-du.github.io/">ME</a>
+                                    </div>
+                                
+                                    <div class="drawer-navbar-item text-base flex flex-col justify-center items-start hover:underline active:underline hover:underline-offset-1 rounded-3xl">
+                                        <a class=" text-third-text-color text-xl"
+                                           target="_blank" rel="noopener" href="https://github.com/Charles2530/">GITHUB</a>
+                                    </div>
+                                
+                                    <div class="drawer-navbar-item text-base flex flex-col justify-center items-start hover:underline active:underline hover:underline-offset-1 rounded-3xl">
+                                        <a class=" text-third-text-color text-xl"
+                                           href="https://charles2530.github.io">BLOG</a>
+                                    </div>
+                                
+                                    <div class="drawer-navbar-item text-base flex flex-col justify-center items-start hover:underline active:underline hover:underline-offset-1 rounded-3xl">
+                                        <a class=" text-third-text-color text-xl"
+                                           target="_blank" rel="noopener" href="https://tongji.baidu.com/">STATISTICS</a>
+                                    </div>
+                                
+                            </div>
+                        
+                    </li>
+            
+
+            
+            
+                
+                    
+                    <li class="drawer-navbar-item text-base my-1.5 flex flex-col w-full">
+                        <a class="py-1.5 px-2 flex flex-row items-center justify-between gap-1 hover:!text-primary active:!text-primary text-2xl font-semibold group border-b border-border-color hover:border-primary w-full active"
+                           href="/archives"
+                        >
+                            <span>Archives</span>
+                            <i class="fa-regular fa-archive fa-sm fa-fw"></i>
+                        </a>
+                    </li>
+                
+                    
+                    <li class="drawer-navbar-item text-base my-1.5 flex flex-col w-full">
+                        <a class="py-1.5 px-2 flex flex-row items-center justify-between gap-1 hover:!text-primary active:!text-primary text-2xl font-semibold group border-b border-border-color hover:border-primary w-full active"
+                           href="/masonry/"
+                        >
+                            <span>Photos</span>
+                            <i class="fa-solid fa-image fa-sm fa-fw"></i>
+                        </a>
+                    </li>
+                
+                    
+                    <li class="drawer-navbar-item text-base my-1.5 flex flex-col w-full">
+                        <a class="py-1.5 px-2 flex flex-row items-center justify-between gap-1 hover:!text-primary active:!text-primary text-2xl font-semibold group border-b border-border-color hover:border-primary w-full active"
+                           href="/essay/"
+                        >
+                            <span>Essays</span>
+                            <i class="fa-solid fa-message-lines fa-sm fa-fw"></i>
+                        </a>
+                    </li>
+                
+                    
+                    <li class="drawer-navbar-item text-base my-1.5 flex flex-col w-full">
+                        <a class="py-1.5 px-2 flex flex-row items-center justify-between gap-1 hover:!text-primary active:!text-primary text-2xl font-semibold group border-b border-border-color hover:border-primary w-full active"
+                           href="/friends/"
+                        >
+                            <span>Friends</span>
+                            <i class="fa-solid fa-user-group fa-sm fa-fw"></i>
+                        </a>
+                    </li>
+                
+            
+        </ul>
+
+        <div class="statistics flex justify-around my-2.5">
+    <a class="item tag-count-item flex flex-col justify-center items-center w-20" href="/tags">
+        <div class="number text-2xl sm:text-xl text-second-text-color font-semibold">45</div>
+        <div class="label text-third-text-color text-sm">Tags</div>
+    </a>
+    <a class="item tag-count-item flex flex-col justify-center items-center w-20" href="/categories">
+        <div class="number text-2xl sm:text-xl text-second-text-color font-semibold">93</div>
+        <div class="label text-third-text-color text-sm">Categories</div>
+    </a>
+    <a class="item tag-count-item flex flex-col justify-center items-center w-20" href="/archives">
+        <div class="number text-2xl sm:text-xl text-second-text-color font-semibold">521</div>
+        <div class="label text-third-text-color text-sm">Posts</div>
+    </a>
+</div>
+    </div>
+
+    <div class="window-mask"></div>
+
+</header>
+
+
+		</div>
+
+		<div class="main-content-body transition-fade-up">
+			
+
+			<div class="main-content">
+				<div class="post-page-container flex relative justify-between box-border w-full h-full">
+	<div class="article-content-container">
+
+		<div class="article-title relative w-full">
+			
+			
+			
+			<img src="https://charles2530.github.io/image/background/p1.png" alt="训练：低比特训练与数值格式" class="w-full h-60 sm:h-72 md:h-80 object-cover sm:rounded-t-large dark:brightness-75" />
+			
+			<div class="w-full flex items-center absolute bottom-0 justify-start">
+				<h1 class="article-title-cover text-center mx-6 my-6 text-second-text-color bg-background-color-transparent px-4 py-3 text-3xl sm:text-4xl md:text-5xl font-semibold backdrop-blur-lg rounded-xl border border-border-color ">训练：低比特训练与数值格式</h1>
+			</div>
+			
+		</div>
+
+		
+		<div class="article-header flex flex-row gap-2 items-center px-2 sm:px-6 md:px-8">
+			<div class="avatar w-[46px] h-[46px] shrink-0 rounded-medium border border-border-color p-px">
+				<img src="https://charles2530.github.io/image/background/logo2.jpg">
+			</div>
+			<div class="info flex flex-col justify-between">
+				<div class="author flex items-center">
+					<span class="name text-default-text-color text-lg font-semibold">Charles</span>
+					
+					<span class="author-label ml-1.5 text-xs px-2 py-0.5 rounded-small text-third-text-color border border-shadow-color-1">Lv8</span>
+					
+				</div>
+				<div class="meta-info">
+					<div class="article-meta-info">
+    <span class="article-date article-meta-item">
+        <i class="fa-regular fa-pen-fancy"></i>&nbsp;
+        <span class="desktop">2026-02-13 09:00</span>
+        <span class="mobile">2026-02-13 09:00</span>
+        <span class="hover-info">Created</span>
+    </span>
+    
+        <span class="article-date article-meta-item">
+            <i class="fa-regular fa-wrench"></i>&nbsp;
+            <span class="desktop">2026-02-13 09:00</span>
+            <span class="mobile">2026-02-13 09:00</span>
+            <span class="hover-info">Updated</span>
+        </span>
+    
+
+    
+        <span class="article-categories article-meta-item">
+            <i class="fa-regular fa-folders"></i>&nbsp;
+            <ul>
+                
+                
+                    
+                        
+                        <li>
+                            <a href="/categories/AI/">AI</a>&nbsp;
+                        </li>
+                    
+                    
+                
+                    
+                        
+                            <li>></li>
+                        
+                        <li>
+                            <a href="/categories/AI/%E8%AE%AD%E7%BB%83/">训练</a>&nbsp;
+                        </li>
+                    
+                    
+                
+            </ul>
+        </span>
+    
+    
+        <span class="article-tags article-meta-item">
+            <i class="fa-regular fa-tags"></i>&nbsp;
+            <ul>
+                
+                    <li>
+                        <a href="/tags/AI/">AI</a>&nbsp;
+                    </li>
+                
+                    <li>
+                        | <a href="/tags/%E8%AE%AD%E7%BB%83/">训练</a>&nbsp;
+                    </li>
+                
+                    <li>
+                        | <a href="/tags/%E9%87%8F%E5%8C%96/">量化</a>&nbsp;
+                    </li>
+                
+            </ul>
+        </span>
+    
+
+    
+    
+        <span class="article-wordcount article-meta-item">
+            <i class="fa-regular fa-typewriter"></i>&nbsp;<span>6k Words</span>
+        </span>
+    
+    
+        <span class="article-min2read article-meta-item">
+            <i class="fa-regular fa-clock"></i>&nbsp;<span>22 Mins</span>
+        </span>
+    
+    
+        <span class="article-pv article-meta-item">
+            <i class="fa-regular fa-eye"></i>&nbsp;<span id="busuanzi_value_page_pv"></span>
+        </span>
+    
+</div>
+
+				</div>
+			</div>
+		</div>
+		
+
+		
+
+
+		<div class="article-content markdown-body px-2 sm:px-6 md:px-8 pb-8">
+			<p>这一页讨论的是<strong>训练里的低精度</strong>，不是单纯的推理量化。</p>
+<div class="callout callout--titled info mb-4 rounded-small shadow-redefine-flat bg-(--callout-bg-color) p-3 pl-1 relative flex flex-row gap-2"><div role="none" class="rounded-full self-stretch w-0.5 bg-(--callout-primary-color) shrink-0 opacity-60"></div><div class="flex flex-col gap-2"><div class="callout__title flex items-center gap-2 font-semibold tracking-tight">读法定位</div><div class="callout__content markdown-body flex-1 min-w-0"><p>这页先回答“低比特训练与数值格式”在「训练」里的位置：它解决什么局部问题，依赖哪些前置，最后会影响哪类工程或研究判断。<br />
+<strong>前置</strong>：先知道 loss、optimizer、batch、checkpoint 和评测集的基本含义。 必要时先回 训练入口、基础知识 或 术语表。<br />
+<strong>主线关系</strong>：把目标函数、数据、分布式系统、评测回流和实验治理串起来，看一次训练为什么成功、为什么不稳、为什么贵。</p></div></div></div>
+<p>推理量化常问的是：模型已经训好了，能不能用更低比特部署。<br />
+低比特训练问的是：模型还在训练中，前向、反向、激活、梯度、优化器状态和通信能不能都用更低精度，同时不让训练发散。</p>
+<p>这两件事看起来都叫“量化”，但风险完全不同。</p>
+<p><img  
+                     lazyload
+                     src="/images/loading.svg"
+                     data-src="/image/ai-notes/images/paper-figures/quantization/qlora-figure-1-memory.png"
+                      alt="QLoRA memory comparison" 
+                ></p>
+<p><small>图源：<a class="link"   target="_blank" rel="noopener" href="https://arxiv.org/abs/2305.14314" >QLoRA: Efficient Finetuning of Quantized LLMs<i class="fa-solid fa-arrow-up-right ml-[0.2em] font-light align-text-top text-[0.7em] link-icon"></i></a>，Figure 1。原论文图意：QLoRA 把冻结底座量化存储，只训练 adapter，并用分页机制缓解训练时的显存峰值。</small></p>
+<div class="callout callout--titled info mb-4 rounded-small shadow-redefine-flat bg-(--callout-bg-color) p-3 pl-1 relative flex flex-row gap-2"><div role="none" class="rounded-full self-stretch w-0.5 bg-(--callout-primary-color) shrink-0 opacity-60"></div><div class="flex flex-col gap-2"><div class="callout__title flex items-center gap-2 font-semibold tracking-tight">图解：QLoRA 图先帮你拆开训练显存</div><div class="callout__content markdown-body flex-1 min-w-0"><p>这张图不要只看“4bit”这个标签，而要看哪些东西还留在训练路径里。全量微调需要保存权重、梯度、优化器状态和激活；LoRA 把可训练参数缩小到 adapter；QLoRA 进一步把冻结底座量化存储，让 optimizer 主要服务少量 LoRA 参数。低比特训练后续还会扩展到 <code>FP8</code> / <code>FP4</code> 的前向、反向和通信路径，因此真正要决定的是哪些张量降精度、哪些 scale 策略可控、哪些 kernel 支持原生低精度、哪些层必须保高精，以及如何证明长训练不会在后期崩。</p></div></div></div>
+<div class="callout callout--titled default mb-4 rounded-small shadow-redefine-flat bg-(--callout-bg-color) p-3 pl-1 relative flex flex-row gap-2"><div role="none" class="rounded-full self-stretch w-0.5 bg-(--callout-primary-color) shrink-0 opacity-60"></div><div class="flex flex-col gap-2"><div class="callout__title flex items-center gap-2 font-semibold tracking-tight">有趣例子：用细笔和粗笔记账</div><div class="callout__content markdown-body flex-1 min-w-0"><p>推理量化像把账本复印得更省纸，偶尔字边缘模糊还能读；低比特训练像每天都用更粗的笔继续记账，写错的数字会进入下一天的余额。训练里的低精度误差会被参数更新继承，所以比部署后压缩更敏感。</p></div></div></div>
+<div class="callout callout--titled success mb-4 rounded-small shadow-redefine-flat bg-(--callout-bg-color) p-3 pl-1 relative flex flex-row gap-2"><div role="none" class="rounded-full self-stretch w-0.5 bg-(--callout-primary-color) shrink-0 opacity-60"></div><div class="flex flex-col gap-2"><div class="callout__title flex items-center gap-2 font-semibold tracking-tight">为什么现在要学这个：FP8、KV INT8 和世界模型效率</div><div class="callout__content markdown-body flex-1 min-w-0"><p>世界模型的低比特问题不只在权重。长视频训练会被 activation cache 和通信 payload 卡住，长上下文 rollout 会被 KV cache 和 HBM 带宽卡住，闭环服务还会被低精度 kernel 是否成熟影响延迟。<code>FP8</code> 主要服务训练吞吐、激活和通信；<code>KV INT8</code> 更常服务长上下文推理显存和 decode 带宽。真正要比较的是“显存下降、token/s 上升、loss/成功率不掉、长时一致性不坏”这四件事是否同时成立。</p></div></div></div>
+<p><img  
+                     lazyload
+                     src="/images/loading.svg"
+                     data-src="/image/ai-notes/images/paper-deep-dives/technical-reports/deepseek-v3/figure-6-fp8-framework.png"
+                      alt="DeepSeek-V3 FP8 framework 原论文图" 
+                ></p>
+<p><small>图源：<a class="link"   target="_blank" rel="noopener" href="https://arxiv.org/abs/2412.19437" >DeepSeek-V3 Technical Report<i class="fa-solid fa-arrow-up-right ml-[0.2em] font-light align-text-top text-[0.7em] link-icon"></i></a>，Figure 6。原论文图意：DeepSeek-V3 展示 FP8 训练框架中不同张量、缩放策略和高精度保护路径的组织方式，说明低精度训练是数值系统设计，而不是单纯把 dtype 改小。</small></p>
+<h2 id="硬证据模块低比特训练要同时证明数值和世界模型行为"><a class="markdownIt-Anchor" href="#硬证据模块低比特训练要同时证明数值和世界模型行为"></a> 硬证据模块：低比特训练要同时证明数值和世界模型行为</h2>
+<p>低比特训练页如果只报告 loss 曲线和吞吐，就仍然偏通用 LLM。世界模型低比特训练还要证明：动作分叉、未来 latent、risk head 和闭环收益没有被低精度训练过程破坏。</p>
+<table>
+<thead>
+<tr>
+<th>证据项</th>
+<th>最小可复算例子</th>
+<th>失败案例</th>
+<th>验收指标</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>本页解决哪项成本</td>
+<td>激活/通信/optimizer state 显存和 step time 对比</td>
+<td>FP8 省显存但 scale 开销抵消收益</td>
+<td>peak memory、step time、throughput</td>
+</tr>
+<tr>
+<td>训练数值稳定</td>
+<td>loss spike、amax、scale、overflow 事件随 step 记录</td>
+<td>中后期 outlier 让训练突然发散</td>
+<td>loss spike count、overflow rate</td>
+</tr>
+<tr>
+<td>Action sensitivity</td>
+<td>低比特 checkpoint 和 BF16 checkpoint 的反事实动作对比</td>
+<td>低精训练后动作条件被模型忽略</td>
+<td>action sensitivity、event divergence</td>
+</tr>
+<tr>
+<td>Risk calibration</td>
+<td>hard-negative risk head 校准曲线</td>
+<td>risk head 学成低置信，漏报近失误</td>
+<td>ECE、near-miss recall、false negative</td>
+</tr>
+<tr>
+<td>证据等级</td>
+<td>ablation、系统吞吐、闭环小桶要分开</td>
+<td>只给 perplexity 或 VBench</td>
+<td>benchmark + ablation + task replay</td>
+</tr>
+</tbody>
+</table>
+<p>一个合格结论应写成：<code>FP8 activation 训练让 peak memory 下降 28%、step time 下降 11%；与 BF16 checkpoint 相比，hard replay 的 action ranking agreement 为 98.7%，near-miss recall 下降 0.3pp，长时 latent drift 无显著增加。</code> 如果没有后半部分，低比特训练还不能证明适合世界模型。</p>
+<h2 id="为什么这属于训练重点内容"><a class="markdownIt-Anchor" href="#为什么这属于训练重点内容"></a> 为什么这属于训练重点内容</h2>
+<p>训练时，模型每一步都会经过前向计算、loss 计算、反向传播、梯度规约、优化器更新，以及 checkpoint 保存与恢复。每一步都可能被低精度影响。<br />
+如果只是推理量化，错误通常只影响一次输出；如果是训练低精度，错误会通过参数更新写回模型，后续每一步都会继续继承它。</p>
+<p>所以低比特训练的核心不是“省显存”，而是：</p>
+<p><strong>在更低精度里保持可收敛、可扩展、可复现的训练动力学。</strong></p>
+<h2 id="训练里到底哪些东西可以降精度"><a class="markdownIt-Anchor" href="#训练里到底哪些东西可以降精度"></a> 训练里到底哪些东西可以降精度</h2>
+<p>低比特训练至少涉及六类对象：</p>
+<table>
+<thead>
+<tr>
+<th>对象</th>
+<th>是否容易降精度</th>
+<th>主要风险</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>权重 <code>W</code></td>
+<td>相对容易</td>
+<td>表示误差影响前向输出</td>
+</tr>
+<tr>
+<td>激活 <code>A</code></td>
+<td>很难</td>
+<td>分布随输入、层数和序列长度变化，outlier 明显</td>
+</tr>
+<tr>
+<td>激活缓存</td>
+<td>很有价值</td>
+<td>反向要用，压低后可能破坏梯度</td>
+</tr>
+<tr>
+<td>梯度 <code>dW</code></td>
+<td>中等偏难</td>
+<td>累积误差会改变更新方向</td>
+</tr>
+<tr>
+<td>优化器一阶动量</td>
+<td>中等</td>
+<td>影响更新平滑性</td>
+</tr>
+<tr>
+<td>优化器二阶动量</td>
+<td>更难</td>
+<td>数值范围和小量变化很敏感</td>
+</tr>
+</tbody>
+</table>
+<p>这里最容易被低估的是<strong>激活</strong>。<br />
+权重、梯度和优化器状态很多时候可以通过 ZeRO/FSDP 分片到多卡上，但激活强依赖当前 micro-batch、sequence length 和模型层数，通常直接压在单卡显存上。长上下文训练里，激活经常比权重更早成为瓶颈。</p>
+<h2 id="数制不是名字问题而是表示预算问题"><a class="markdownIt-Anchor" href="#数制不是名字问题而是表示预算问题"></a> 数制不是名字问题，而是表示预算问题</h2>
+<p>低精度训练里常见的格式可以粗略分成四类。</p>
+<p><strong>INT：规则简单，但动态范围压力大。</strong></p>
+<p><code>INT8 / INT4</code> 用整数加 scale 表示浮点张量：</p>
+<p><span class="katex-display"><span class="katex"><span class="katex-mathml"><math><semantics><mrow><mi>q</mi><mo>=</mo><mrow><mi mathvariant="normal">r</mi><mi mathvariant="normal">o</mi><mi mathvariant="normal">u</mi><mi mathvariant="normal">n</mi><mi mathvariant="normal">d</mi></mrow><mo stretchy="false">(</mo><mi>x</mi><mi mathvariant="normal">/</mi><mi>s</mi><mo stretchy="false">)</mo><mo separator="true">,</mo><mspace width="2em"/><mover accent="true"><mi>x</mi><mo>^</mo></mover><mo>=</mo><mi>s</mi><mi>q</mi></mrow><annotation encoding="application/x-tex">q = \mathrm{round}(x / s), \qquad \hat{x} = s q
+</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.625em;vertical-align:-0.19444em;"></span><span class="mord mathdefault" style="margin-right:0.03588em;">q</span><span class="mspace" style="margin-right:0.2777777777777778em;"></span><span class="mrel">=</span><span class="mspace" style="margin-right:0.2777777777777778em;"></span></span><span class="base"><span class="strut" style="height:1em;vertical-align:-0.25em;"></span><span class="mord"><span class="mord mathrm">r</span><span class="mord mathrm">o</span><span class="mord mathrm">u</span><span class="mord mathrm">n</span><span class="mord mathrm">d</span></span><span class="mopen">(</span><span class="mord mathdefault">x</span><span class="mord">/</span><span class="mord mathdefault">s</span><span class="mclose">)</span><span class="mpunct">,</span><span class="mspace" style="margin-right:0.16666666666666666em;"></span><span class="mspace" style="margin-right:2em;"></span><span class="mord accent"><span class="vlist-t"><span class="vlist-r"><span class="vlist" style="height:0.69444em;"><span style="top:-3em;"><span class="pstrut" style="height:3em;"></span><span class="mord"><span class="mord mathdefault">x</span></span></span><span style="top:-3em;"><span class="pstrut" style="height:3em;"></span><span class="accent-body" style="left:-0.22222em;">^</span></span></span></span></span></span><span class="mspace" style="margin-right:0.2777777777777778em;"></span><span class="mrel">=</span><span class="mspace" style="margin-right:0.2777777777777778em;"></span></span><span class="base"><span class="strut" style="height:0.625em;vertical-align:-0.19444em;"></span><span class="mord mathdefault">s</span><span class="mord mathdefault" style="margin-right:0.03588em;">q</span></span></span></span></span></p>
+<p>优点是硬件和 kernel 生态成熟。<br />
+问题是低 bit 下动态范围非常紧，遇到 activation outlier 时容易出现两种坏结果：scale 被极大值拖大，小值全部挤在少数桶里；或者直接截断极大值，破坏关键 token 或关键层。</p>
+<p>所以 INT 路线常用于推理权重量化；训练里如果要做得很激进，通常需要更细粒度 scale、旋转、裁剪或 QAT 配合。</p>
+<p><strong>FP8：训练中最实用的低精度入口。</strong></p>
+<p><code>FP8</code> 保留指数位和尾数位，因此比 INT 更自然地处理动态范围。常见格式是：</p>
+<table>
+<thead>
+<tr>
+<th>格式</th>
+<th>直觉</th>
+<th>常见用途</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>E4M3</code></td>
+<td>指数较少、尾数较多，精度更好</td>
+<td>权重、激活</td>
+</tr>
+<tr>
+<td><code>E5M2</code></td>
+<td>指数更多、范围更大，精度更粗</td>
+<td>梯度、反向中范围更大的张量</td>
+</tr>
+</tbody>
+</table>
+<p>一个实用理解是：<br />
+前向传播更关心表示细节，所以常偏向 <code>E4M3</code>；反向传播和梯度可能范围更宽，所以有些路线会用 <code>E5M2</code>。但这不是铁律，后续 <code>MXFP8</code> 论文也验证了某些配置下梯度用 <code>E4M3</code> 仍可能更优。</p>
+<p><strong>MXFP：块共享 scale 的微缩放格式。</strong></p>
+<p><code>MXFP8 / MXFP4</code> 的核心是：一小块元素共享一个 scale，每个元素再用低比特浮点表示。</p>
+<p>可以理解成：</p>
+<p><span class="katex-display"><span class="katex"><span class="katex-mathml"><math><semantics><mrow><msub><mi>x</mi><mi>i</mi></msub><mo>≈</mo><msub><mi>s</mi><mtext>block</mtext></msub><mo>⋅</mo><msub><mi>q</mi><mi>i</mi></msub></mrow><annotation encoding="application/x-tex">x_i \approx s_{\text{block}} \cdot q_i
+</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.63312em;vertical-align:-0.15em;"></span><span class="mord"><span class="mord mathdefault">x</span><span class="msupsub"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height:0.31166399999999994em;"><span style="top:-2.5500000000000003em;margin-left:0em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mathdefault mtight">i</span></span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height:0.15em;"><span></span></span></span></span></span></span><span class="mspace" style="margin-right:0.2777777777777778em;"></span><span class="mrel">≈</span><span class="mspace" style="margin-right:0.2777777777777778em;"></span></span><span class="base"><span class="strut" style="height:0.59445em;vertical-align:-0.15em;"></span><span class="mord"><span class="mord mathdefault">s</span><span class="msupsub"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height:0.33610799999999996em;"><span style="top:-2.5500000000000003em;margin-left:0em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mtight"><span class="mord text mtight"><span class="mord mtight">block</span></span></span></span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height:0.15em;"><span></span></span></span></span></span></span><span class="mspace" style="margin-right:0.2222222222222222em;"></span><span class="mbin">⋅</span><span class="mspace" style="margin-right:0.2222222222222222em;"></span></span><span class="base"><span class="strut" style="height:0.625em;vertical-align:-0.19444em;"></span><span class="mord"><span class="mord mathdefault" style="margin-right:0.03588em;">q</span><span class="msupsub"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height:0.31166399999999994em;"><span style="top:-2.5500000000000003em;margin-left:-0.03588em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mathdefault mtight">i</span></span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height:0.15em;"><span></span></span></span></span></span></span></span></span></span></span></p>
+<p>其中 <span class="katex"><span class="katex-mathml"><math><semantics><mrow><msub><mi>s</mi><mtext>block</mtext></msub></mrow><annotation encoding="application/x-tex">s_{\text{block}}</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.58056em;vertical-align:-0.15em;"></span><span class="mord"><span class="mord mathdefault">s</span><span class="msupsub"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height:0.33610799999999996em;"><span style="top:-2.5500000000000003em;margin-left:0em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mtight"><span class="mord text mtight"><span class="mord mtight">block</span></span></span></span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height:0.15em;"><span></span></span></span></span></span></span></span></span></span> 是块级缩放因子，<span class="katex"><span class="katex-mathml"><math><semantics><mrow><msub><mi>q</mi><mi>i</mi></msub></mrow><annotation encoding="application/x-tex">q_i</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.625em;vertical-align:-0.19444em;"></span><span class="mord"><span class="mord mathdefault" style="margin-right:0.03588em;">q</span><span class="msupsub"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height:0.31166399999999994em;"><span style="top:-2.5500000000000003em;margin-left:-0.03588em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mathdefault mtight">i</span></span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height:0.15em;"><span></span></span></span></span></span></span></span></span></span> 是低比特浮点值。</p>
+<p>这样做比 per-tensor scale 更能适配局部分布，比 per-element scale 更省元数据，也更接近新硬件对低精度 tensor core 的原生支持方式。</p>
+<p>代价是 scale 管理和 kernel 实现更复杂。</p>
+<p><strong>NVFP、HiFloat 与厂商格式。</strong></p>
+<p><code>NVFP4</code>、<code>HiFloat8 / HIFP8</code> 这类格式体现了一个趋势：<br />
+低比特训练不只是在算法层面改 quantizer，也会向硬件和数制本身延伸。</p>
+<p>例如 <code>NVFP4</code> 相比普通 <code>MXFP4</code>，会通过更小微块、更精确 scale 和分层缩放改善 FP4 的有效表达范围。<br />
+<code>HiFloat8</code> 则通过不同的指数和尾数安排，试图在同样 8 bit 内获得更适合深度学习张量的动态范围。</p>
+<h2 id="低比特训练的核心矛盾"><a class="markdownIt-Anchor" href="#低比特训练的核心矛盾"></a> 低比特训练的核心矛盾</h2>
+<p>低比特训练要同时优化三件事：<strong>表示误差</strong>决定低精度表示是否足够接近原张量，<strong>更新误差</strong>决定反向传播和优化器是否仍然给出正确方向，<strong>系统收益</strong>决定 kernel、通信和显存是否真的变快变省。</p>
+<p>只满足第一点不够。<br />
+很多方法离线 MSE 很低，但训练一长就崩；也有方法数值还行，但 scale 计算和 cast 开销太大，端到端没有收益。</p>
+<p>可以把低比特训练看成下面这个闭环：</p>
+<div class="code-container" data-rel="Text"><figure class="iseeu highlight text"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">张量分布 -&gt; scale/rounding -&gt; 低精度 kernel -&gt; 梯度更新 -&gt; 参数分布改变 -&gt; 下一步张量分布</span><br></pre></td></tr></table></figure></div>
+<p>推理量化通常只走一次前半段；训练低精度会不断循环，所以后期 outlier、rounding bias 和 loss spike 更危险。</p>
+<h2 id="为什么-activation-是主战场"><a class="markdownIt-Anchor" href="#为什么-activation-是主战场"></a> 为什么 activation 是主战场</h2>
+<p>训练显存里，激活会随 batch size、sequence length 和层数一起增长，反向传播又必须读取它，并且很难像 optimizer state 那样简单分片掉。</p>
+<p>这也是为什么 <code>COAT</code>、<code>MOSS</code>、<code>Scaling FP8 Training to Trillion-Token LLMs</code> 等论文都特别关注 activation。</p>
+<p><strong>一个直观例子。</strong></p>
+<p>假设某层激活大多数值在 <span class="katex"><span class="katex-mathml"><math><semantics><mrow><mo stretchy="false">[</mo><mo>−</mo><mn>2</mn><mo separator="true">,</mo><mn>2</mn><mo stretchy="false">]</mo></mrow><annotation encoding="application/x-tex">[-2, 2]</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:1em;vertical-align:-0.25em;"></span><span class="mopen">[</span><span class="mord">−</span><span class="mord">2</span><span class="mpunct">,</span><span class="mspace" style="margin-right:0.16666666666666666em;"></span><span class="mord">2</span><span class="mclose">]</span></span></span></span>，但偶尔出现一个 1000。<br />
+如果 per-tensor scale 为了容纳 1000，那么大量普通值会被压进很少的量化桶里。<br />
+如果直接裁剪 1000，又可能破坏某些关键 token 的路径。</p>
+<p>所以常见解决思路包括 per-token 或 per-group scale、SmoothQuant 这类难度迁移、Hadamard rotation 分散 outlier、保留敏感层高精度，以及对 SwiGLU、LayerNorm、Attention 等结构做专项处理。</p>
+<h2 id="fp8-训练路线从可用到长稳"><a class="markdownIt-Anchor" href="#fp8-训练路线从可用到长稳"></a> FP8 训练路线：从可用到长稳</h2>
+<p><strong>FP8 Formats：先定义可用格式。</strong></p>
+<p><a class="link"   target="_blank" rel="noopener" href="https://arxiv.org/abs/2209.05433" >FP8 Formats for Deep Learning<i class="fa-solid fa-arrow-up-right ml-[0.2em] font-light align-text-top text-[0.7em] link-icon"></i></a> 给出了 <code>E4M3 / E5M2</code> 的基础设定。<br />
+它的意义不是“发明 8-bit”，而是证明深度学习训练和推理可以围绕一组更适配 tensor core 的 FP8 格式组织起来。</p>
+<p>工程上，你可以把这篇看成 FP8 训练的数制起点。</p>
+<p><strong>FP8-LM：把梯度和优化器状态也纳入低精度。</strong></p>
+<p><a class="link"   target="_blank" rel="noopener" href="https://arxiv.org/abs/2310.18313" >FP8-LM: Training FP8 Large Language Models<i class="fa-solid fa-arrow-up-right ml-[0.2em] font-light align-text-top text-[0.7em] link-icon"></i></a> 的重点是：不要只让 GEMM 用 FP8，还要考虑梯度和 Adam 状态。</p>
+<p>它提醒我们，训练内存不是只有权重。Adam/AdamW 至少涉及参数、梯度、一阶动量、二阶动量，有时还有 master weight。</p>
+<p>如果只有矩阵乘降精度，优化器状态仍然高精度，低比特训练的显存收益会被严重限制。</p>
+<p><strong>COAT：optimizer states 和 activation 才是大头。</strong></p>
+<p><a class="link"   target="_blank" rel="noopener" href="https://arxiv.org/abs/2410.19313" >COAT<i class="fa-solid fa-arrow-up-right ml-[0.2em] font-light align-text-top text-[0.7em] link-icon"></i></a> 重点压缩 optimizer states 和 activation。<br />
+它的工程意义在于明确指出：很多训练路线只把 linear GEMM 做低精度，但真正消耗显存和引发不稳定的部分不止 linear。</p>
+<p>尤其是 activation，因为它和 batch、序列长度直接绑定，往往决定你能不能开更长上下文。</p>
+<p><strong>Scaling FP8 to Trillion Tokens：短跑稳定不等于长跑稳定。</strong></p>
+<p><a class="link"   target="_blank" rel="noopener" href="https://arxiv.org/abs/2409.12517" >Scaling FP8 Training to Trillion-Token LLMs<i class="fa-solid fa-arrow-up-right ml-[0.2em] font-light align-text-top text-[0.7em] link-icon"></i></a> 的核心价值是把 FP8 训练拉到长 token 规模，暴露出短实验看不到的不稳定。</p>
+<p>其中一个关键问题是 <code>SwiGLU</code> 的 outlier 放大。<br />
+训练到一定阶段后，某些激活异常值可能逐渐变大，在延迟缩放或低精度路径下触发 loss spike 甚至发散。</p>
+<p>这给训练实验一个很重要的提醒：</p>
+<p><strong>低精度方案不能只跑几千 step 就宣布稳定。</strong></p>
+<p><strong>μnit Scaling：减少动态缩放复杂度。</strong></p>
+<p><a class="link"   target="_blank" rel="noopener" href="https://arxiv.org/abs/2502.05967" >μnit Scaling<i class="fa-solid fa-arrow-up-right ml-[0.2em] font-light align-text-top text-[0.7em] link-icon"></i></a> 关注更简单、可扩展的 FP8 训练参数化。<br />
+它的方向是通过结构和初始化上的约束，减少对动态 scale 的依赖。</p>
+<p>这类工作很重要，因为动态缩放虽然灵活，但会带来运行时统计开销、kernel 融合困难、恢复和复现实验复杂，并且对 outlier 更敏感。</p>
+<p><strong>MXFP8 与 MOSS：把 scale 做得更细，同时别让开销吃掉收益。</strong></p>
+<p><a class="link"   target="_blank" rel="noopener" href="https://arxiv.org/abs/2310.10537" >Microscaling Data Formats for Deep Learning<i class="fa-solid fa-arrow-up-right ml-[0.2em] font-light align-text-top text-[0.7em] link-icon"></i></a> 和 <a class="link"   target="_blank" rel="noopener" href="https://arxiv.org/abs/2506.08027" >Recipes for Pre-training LLMs with MXFP8<i class="fa-solid fa-arrow-up-right ml-[0.2em] font-light align-text-top text-[0.7em] link-icon"></i></a> 说明：微缩放格式可以让低精度更贴近局部张量分布。</p>
+<p>但 scale 越细，系统问题越明显。<br />
+<code>MOSS</code> 这类工作关注的就是：per-group 量化虽好，但 dequant、scale 计算和内维缩放可能引入很大开销。低精度训练最终必须和 kernel 设计一起看。</p>
+<h2 id="fp4-训练路线更低-bit更强系统耦合"><a class="markdownIt-Anchor" href="#fp4-训练路线更低-bit更强系统耦合"></a> FP4 训练路线：更低 bit，更强系统耦合</h2>
+<p><code>FP4</code> 的诱惑很直接：相比 BF16，理论存储更小，tensor core 路径也可能更快。<br />
+但 FP4 的表示预算极小，训练稳定性比 FP8 更难。</p>
+<p><strong>MXFP4：用微缩放减轻 4-bit 表达压力。</strong></p>
+<p><a class="link"   target="_blank" rel="noopener" href="https://arxiv.org/abs/2502.20586" >Training LLMs with MXFP4<i class="fa-solid fa-arrow-up-right ml-[0.2em] font-light align-text-top text-[0.7em] link-icon"></i></a> 说明，FP4 训练通常必须结合微缩放和 outlier 处理。<br />
+只把 BF16 张量粗暴转成 FP4，几乎不可能稳定。</p>
+<p>一个常见组合是低比特元素、块级 scale、随机 Hadamard 变换、混合精度保护层，以及随机舍入或无偏梯度估计。</p>
+<p><strong>Quartet：低比特训练不能脱离硬件 kernel。</strong></p>
+<p><a class="link"   target="_blank" rel="noopener" href="https://arxiv.org/abs/2505.14669" >Quartet<i class="fa-solid fa-arrow-up-right ml-[0.2em] font-light align-text-top text-[0.7em] link-icon"></i></a> 的价值在于把 FP4 算法和 Blackwell 原生 FP4 kernel 绑定起来看。<br />
+它不是单纯比较量化误差，而是把训练速度、梯度估计、scaling law 和 GPU 实现放在一起。</p>
+<p>这类工作说明一个现实结论：</p>
+<p><strong>FP4 训练不是纯算法课题，它天然是数制、优化器、kernel 和硬件的共同设计。</strong></p>
+<p><strong>NVFP4：更小微块和更精确 scale。</strong></p>
+<p><a class="link"   target="_blank" rel="noopener" href="https://arxiv.org/abs/2509.25149" >Pretraining Large Language Models with NVFP4<i class="fa-solid fa-arrow-up-right ml-[0.2em] font-light align-text-top text-[0.7em] link-icon"></i></a> 关注 <code>NVFP4</code> 在长 token 预训练里的可行性。<br />
+相比普通 MXFP4，NVFP4 会使用更小的微块和更精确的 FP8 scale，目标是减少 4-bit 表达带来的有效精度浪费。</p>
+<p>直观理解是：<br />
+FP4 的元素本身太粗，所以必须让 scale 更聪明、更细、更贴合局部分布。</p>
+<p><strong>Four Over Six：scale 到最大值不一定最好。</strong></p>
+<p><a class="link"   target="_blank" rel="noopener" href="https://arxiv.org/abs/2512.02010" >Four Over Six<i class="fa-solid fa-arrow-up-right ml-[0.2em] font-light align-text-top text-[0.7em] link-icon"></i></a> 提醒一个很反直觉的问题：<br />
+把块最大值缩放到 FP4 最大可表示值，不一定让整体误差最小。</p>
+<p>因为 FP4 的可表示点非常稀疏，最大值附近可能有很大的空洞。<br />
+有时把块缩到 4 而不是 6，反而能让大部分值落在更合适的表示区间。</p>
+<p>这说明低比特训练里的 scale 不是简单的：</p>
+<div class="code-container" data-rel="Text"><figure class="iseeu highlight text"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">scale = max_abs / qmax</span><br></pre></td></tr></table></figure></div>
+<p>而是一个要和格式离散点分布共同优化的问题。</p>
+<h2 id="flashattention-与低精度训练稳定性"><a class="markdownIt-Anchor" href="#flashattention-与低精度训练稳定性"></a> FlashAttention 与低精度训练稳定性</h2>
+<p>低精度训练不只影响 linear。<br />
+Attention，尤其是 FlashAttention 这类高度融合 kernel，也可能改变数值误差形态。</p>
+<p>典型风险包括 softmax 概率接近 1 时的舍入偏置、<span class="katex"><span class="katex-mathml"><math><semantics><mrow><mi>O</mi><mo>=</mo><mi>P</mi><mi>V</mi></mrow><annotation encoding="application/x-tex">O = PV</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.68333em;vertical-align:0em;"></span><span class="mord mathdefault" style="margin-right:0.02778em;">O</span><span class="mspace" style="margin-right:0.2777777777777778em;"></span><span class="mrel">=</span><span class="mspace" style="margin-right:0.2777777777777778em;"></span></span><span class="base"><span class="strut" style="height:0.68333em;vertical-align:0em;"></span><span class="mord mathdefault" style="margin-right:0.13889em;">P</span><span class="mord mathdefault" style="margin-right:0.22222em;">V</span></span></span></span> 中低精度累加误差、反向传播里 rowsum / 归约 / 低秩结构误差累积，以及 BF16/FP8 混合路径下某些误差不再随机抵消。</p>
+<p>这类问题说明：<br />
+训练低精度不能只测 <code>Linear</code> 层误差。Attention kernel、归一化、残差流和激活函数都要纳入排查。</p>
+<p><img  
+                     lazyload
+                     src="/images/loading.svg"
+                     data-src="/image/ai-notes/images/paper-figures/foundations/fp8-formats-figure-1-training-loss.png"
+                      alt="FP8 training loss curves 原论文图" 
+                ></p>
+<p><small>图源：<a class="link"   target="_blank" rel="noopener" href="https://arxiv.org/abs/2209.05433" >FP8 Formats for Deep Learning<i class="fa-solid fa-arrow-up-right ml-[0.2em] font-light align-text-top text-[0.7em] link-icon"></i></a>，Figure 1。原论文图意：比较不同规模 GPT 模型在 BF16 与 FP8 训练下的 loss/perplexity 曲线，展示 FP8 在合适 scaling 与训练配置下可以接近 BF16 收敛行为。</small></p>
+<div class="callout callout--titled info mb-4 rounded-small shadow-redefine-flat bg-(--callout-bg-color) p-3 pl-1 relative flex flex-row gap-2"><div role="none" class="rounded-full self-stretch w-0.5 bg-(--callout-primary-color) shrink-0 opacity-60"></div><div class="flex flex-col gap-2"><div class="callout__title flex items-center gap-2 font-semibold tracking-tight">图解：低精度稳定性要看曲线而不是只看格式</div><div class="callout__content markdown-body flex-1 min-w-0"><p>FP8 能不能用于训练，不是由“8 bit 看起来够不够”直接决定，而是由 scale 策略、累加精度、outlier 处理、kernel 实现和训练配置共同决定。图中 FP8 与 BF16 曲线接近，说明低精度路径可以稳定，但这是一组经过设计的数值系统结果；迁移到新模型时仍要重新检查 loss spike、梯度范数、activation percentile、scale 饱和率和 NaN/Inf。</p></div></div></div>
+<h2 id="mtp-投机解码和量化训练为什么会碰到一起"><a class="markdownIt-Anchor" href="#mtp-投机解码和量化训练为什么会碰到一起"></a> MTP、投机解码和量化训练为什么会碰到一起</h2>
+<p>你前面提到的 <code>QSpec</code> 很值得单独放在训练系统视角里看。<br />
+它不是传统意义上的“把模型压小”，而是把不同精度路径用于不同推理角色：低精度路径负责 draft，高精度路径负责 verify，两者共享权重或部分状态以减少额外显存。</p>
+<p>这给训练和推理联动带来一个启发：</p>
+<p><strong>低精度不一定只服务最终输出，也可以服务中间草稿、候选树、提前退出和自投机路径。</strong></p>
+<p>如果未来做 <code>MTP + quantization</code>，核心问题会变成：低精度 draft 是否足够快，是否和高精度 target 分布足够一致，低精度 KV cache 是否会污染后续验证，接受率下降能否被单步速度提升抵消，以及能否按任务难度动态决定 draft token 数。</p>
+<p>这就是为什么 <code>MTP</code>、<code>Speculative Decoding</code>、<code>QSpec</code>、<code>FP8/FP4</code> 最终都会回到同一个系统问题：<br />
+<strong>用更便宜的计算产生足够可信的中间结果，再用更贵的路径兜底。</strong></p>
+<h2 id="一个低比特训练实验应该怎么设计"><a class="markdownIt-Anchor" href="#一个低比特训练实验应该怎么设计"></a> 一个低比特训练实验应该怎么设计</h2>
+<p>不要一上来就全模型 FP8 或 FP4。更稳的推进顺序是先建立 BF16 baseline，并固定数据版本、token 预算和评测桶；再只打开主干 GEMM 的 FP8，确认 loss 和吞吐；随后压 activation cache，看显存收益和反向误差；再尝试梯度、optimizer states 或通信低精度；最后才推进 FP4 / NVFP4 这类更激进路线。每一步都要保留可回退配置和逐层数值对照。</p>
+<p><strong>训练指标不能只看 loss。</strong></p>
+<p>至少要同时看：</p>
+<table>
+<thead>
+<tr>
+<th>指标</th>
+<th>为什么重要</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>loss 曲线</td>
+<td>发现明显发散和 loss spike</td>
+</tr>
+<tr>
+<td>梯度范数</td>
+<td>发现更新方向异常</td>
+</tr>
+<tr>
+<td>activation max / percentile</td>
+<td>发现 outlier 是否放大</td>
+</tr>
+<tr>
+<td>scale 饱和率</td>
+<td>发现 scale 是否被极端值拖住</td>
+</tr>
+<tr>
+<td>NaN / Inf 计数</td>
+<td>发现数值路径崩坏</td>
+</tr>
+<tr>
+<td>throughput</td>
+<td>判断低精度是否真的提速</td>
+</tr>
+<tr>
+<td>显存峰值</td>
+<td>判断是否释放 batch / sequence 空间</td>
+</tr>
+<tr>
+<td>下游 benchmark</td>
+<td>判断 loss 相近是否真的能力相近</td>
+</tr>
+</tbody>
+</table>
+<p><strong>低比特训练 dashboard 应该长什么样。</strong></p>
+<p><img  
+                     lazyload
+                     src="/images/loading.svg"
+                     data-src="/image/ai-notes/images/paper-figures/training/zero-memory-stages.png"
+                      alt="ZeRO memory optimization stages 原论文图" 
+                ></p>
+<p><small>图源：<a class="link"   target="_blank" rel="noopener" href="https://arxiv.org/abs/1910.02054" >ZeRO: Memory Optimizations Toward Training Trillion Parameter Models<i class="fa-solid fa-arrow-up-right ml-[0.2em] font-light align-text-top text-[0.7em] link-icon"></i></a>，Figure 1。原论文图意：比较普通数据并行和 ZeRO-DP 三个阶段的单设备模型状态显存；<span class="katex"><span class="katex-mathml"><math><semantics><mrow><mi mathvariant="normal">Ψ</mi></mrow><annotation encoding="application/x-tex">\Psi</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.68333em;vertical-align:0em;"></span><span class="mord">Ψ</span></span></span></span> 表示参数量，<span class="katex"><span class="katex-mathml"><math><semantics><mrow><mi>K</mi></mrow><annotation encoding="application/x-tex">K</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.68333em;vertical-align:0em;"></span><span class="mord mathdefault" style="margin-right:0.07153em;">K</span></span></span></span> 表示优化器状态的显存倍数，<span class="katex"><span class="katex-mathml"><math><semantics><mrow><msub><mi>N</mi><mi>d</mi></msub></mrow><annotation encoding="application/x-tex">N_d</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.83333em;vertical-align:-0.15em;"></span><span class="mord"><span class="mord mathdefault" style="margin-right:0.10903em;">N</span><span class="msupsub"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height:0.33610799999999996em;"><span style="top:-2.5500000000000003em;margin-left:-0.10903em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mathdefault mtight">d</span></span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height:0.15em;"><span></span></span></span></span></span></span></span></span></span> 表示数据并行度。</small></p>
+<div class="callout callout--titled info mb-4 rounded-small shadow-redefine-flat bg-(--callout-bg-color) p-3 pl-1 relative flex flex-row gap-2"><div role="none" class="rounded-full self-stretch w-0.5 bg-(--callout-primary-color) shrink-0 opacity-60"></div><div class="flex flex-col gap-2"><div class="callout__title flex items-center gap-2 font-semibold tracking-tight">图解：低比特 dashboard 要拆开显存来源</div><div class="callout__content markdown-body flex-1 min-w-0"><p>ZeRO 图虽然讲的是状态分片，但它对低比特训练 dashboard 很有启发：不要只看总显存，要拆成参数、梯度、优化器状态、激活、通信 buffer 和 KV/临时 workspace。低精度可能明显减少某一项，却让 scale、metadata、重计算或通信开销增加。监控面板必须能解释“省下的是哪块显存、增加的是哪块开销”，否则很容易把短期能跑误判成长期可训。</p></div></div></div>
+<p>一个实用 dashboard 至少要把 loss、learning rate、gradient norm、activation percentile / max / scale、每类 kernel 的耗时和占比、显存峰值、activation checkpoint 开关、通信/计算/overlap 比例，以及 evaluation benchmark 分桶结果放在一起。</p>
+<p>如果只看 loss，你会很晚才发现问题；如果只看吞吐，你会高估低精度收益。</p>
+<h2 id="伪代码低精度-linear-的核心形态"><a class="markdownIt-Anchor" href="#伪代码低精度-linear-的核心形态"></a> 伪代码：低精度 Linear 的核心形态</h2>
+<p>下面是一个简化后的伪代码，用来说明低比特训练里的基本动作。真实实现会更复杂，并且会使用 fused kernel。</p>
+<div class="code-container" data-rel="Python"><figure class="iseeu highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">def</span> <span class="title function_">quantize_per_group</span>(<span class="params">x, group_size, fp_format</span>):</span><br><span class="line">    groups = x.reshape(-<span class="number">1</span>, group_size)</span><br><span class="line">    scale = choose_scale(groups, fp_format)</span><br><span class="line">    q = round_to_format(groups / scale, fp_format)</span><br><span class="line">    <span class="keyword">return</span> q, scale</span><br><span class="line"></span><br><span class="line"></span><br><span class="line"><span class="keyword">def</span> <span class="title function_">low_precision_linear</span>(<span class="params">x, w, group_size=<span class="number">128</span></span>):</span><br><span class="line">    x_q, x_scale = quantize_per_group(x, group_size, fp_format=<span class="string">&quot;fp8_e4m3&quot;</span>)</span><br><span class="line">    w_q, w_scale = quantize_per_group(w, group_size, fp_format=<span class="string">&quot;fp8_e4m3&quot;</span>)</span><br><span class="line"></span><br><span class="line">    <span class="comment"># 真实系统中这里应走 tensor core / fused kernel，而不是先反量化成高精度。</span></span><br><span class="line">    y = matmul_dequant(x_q, w_q, x_scale, w_scale, accum_dtype=<span class="string">&quot;bf16&quot;</span>)</span><br><span class="line">    <span class="keyword">return</span> y</span><br></pre></td></tr></table></figure></div>
+<p>这段代码背后的关键不是 <code>round</code>，而是 scale 如何选、group size 如何定、accumulator 用什么精度、反向传播如何处理量化误差，以及是否能被 kernel 高效执行。</p>
+<h2 id="伪代码训练时的低精度保护策略"><a class="markdownIt-Anchor" href="#伪代码训练时的低精度保护策略"></a> 伪代码：训练时的低精度保护策略</h2>
+<div class="code-container" data-rel="Python"><figure class="iseeu highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">for</span> step, batch <span class="keyword">in</span> <span class="built_in">enumerate</span>(loader):</span><br><span class="line">    <span class="keyword">with</span> low_precision_region(dtype=<span class="string">&quot;fp8&quot;</span>, allow_modules=[<span class="string">&quot;attention&quot;</span>, <span class="string">&quot;mlp&quot;</span>]):</span><br><span class="line">        logits = model(batch[<span class="string">&quot;input_ids&quot;</span>])</span><br><span class="line"></span><br><span class="line">    <span class="comment"># loss、norm、部分 logits 相关操作保高精度。</span></span><br><span class="line">    loss = cross_entropy(logits.<span class="built_in">float</span>(), batch[<span class="string">&quot;labels&quot;</span>])</span><br><span class="line"></span><br><span class="line">    loss.backward()</span><br><span class="line"></span><br><span class="line">    <span class="keyword">if</span> has_nan_or_inf(model):</span><br><span class="line">        rollback_to_last_safe_checkpoint()</span><br><span class="line">        disable_low_precision_for_sensitive_modules()</span><br><span class="line">        <span class="keyword">continue</span></span><br><span class="line"></span><br><span class="line">    clip_grad_norm_(model.parameters(), max_norm)</span><br><span class="line">    optimizer.step()</span><br><span class="line">    optimizer.zero_grad()</span><br></pre></td></tr></table></figure></div>
+<p>这个伪代码表达的是低比特训练的基本态度：<br />
+低精度应该是可控区域，而不是全局赌博。敏感模块、异常恢复和自动降级必须提前设计。</p>
+<h2 id="论文路线图按问题而不是年份读"><a class="markdownIt-Anchor" href="#论文路线图按问题而不是年份读"></a> 论文路线图：按问题而不是年份读</h2>
+<p><strong>数制和格式。</strong></p>
+<table>
+<thead>
+<tr>
+<th>论文 / 文档</th>
+<th>重点</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><a class="link"   target="_blank" rel="noopener" href="https://arxiv.org/abs/2209.05433" >FP8 Formats for Deep Learning<i class="fa-solid fa-arrow-up-right ml-[0.2em] font-light align-text-top text-[0.7em] link-icon"></i></a></td>
+<td><code>E4M3 / E5M2</code> 基础</td>
+</tr>
+<tr>
+<td><a class="link"   target="_blank" rel="noopener" href="https://arxiv.org/abs/2310.10537" >Microscaling Data Formats for Deep Learning<i class="fa-solid fa-arrow-up-right ml-[0.2em] font-light align-text-top text-[0.7em] link-icon"></i></a></td>
+<td><code>MXFP / MXINT</code> 微缩放</td>
+</tr>
+<tr>
+<td><a class="link"   target="_blank" rel="noopener" href="https://arxiv.org/abs/2409.16626" >Ascend HiFloat8 Format for Deep Learning<i class="fa-solid fa-arrow-up-right ml-[0.2em] font-light align-text-top text-[0.7em] link-icon"></i></a></td>
+<td><code>HiFloat8</code> 数制设计</td>
+</tr>
+<tr>
+<td><a class="link"   target="_blank" rel="noopener" href="https://www.opencompute.org/documents/ocp-microscaling-formats-mx-v1-0-spec-final-pdf" >OCP MX v1.0 Spec<i class="fa-solid fa-arrow-up-right ml-[0.2em] font-light align-text-top text-[0.7em] link-icon"></i></a></td>
+<td>MX 格式标准</td>
+</tr>
+</tbody>
+</table>
+<p><strong>FP8 训练稳定性。</strong></p>
+<table>
+<thead>
+<tr>
+<th>论文</th>
+<th>重点</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><a class="link"   target="_blank" rel="noopener" href="https://arxiv.org/abs/2310.18313" >FP8-LM<i class="fa-solid fa-arrow-up-right ml-[0.2em] font-light align-text-top text-[0.7em] link-icon"></i></a></td>
+<td>梯度和优化器状态低精度</td>
+</tr>
+<tr>
+<td><a class="link"   target="_blank" rel="noopener" href="https://arxiv.org/abs/2410.19313" >COAT<i class="fa-solid fa-arrow-up-right ml-[0.2em] font-light align-text-top text-[0.7em] link-icon"></i></a></td>
+<td>activation 和 optimizer state 压缩</td>
+</tr>
+<tr>
+<td><a class="link"   target="_blank" rel="noopener" href="https://arxiv.org/abs/2409.12517" >Scaling FP8 Training to Trillion-Token LLMs<i class="fa-solid fa-arrow-up-right ml-[0.2em] font-light align-text-top text-[0.7em] link-icon"></i></a></td>
+<td>长 token 训练稳定性与 SwiGLU outlier</td>
+</tr>
+<tr>
+<td><a class="link"   target="_blank" rel="noopener" href="https://arxiv.org/abs/2405.18710" >To FP8 and Back Again<i class="fa-solid fa-arrow-up-right ml-[0.2em] font-light align-text-top text-[0.7em] link-icon"></i></a></td>
+<td>低精度训练稳定性评估</td>
+</tr>
+<tr>
+<td><a class="link"   target="_blank" rel="noopener" href="https://arxiv.org/abs/2502.05967" >μnit Scaling<i class="fa-solid fa-arrow-up-right ml-[0.2em] font-light align-text-top text-[0.7em] link-icon"></i></a></td>
+<td>简化 FP8 scaling 和参数化</td>
+</tr>
+<tr>
+<td><a class="link"   target="_blank" rel="noopener" href="https://arxiv.org/abs/2506.08027" >Recipes for Pre-training LLMs with MXFP8<i class="fa-solid fa-arrow-up-right ml-[0.2em] font-light align-text-top text-[0.7em] link-icon"></i></a></td>
+<td>MXFP8 预训练配方</td>
+</tr>
+</tbody>
+</table>
+<p><strong>FP4 / NVFP4 训练。</strong></p>
+<table>
+<thead>
+<tr>
+<th>论文</th>
+<th>重点</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><a class="link"   target="_blank" rel="noopener" href="https://arxiv.org/abs/2501.17116" >Optimizing Large Language Model Training Using FP4 Quantization<i class="fa-solid fa-arrow-up-right ml-[0.2em] font-light align-text-top text-[0.7em] link-icon"></i></a></td>
+<td>FP4 训练优化和可微量化估计</td>
+</tr>
+<tr>
+<td><a class="link"   target="_blank" rel="noopener" href="https://arxiv.org/abs/2502.20586" >Training LLMs with MXFP4<i class="fa-solid fa-arrow-up-right ml-[0.2em] font-light align-text-top text-[0.7em] link-icon"></i></a></td>
+<td>MXFP4、RHT 和 outlier 处理</td>
+</tr>
+<tr>
+<td><a class="link"   target="_blank" rel="noopener" href="https://arxiv.org/abs/2505.14669" >Quartet<i class="fa-solid fa-arrow-up-right ml-[0.2em] font-light align-text-top text-[0.7em] link-icon"></i></a></td>
+<td>原生 FP4 kernel 与训练</td>
+</tr>
+<tr>
+<td><a class="link"   target="_blank" rel="noopener" href="https://arxiv.org/abs/2509.25149" >Pretraining LLMs with NVFP4<i class="fa-solid fa-arrow-up-right ml-[0.2em] font-light align-text-top text-[0.7em] link-icon"></i></a></td>
+<td>NVFP4 长 token 预训练</td>
+</tr>
+<tr>
+<td><a class="link"   target="_blank" rel="noopener" href="https://arxiv.org/abs/2512.02010" >Four Over Six<i class="fa-solid fa-arrow-up-right ml-[0.2em] font-light align-text-top text-[0.7em] link-icon"></i></a></td>
+<td>NVFP4 adaptive block scaling</td>
+</tr>
+<tr>
+<td><a class="link"   target="_blank" rel="noopener" href="https://arxiv.org/abs/2601.22813" >Quartet II<i class="fa-solid fa-arrow-up-right ml-[0.2em] font-light align-text-top text-[0.7em] link-icon"></i></a></td>
+<td>NVFP4 无偏梯度估计</td>
+</tr>
+</tbody>
+</table>
+<p><strong>量化和投机解码交叉。</strong></p>
+<table>
+<thead>
+<tr>
+<th>论文 / 项目</th>
+<th>重点</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><a class="link"   target="_blank" rel="noopener" href="https://arxiv.org/abs/2410.11305" >QSpec<i class="fa-solid fa-arrow-up-right ml-[0.2em] font-light align-text-top text-[0.7em] link-icon"></i></a></td>
+<td>低精度 draft + 高精度 verify</td>
+</tr>
+<tr>
+<td><a class="link"   target="_blank" rel="noopener" href="https://arxiv.org/abs/2401.15077" >EAGLE<i class="fa-solid fa-arrow-up-right ml-[0.2em] font-light align-text-top text-[0.7em] link-icon"></i></a></td>
+<td>feature-level speculative draft</td>
+</tr>
+<tr>
+<td><a class="link"   target="_blank" rel="noopener" href="https://arxiv.org/abs/2503.01840" >EAGLE-3<i class="fa-solid fa-arrow-up-right ml-[0.2em] font-light align-text-top text-[0.7em] link-icon"></i></a></td>
+<td>training-time test 与多层特征融合</td>
+</tr>
+<tr>
+<td><a class="link"   target="_blank" rel="noopener" href="https://github.com/torchspec-project/TorchSpec" >TorchSpec<i class="fa-solid fa-arrow-up-right ml-[0.2em] font-light align-text-top text-[0.7em] link-icon"></i></a></td>
+<td>speculative decoding 训练框架</td>
+</tr>
+</tbody>
+</table>
+<h2 id="常见误区"><a class="markdownIt-Anchor" href="#常见误区"></a> 常见误区</h2>
+<p><strong>把低比特训练当作推理量化的自然延伸。</strong></p>
+<p>推理量化的误差不写回参数；训练误差会写回参数。<br />
+所以训练低精度必须看长期稳定性，而不是只看单批输出误差。</p>
+<p><strong>只看平均 loss，不看尾部和后期。</strong></p>
+<p>很多低精度问题不会一开始就炸。<br />
+它可能在 outlier 慢慢放大、scale 慢慢失配、梯度误差慢慢累积之后突然出现。</p>
+<p><strong>只谈数制，不谈 kernel。</strong></p>
+<p>如果低精度路径频繁 cast 回 BF16，或者 scale 计算开销很大，理论速度不会变成端到端速度。<br />
+FP4 尤其如此：没有原生 kernel 支持，收益很容易被系统开销吃掉。</p>
+<p><strong>忽略恢复语义。</strong></p>
+<p>低精度训练更容易出现偶发 NaN、loss spike 和不可重复问题。<br />
+因此 checkpoint 必须保存足够信息，包括 scale 状态、混合精度配置、随机数状态、optimizer 状态和数据游标。</p>
+<h2 id="最小落地清单"><a class="markdownIt-Anchor" href="#最小落地清单"></a> 最小落地清单</h2>
+<p>如果要做一个低比特训练项目，至少先准备 BF16 baseline、每层 activation percentile 统计、梯度范数与 NaN/Inf/loss spike 告警、逐层数值对照脚本、kernel profile、高精度保护层列表、自动回退策略、长跑验证计划、下游 benchmark 分桶，以及 checkpoint 恢复一致性测试。</p>
+<h2 id="和相邻章节怎么连起来"><a class="markdownIt-Anchor" href="#和相邻章节怎么连起来"></a> 和相邻章节怎么连起来</h2>
+<p>建议按这条路线阅读：<a href="/2026/05/11/ai-files-foundations-numerics-memory-and-runtime-basics/">数值、显存与运行时</a> → <a href="/2026/05/11/ai-files-training-stability-numerics-and-failure-triage/">训练稳定性与故障排查</a> → <a href="/2026/05/11/ai-files-training-distributed-training-and-checkpointing/">分布式训练与 Checkpoint</a> → <a href="/2026/05/11/ai-files-training-mtp-and-speculative-decoding/">MTP 与投机解码</a> → <a href="/2026/05/11/ai-files-quantization-fp8-and-mixed-precision-serving/">FP8 与混合精度推理</a> → <a href="/2026/05/11/ai-files-operators-low-precision-and-quantized-kernels/">低精度与量化 Kernel</a>。</p>
+<p>量化专题更关注“如何压缩和部署”；这一页更关注“训练过程中如何不崩，并且真的换来训练效率”。</p>
+<div class="callout callout--titled success mb-4 rounded-small shadow-redefine-flat bg-(--callout-bg-color) p-3 pl-1 relative flex flex-row gap-2"><div role="none" class="rounded-full self-stretch w-0.5 bg-(--callout-primary-color) shrink-0 opacity-60"></div><div class="flex flex-col gap-2"><div class="callout__title flex items-center gap-2 font-semibold tracking-tight">下一站</div><div class="callout__content markdown-body flex-1 min-w-0"><ul>
+<li>回到本专题入口：训练，确认这页在整条路线中的位置。</li>
+<li>按导航顺序继续：<a href="/2026/05/11/ai-files-training-data-systems-and-optimization/">训练数据系统与吞吐优化</a>。</li>
+<li>概念或符号卡住时，先查 术语表，再回到当前页。</li>
+</ul></div></div></div>
+
+		</div>
+
+		
+		<div class="post-copyright-info w-full my-8 px-2 sm:px-6 md:px-8">
+			<div class="article-copyright-info-container">
+    <ul>
+        <li><strong>Title:</strong> 训练：低比特训练与数值格式</li>
+        <li><strong>Author:</strong> Charles</li>
+        <li><strong>Created at
+                :</strong> 2026-02-13 09:00:00</li>
+        
+            <li>
+                <strong>Updated at
+                    :</strong> 2026-02-13 09:00:00
+            </li>
+        
+        <li>
+            <strong>Link:</strong> https://charles2530.github.io/2026/02/13/ai-files-training-low-bit-training-and-numerics/
+        </li>
+        <li>
+            <strong>
+                License:
+            </strong>
+            
+
+            
+                This work is licensed under <a class="license" target="_blank" rel="noopener" href="https://creativecommons.org/licenses/by-nc-sa/4.0">CC BY-NC-SA 4.0</a>.
+            
+        </li>
+    </ul>
+</div>
+
+		</div>
+		
+
+		
+		<ul class="post-tags-box text-lg mt-1.5 flex-wrap justify-center flex md:hidden">
+			
+			<li class="tag-item mx-0.5">
+				<a href="/tags/AI/">#AI</a>&nbsp;
+			</li>
+			
+			<li class="tag-item mx-0.5">
+				<a href="/tags/%E8%AE%AD%E7%BB%83/">#训练</a>&nbsp;
+			</li>
+			
+			<li class="tag-item mx-0.5">
+				<a href="/tags/%E9%87%8F%E5%8C%96/">#量化</a>&nbsp;
+			</li>
+			
+		</ul>
+		
+
+		
+
+		
+		<div class="article-nav my-8 flex justify-between items-center px-2 sm:px-6 md:px-8">
+			
+			<div class="article-prev border-border-color shadow-redefine-flat shadow-shadow-color-2 rounded-medium px-4 py-2 hover:shadow-redefine-flat-hover hover:shadow-shadow-color-2">
+				<a class="prev" rel="prev" href="/2026/02/14/ai-files-training-megatron-lm-deepspeed-and-open-training-stacks/">
+					<span class="left arrow-icon flex justify-center items-center">
+						<i class="fa-solid fa-chevron-left"></i>
+					</span>
+					<span class="title flex justify-center items-center">
+						<span class="post-nav-title-item truncate max-w-48">训练：Megatron、DeepSpeed 与训练栈</span>
+						<span class="post-nav-item">Prev posts</span>
+					</span>
+				</a>
+			</div>
+			
+			
+			<div class="article-next border-border-color shadow-redefine-flat shadow-shadow-color-2 rounded-medium px-4 py-2 hover:shadow-redefine-flat-hover hover:shadow-shadow-color-2">
+				<a class="next" rel="next" href="/2026/02/11/ai-files-training-input-pipelines-packing-and-throughput-governance/">
+					<span class="title flex justify-center items-center">
+						<span class="post-nav-title-item truncate max-w-48">训练：输入管线、Packing 与吞吐</span>
+						<span class="post-nav-item">Next posts</span>
+					</span>
+					<span class="right arrow-icon flex justify-center items-center">
+						<i class="fa-solid fa-chevron-right"></i>
+					</span>
+				</a>
+			</div>
+			
+		</div>
+		
+
+
+		
+		<div class="comment-container px-2 sm:px-6 md:px-8 pb-8">
+			<div class="comments-container mt-10 w-full ">
+    <div id="comment-anchor" class="w-full h-2.5"></div>
+    <div class="comment-area-title w-full my-1.5 md:my-2.5 text-xl md:text-3xl font-bold">
+        Comments
+    </div>
+    
+
+        
+            
+    <div id="gitalk-container"></div>
+    <script data-swup-reload-script
+            src="https://cdnjs.cloudflare.com/ajax/libs/gitalk/1.8.0/gitalk.min.js"></script>
+    <script data-swup-reload-script>
+        (function() {
+            const startPath = location.pathname;
+            const startTime = Date.now();
+            const retryDelay = 200;
+            const retryLimit = 5000;
+
+            const runGitalk = () => {
+                if (location.pathname !== startPath) {
+                    return;
+                }
+
+                const container = document.getElementById('gitalk-container');
+                if (!container || typeof Gitalk === 'undefined') {
+                    if (Date.now() - startTime < retryLimit) {
+                        setTimeout(runGitalk, retryDelay);
+                    }
+                    return;
+                }
+
+                container.innerHTML = '';
+
+                let pageKey = decodeURI(location.pathname);
+                const maxLength = 50;
+                if (pageKey.length > maxLength) {
+                    pageKey = pageKey.substring(0, maxLength - 3) + '...';
+                }
+
+                try {
+                    new Gitalk({
+                        clientID: '8083299a8ee2aaf23879',
+                        clientSecret: 'a8161e81d4872181e884fdb69f7be24916b6a9d0',
+                        repo: 'Charles2530.github.io',
+                        owner: 'Charles2530',
+                        admin: ['Charles2530'],
+                        id: pageKey,
+                        language: 'en',
+                        proxy: 'https://github.com/login/oauth/access_token'
+                    }).render(container);
+                } catch (e) {
+                    window.Gitalk = null;
+                }
+            };
+
+            runGitalk();
+        })();
+    </script>
+
+
+
+        
+    
+</div>
+
+		</div>
+		
+	</div>
+
+	
+	<div class="toc-content-container">
+		<div class="post-toc-wrap">
+	<div class="post-toc">
+		<div class="toc-title">On this page</div>
+		<div class="page-title">训练：低比特训练与数值格式</div>
+		<ol class="nav"><li class="nav-item nav-level-2"><a class="nav-link" href="#%E7%A1%AC%E8%AF%81%E6%8D%AE%E6%A8%A1%E5%9D%97%E4%BD%8E%E6%AF%94%E7%89%B9%E8%AE%AD%E7%BB%83%E8%A6%81%E5%90%8C%E6%97%B6%E8%AF%81%E6%98%8E%E6%95%B0%E5%80%BC%E5%92%8C%E4%B8%96%E7%95%8C%E6%A8%A1%E5%9E%8B%E8%A1%8C%E4%B8%BA"><span class="nav-text"> 硬证据模块：低比特训练要同时证明数值和世界模型行为</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#%E4%B8%BA%E4%BB%80%E4%B9%88%E8%BF%99%E5%B1%9E%E4%BA%8E%E8%AE%AD%E7%BB%83%E9%87%8D%E7%82%B9%E5%86%85%E5%AE%B9"><span class="nav-text"> 为什么这属于训练重点内容</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#%E8%AE%AD%E7%BB%83%E9%87%8C%E5%88%B0%E5%BA%95%E5%93%AA%E4%BA%9B%E4%B8%9C%E8%A5%BF%E5%8F%AF%E4%BB%A5%E9%99%8D%E7%B2%BE%E5%BA%A6"><span class="nav-text"> 训练里到底哪些东西可以降精度</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#%E6%95%B0%E5%88%B6%E4%B8%8D%E6%98%AF%E5%90%8D%E5%AD%97%E9%97%AE%E9%A2%98%E8%80%8C%E6%98%AF%E8%A1%A8%E7%A4%BA%E9%A2%84%E7%AE%97%E9%97%AE%E9%A2%98"><span class="nav-text"> 数制不是名字问题，而是表示预算问题</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#%E4%BD%8E%E6%AF%94%E7%89%B9%E8%AE%AD%E7%BB%83%E7%9A%84%E6%A0%B8%E5%BF%83%E7%9F%9B%E7%9B%BE"><span class="nav-text"> 低比特训练的核心矛盾</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#%E4%B8%BA%E4%BB%80%E4%B9%88-activation-%E6%98%AF%E4%B8%BB%E6%88%98%E5%9C%BA"><span class="nav-text"> 为什么 activation 是主战场</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#fp8-%E8%AE%AD%E7%BB%83%E8%B7%AF%E7%BA%BF%E4%BB%8E%E5%8F%AF%E7%94%A8%E5%88%B0%E9%95%BF%E7%A8%B3"><span class="nav-text"> FP8 训练路线：从可用到长稳</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#fp4-%E8%AE%AD%E7%BB%83%E8%B7%AF%E7%BA%BF%E6%9B%B4%E4%BD%8E-bit%E6%9B%B4%E5%BC%BA%E7%B3%BB%E7%BB%9F%E8%80%A6%E5%90%88"><span class="nav-text"> FP4 训练路线：更低 bit，更强系统耦合</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#flashattention-%E4%B8%8E%E4%BD%8E%E7%B2%BE%E5%BA%A6%E8%AE%AD%E7%BB%83%E7%A8%B3%E5%AE%9A%E6%80%A7"><span class="nav-text"> FlashAttention 与低精度训练稳定性</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#mtp-%E6%8A%95%E6%9C%BA%E8%A7%A3%E7%A0%81%E5%92%8C%E9%87%8F%E5%8C%96%E8%AE%AD%E7%BB%83%E4%B8%BA%E4%BB%80%E4%B9%88%E4%BC%9A%E7%A2%B0%E5%88%B0%E4%B8%80%E8%B5%B7"><span class="nav-text"> MTP、投机解码和量化训练为什么会碰到一起</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#%E4%B8%80%E4%B8%AA%E4%BD%8E%E6%AF%94%E7%89%B9%E8%AE%AD%E7%BB%83%E5%AE%9E%E9%AA%8C%E5%BA%94%E8%AF%A5%E6%80%8E%E4%B9%88%E8%AE%BE%E8%AE%A1"><span class="nav-text"> 一个低比特训练实验应该怎么设计</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#%E4%BC%AA%E4%BB%A3%E7%A0%81%E4%BD%8E%E7%B2%BE%E5%BA%A6-linear-%E7%9A%84%E6%A0%B8%E5%BF%83%E5%BD%A2%E6%80%81"><span class="nav-text"> 伪代码：低精度 Linear 的核心形态</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#%E4%BC%AA%E4%BB%A3%E7%A0%81%E8%AE%AD%E7%BB%83%E6%97%B6%E7%9A%84%E4%BD%8E%E7%B2%BE%E5%BA%A6%E4%BF%9D%E6%8A%A4%E7%AD%96%E7%95%A5"><span class="nav-text"> 伪代码：训练时的低精度保护策略</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#%E8%AE%BA%E6%96%87%E8%B7%AF%E7%BA%BF%E5%9B%BE%E6%8C%89%E9%97%AE%E9%A2%98%E8%80%8C%E4%B8%8D%E6%98%AF%E5%B9%B4%E4%BB%BD%E8%AF%BB"><span class="nav-text"> 论文路线图：按问题而不是年份读</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#%E5%B8%B8%E8%A7%81%E8%AF%AF%E5%8C%BA"><span class="nav-text"> 常见误区</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#%E6%9C%80%E5%B0%8F%E8%90%BD%E5%9C%B0%E6%B8%85%E5%8D%95"><span class="nav-text"> 最小落地清单</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#%E5%92%8C%E7%9B%B8%E9%82%BB%E7%AB%A0%E8%8A%82%E6%80%8E%E4%B9%88%E8%BF%9E%E8%B5%B7%E6%9D%A5"><span class="nav-text"> 和相邻章节怎么连起来</span></a></li></ol>
+
+	</div>
+</div>
+	</div>
+	
+</div>
+
+			</div>
+
+			
+		</div>
+
+		<div class="main-content-footer">
+			<footer class="footer mt-5 py-5 h-auto text-base text-third-text-color relative border-t-2 border-t-border-color">
+    <div class="info-container py-3 text-center">
+        
+        <div class="text-center">
+            &copy;
+            
+              <span>2022</span>
+              -
+            
+            2026&nbsp;&nbsp;<i class="fa-solid fa-heart fa-beat" style="--fa-animation-duration: 0.5s; color: #f54545"></i>&nbsp;&nbsp;<a href="/">Charles</a>
+            
+                
+                <p class="post-count space-x-0.5">
+                    <span>
+                        521 posts in total
+                    </span>
+                    
+                        <span>
+                            2107k words in total
+                        </span>
+                    
+                </p>
+            
+        </div>
+        
+            <script data-swup-reload-script src="https://cn.vercount.one/js"></script>
+            <div class="relative text-center lg:absolute lg:right-[20px] lg:top-1/2 lg:-translate-y-1/2 lg:text-right">
+                
+                    <span id="busuanzi_container_site_uv" class="lg:!block">
+                        <span class="text-sm">VISITOR COUNT</span>
+                        <span id="busuanzi_value_site_uv"></span>
+                    </span>
+                
+                
+                    <span id="busuanzi_container_site_pv" class="lg:!block">
+                        <span class="text-sm">TOTAL PAGE VIEWS</span>
+                        <span id="busuanzi_value_site_pv"></span>
+                    </span>
+                
+            </div>
+        
+        <div class="relative text-center lg:absolute lg:left-[20px] lg:top-1/2 lg:-translate-y-1/2 lg:text-left">
+            <span class="lg:block text-sm">POWERED BY <?xml version="1.0" encoding="utf-8"?><!DOCTYPE svg PUBLIC "-//W3C//DTD SVG 1.1//EN" "http://www.w3.org/Graphics/SVG/1.1/DTD/svg11.dtd"><svg class="relative top-[2px] inline-block align-baseline" version="1.1" id="圖層_1" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" x="0px" y="0px" width="1rem" height="1rem" viewBox="0 0 512 512" enable-background="new 0 0 512 512" xml:space="preserve"><path fill="#0E83CD" d="M256.4,25.8l-200,115.5L56,371.5l199.6,114.7l200-115.5l0.4-230.2L256.4,25.8z M349,354.6l-18.4,10.7l-18.6-11V275H200v79.6l-18.4,10.7l-18.6-11v-197l18.5-10.6l18.5,10.8V237h112v-79.6l18.5-10.6l18.5,10.8V354.6z"/></svg><a target="_blank" class="text-base" href="https://hexo.io">Hexo</a></span>
+            <span class="text-sm lg:block">THEME&nbsp;<a class="text-base" target="_blank" href="https://github.com/EvanNotFound/hexo-theme-redefine">Redefine v2.9.0</a></span>
+        </div>
+        
+        
+            <div>
+                Blog up for <span class="odometer" id="runtime_days" ></span> days <span class="odometer" id="runtime_hours"></span> hrs <span class="odometer" id="runtime_minutes"></span> Min <span class="odometer" id="runtime_seconds"></span> Sec
+            </div>
+        
+        
+            <script data-swup-reload-script>
+                try {
+                    function odometer_init() {
+                    const elements = document.querySelectorAll('.odometer');
+                    elements.forEach(el => {
+                        new Odometer({
+                            el,
+                            format: '( ddd).dd',
+                            duration: 200
+                        });
+                    });
+                    }
+                    odometer_init();
+                } catch (error) {}
+            </script>
+        
+        
+            
+                
+        
+                
+        
+                
+
+                    
+                        <script data-swup-reload-script type="text/javascript" src="/js/love.js"></script>
+                    
+        
+        
+    </div>  
+</footer>
+		</div>
+	</div>
+
+	
+	<div class="post-tools">
+		<div class="post-tools-container">
+	<ul class="article-tools-list">
+		<!-- TOC aside toggle -->
+		
+		<li class="right-bottom-tools page-aside-toggle">
+			<i class="fa-regular fa-outdent"></i>
+		</li>
+		
+
+		<!-- go comment -->
+		
+		<li class="go-comment">
+			<i class="fa-regular fa-comments"></i>
+		</li>
+		
+	</ul>
+</div>
+	</div>
+	
+
+	<div class="right-side-tools-container">
+		<div class="side-tools-container">
+	<ul class="hidden-tools-list">
+		<li class="right-bottom-tools tool-font-adjust-plus flex justify-center items-center">
+			<i class="fa-regular fa-magnifying-glass-plus"></i>
+		</li>
+
+		<li class="right-bottom-tools tool-font-adjust-minus flex justify-center items-center">
+			<i class="fa-regular fa-magnifying-glass-minus"></i>
+		</li>
+
+		<li class="right-bottom-tools tool-dark-light-toggle flex justify-center items-center">
+			<i class="fa-regular fa-moon"></i>
+		</li>
+
+		<!-- rss -->
+		
+		<li class="right-bottom-tools rss flex justify-center items-center">
+			<a class="flex justify-center items-center" href="/atom.xml" target="_blank">
+				<i class="fa-regular fa-rss"></i>
+			</a>
+		</li>
+		
+
+		
+
+		<li class="right-bottom-tools tool-scroll-to-bottom flex justify-center items-center">
+			<i class="fa-regular fa-arrow-down"></i>
+		</li>
+	</ul>
+
+	<ul class="visible-tools-list">
+		<li class="right-bottom-tools toggle-tools-list flex justify-center items-center">
+			<i class="fa-regular fa-cog fa-spin"></i>
+		</li>
+		
+		<li class="right-bottom-tools tool-scroll-to-top flex justify-center items-center">
+			<i class="arrow-up fas fa-arrow-up"></i>
+			<span class="percent"></span>
+		</li>
+		
+		
+	</ul>
+</div>
+	</div>
+
+	<div class="image-viewer-container" role="dialog" aria-modal="true" aria-label="Image viewer">
+	<button class="image-viewer-close" type="button" aria-label="Close">
+		<i class="fa-solid fa-xmark"></i>
+	</button>
+	<button class="image-viewer-prev" type="button" aria-label="Prev">
+		<i class="fa-solid fa-chevron-left"></i>
+	</button>
+	<div class="image-viewer-frame">
+		<img src="" alt="">
+	</div>
+	<div class="image-viewer-exif-panel hidden absolute left-1/2 bottom-20 -translate-x-1/2 w-[min(92vw,420px)] max-h-[60vh] overflow-hidden rounded-2xl bg-background-color-transparent-80 p-4 text-left shadow-redefine-flat backdrop-blur-md" role="dialog" aria-label="EXIF" aria-hidden="true">
+		<div class="flex items-center justify-between mb-3">
+			<span class="text-sm font-semibold text-first-text-color">EXIF</span>
+			<button class="image-viewer-exif-close flex h-8 w-8 items-center justify-center rounded-full bg-background-color-transparent-80 text-first-text-color transition hover:bg-background-color-transparent-40" type="button" aria-label="Close">
+				<i class="fa-solid fa-xmark text-[0.65rem]"></i>
+			</button>
+		</div>
+		<div class="image-viewer-exif-cards grid grid-cols-1 sm:grid-cols-2 gap-3 max-h-[50vh] overflow-y-auto pr-1 scrollbar-hide"></div>
+		<template class="image-viewer-exif-card-template">
+			<div class="rounded-lg bg-background-color-transparent-40 px-3 py-2">
+				<div class="image-viewer-exif-card-header flex items-center gap-2 mb-1">
+					<i class="image-viewer-exif-card-icon fa-solid fa-circle-info text-xs text-third-text-color"></i>
+					<div class="image-viewer-exif-card-title text-xs font-semibold text-first-text-color"></div>
+				</div>
+				<div class="image-viewer-exif-card-items flex flex-col gap-1"></div>
+			</div>
+		</template>
+	</div>
+	<button class="image-viewer-exif-toggle flex items-center gap-2 hidden absolute left-1/2 bottom-6 -translate-x-1/2 rounded-full border border-border-color bg-background-color-transparent-80 px-4 py-2 text-first-text-color backdrop-blur-md transition hover:bg-background-color-transparent-40" type="button" aria-label="EXIF" aria-expanded="false">
+		<i class="fa-solid fa-circle-info text-xs"></i>
+		<span class="text-xs font-semibold uppercase tracking-wider">EXIF</span>
+	</button>
+	<button class="image-viewer-next" type="button" aria-label="Next">
+		<i class="fa-solid fa-chevron-right"></i>
+	</button>
+</div>
+
+
+	
+	<div class="search-pop-overlay">
+	<div class="popup search-popup">
+		<div class="search-header">
+			<span class="search-input-field-pre">
+				<i class="fa-solid fa-keyboard"></i>
+			</span>
+			<div class="search-input-container">
+				<input autocomplete="off" autocorrect="off" autocapitalize="off" placeholder="Search..." spellcheck="false" type="search" class="search-input">
+			</div>
+			<span class="popup-btn-close">
+				<i class="fa-solid fa-times"></i>
+			</span>
+		</div>
+		<div id="search-result">
+			<div id="no-result">
+				<i class="fa-solid fa-spinner fa-spin-pulse fa-5x fa-fw"></i>
+			</div>
+		</div>
+	</div>
+</div>
+	
+
+</main>
+
+
+
+<script src="/js/build/libs/Swup.min.js"></script>
+
+<script src="/js/build/libs/SwupSlideTheme.min.js"></script>
+
+<script src="/js/build/libs/SwupScriptsPlugin.min.js"></script>
+
+<script src="/js/build/libs/SwupProgressPlugin.min.js"></script>
+
+<script src="/js/build/libs/SwupScrollPlugin.min.js"></script>
+
+<script src="/js/build/libs/SwupPreloadPlugin.min.js"></script>
+
+<script>
+    window.swup = new Swup({
+        plugins: [
+            new SwupScriptsPlugin({
+                optin: true,
+            }),
+            new SwupProgressPlugin(),
+            new SwupScrollPlugin({
+                offset: 80,
+            }),
+            new SwupSlideTheme({
+                mainElement: ".main-content-body",
+            }),
+            new SwupPreloadPlugin(),
+        ],
+        containers: ["#swup"],
+    });
+
+    window.dispatchEvent(
+        new CustomEvent("redefine:swup:ready", {
+            detail: {
+                swup: window.swup,
+            },
+        }),
+    );
+</script>
+
+
+
+
+	
+<script src="/js/build/main.js" type="module"></script>
+
+
+
+    
+<script src="/js/build/libs/odometer.min.js"></script>
+
+    
+<link rel="stylesheet" href="/assets/odometer-theme-minimal.css">
+
+
+
+
+
+
+
+  
+<script src="/js/build/libs/Typed.min.js"></script>
+<script src="/js/build/libs/minimasonry.min.js" data-swup-reload-script=""></script>
+
+
+
+
+<script src="/js/build/libs/moment-with-locales.min.js" data-swup-reload-script=""></script>
+
+
+
+	
+</body>
+
+</html>
