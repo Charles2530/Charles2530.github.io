@@ -684,7 +684,7 @@
         <div class="label text-third-text-color text-sm">Categories</div>
     </a>
     <a class="item tag-count-item flex flex-col justify-center items-center w-20" href="/archives">
-        <div class="number text-2xl sm:text-xl text-second-text-color font-semibold">534</div>
+        <div class="number text-2xl sm:text-xl text-second-text-color font-semibold">540</div>
         <div class="label text-third-text-color text-sm">Posts</div>
     </a>
 </div>
@@ -796,12 +796,12 @@
     
     
         <span class="article-wordcount article-meta-item">
-            <i class="fa-regular fa-typewriter"></i>&nbsp;<span>1.5k Words</span>
+            <i class="fa-regular fa-typewriter"></i>&nbsp;<span>1.2k Words</span>
         </span>
     
     
         <span class="article-min2read article-meta-item">
-            <i class="fa-regular fa-clock"></i>&nbsp;<span>5 Mins</span>
+            <i class="fa-regular fa-clock"></i>&nbsp;<span>4 Mins</span>
         </span>
     
     
@@ -821,11 +821,6 @@
 
 		<div class="article-content markdown-body px-2 sm:px-6 md:px-8 pb-8">
 			<p>这页是 <a href="/2026/05/11/ai-files-operators-deepgemm-fp8-gemm-and-mega-moe/">DeepGEMM 解读</a> 的工程附录，重点放在源码阅读、API 地图、调用路径和接入检查。主页面负责建立系统判断，这页负责帮助你真的读仓库和评估能不能接进自己的服务链路。</p>
-<div class="callout callout--titled info mb-4 rounded-small shadow-redefine-flat bg-(--callout-bg-color) p-3 pl-1 relative flex flex-row gap-2"><div role="none" class="rounded-full self-stretch w-0.5 bg-(--callout-primary-color) shrink-0 opacity-60"></div><div class="flex flex-col gap-2"><div class="callout__title flex items-center gap-2 font-semibold tracking-tight">读法定位</div><div class="callout__content markdown-body flex-1 min-w-0"><p>这页先回答“DeepGEMM 源码与接入”在「算子与编译器」里的位置：它解决什么局部问题，依赖哪些前置，最后会影响哪类工程或研究判断。<br />
-<strong>前置</strong>：先理解张量 shape、显存层次和 GEMM；系统指标卡住时回推理或训练专题。 必要时先回 算子与编译器入口、基础知识 或 术语表。<br />
-<strong>主线关系</strong>：把模型里的矩阵乘、attention、通信和低精度路径落到 GPU 时间线上，看瓶颈如何被 kernel 与编译栈改变。</p></div></div></div>
-<div class="callout callout--titled info mb-4 rounded-small shadow-redefine-flat bg-(--callout-bg-color) p-3 pl-1 relative flex flex-row gap-2"><div role="none" class="rounded-full self-stretch w-0.5 bg-(--callout-primary-color) shrink-0 opacity-60"></div><div class="flex flex-col gap-2"><div class="callout__title flex items-center gap-2 font-semibold tracking-tight">初学者先抓住</div><div class="callout__content markdown-body flex-1 min-w-0"><p>读高性能 kernel 仓库时，不要从最底层汇编或 JIT 模板开始。先看 README、测试、Python API 和 benchmark 口径，确认它对外承诺什么 shape、layout、dtype 和硬件路径，再向下看实现为什么这样写。</p></div></div></div>
-<div class="callout callout--titled default mb-4 rounded-small shadow-redefine-flat bg-(--callout-bg-color) p-3 pl-1 relative flex flex-row gap-2"><div role="none" class="rounded-full self-stretch w-0.5 bg-(--callout-primary-color) shrink-0 opacity-60"></div><div class="flex flex-col gap-2"><div class="callout__title flex items-center gap-2 font-semibold tracking-tight">有趣例子：先看说明书再拆机器</div><div class="callout__content markdown-body flex-1 min-w-0"><p>直接拆发动机很容易迷路。先看车的用途、仪表盘和维护手册，知道它为哪条赛道设计，再拆内部结构，源码阅读效率会高得多。</p></div></div></div>
 <h2 id="一-源码阅读顺序"><a class="markdownIt-Anchor" href="#一-源码阅读顺序"></a> 一、源码阅读顺序</h2>
 <p>第一次读 <code>DeepGEMM</code> 不建议从最底层 JIT kernel 开始。更稳的顺序是从“外部接口和测试”向下钻：</p>
 <ol>
@@ -948,13 +943,9 @@
 </ol>
 <p>灰度指标至少包括：P50/P95/P99、TTFT/TPOT、JIT cache miss、fallback rate、错误率、显存峰值、expert token 分布和端到端单位请求成本。</p>
 <h2 id="七-最小伪代码"><a class="markdownIt-Anchor" href="#七-最小伪代码"></a> 七、最小伪代码</h2>
+<p>下面代码块优先看 shape、缓存、状态更新或资源申请相关行；这些行通常决定故障是语义、并发还是容量问题。</p>
 <div class="code-container" data-rel="Python"><figure class="iseeu highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">def</span> <span class="title function_">moe_expert_compute</span>(<span class="params">tokens, expert_ids, runtime</span>):</span><br><span class="line">    groups = group_by_expert(tokens, expert_ids)</span><br><span class="line">    shape_key = make_shape_key(groups)</span><br><span class="line"></span><br><span class="line">    <span class="keyword">if</span> runtime.deepgemm_enabled <span class="keyword">and</span> runtime.jit_cache.ready(shape_key):</span><br><span class="line">        <span class="keyword">return</span> runtime.deepgemm.grouped_gemm(groups)</span><br><span class="line"></span><br><span class="line">    <span class="keyword">return</span> runtime.fallback.grouped_gemm(groups)</span><br></pre></td></tr></table></figure></div>
 <p>这段伪代码强调两个判断：先按 expert 组织 token，再根据 shape、JIT cache 和 fallback 状态选择路径。真实工程里，端到端收益往往取决于这个选择逻辑，而不只是底层 kernel 的峰值 TFLOPS。</p>
-<div class="callout callout--titled success mb-4 rounded-small shadow-redefine-flat bg-(--callout-bg-color) p-3 pl-1 relative flex flex-row gap-2"><div role="none" class="rounded-full self-stretch w-0.5 bg-(--callout-primary-color) shrink-0 opacity-60"></div><div class="flex flex-col gap-2"><div class="callout__title flex items-center gap-2 font-semibold tracking-tight">下一站</div><div class="callout__content markdown-body flex-1 min-w-0"><ul>
-<li>回到本专题入口：算子与编译器，确认这页在整条路线中的位置。</li>
-<li>按导航顺序继续：<a href="/2026/05/11/ai-files-operators-advanced-kernel-patterns-and-shape-specialization/">高级 Kernel 模式与形状特化</a>。</li>
-<li>概念或符号卡住时，先查 术语表，再回到当前页。</li>
-</ul></div></div></div>
 
 		</div>
 
@@ -1149,11 +1140,11 @@
                 
                 <p class="post-count space-x-0.5">
                     <span>
-                        534 posts in total
+                        540 posts in total
                     </span>
                     
                         <span>
-                            2174.1k words in total
+                            2072.9k words in total
                         </span>
                     
                 </p>

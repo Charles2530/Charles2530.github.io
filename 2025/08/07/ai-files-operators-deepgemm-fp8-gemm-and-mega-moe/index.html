@@ -685,7 +685,7 @@
         <div class="label text-third-text-color text-sm">Categories</div>
     </a>
     <a class="item tag-count-item flex flex-col justify-center items-center w-20" href="/archives">
-        <div class="number text-2xl sm:text-xl text-second-text-color font-semibold">534</div>
+        <div class="number text-2xl sm:text-xl text-second-text-color font-semibold">540</div>
         <div class="label text-third-text-color text-sm">Posts</div>
     </a>
 </div>
@@ -801,12 +801,12 @@
     
     
         <span class="article-wordcount article-meta-item">
-            <i class="fa-regular fa-typewriter"></i>&nbsp;<span>2.3k Words</span>
+            <i class="fa-regular fa-typewriter"></i>&nbsp;<span>2k Words</span>
         </span>
     
     
         <span class="article-min2read article-meta-item">
-            <i class="fa-regular fa-clock"></i>&nbsp;<span>8 Mins</span>
+            <i class="fa-regular fa-clock"></i>&nbsp;<span>7 Mins</span>
         </span>
     
     
@@ -826,12 +826,7 @@
 
 		<div class="article-content markdown-body px-2 sm:px-6 md:px-8 pb-8">
 			<p><code>DeepGEMM</code> 值得单独讲，不是因为它只是一个更快的 GEMM 库，而是因为它把现代大模型算子工程中的几个关键趋势压缩到同一个样本里：细粒度 FP8 scaling、Hopper/Blackwell 硬件特化、运行时 JIT、MoE grouped GEMM、decode masked layout，以及从单个 GEMM 走向融合通信与计算的 Mega MoE 思路。</p>
-<div class="callout callout--titled info mb-4 rounded-small shadow-redefine-flat bg-(--callout-bg-color) p-3 pl-1 relative flex flex-row gap-2"><div role="none" class="rounded-full self-stretch w-0.5 bg-(--callout-primary-color) shrink-0 opacity-60"></div><div class="flex flex-col gap-2"><div class="callout__title flex items-center gap-2 font-semibold tracking-tight">读法定位</div><div class="callout__content markdown-body flex-1 min-w-0"><p>这页先回答“DeepGEMM：FP8 GEMM 与 Mega-MoE”在「算子与编译器」里的位置：它解决什么局部问题，依赖哪些前置，最后会影响哪类工程或研究判断。<br />
-<strong>前置</strong>：先理解张量 shape、显存层次和 GEMM；系统指标卡住时回推理或训练专题。 必要时先回 算子与编译器入口、基础知识 或 术语表。<br />
-<strong>主线关系</strong>：把模型里的矩阵乘、attention、通信和低精度路径落到 GPU 时间线上，看瓶颈如何被 kernel 与编译栈改变。</p></div></div></div>
 <p>这页定位为主线解读。源码阅读、API 名称和接入检查放到 <a href="/2026/05/11/ai-files-operators-deepgemm-source-and-integration/">DeepGEMM 源码与接入</a>。如果想先补底层背景，可先读 <a href="/2026/05/11/ai-files-operators-gemm-attention-and-fused-kernels/">GEMM、Attention 与融合 Kernel</a>、<a href="/2026/05/11/ai-files-operators-low-precision-and-quantized-kernels/">低精度与量化 Kernel</a> 和 <a href="/2026/05/11/ai-files-operators-moe-routing-and-sparse-kernels/">MoE 路由与稀疏 Kernel</a>。</p>
-<div class="callout callout--titled info mb-4 rounded-small shadow-redefine-flat bg-(--callout-bg-color) p-3 pl-1 relative flex flex-row gap-2"><div role="none" class="rounded-full self-stretch w-0.5 bg-(--callout-primary-color) shrink-0 opacity-60"></div><div class="flex flex-col gap-2"><div class="callout__title flex items-center gap-2 font-semibold tracking-tight">初学者先抓住</div><div class="callout__content markdown-body flex-1 min-w-0"><p>DeepGEMM 的重点不是“又一个 GEMM 更快”，而是把 FP8 scale layout、JIT、Hopper/Blackwell 数据搬运、MoE grouped GEMM 和服务态热点 shape 放在同一个接口假设里优化。它是强特化系统组件，不是通用数学库替代品。</p></div></div></div>
-<div class="callout callout--titled info mb-4 rounded-small shadow-redefine-flat bg-(--callout-bg-color) p-3 pl-1 relative flex flex-row gap-2"><div role="none" class="rounded-full self-stretch w-0.5 bg-(--callout-primary-color) shrink-0 opacity-60"></div><div class="flex flex-col gap-2"><div class="callout__title flex items-center gap-2 font-semibold tracking-tight">难点解释：为什么 scale layout 也是接口</div><div class="callout__content markdown-body flex-1 min-w-0"><p>FP8/FP4 低精度矩阵乘需要额外 scale 数据。scale 怎么分块、怎么对齐、怎么被 TMA 搬运，会直接影响性能和数值稳定性。因此 DeepGEMM 把 scale 排布写进 API 语义，而不是把它当成外部细节。</p></div></div></div>
 <h2 id="一-deepgemm-到底是什么"><a class="markdownIt-Anchor" href="#一-deepgemm-到底是什么"></a> 一、DeepGEMM 到底是什么</h2>
 <p>按照工程定位，<code>DeepGEMM</code> 是一组面向大模型热点工作负载的高性能 tensor core kernel 库。它覆盖 <code>FP8 / FP4 / BF16 GEMM</code>、MoE grouped GEMM、服务态注意力相关 kernel 和 Mega MoE 等路径，并采用运行时 JIT，而不是安装时预编译所有 kernel。</p>
 <p>它的关键不是“把 dtype 改成 FP8”，而是把 workload 假设、scale layout、硬件数据搬运、kernel 形状和运行时缓存一起写进接口设计。也就是说，<code>DeepGEMM</code> 不是一个通用线性代数抽象，而是一组面向 LLM/MoE 热路径的强特化实现。</p>
@@ -995,11 +990,6 @@
 <li><strong>从 kernel 走向系统热路径</strong>：MoE serving 的瓶颈不只在 GEMM，还在 dispatch、layout、JIT、通信、combine 和 runtime 调度之间的边界。</li>
 </ol>
 <p>如果只记一句话：<code>DeepGEMM</code> 展示的是现代大模型算子优化的新边界，已经从“写快一个矩阵乘”扩展到“围绕低精度、MoE、JIT、硬件和服务运行时共同设计热路径”。</p>
-<div class="callout callout--titled success mb-4 rounded-small shadow-redefine-flat bg-(--callout-bg-color) p-3 pl-1 relative flex flex-row gap-2"><div role="none" class="rounded-full self-stretch w-0.5 bg-(--callout-primary-color) shrink-0 opacity-60"></div><div class="flex flex-col gap-2"><div class="callout__title flex items-center gap-2 font-semibold tracking-tight">下一站</div><div class="callout__content markdown-body flex-1 min-w-0"><ul>
-<li>回到本专题入口：算子与编译器，确认这页在整条路线中的位置。</li>
-<li>按导航顺序继续：<a href="/2026/05/11/ai-files-operators-deepgemm-source-and-integration/">DeepGEMM 源码与接入</a>。</li>
-<li>概念或符号卡住时，先查 术语表，再回到当前页。</li>
-</ul></div></div></div>
 
 		</div>
 
@@ -1077,7 +1067,7 @@
 			
 			
 			<div class="article-next border-border-color shadow-redefine-flat shadow-shadow-color-2 rounded-medium px-4 py-2 hover:shadow-redefine-flat-hover hover:shadow-shadow-color-2">
-				<a class="next" rel="next" href="/2025/08/06/ai-files-operators-cutlass-cute-and-compiler-stack/">
+				<a class="next" rel="next" href="/2025/08/05/ai-files-operators-cutlass-cute-and-compiler-stack/">
 					<span class="title flex justify-center items-center">
 						<span class="post-nav-title-item truncate max-w-48">算子与编译器：CUTLASS / CuTe 与编译栈</span>
 						<span class="post-nav-item">Next posts</span>
@@ -1198,11 +1188,11 @@
                 
                 <p class="post-count space-x-0.5">
                     <span>
-                        534 posts in total
+                        540 posts in total
                     </span>
                     
                         <span>
-                            2174.1k words in total
+                            2072.9k words in total
                         </span>
                     
                 </p>

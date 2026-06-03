@@ -684,7 +684,7 @@
         <div class="label text-third-text-color text-sm">Categories</div>
     </a>
     <a class="item tag-count-item flex flex-col justify-center items-center w-20" href="/archives">
-        <div class="number text-2xl sm:text-xl text-second-text-color font-semibold">534</div>
+        <div class="number text-2xl sm:text-xl text-second-text-color font-semibold">540</div>
         <div class="label text-third-text-color text-sm">Posts</div>
     </a>
 </div>
@@ -796,12 +796,12 @@
     
     
         <span class="article-wordcount article-meta-item">
-            <i class="fa-regular fa-typewriter"></i>&nbsp;<span>1.8k Words</span>
+            <i class="fa-regular fa-typewriter"></i>&nbsp;<span>2k Words</span>
         </span>
     
     
         <span class="article-min2read article-meta-item">
-            <i class="fa-regular fa-clock"></i>&nbsp;<span>6 Mins</span>
+            <i class="fa-regular fa-clock"></i>&nbsp;<span>7 Mins</span>
         </span>
     
     
@@ -820,104 +820,151 @@
 
 
 		<div class="article-content markdown-body px-2 sm:px-6 md:px-8 pb-8">
-			<p>很多大模型系统瓶颈并不是某个 kernel 写得不够好，而是并行策略和物理拓扑映射错位了。你可以拥有很强的 GPU、很快的单卡 kernel、很成熟的并行框架，但如果：</p>
-<div class="callout callout--titled info mb-4 rounded-small shadow-redefine-flat bg-(--callout-bg-color) p-3 pl-1 relative flex flex-row gap-2"><div role="none" class="rounded-full self-stretch w-0.5 bg-(--callout-primary-color) shrink-0 opacity-60"></div><div class="flex flex-col gap-2"><div class="callout__title flex items-center gap-2 font-semibold tracking-tight">读法定位</div><div class="callout__content markdown-body flex-1 min-w-0"><p>这页先回答“GPU 互联与拓扑映射”在「算子与编译器」里的位置：它解决什么局部问题，依赖哪些前置，最后会影响哪类工程或研究判断。<br />
-<strong>前置</strong>：先理解张量 shape、显存层次和 GEMM；系统指标卡住时回推理或训练专题。 必要时先回 算子与编译器入口、基础知识 或 术语表。<br />
-<strong>主线关系</strong>：把模型里的矩阵乘、attention、通信和低精度路径落到 GPU 时间线上，看瓶颈如何被 kernel 与编译栈改变。</p></div></div></div>
+			<p>大模型系统的很多瓶颈不是单卡 kernel 慢，而是通信路径选错。你可以有很强的 GPU、很快的 GEMM、很成熟的并行框架，但如果张量并行跨了慢链路，MoE token all-to-all 穿过拥塞网络，或者 GPU 到 NIC 走了错误 NUMA 域，端到端吞吐仍然会塌。</p>
+<h2 id="核心问题"><a class="markdownIt-Anchor" href="#核心问题"></a> 核心问题</h2>
+<p>并行训练和推理把一个模型拆到多张 GPU 上。拆开以后，计算省下来的时间必须和通信增加的时间比较：</p>
+<p><span class="katex-display"><span class="katex"><span class="katex-mathml"><math><semantics><mrow><msub><mi>T</mi><mtext>step</mtext></msub><mo>≈</mo><msub><mi>T</mi><mtext>compute</mtext></msub><mo>+</mo><msub><mi>T</mi><mtext>comm</mtext></msub><mo>+</mo><msub><mi>T</mi><mtext>sync</mtext></msub><mo>+</mo><msub><mi>T</mi><mtext>bubble</mtext></msub></mrow><annotation encoding="application/x-tex">T_{\text{step}} \approx T_{\text{compute}} + T_{\text{comm}} + T_{\text{sync}} + T_{\text{bubble}}
+</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.969438em;vertical-align:-0.286108em;"></span><span class="mord"><span class="mord mathdefault" style="margin-right:0.13889em;">T</span><span class="msupsub"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height:0.28055599999999997em;"><span style="top:-2.5500000000000003em;margin-left:-0.13889em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mtight"><span class="mord text mtight"><span class="mord mtight">step</span></span></span></span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height:0.286108em;"><span></span></span></span></span></span></span><span class="mspace" style="margin-right:0.2777777777777778em;"></span><span class="mrel">≈</span><span class="mspace" style="margin-right:0.2777777777777778em;"></span></span><span class="base"><span class="strut" style="height:0.969438em;vertical-align:-0.286108em;"></span><span class="mord"><span class="mord mathdefault" style="margin-right:0.13889em;">T</span><span class="msupsub"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height:0.28055599999999997em;"><span style="top:-2.5500000000000003em;margin-left:-0.13889em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mtight"><span class="mord text mtight"><span class="mord mtight">compute</span></span></span></span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height:0.286108em;"><span></span></span></span></span></span></span><span class="mspace" style="margin-right:0.2222222222222222em;"></span><span class="mbin">+</span><span class="mspace" style="margin-right:0.2222222222222222em;"></span></span><span class="base"><span class="strut" style="height:0.83333em;vertical-align:-0.15em;"></span><span class="mord"><span class="mord mathdefault" style="margin-right:0.13889em;">T</span><span class="msupsub"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height:0.151392em;"><span style="top:-2.5500000000000003em;margin-left:-0.13889em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mtight"><span class="mord text mtight"><span class="mord mtight">comm</span></span></span></span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height:0.15em;"><span></span></span></span></span></span></span><span class="mspace" style="margin-right:0.2222222222222222em;"></span><span class="mbin">+</span><span class="mspace" style="margin-right:0.2222222222222222em;"></span></span><span class="base"><span class="strut" style="height:0.969438em;vertical-align:-0.286108em;"></span><span class="mord"><span class="mord mathdefault" style="margin-right:0.13889em;">T</span><span class="msupsub"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height:0.15139200000000003em;"><span style="top:-2.5500000000000003em;margin-left:-0.13889em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mtight"><span class="mord text mtight"><span class="mord mtight">sync</span></span></span></span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height:0.286108em;"><span></span></span></span></span></span></span><span class="mspace" style="margin-right:0.2222222222222222em;"></span><span class="mbin">+</span><span class="mspace" style="margin-right:0.2222222222222222em;"></span></span><span class="base"><span class="strut" style="height:0.83333em;vertical-align:-0.15em;"></span><span class="mord"><span class="mord mathdefault" style="margin-right:0.13889em;">T</span><span class="msupsub"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height:0.33610799999999996em;"><span style="top:-2.5500000000000003em;margin-left:-0.13889em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mtight"><span class="mord text mtight"><span class="mord mtight">bubble</span></span></span></span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height:0.15em;"><span></span></span></span></span></span></span></span></span></span></span></p>
+<p>其中 <span class="katex"><span class="katex-mathml"><math><semantics><mrow><msub><mi>T</mi><mtext>comm</mtext></msub></mrow><annotation encoding="application/x-tex">T_{\text{comm}}</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.83333em;vertical-align:-0.15em;"></span><span class="mord"><span class="mord mathdefault" style="margin-right:0.13889em;">T</span><span class="msupsub"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height:0.151392em;"><span style="top:-2.5500000000000003em;margin-left:-0.13889em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mtight"><span class="mord text mtight"><span class="mord mtight">comm</span></span></span></span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height:0.15em;"><span></span></span></span></span></span></span></span></span></span> 可以先粗略读成：</p>
+<p><span class="katex-display"><span class="katex"><span class="katex-mathml"><math><semantics><mrow><msub><mi>T</mi><mtext>comm</mtext></msub><mo>≈</mo><mi>α</mi><mo>+</mo><mfrac><mtext>bytes</mtext><mtext>effective bandwidth</mtext></mfrac></mrow><annotation encoding="application/x-tex">T_{\text{comm}} \approx \alpha + \frac{\text{bytes}}{\text{effective bandwidth}}
+</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.83333em;vertical-align:-0.15em;"></span><span class="mord"><span class="mord mathdefault" style="margin-right:0.13889em;">T</span><span class="msupsub"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height:0.151392em;"><span style="top:-2.5500000000000003em;margin-left:-0.13889em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mtight"><span class="mord text mtight"><span class="mord mtight">comm</span></span></span></span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height:0.15em;"><span></span></span></span></span></span></span><span class="mspace" style="margin-right:0.2777777777777778em;"></span><span class="mrel">≈</span><span class="mspace" style="margin-right:0.2777777777777778em;"></span></span><span class="base"><span class="strut" style="height:0.66666em;vertical-align:-0.08333em;"></span><span class="mord mathdefault" style="margin-right:0.0037em;">α</span><span class="mspace" style="margin-right:0.2222222222222222em;"></span><span class="mbin">+</span><span class="mspace" style="margin-right:0.2222222222222222em;"></span></span><span class="base"><span class="strut" style="height:2.0574399999999997em;vertical-align:-0.686em;"></span><span class="mord"><span class="mopen nulldelimiter"></span><span class="mfrac"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height:1.3714399999999998em;"><span style="top:-2.314em;"><span class="pstrut" style="height:3em;"></span><span class="mord"><span class="mord text"><span class="mord">effective bandwidth</span></span></span></span><span style="top:-3.23em;"><span class="pstrut" style="height:3em;"></span><span class="frac-line" style="border-bottom-width:0.04em;"></span></span><span style="top:-3.677em;"><span class="pstrut" style="height:3em;"></span><span class="mord"><span class="mord text"><span class="mord">bytes</span></span></span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height:0.686em;"><span></span></span></span></span></span><span class="mclose nulldelimiter"></span></span></span></span></span></span></p>
+<p><span class="katex"><span class="katex-mathml"><math><semantics><mrow><mi>α</mi></mrow><annotation encoding="application/x-tex">\alpha</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.43056em;vertical-align:0em;"></span><span class="mord mathdefault" style="margin-right:0.0037em;">α</span></span></span></span> 是延迟和调度开销，<span class="katex"><span class="katex-mathml"><math><semantics><mrow><mtext>bytes</mtext></mrow><annotation encoding="application/x-tex">\text{bytes}</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.8888799999999999em;vertical-align:-0.19444em;"></span><span class="mord text"><span class="mord">bytes</span></span></span></span></span> 是要传的数据量，effective bandwidth 是真实可用带宽，不是宣传页里的峰值。拓扑映射就是在问：哪些通信最频繁、最细粒度、最在关键路径上，它们应该放到哪条链路上？</p>
+<p><img  
+                     lazyload
+                     src="/images/loading.svg"
+                     data-src="/image/ai-notes/images/paper-deep-dives/foundations/gpu-utilization-misleading/figure-1-gh100-sms.png"
+                      alt="GH100 GPU block diagram" 
+                ></p>
+<p><small>图源：<a class="link"   target="_blank" rel="noopener" href="https://developer.nvidia.com/blog/nvidia-hopper-architecture-in-depth/" >NVIDIA Hopper Architecture In-Depth<i class="fa-solid fa-arrow-up-right ml-[0.2em] font-light align-text-top text-[0.7em] link-icon"></i></a>。原图表达 GH100 内部 SM、L2、HBM、NVLink、PCIe 和控制模块的组织。本站用它说明：GPU 不是孤立算力块，节点内高速互联、共享缓存、HBM 控制器和外部网络共同决定多 GPU 系统上限。</small></p>
+<h2 id="节点内和节点间不是一个量级"><a class="markdownIt-Anchor" href="#节点内和节点间不是一个量级"></a> 节点内和节点间不是一个量级</h2>
+<p>通常节点内链路更快、更稳定，节点间链路更慢、更容易拥塞。节点内可能是 NVLink、NVSwitch 或 PCIe；节点间可能是 InfiniBand、RoCE 或以太网络。不同集群的差别非常大，不能只按 GPU 型号推断。</p>
+<table>
+<thead>
+<tr>
+<th>链路层级</th>
+<th>典型特点</th>
+<th>更适合承载</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>GPU 内部 HBM / L2</td>
+<td>带宽最高，但只服务本 GPU</td>
+<td>单卡 kernel、局部 KV、激活。</td>
+</tr>
+<tr>
+<td>节点内 NVLink / NVSwitch</td>
+<td>高带宽、低延迟、多 GPU 互联</td>
+<td>TP、频繁 all-reduce、跨卡推理分片。</td>
+</tr>
+<tr>
+<td>节点内 PCIe</td>
+<td>普遍但带宽/延迟不如 NVLink 域</td>
+<td>较低频通信、Host/GPU 数据交换。</td>
+</tr>
+<tr>
+<td>节点间 IB / RoCE</td>
+<td>可扩展，但延迟和拥塞更敏感</td>
+<td>DP、PP 边界、跨节点 checkpoint 或粗粒度同步。</td>
+</tr>
+<tr>
+<td>跨机架网络</td>
+<td>拓扑层级更多，抖动更明显</td>
+<td>更外层 DP、异步数据/评测/存储流量。</td>
+</tr>
+</tbody>
+</table>
+<p>这就是为什么“8 卡一组”和“跨两个 4 卡节点”不能简单等价。即使总 GPU 数一样，通信图落到物理链路上以后，性能会完全不同。</p>
+<h2 id="tp-为什么通常贴节点内高速互联"><a class="markdownIt-Anchor" href="#tp-为什么通常贴节点内高速互联"></a> TP 为什么通常贴节点内高速互联</h2>
+<p>张量并行把一个层内的矩阵或 attention head 分到多张 GPU 上。它的特点是通信频繁，而且位于 forward/backward 主路径。Megatron-LM 的 tensor model parallelism 里，线性层切分后需要在某些位置做 all-reduce 或 all-gather；这些同步如果跨慢链路，会直接拖慢每层。</p>
+<p>因此 TP 通常优先放在节点内 NVLink/NVSwitch 域。一个常见映射是：</p>
+<div class="code-container" data-rel="Text"><figure class="iseeu highlight text"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br></pre></td><td class="code"><pre><span class="line">同一节点内: TP group</span><br><span class="line">跨节点: DP group</span><br><span class="line">中间层级: PP group 或外层数据并行</span><br></pre></td></tr></table></figure></div>
+<p>这不是铁律，但背后的判断稳定：越频繁、越细粒度、越在关键路径上的通信，越应该放在更快、更低延迟的拓扑域里。</p>
+<h2 id="dp-为什么更容易向外扩展"><a class="markdownIt-Anchor" href="#dp-为什么更容易向外扩展"></a> DP 为什么更容易向外扩展</h2>
+<p>数据并行让每个 rank 拥有模型副本或 ZeRO 分片，通信多发生在梯度、参数或 optimizer state 同步阶段。它的通信量也很大，但更容易 bucket、overlap，也更适合作为跨节点扩展的外层维度。</p>
+<p>以 ring all-reduce 的粗略通信量看，每个 rank 需要发送和接收接近：</p>
+<p><span class="katex-display"><span class="katex"><span class="katex-mathml"><math><semantics><mrow><mn>2</mn><mo>⋅</mo><mfrac><mrow><mi>p</mi><mo>−</mo><mn>1</mn></mrow><mi>p</mi></mfrac><mo>⋅</mo><mtext>bytes</mtext></mrow><annotation encoding="application/x-tex">2 \cdot \frac{p-1}{p} \cdot \text{bytes}
+</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.64444em;vertical-align:0em;"></span><span class="mord">2</span><span class="mspace" style="margin-right:0.2222222222222222em;"></span><span class="mbin">⋅</span><span class="mspace" style="margin-right:0.2222222222222222em;"></span></span><span class="base"><span class="strut" style="height:2.20188em;vertical-align:-0.8804400000000001em;"></span><span class="mord"><span class="mopen nulldelimiter"></span><span class="mfrac"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height:1.32144em;"><span style="top:-2.314em;"><span class="pstrut" style="height:3em;"></span><span class="mord"><span class="mord mathdefault">p</span></span></span><span style="top:-3.23em;"><span class="pstrut" style="height:3em;"></span><span class="frac-line" style="border-bottom-width:0.04em;"></span></span><span style="top:-3.677em;"><span class="pstrut" style="height:3em;"></span><span class="mord"><span class="mord mathdefault">p</span><span class="mspace" style="margin-right:0.2222222222222222em;"></span><span class="mbin">−</span><span class="mspace" style="margin-right:0.2222222222222222em;"></span><span class="mord">1</span></span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height:0.8804400000000001em;"><span></span></span></span></span></span><span class="mclose nulldelimiter"></span></span><span class="mspace" style="margin-right:0.2222222222222222em;"></span><span class="mbin">⋅</span><span class="mspace" style="margin-right:0.2222222222222222em;"></span></span><span class="base"><span class="strut" style="height:0.8888799999999999em;vertical-align:-0.19444em;"></span><span class="mord text"><span class="mord">bytes</span></span></span></span></span></span></p>
+<p>这里 <span class="katex"><span class="katex-mathml"><math><semantics><mrow><mi>p</mi></mrow><annotation encoding="application/x-tex">p</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.625em;vertical-align:-0.19444em;"></span><span class="mord mathdefault">p</span></span></span></span> 是参与 rank 数。rank 越多，总网络压力越大；但如果通信能和 backward overlap，或者 ZeRO 把状态分片，实际感知开销会比裸公式更复杂。重点不是背这个系数，而是知道：DP 可以扩展，但网络和 overlap 能力会决定它能扩到哪里。</p>
+<h2 id="pp-的问题是带宽也是-bubble"><a class="markdownIt-Anchor" href="#pp-的问题是带宽也是-bubble"></a> PP 的问题是带宽，也是 bubble</h2>
+<p>流水线并行把模型层分成多个 stage。它传的是 stage 边界激活和梯度，不像 TP 那样每层都全局通信，但会引入 pipeline bubble。拓扑映射时要同时看两件事：stage 之间激活是不是走慢链路，micro-batch 数是否足够隐藏 bubble。</p>
+<p>如果 PP stage 跨节点，最好让相邻 stage 的通信路径稳定且带宽足够；如果某个 stage 本身算得慢，还会形成 straggler。拓扑映射和层切分需要一起看，不是先平均分层再祈祷通信没事。</p>
+<h2 id="moe-的-all-to-all-最容易制造网络热点"><a class="markdownIt-Anchor" href="#moe-的-all-to-all-最容易制造网络热点"></a> MoE 的 all-to-all 最容易制造网络热点</h2>
+<p>MoE 把 token 路由到不同 expert。训练和推理时，token 可能要从一个 GPU 发送到另一个 GPU 上的 expert，再把结果发回来。这个 all-to-all 很容易制造三类问题：</p>
+<table>
+<thead>
+<tr>
+<th>问题</th>
+<th>结果</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>热门 expert 集中在某个拓扑域外</td>
+<td>大量 token 跨慢链路。</td>
+</tr>
+<tr>
+<td>路由负载不均</td>
+<td>某些 GPU 和链路过热，其他 GPU 空闲。</td>
+</tr>
+<tr>
+<td>expert placement 不看网络</td>
+<td>模型层面负载均衡了，系统层面仍拥塞。</td>
+</tr>
+</tbody>
+</table>
+<p>所以 MoE placement 不是单纯把 expert 平均放到 GPU 上。它同时是路由、负载均衡和拓扑映射问题。看 MoE benchmark 时，要问 token all-to-all 是否跨节点、是否跨机架、是否有 expert 热点，以及通信时间是否被 overlap 掩盖。</p>
+<h2 id="推理服务也会被拓扑影响"><a class="markdownIt-Anchor" href="#推理服务也会被拓扑影响"></a> 推理服务也会被拓扑影响</h2>
+<p>在线推理不像训练那样每步大规模反向通信，但拓扑仍然重要。TP 推理需要跨卡同步 logits 或中间张量；多 GPU KV cache 会涉及跨卡读写；MoE 推理有 expert dispatch；prefill/decode 分池时，不同池子的 GPU 和网络质量会影响 TTFT 和 P99。</p>
+<p>服务里最容易误判的是只看平均 tokens/s。长 prompt 请求可能把 prefill 压到某组 GPU，短输出请求可能主要受 decode 和 KV 读取影响；如果调度器不知道拓扑，可能把延迟敏感请求放到跨慢链路的资源组上。</p>
+<p>更稳的做法是把拓扑标签进入调度和实验记录：</p>
+<div class="code-container" data-rel="Text"><figure class="iseeu highlight text"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">node_id, rack_id, gpu_id, nvlink_domain, nic_id, numa_domain, tp_group, pp_stage, dp_group</span><br></pre></td></tr></table></figure></div>
+<p>这样当同一个模型在不同节点池表现不一致时，团队能先查物理映射，而不是误以为模型、kernel 或 batch 设置变了。</p>
+<h2 id="怎么排查拓扑问题"><a class="markdownIt-Anchor" href="#怎么排查拓扑问题"></a> 怎么排查拓扑问题</h2>
+<p>排查顺序不要从改并行配置开始，而是先画图：</p>
 <ol>
-<li>高频通信被放到最慢链路上；</li>
-<li>TP 跨了不该跨的节点；</li>
-<li>MoE expert 分布和网络拓扑错位；</li>
-<li>prefill / decode 资源池和机器结构不匹配；</li>
+<li>画物理拓扑：GPU 到 GPU 是 NVLink、NVSwitch 还是 PCIe，GPU 到 NIC 是否跨 NUMA，节点间是否同机架。</li>
+<li>跑分层通信基准：节点内、跨节点、跨机架分别测 all-reduce、all-to-all、point-to-point。</li>
+<li>贴上进程组：把 TP、PP、DP、MoE expert group 映射到物理图上。</li>
+<li>对照 trace：看通信时间、straggler、链路拥塞、CPU/NIC/GPU 等待。</li>
+<li>做故障演练：降级节点、链路抖动、替换机型后重新验证映射。</li>
 </ol>
-<p>整体性能仍然会很差。<br />
-因此 GPU 互联和拓扑映射，应该被视为算子与系统之间的一层关键现实约束。</p>
-<div class="callout callout--titled info mb-4 rounded-small shadow-redefine-flat bg-(--callout-bg-color) p-3 pl-1 relative flex flex-row gap-2"><div role="none" class="rounded-full self-stretch w-0.5 bg-(--callout-primary-color) shrink-0 opacity-60"></div><div class="flex flex-col gap-2"><div class="callout__title flex items-center gap-2 font-semibold tracking-tight">初学者先抓住</div><div class="callout__content markdown-body flex-1 min-w-0"><p>多卡性能不只取决于 GPU 型号，还取决于哪些通信被放在哪条链路上。高频、细粒度通信应尽量留在高速拓扑域；把 TP、MoE all-to-all 或 KV 相关同步跨到慢链路上，很容易吞掉 kernel 优化收益。</p></div></div></div>
-<div class="callout callout--titled default mb-4 rounded-small shadow-redefine-flat bg-(--callout-bg-color) p-3 pl-1 relative flex flex-row gap-2"><div role="none" class="rounded-full self-stretch w-0.5 bg-(--callout-primary-color) shrink-0 opacity-60"></div><div class="flex flex-col gap-2"><div class="callout__title flex items-center gap-2 font-semibold tracking-tight">有趣例子：城市道路</div><div class="callout__content markdown-body flex-1 min-w-0"><p>同样数量的车，如果每天通勤都被安排走小巷，城市会堵住。拓扑映射就是把高频流量放到高速路，把低频流量放到普通路。</p></div></div></div>
-<h2 id="为什么拓扑会决定上限"><a class="markdownIt-Anchor" href="#为什么拓扑会决定上限"></a> 为什么拓扑会决定上限</h2>
-<p>分布式系统的很多时间开销，本质上都要通过互联来传递：</p>
-<ol>
-<li>梯度同步；</li>
-<li>参数 gather；</li>
-<li>TP 中间张量归并；</li>
-<li>PP 激活传输；</li>
-<li>MoE token all-to-all；</li>
-<li>某些推理路径中的跨卡同步。</li>
-</ol>
-<p>如果这些流量的路径和拓扑不匹配，再好的算法也无法获得理想吞吐。</p>
-<h2 id="节点内与节点间不是一回事"><a class="markdownIt-Anchor" href="#节点内与节点间不是一回事"></a> 节点内与节点间不是一回事</h2>
-<p><strong>一个最基本的判断是</strong>：</p>
-<ol>
-<li>节点内通常有更高带宽、更低延迟互联；</li>
-<li>节点间通常更慢、更容易成为瓶颈。</li>
-</ol>
-<p>这意味着高频、细粒度通信更适合留在节点内，而粗粒度复制或较少同步的维度更适合跨节点扩展。</p>
-<h2 id="为什么-tp-往往优先留在节点内"><a class="markdownIt-Anchor" href="#为什么-tp-往往优先留在节点内"></a> 为什么 TP 往往优先留在节点内</h2>
-<p><strong>张量并行的特点是</strong>：</p>
-<ol>
-<li>通信频繁；</li>
-<li>位于前向 / 反向主路径；</li>
-<li>粒度细；</li>
-<li>对延迟敏感。</li>
-</ol>
-<p>因此它通常最适合映射到节点内高速互联域。<br />
-如果让 TP 跨了慢链路，收益会很容易被通信吃掉。</p>
-<h2 id="dp-为什么更适合向外扩展"><a class="markdownIt-Anchor" href="#dp-为什么更适合向外扩展"></a> DP 为什么更适合向外扩展</h2>
-<p>数据并行虽然通信量也大，但：</p>
-<ol>
-<li>通信更粗粒度；</li>
-<li>更容易通过 bucket 和 overlap 隐藏；</li>
-<li>在很多系统里更适合横向扩展到更多节点。</li>
-</ol>
-<p>这也是为什么很多大模型训练会把：</p>
-<ol>
-<li>TP 放在内层；</li>
-<li>PP 放在中层；</li>
-<li>DP 放在更外层。</li>
-</ol>
-<h2 id="拓扑映射和-moe-的关系"><a class="markdownIt-Anchor" href="#拓扑映射和-moe-的关系"></a> 拓扑映射和 MoE 的关系</h2>
-<p>MoE 里专家分布如果和互联结构不匹配，就会出现：</p>
-<ol>
-<li>热门 expert 跨慢链路集中；</li>
-<li>token all-to-all 被放大；</li>
-<li>负载均衡和网络热点一起出现。</li>
-</ol>
-<p>因此 expert placement 本质上同时是：</p>
-<ol>
-<li>路由问题；</li>
-<li>负载均衡问题；</li>
-<li>拓扑映射问题。</li>
-</ol>
-<h2 id="推理服务系统里为什么也要关心拓扑"><a class="markdownIt-Anchor" href="#推理服务系统里为什么也要关心拓扑"></a> 推理服务系统里为什么也要关心拓扑</h2>
-<p>在线推理虽然不像训练那样每步大规模同步，但仍然会受拓扑影响，例如：</p>
-<ol>
-<li>张量并行推理；</li>
-<li>多 GPU KV cache 管理；</li>
-<li>多模型共部署；</li>
-<li>prefill 和 decode 分池部署；</li>
-<li>MoE 推理与 expert placement。</li>
-</ol>
-<p>尤其在 tail latency 敏感场景中，跨节点慢链路会被放大得非常明显。</p>
-<h3 id="61-最小拓扑排查口径"><a class="markdownIt-Anchor" href="#61-最小拓扑排查口径"></a> 6.1 最小拓扑排查口径</h3>
-<p>排查拓扑问题时，先把物理图画出来：GPU 到 GPU 是 NVLink、NVSwitch 还是 PCIe，GPU 到 NIC 是否跨 NUMA，节点间是否经过同一层交换。随后用 NCCL / RCCL 基准分别测节点内、节点间、跨机架的带宽和延迟，再把 TP、PP、DP、MoE all-to-all 的进程组贴到这张图上。</p>
-<p>如果端到端变慢但单卡 kernel 没退化，优先看通信是否跨了错误拓扑域、某个节点是否链路降级、进程绑核是否跑到远端 NUMA、以及故障节点是否仍在承载高频通信。很多“kernel 变慢”的问题，最后其实是数据走错了路。</p>
-<p>服务场景还要注意资源池划分。prefill 通常更吃计算和长序列 attention，decode 更吃 KV 读取、批调度和尾延迟；如果两者混在同一组拓扑质量参差不齐的机器上，调度器可能把最敏感的请求放到最差链路上。拓扑信息最好进入调度标签，而不是只停留在部署文档里。</p>
-<h2 id="直觉例子"><a class="markdownIt-Anchor" href="#直觉例子"></a> 直觉例子</h2>
-<p>拓扑映射就像城市道路规划。不是有很多车道就一定快，关键在于哪条路承载哪种车流。如果把最频繁的短途通勤全都导到跨城高速，再好的车也会堵；如果把重型货运和本地配送混在同一条窄路上，整个物流系统都会失衡。GPU 互联也是一样，系统真正快不快，很大程度上取决于数据流是否走在适合它的路径上。</p>
-<h2 id="本页结论"><a class="markdownIt-Anchor" href="#本页结论"></a> 本页结论</h2>
-<p>GPU 互联与拓扑映射不是部署细节，而是决定分布式训练与推理上限的基础条件。理解它，才能真正明白为什么同样的 <code>DP/TP/PP/MoE</code> 配置，在不同机器结构上会表现出完全不同的效率，也才能在系统设计阶段就避免很多后面无法靠“再写快一点的 kernel”弥补的问题。</p>
-<h2 id="工程收束"><a class="markdownIt-Anchor" href="#工程收束"></a> 工程收束</h2>
-<p>GPU 互联要把 NVLink / NVSwitch、PCIe、IB、机架层级和路由对称性一起看。最容易误判的是把通信问题当作算力问题、进程组映射不看物理拓扑、只看理论带宽；上线前应先画拓扑图，分层记录通信基准，让 TP / PP / DP 各自贴合最快链路，并支持故障节点降权。</p>
-<p>拓扑信息最好进入调度和实验记录，而不是只存在于集群文档。否则同一个并行配置在不同节点池里表现不一致时，团队很容易把问题误归因到模型、kernel 或 batch 设置。</p>
-<p>对大规模训练和高并发推理来说，拓扑漂移往往不是小噪声，而是能直接改变成本曲线的系统变量。</p>
-<p>因此拓扑基准应像模型评测一样周期性重跑，尤其在扩容、换机型和网络维护之后。</p>
-<p>否则旧拓扑假设会悄悄失效。</p>
-<p>调度也会随之变差。</p>
-<div class="callout callout--titled success mb-4 rounded-small shadow-redefine-flat bg-(--callout-bg-color) p-3 pl-1 relative flex flex-row gap-2"><div role="none" class="rounded-full self-stretch w-0.5 bg-(--callout-primary-color) shrink-0 opacity-60"></div><div class="flex flex-col gap-2"><div class="callout__title flex items-center gap-2 font-semibold tracking-tight">下一站</div><div class="callout__content markdown-body flex-1 min-w-0"><ul>
-<li>回到本专题入口：算子与编译器，确认这页在整条路线中的位置。</li>
-<li>按导航顺序继续：<a href="/2026/05/11/ai-files-operators-moe-routing-and-sparse-kernels/">MoE 路由与稀疏 Kernel</a>。</li>
-<li>概念或符号卡住时，先查 术语表，再回到当前页。</li>
-</ul></div></div></div>
+<p>如果单卡 kernel 没退化，但端到端变慢，优先查通信是不是跨了错误拓扑域、NCCL 是否选了次优路径、某个 NIC 是否过热、进程绑核是否跑到远端 NUMA、机架网络是否拥塞。</p>
+<h2 id="容易误读的地方"><a class="markdownIt-Anchor" href="#容易误读的地方"></a> 容易误读的地方</h2>
+<table>
+<thead>
+<tr>
+<th>误解</th>
+<th>更准确的说法</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>GPU 数一样，性能就应该接近</td>
+<td>拓扑不同，通信路径和拥塞完全不同。</td>
+</tr>
+<tr>
+<td>TP/PP/DP 配置只和模型大小有关</td>
+<td>配置必须贴合物理链路，尤其是 TP 和 MoE。</td>
+</tr>
+<tr>
+<td>理论带宽够就没问题</td>
+<td>effective bandwidth、延迟、拥塞、NCCL 路径和 overlap 都会改变结果。</td>
+</tr>
+<tr>
+<td>拓扑只是部署细节</td>
+<td>它会直接改变训练成本、推理 P99 和并行策略上限。</td>
+</tr>
+</tbody>
+</table>
+<h2 id="外部精读"><a class="markdownIt-Anchor" href="#外部精读"></a> 外部精读</h2>
+<ul>
+<li><a class="link"   target="_blank" rel="noopener" href="https://developer.nvidia.com/blog/nvidia-hopper-architecture-in-depth/" >NVIDIA Hopper Architecture In-Depth<i class="fa-solid fa-arrow-up-right ml-[0.2em] font-light align-text-top text-[0.7em] link-icon"></i></a>：理解 H100/GH100 的 NVLink、HBM、L2 和 SM 组织。</li>
+<li><a class="link"   target="_blank" rel="noopener" href="https://docs.nvidia.com/deeplearning/nccl/user-guide/docs/" >NVIDIA NCCL documentation<i class="fa-solid fa-arrow-up-right ml-[0.2em] font-light align-text-top text-[0.7em] link-icon"></i></a>：查 collective、拓扑检测、环境变量和调试方法。</li>
+<li><a class="link"   target="_blank" rel="noopener" href="https://github.com/NVIDIA/nccl-tests" >NCCL Tests<i class="fa-solid fa-arrow-up-right ml-[0.2em] font-light align-text-top text-[0.7em] link-icon"></i></a>：节点内/节点间 all-reduce、all-to-all 和 point-to-point 基准入口。</li>
+<li><a class="link"   target="_blank" rel="noopener" href="https://arxiv.org/abs/1909.08053" >Megatron-LM paper<i class="fa-solid fa-arrow-up-right ml-[0.2em] font-light align-text-top text-[0.7em] link-icon"></i></a>：理解 tensor model parallelism 为什么通信频繁。</li>
+<li><a class="link"   target="_blank" rel="noopener" href="https://arxiv.org/abs/1910.02054" >DeepSpeed ZeRO<i class="fa-solid fa-arrow-up-right ml-[0.2em] font-light align-text-top text-[0.7em] link-icon"></i></a>：理解数据并行状态分片和通信/显存权衡。</li>
+</ul>
 
 		</div>
 
@@ -991,7 +1038,7 @@
 			
 			
 			<div class="article-next border-border-color shadow-redefine-flat shadow-shadow-color-2 rounded-medium px-4 py-2 hover:shadow-redefine-flat-hover hover:shadow-shadow-color-2">
-				<a class="next" rel="next" href="/2025/08/13/ai-files-operators-gemm-attention-and-fused-kernels/">
+				<a class="next" rel="next" href="/2025/08/12/ai-files-operators-gemm-attention-and-fused-kernels/">
 					<span class="title flex justify-center items-center">
 						<span class="post-nav-title-item truncate max-w-48">算子与编译器：GEMM、Attention 与融合 Kernel</span>
 						<span class="post-nav-item">Next posts</span>
@@ -1084,7 +1131,7 @@
 	<div class="post-toc">
 		<div class="toc-title">On this page</div>
 		<div class="page-title">算子与编译器：GPU 互联与拓扑映射</div>
-		<ol class="nav"><li class="nav-item nav-level-2"><a class="nav-link" href="#%E4%B8%BA%E4%BB%80%E4%B9%88%E6%8B%93%E6%89%91%E4%BC%9A%E5%86%B3%E5%AE%9A%E4%B8%8A%E9%99%90"><span class="nav-text"> 为什么拓扑会决定上限</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#%E8%8A%82%E7%82%B9%E5%86%85%E4%B8%8E%E8%8A%82%E7%82%B9%E9%97%B4%E4%B8%8D%E6%98%AF%E4%B8%80%E5%9B%9E%E4%BA%8B"><span class="nav-text"> 节点内与节点间不是一回事</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#%E4%B8%BA%E4%BB%80%E4%B9%88-tp-%E5%BE%80%E5%BE%80%E4%BC%98%E5%85%88%E7%95%99%E5%9C%A8%E8%8A%82%E7%82%B9%E5%86%85"><span class="nav-text"> 为什么 TP 往往优先留在节点内</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#dp-%E4%B8%BA%E4%BB%80%E4%B9%88%E6%9B%B4%E9%80%82%E5%90%88%E5%90%91%E5%A4%96%E6%89%A9%E5%B1%95"><span class="nav-text"> DP 为什么更适合向外扩展</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#%E6%8B%93%E6%89%91%E6%98%A0%E5%B0%84%E5%92%8C-moe-%E7%9A%84%E5%85%B3%E7%B3%BB"><span class="nav-text"> 拓扑映射和 MoE 的关系</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#%E6%8E%A8%E7%90%86%E6%9C%8D%E5%8A%A1%E7%B3%BB%E7%BB%9F%E9%87%8C%E4%B8%BA%E4%BB%80%E4%B9%88%E4%B9%9F%E8%A6%81%E5%85%B3%E5%BF%83%E6%8B%93%E6%89%91"><span class="nav-text"> 推理服务系统里为什么也要关心拓扑</span></a><ol class="nav-child"><li class="nav-item nav-level-3"><a class="nav-link" href="#61-%E6%9C%80%E5%B0%8F%E6%8B%93%E6%89%91%E6%8E%92%E6%9F%A5%E5%8F%A3%E5%BE%84"><span class="nav-text"> 6.1 最小拓扑排查口径</span></a></li></ol></li><li class="nav-item nav-level-2"><a class="nav-link" href="#%E7%9B%B4%E8%A7%89%E4%BE%8B%E5%AD%90"><span class="nav-text"> 直觉例子</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#%E6%9C%AC%E9%A1%B5%E7%BB%93%E8%AE%BA"><span class="nav-text"> 本页结论</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#%E5%B7%A5%E7%A8%8B%E6%94%B6%E6%9D%9F"><span class="nav-text"> 工程收束</span></a></li></ol>
+		<ol class="nav"><li class="nav-item nav-level-2"><a class="nav-link" href="#%E6%A0%B8%E5%BF%83%E9%97%AE%E9%A2%98"><span class="nav-text"> 核心问题</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#%E8%8A%82%E7%82%B9%E5%86%85%E5%92%8C%E8%8A%82%E7%82%B9%E9%97%B4%E4%B8%8D%E6%98%AF%E4%B8%80%E4%B8%AA%E9%87%8F%E7%BA%A7"><span class="nav-text"> 节点内和节点间不是一个量级</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#tp-%E4%B8%BA%E4%BB%80%E4%B9%88%E9%80%9A%E5%B8%B8%E8%B4%B4%E8%8A%82%E7%82%B9%E5%86%85%E9%AB%98%E9%80%9F%E4%BA%92%E8%81%94"><span class="nav-text"> TP 为什么通常贴节点内高速互联</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#dp-%E4%B8%BA%E4%BB%80%E4%B9%88%E6%9B%B4%E5%AE%B9%E6%98%93%E5%90%91%E5%A4%96%E6%89%A9%E5%B1%95"><span class="nav-text"> DP 为什么更容易向外扩展</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#pp-%E7%9A%84%E9%97%AE%E9%A2%98%E6%98%AF%E5%B8%A6%E5%AE%BD%E4%B9%9F%E6%98%AF-bubble"><span class="nav-text"> PP 的问题是带宽，也是 bubble</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#moe-%E7%9A%84-all-to-all-%E6%9C%80%E5%AE%B9%E6%98%93%E5%88%B6%E9%80%A0%E7%BD%91%E7%BB%9C%E7%83%AD%E7%82%B9"><span class="nav-text"> MoE 的 all-to-all 最容易制造网络热点</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#%E6%8E%A8%E7%90%86%E6%9C%8D%E5%8A%A1%E4%B9%9F%E4%BC%9A%E8%A2%AB%E6%8B%93%E6%89%91%E5%BD%B1%E5%93%8D"><span class="nav-text"> 推理服务也会被拓扑影响</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#%E6%80%8E%E4%B9%88%E6%8E%92%E6%9F%A5%E6%8B%93%E6%89%91%E9%97%AE%E9%A2%98"><span class="nav-text"> 怎么排查拓扑问题</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#%E5%AE%B9%E6%98%93%E8%AF%AF%E8%AF%BB%E7%9A%84%E5%9C%B0%E6%96%B9"><span class="nav-text"> 容易误读的地方</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#%E5%A4%96%E9%83%A8%E7%B2%BE%E8%AF%BB"><span class="nav-text"> 外部精读</span></a></li></ol>
 
 	</div>
 </div>
@@ -1112,11 +1159,11 @@
                 
                 <p class="post-count space-x-0.5">
                     <span>
-                        534 posts in total
+                        540 posts in total
                     </span>
                     
                         <span>
-                            2174.1k words in total
+                            2072.9k words in total
                         </span>
                     
                 </p>
