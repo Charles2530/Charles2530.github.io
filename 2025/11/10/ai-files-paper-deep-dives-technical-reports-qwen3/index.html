@@ -1,0 +1,2395 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="keywords" content="Charles">
+    
+    
+    <meta name="author" content="Charles">
+    
+    <!-- Completely eliminate flash of wrong theme -->
+    <script>
+        (function() {
+            const THEME_KEY = "REDEFINE-THEME-STATUS";
+            const DARK = "dark", LIGHT = "light";
+            
+            // Get preferred theme
+            function getTheme() {
+                try {
+                    const saved = localStorage.getItem(THEME_KEY);
+                    if (saved) {
+                        const { isDark } = JSON.parse(saved);
+                        return isDark ? DARK : LIGHT;
+                    }
+                } catch (e) {}
+                
+                return matchMedia("(prefers-color-scheme: dark)").matches ? DARK : LIGHT;
+            }
+            
+            // Apply theme to document
+            function applyTheme(theme) {
+                const isDark = theme === DARK;
+                const root = document.documentElement;
+                
+                // Set classes for compatibility
+                root.classList.add(theme);
+                root.classList.remove(isDark ? LIGHT : DARK);
+                root.style.colorScheme = theme;
+            }
+            
+            // Initial application
+            const theme = getTheme();
+            applyTheme(theme);
+            
+            // Listen for system preference changes
+            matchMedia("(prefers-color-scheme: dark)").addEventListener("change", ({ matches }) => {
+                // Only update if using system preference (no localStorage entry)
+                if (!localStorage.getItem(THEME_KEY)) {
+                    applyTheme(matches ? DARK : LIGHT);
+                }
+            });
+            
+            // Set body classes ASAP (before DOMContentLoaded)
+            (function() {
+                const addBodyClass = () => {
+                    const b = document.body;
+                    if (!b) return false;
+                    b.classList.add(theme + "-mode");
+                    return true;
+                };
+
+                // Try immediately
+                if (addBodyClass()) return;
+
+                // Observe until body exists
+                const mo = new MutationObserver(() => {
+                    if (addBodyClass()) mo.disconnect();
+                });
+                mo.observe(document.documentElement, { childList: true, subtree: true });
+            })();
+        })();
+    </script>
+    
+    <!-- preconnect -->
+<!--- Seo Part-->
+    
+    <link rel="canonical" href="https://charles2530.github.io/2025/11/10/ai-files-paper-deep-dives-technical-reports-qwen3/"/>
+    <meta name="robots" content="index,follow">
+    <meta name="googlebot" content="index,follow">
+    <meta name="revisit-after" content="1 days">
+    
+    
+        
+        <meta name="description" content="This is Charles&#39;s Castle.">
+<meta property="og:type" content="article">
+<meta property="og:title" content="论文专题讲解：Qwen3：Thinking 模式、36T 预训练与蒸馏">
+<meta property="og:url" content="https://charles2530.github.io/2025/11/10/ai-files-paper-deep-dives-technical-reports-qwen3/index.html">
+<meta property="og:site_name" content="Charles&#39;s Castle">
+<meta property="og:description" content="This is Charles&#39;s Castle.">
+<meta property="og:locale" content="en_US">
+<meta property="og:image" content="https://charles2530.github.io/image/background/logo.jpg">
+<meta property="article:published_time" content="2025-11-10T01:00:00.000Z">
+<meta property="article:modified_time" content="2025-11-10T01:00:00.000Z">
+<meta property="article:author" content="Du Jinyang">
+<meta property="article:tag" content="AI">
+<meta property="article:tag" content="论文专题">
+<meta property="article:tag" content="技术报告">
+<meta name="twitter:card" content="summary">
+<meta name="twitter:image" content="https://charles2530.github.io/image/background/logo.jpg">
+    
+    
+    <!--- Icon Part-->
+    <link rel="icon" type="image/png" href="https://charles2530.github.io/image/background/favicon.png" sizes="192x192">
+    <link rel="apple-touch-icon" sizes="180x180" href="https://charles2530.github.io/image/background/favicon.png">
+    <meta name="theme-color" content="#A31F34">
+    <link rel="shortcut icon" href="https://charles2530.github.io/image/background/favicon.png">
+    <!--- Page Info-->
+    
+    <title>
+        
+            论文专题讲解：Qwen3：Thinking 模式、36T 预训练与蒸馏 | Charles&#39;s Castle
+        
+    </title>
+
+    
+<link rel="stylesheet" href="/fonts/Chillax/chillax.css">
+
+
+    <!--- Inject Part-->
+    
+        
+            
+    
+            
+    
+            
+                
+                    <link rel="stylesheet" href="/katex/katex.min.css">
+                
+    
+            
+                
+                    <link rel="stylesheet" href="/css/site-polish-v2.css">
+                
+    
+            
+                
+                    <script data-swup-reload-script>
+(function() {
+  function loadBaiduAnalytics() {
+    if (window.__baiduAnalyticsLoaded) return;
+    window.__baiduAnalyticsLoaded = true;
+    window._hmt = window._hmt || [];
+    var hm = document.createElement("script");
+    hm.async = true;
+    hm.src = "https://hm.baidu.com/hm.js?8e0e5f382d14d87cbeadc33a36e71e86";
+    document.head.appendChild(hm);
+  }
+  if ("requestIdleCallback" in window) {
+    requestIdleCallback(loadBaiduAnalytics, { timeout: 3000 });
+  } else {
+    window.addEventListener("load", function() {
+      setTimeout(loadBaiduAnalytics, 1500);
+    });
+  }
+})();
+</script>
+
+                
+    
+
+    
+<link rel="stylesheet" href="/css/style.css">
+
+
+    
+        
+<link rel="stylesheet" href="/css/build/tailwind.css">
+
+    
+
+    
+<link rel="stylesheet" href="/fonts/GeistMono/geist-mono.css">
+
+    
+<link rel="stylesheet" href="/fonts/Geist/geist.css">
+
+    <!--- Font Part-->
+    
+    
+    
+    
+    
+    
+        
+<script src="/js/build/libs/anime.min.js"></script>
+
+    
+
+    <script id="hexo-configurations">
+    window.config = {"hostname":"charles2530.github.io","root":"/","language":"en","path":"search.xml"};
+    window.theme = {"articles":{"style":{"font_size":"16px","line_height":1.5,"image_border_radius":"14px","image_alignment":"center","image_caption":false,"link_icon":true,"delete_mask":false,"title_alignment":"left","headings_top_spacing":{"h1":"5rem","h2":"4rem","h3":"2.8rem","h4":"2.5rem","h5":"2.2rem","h6":"2rem"}},"word_count":{"enable":true,"count":true,"min2read":true},"author_label":{"enable":true,"auto":true,"list":["lol","Neo","God"]},"code_block":{"copy":true,"style":"mac","highlight_theme":{"light":"github","dark":"vs2015"},"font":{"enable":false,"family":null,"url":null}},"toc":{"enable":true,"max_depth":6,"number":false,"expand":true,"init_open":true},"copyright":{"enable":true,"default":"cc_by_nc_sa"},"lazyload":true,"pangu_js":false,"recommendation":{"enable":false,"title":"recommend_articles","limit":3,"mobile_limit":2,"placeholder":"https://charles2530.github.io/image/background/p3.jfif","skip_dirs":[]}},"colors":{"primary":"#A31F34","secondary":"#1890ff","default_mode":"light"},"global":{"fonts":{"chinese":{"enable":false,"family":null,"url":null},"english":{"enable":false,"family":null,"url":null},"title":{"enable":false,"family":null,"url":null}},"content_max_width":"1000px","sidebar_width":"210px","hover":{"shadow":true,"scale":true},"scroll_progress":{"bar":true,"percentage":true},"website_counter":{"url":"https://cn.vercount.one/js","enable":true,"site_pv":true,"site_uv":true,"post_pv":true},"single_page":true,"preloader":{"enable":true,"custom_message":null},"side_tools":{"gear_rotation":true,"auto_expand":false},"open_graph":{"enable":true,"image":"https://charles2530.github.io/image/background/logo.jpg","description":"This is Charles's Castle."},"google_analytics":{"enable":false,"id":null}},"home_banner":{"enable":true,"style":"fixed","image":{"light":"https://charles2530.github.io/image/background/background-light1.jpg","dark":"https://charles2530.github.io/image/background/background-dark1.jpg"},"title":"Charles's Castle","subtitle":{"text":["Happiness is best!","Never give up!","Everyday is a gift!"],"hitokoto":{"enable":false,"show_author":false,"api":"https://v1.hitokoto.cn"},"typing_speed":100,"backing_speed":80,"starting_delay":500,"backing_delay":1500,"loop":true,"smart_backspace":true},"text_color":{"light":"#000000","dark":"#d1d1b6"},"text_style":{"title_size":"3.2rem","subtitle_size":"1.5rem","line_height":1.2},"custom_font":{"enable":false,"family":null,"url":null},"social_links":{"enable":true,"style":"center","links":[{"icon":"fa-brands fa-github","url":"https://github.com/Charles2530/"},{"icon":"fa-brands fa-zhihu","url":"https://www.zhihu.com/people/yang-guang-xiao-zi-55-55"},{"icon":"fa-solid fa-at","url":"mailto:charles2530@163.com"},{"icon":"fa-brands fa-telegram","url":null},{"icon":"/images/custom-icon.svg","url":null}],"qrs":[{"icon":"fa-brands fa-weixin","qr":"https://charles2530.github.io/image/background/Wechat_icon.png"},{"icon":"/images/custom-icon.svg","qr":null}]}},"plugins":{"feed":{"enable":true},"aplayer":{"enable":false,"type":"fixed","audios":[{"name":null,"artist":null,"url":null,"cover":null,"lrc":null}]},"mermaid":{"enable":false,"version":"11.4.1","theme":{"light":"default","dark":"dark"}}},"version":"2.9.0","navbar":{"auto_hide":true,"color":{"left":"#f78736","right":"#367df7","transparency":35},"width":{"home":"1200px","pages":"1000px"},"links":{"Home":{"path":"/","icon":"fa-regular fa-house"},"Categories":{"path":"/categories","icon":"fas fa-bookmark"},"Tags":{"path":"/tags","icon":"fas fa-tags"},"About":{"icon":"fa-regular fa-user","submenus":{"Me":"https://jinyang-du.github.io/","Github":"https://github.com/Charles2530/","Blog":"https://charles2530.github.io","Statistics":"https://tongji.baidu.com/"}}},"search":{"enable":true,"preload":false}},"page_templates":{"friends_column":2,"tags_style":"blur","masonry":{"batch_size":12,"initial_batch_size":24}},"home":{"sidebar":{"enable":true,"position":"left","first_item":"menu","announcement":"This is Charles's Castle","show_on_mobile":true,"links":{"Archives":{"path":"/archives","icon":"fa-regular fa-archive"},"Photos":{"icon":"fa-solid fa-image","path":"/masonry/"},"Essays":{"icon":"fa-solid fa-message-lines","path":"/essay/"},"Friends":{"icon":"fa-solid fa-user-group","path":"/friends/"}}},"article_date_format":"auto","excerpt_length":200,"categories":{"enable":true,"limit":3},"tags":{"enable":true,"limit":3}},"footer":{"runtime":true,"icon":"<i class=\"fa-solid fa-heart fa-beat\" style=\"--fa-animation-duration: 0.5s; color: #f54545\"></i>","start":"2022/12/27 00:00:00","statistics":true,"customize":null,"icp":{"enable":false,"number":null,"url":null}},"footerStart":"2022/12/27 00:00:00","mermaid":{"style":{"light":"default","dark":"dark"}}};
+    window.lang_ago = {"second":"%s seconds ago","minute":"%s minutes ago","hour":"%s hours ago","day":"%s days ago","week":"%s weeks ago","month":"%s months ago","year":"%s years ago"};
+    window.i18n = {"search":"Search...","toc":"On this page","prev":"Prev","next":"Next","prev_posts":"Prev posts","next_posts":"Next posts","page":"Page %d","recent_posts":"Recent Posts","share":"Share","powered_by":"POWERED BY %s","theme":"THEME","rss_feed":"RSS Feed","category":"Category","categories":"Categories","tag":"Tag","tags":"Tags","post":"Post","posts":"Posts","tagcloud":"Tag Cloud","comment":"Comment","comments":"Comments","home":"Home","archive":"Archive","archives":"Archives","top":"TOP","sticky":"Sticky","go-back-home":"Go Back Home","masonry_loading":"Loading photos...","image_viewer":"Image viewer","close":"Close","exif":{"title":"EXIF","cards":{"camera":"Camera","lens":"Lens","exposure":"Exposure","other":"Other"},"fields":{"make":"Brand","model":"Model","date_taken":"Date taken","lens_model":"Lens","focal_length":"Focal length","focus_mode":"Focus mode","shutter":"Shutter","aperture":"Aperture","iso":"ISO","exposure_program":"Exposure program","exposure_compensation":"Exposure compensation","metering_mode":"Metering mode","flash":"Flash","white_balance":"White balance","latitude":"Latitude","longitude":"Longitude","altitude":"Altitude"},"status":{"loading":"Loading...","no_exif":"No EXIF available","library_missing":"EXIF library not loaded","image_source_missing":"Image source unavailable","unavailable":"EXIF unavailable (blocked by CORS or missing metadata)","flag_unavailable":"EXIF unavailable"}},"about":"About","changelog":"Changelog","links":"Links","link":"Link","friends":"Friends","friend":"Friend","timeline":"Timeline","shuoshuo":"Shuoshuo","bookmarks":"Bookmarks","site_uv":"VISITOR COUNT","site_pv":"TOTAL PAGE VIEWS","read_more":"Read more","wordcount":"Words","min2read":"Mins","status":"Status","runtime":"Blog up for","days":"days","hours":"hrs","minutes":"Min","seconds":"Sec","optimized_by":"and Optimized by Evan","rights":"All Rights Reserved","site_posts":"%s posts in total","site_wordcount":"%s words in total","copyright":{"author":"Author","title":"Title","link":"Link","create_time":"Created at","update_time":"Updated at","license_title":"License","license_content":"This work is licensed under %s.","all_rights_reserved":"All Rights Reserved &#169; %s","public_domain":"This work is in the public domain."},"ago":{"second":"%s seconds ago","minute":"%s minutes ago","hour":"%s hours ago","day":"%s days ago","week":"%s weeks ago","month":"%s months ago","year":"%s years ago"},"create_time":"Created","update_time":"Updated","expired":"This post is written %s days ago, and the content may not be up to date."};
+    window.data = {"masonry":true};
+  </script>
+    
+    <!--- Fontawesome Part-->
+    
+<link rel="stylesheet" href="/fontawesome/fontawesome.min.css">
+
+    
+<link rel="stylesheet" href="/fontawesome/brands.min.css">
+
+    
+<link rel="stylesheet" href="/fontawesome/solid.min.css">
+
+    
+<link rel="stylesheet" href="/fontawesome/regular.min.css">
+
+    
+    
+    
+    
+<meta name="generator" content="Hexo 6.3.0"><link rel="alternate" href="/atom.xml" title="Charles's Castle" type="application/atom+xml">
+<link rel="stylesheet" href="/css/prism-tomorrow.css" type="text/css"></head>
+
+
+<body>
+	<div class="progress-bar-container">
+	
+	<span class="scroll-progress-bar"></span>
+	
+
+	
+	<span class="pjax-progress-bar"></span>
+	<!--        <span class="swup-progress-icon">-->
+	<!--            <i class="fa-solid fa-circle-notch fa-spin"></i>-->
+	<!--        </span>-->
+	
+</div>
+
+<style>
+    :root {
+        --preloader-background-color: #fff;
+        --preloader-text-color: #000;
+    }
+
+    @media (prefers-color-scheme: dark) {
+        :root {
+            --preloader-background-color: #202124;
+            --preloader-text-color: #fff;
+        }
+    }
+
+    @media (prefers-color-scheme: light) {
+        :root {
+            --preloader-background-color: #fff;
+            --preloader-text-color: #000;
+        }
+    }
+
+    @media (max-width: 600px) {
+        .ml13 {
+            font-size: 2.6rem !important; /* Adjust this value as needed */
+        }
+    }
+
+    .preloader {
+        display: flex;
+        flex-direction: column;
+        gap: 1rem; /* Tailwind 'gap-4' is 1rem */
+        align-items: center;
+        justify-content: center;
+        position: fixed;
+        padding: 12px;
+        top: 0;
+        right: 0;
+        bottom: 0;
+        left: 0;
+        width: 100vw;
+        height: 100vh; /* 'h-screen' is 100% of the viewport height */
+        background-color: var(--preloader-background-color);
+        z-index: 1100; /* 'z-[1100]' sets the z-index */
+        transition: opacity 0.2s ease-in-out;
+    }
+
+    .ml13 {
+        font-size: 3.2rem;
+        /* text-transform: uppercase; */
+        color: var(--preloader-text-color);
+        letter-spacing: -1px;
+        font-weight: 500;
+        font-family: 'Chillax-Variable', sans-serif;
+        text-align: center;
+    }
+
+    .ml13 .word {
+        display: inline-flex;
+        flex-wrap: wrap;
+        white-space: nowrap;
+    }
+
+    .ml13 .letter {
+        display: inline-block;
+        line-height: 1em;
+    }
+</style>
+
+<div class="preloader">
+    <h2 class="ml13">
+        Charles&#39;s Castle
+    </h2>
+    <script>
+        var textWrapper = document.querySelector('.ml13');
+        // Split text into words
+        var words = textWrapper.textContent.trim().split(' ');
+
+        // Clear the existing content
+        textWrapper.innerHTML = '';
+
+        // Wrap each word and its letters in spans
+        words.forEach(function(word) {
+            var wordSpan = document.createElement('span');
+            wordSpan.classList.add('word');
+            wordSpan.innerHTML = word.replace(/\S/g, "<span class='letter'>$&</span>");
+            textWrapper.appendChild(wordSpan);
+            textWrapper.appendChild(document.createTextNode(' ')); // Add space between words
+        });
+
+        var animation = anime.timeline({ loop: true })
+            .add({
+                targets: '.ml13 .letter',
+                translateY: [20, 0],
+                translateZ: 0,
+                opacity: [0, 1],
+                filter: ['blur(5px)', 'blur(0px)'],
+                easing: "easeOutExpo",
+                duration: 1200,
+                delay: (el, i) => 300 + 20 * i,
+            })
+            .add({
+                targets: '.ml13 .letter',
+                translateY: [0, -20],
+                opacity: [1, 0],
+                filter: ['blur(0px)', 'blur(5px)'],
+                easing: "easeInExpo",
+                duration: 1000,
+                delay: (el, i) => 15 * i,
+                complete: function() {
+                    hidePreloader();
+                }
+            }, '-=700');
+
+
+        let themeStatus = JSON.parse(localStorage.getItem('REDEFINE-THEME-STATUS'))?.isDark;
+
+        // If the theme status is not found in local storage, check the preferred color scheme
+        if (themeStatus === undefined || themeStatus === null) {
+            if (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) {
+                themeStatus = 'dark';
+            } else {
+                themeStatus = 'light';
+            }
+        }
+
+        // Now you can use the themeStatus variable in your code
+        if (themeStatus) {
+            document.documentElement.style.setProperty('--preloader-background-color', '#202124');
+            document.documentElement.style.setProperty('--preloader-text-color', '#fff');
+        } else {
+            document.documentElement.style.setProperty('--preloader-background-color', '#fff');
+            document.documentElement.style.setProperty('--preloader-text-color', '#000');
+        }
+
+        window.addEventListener('load', function () {
+            setTimeout(hidePreloader, 5000); // Call hidePreloader after 5000 milliseconds if not already called by animation
+        });
+
+        function hidePreloader() {
+            var preloader = document.querySelector('.preloader');
+            preloader.style.opacity = '0';
+            setTimeout(function () {
+                preloader.style.display = 'none';
+            }, 200);
+        }
+    </script>
+</div>
+
+<main class="page-container" id="swup">
+
+	
+
+	<div class="main-content-container flex flex-col justify-between min-h-dvh">
+		<div class="main-content-header">
+			<header class="navbar-container px-6 md:px-12">
+    <div class="navbar-content transition-navbar ">
+        <div class="left">
+            
+                <a class="logo-image h-8 w-8 sm:w-10 sm:h-10 mr-3" href="/">
+                    <img src="https://charles2530.github.io/image/background/logo.jpg" class="w-full h-full rounded-xs">
+                </a>
+            
+            <a class="logo-title" href="/">
+                
+                Charles&#39;s Castle
+                
+            </a>
+        </div>
+
+        <div class="right">
+            <!-- PC -->
+            <div class="desktop">
+                <ul class="navbar-list">
+                    
+                        
+                            
+
+                            <li class="navbar-item">
+                                <!-- Menu -->
+                                <a class=""
+                                   href="/"
+                                        >
+                                    <i class="fa-regular fa-house fa-fw"></i>
+                                    HOME
+                                    
+                                </a>
+
+                                <!-- Submenu -->
+                                
+                            </li>
+                    
+                        
+                            
+
+                            <li class="navbar-item">
+                                <!-- Menu -->
+                                <a class=""
+                                   href="/categories"
+                                        >
+                                    <i class="fas fa-bookmark fa-fw"></i>
+                                    CATEGORIES
+                                    
+                                </a>
+
+                                <!-- Submenu -->
+                                
+                            </li>
+                    
+                        
+                            
+
+                            <li class="navbar-item">
+                                <!-- Menu -->
+                                <a class=""
+                                   href="/tags"
+                                        >
+                                    <i class="fas fa-tags fa-fw"></i>
+                                    TAGS
+                                    
+                                </a>
+
+                                <!-- Submenu -->
+                                
+                            </li>
+                    
+                        
+                            
+
+                            <li class="navbar-item">
+                                <!-- Menu -->
+                                <a class="has-dropdown"
+                                   href="#"
+                                        onClick=&#34;return false;&#34;>
+                                    <i class="fa-regular fa-user fa-fw"></i>
+                                    ABOUT
+                                    <i class="fa-solid fa-chevron-down fa-fw"></i>
+                                </a>
+
+                                <!-- Submenu -->
+                                
+                                    <ul class="sub-menu">
+                                        
+                                            <li>
+                                                <a target="_blank" rel="noopener" href="https://jinyang-du.github.io/">
+                                                    ME
+                                                </a>
+                                            </li>
+                                        
+                                            <li>
+                                                <a target="_blank" rel="noopener" href="https://github.com/Charles2530/">
+                                                    GITHUB
+                                                </a>
+                                            </li>
+                                        
+                                            <li>
+                                                <a href="https://charles2530.github.io">
+                                                    BLOG
+                                                </a>
+                                            </li>
+                                        
+                                            <li>
+                                                <a target="_blank" rel="noopener" href="https://tongji.baidu.com/">
+                                                    STATISTICS
+                                                </a>
+                                            </li>
+                                        
+                                    </ul>
+                                
+                            </li>
+                    
+                    
+                        <li class="navbar-item search search-popup-trigger">
+                            <i class="fa-solid fa-magnifying-glass"></i>
+                        </li>
+                    
+                </ul>
+            </div>
+            <!-- Mobile -->
+            <div class="mobile">
+                
+                    <div class="icon-item search search-popup-trigger"><i class="fa-solid fa-magnifying-glass"></i>
+                    </div>
+                
+                <div class="icon-item navbar-bar">
+                    <div class="navbar-bar-middle"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Mobile sheet -->
+    <div class="navbar-drawer h-dvh w-full absolute top-0 left-0 bg-background-color flex flex-col justify-between">
+        <ul class="drawer-navbar-list flex flex-col px-4 justify-center items-start">
+            
+                
+                    
+
+                    <li class="drawer-navbar-item text-base my-1.5 flex flex-col w-full">
+                        
+                        <a class="py-1.5 px-2 flex flex-row items-center justify-between gap-1 hover:!text-primary active:!text-primary text-2xl font-semibold group border-b border-border-color hover:border-primary w-full "
+                           href="/"
+                        >
+                            <span>
+                                HOME
+                            </span>
+                            
+                                <i class="fa-regular fa-house fa-sm fa-fw"></i>
+                            
+                        </a>
+                        
+
+                        
+                    </li>
+            
+                
+                    
+
+                    <li class="drawer-navbar-item text-base my-1.5 flex flex-col w-full">
+                        
+                        <a class="py-1.5 px-2 flex flex-row items-center justify-between gap-1 hover:!text-primary active:!text-primary text-2xl font-semibold group border-b border-border-color hover:border-primary w-full "
+                           href="/categories"
+                        >
+                            <span>
+                                CATEGORIES
+                            </span>
+                            
+                                <i class="fas fa-bookmark fa-sm fa-fw"></i>
+                            
+                        </a>
+                        
+
+                        
+                    </li>
+            
+                
+                    
+
+                    <li class="drawer-navbar-item text-base my-1.5 flex flex-col w-full">
+                        
+                        <a class="py-1.5 px-2 flex flex-row items-center justify-between gap-1 hover:!text-primary active:!text-primary text-2xl font-semibold group border-b border-border-color hover:border-primary w-full "
+                           href="/tags"
+                        >
+                            <span>
+                                TAGS
+                            </span>
+                            
+                                <i class="fas fa-tags fa-sm fa-fw"></i>
+                            
+                        </a>
+                        
+
+                        
+                    </li>
+            
+                
+                    
+
+                    <li class="drawer-navbar-item-sub text-base my-1.5 flex flex-col w-full">
+                        
+                        <div class="py-1.5 px-2 flex flex-row items-center justify-between gap-1 hover:!text-primary active:!text-primary cursor-pointer text-2xl font-semibold group border-b border-border-color hover:border-primary w-full "
+                             navbar-data-toggle="submenu-About"
+                        >
+                            <span>
+                                ABOUT
+                            </span>
+                            
+                                <i class="fa-solid fa-chevron-right fa-sm fa-fw transition-all"></i>
+                            
+                        </div>
+                        
+
+                        
+                            <div class="flex-col items-start px-2 py-2 hidden" data-target="submenu-About">
+                                
+                                    <div class="drawer-navbar-item text-base flex flex-col justify-center items-start hover:underline active:underline hover:underline-offset-1 rounded-3xl">
+                                        <a class=" text-third-text-color text-xl"
+                                           target="_blank" rel="noopener" href="https://jinyang-du.github.io/">ME</a>
+                                    </div>
+                                
+                                    <div class="drawer-navbar-item text-base flex flex-col justify-center items-start hover:underline active:underline hover:underline-offset-1 rounded-3xl">
+                                        <a class=" text-third-text-color text-xl"
+                                           target="_blank" rel="noopener" href="https://github.com/Charles2530/">GITHUB</a>
+                                    </div>
+                                
+                                    <div class="drawer-navbar-item text-base flex flex-col justify-center items-start hover:underline active:underline hover:underline-offset-1 rounded-3xl">
+                                        <a class=" text-third-text-color text-xl"
+                                           href="https://charles2530.github.io">BLOG</a>
+                                    </div>
+                                
+                                    <div class="drawer-navbar-item text-base flex flex-col justify-center items-start hover:underline active:underline hover:underline-offset-1 rounded-3xl">
+                                        <a class=" text-third-text-color text-xl"
+                                           target="_blank" rel="noopener" href="https://tongji.baidu.com/">STATISTICS</a>
+                                    </div>
+                                
+                            </div>
+                        
+                    </li>
+            
+
+            
+            
+                
+                    
+                    <li class="drawer-navbar-item text-base my-1.5 flex flex-col w-full">
+                        <a class="py-1.5 px-2 flex flex-row items-center justify-between gap-1 hover:!text-primary active:!text-primary text-2xl font-semibold group border-b border-border-color hover:border-primary w-full active"
+                           href="/archives"
+                        >
+                            <span>Archives</span>
+                            <i class="fa-regular fa-archive fa-sm fa-fw"></i>
+                        </a>
+                    </li>
+                
+                    
+                    <li class="drawer-navbar-item text-base my-1.5 flex flex-col w-full">
+                        <a class="py-1.5 px-2 flex flex-row items-center justify-between gap-1 hover:!text-primary active:!text-primary text-2xl font-semibold group border-b border-border-color hover:border-primary w-full active"
+                           href="/masonry/"
+                        >
+                            <span>Photos</span>
+                            <i class="fa-solid fa-image fa-sm fa-fw"></i>
+                        </a>
+                    </li>
+                
+                    
+                    <li class="drawer-navbar-item text-base my-1.5 flex flex-col w-full">
+                        <a class="py-1.5 px-2 flex flex-row items-center justify-between gap-1 hover:!text-primary active:!text-primary text-2xl font-semibold group border-b border-border-color hover:border-primary w-full active"
+                           href="/essay/"
+                        >
+                            <span>Essays</span>
+                            <i class="fa-solid fa-message-lines fa-sm fa-fw"></i>
+                        </a>
+                    </li>
+                
+                    
+                    <li class="drawer-navbar-item text-base my-1.5 flex flex-col w-full">
+                        <a class="py-1.5 px-2 flex flex-row items-center justify-between gap-1 hover:!text-primary active:!text-primary text-2xl font-semibold group border-b border-border-color hover:border-primary w-full active"
+                           href="/friends/"
+                        >
+                            <span>Friends</span>
+                            <i class="fa-solid fa-user-group fa-sm fa-fw"></i>
+                        </a>
+                    </li>
+                
+            
+        </ul>
+
+        <div class="statistics flex justify-around my-2.5">
+    <a class="item tag-count-item flex flex-col justify-center items-center w-20" href="/tags">
+        <div class="number text-2xl sm:text-xl text-second-text-color font-semibold">47</div>
+        <div class="label text-third-text-color text-sm">Tags</div>
+    </a>
+    <a class="item tag-count-item flex flex-col justify-center items-center w-20" href="/categories">
+        <div class="number text-2xl sm:text-xl text-second-text-color font-semibold">95</div>
+        <div class="label text-third-text-color text-sm">Categories</div>
+    </a>
+    <a class="item tag-count-item flex flex-col justify-center items-center w-20" href="/archives">
+        <div class="number text-2xl sm:text-xl text-second-text-color font-semibold">547</div>
+        <div class="label text-third-text-color text-sm">Posts</div>
+    </a>
+</div>
+    </div>
+
+    <div class="window-mask"></div>
+
+</header>
+
+
+		</div>
+
+		<div class="main-content-body transition-fade-up">
+			
+
+			<div class="main-content">
+				<div class="post-page-container flex relative justify-between box-border w-full h-full">
+	<div class="article-content-container">
+
+		<div class="article-title relative w-full">
+			
+			
+			
+			<img src="https://charles2530.github.io/image/background/p10.jpg" alt="论文专题讲解：Qwen3：Thinking 模式、36T 预训练与蒸馏" class="w-full h-60 sm:h-72 md:h-80 object-cover sm:rounded-t-large dark:brightness-75" />
+			
+			<div class="w-full flex items-center absolute bottom-0 justify-start">
+				<h1 class="article-title-cover text-center mx-6 my-6 text-second-text-color bg-background-color-transparent px-4 py-3 text-3xl sm:text-4xl md:text-5xl font-semibold backdrop-blur-lg rounded-xl border border-border-color ">论文专题讲解：Qwen3：Thinking 模式、36T 预训练与蒸馏</h1>
+			</div>
+			
+		</div>
+
+		
+		<div class="article-header flex flex-row gap-2 items-center px-2 sm:px-6 md:px-8">
+			<div class="avatar w-[46px] h-[46px] shrink-0 rounded-medium border border-border-color p-px">
+				<img src="https://charles2530.github.io/image/background/logo2.jpg">
+			</div>
+			<div class="info flex flex-col justify-between">
+				<div class="author flex items-center">
+					<span class="name text-default-text-color text-lg font-semibold">Charles</span>
+					
+					<span class="author-label ml-1.5 text-xs px-2 py-0.5 rounded-small text-third-text-color border border-shadow-color-1">Lv8</span>
+					
+				</div>
+				<div class="meta-info">
+					<div class="article-meta-info">
+    <span class="article-date article-meta-item">
+        <i class="fa-regular fa-pen-fancy"></i>&nbsp;
+        <span class="desktop">2025-11-10 09:00</span>
+        <span class="mobile">2025-11-10 09:00</span>
+        <span class="hover-info">Created</span>
+    </span>
+    
+        <span class="article-date article-meta-item">
+            <i class="fa-regular fa-wrench"></i>&nbsp;
+            <span class="desktop">2025-11-10 09:00</span>
+            <span class="mobile">2025-11-10 09:00</span>
+            <span class="hover-info">Updated</span>
+        </span>
+    
+
+    
+        <span class="article-categories article-meta-item">
+            <i class="fa-regular fa-folders"></i>&nbsp;
+            <ul>
+                
+                
+                    
+                        
+                        <li>
+                            <a href="/categories/AI/">AI</a>&nbsp;
+                        </li>
+                    
+                    
+                
+                    
+                        
+                            <li>></li>
+                        
+                        <li>
+                            <a href="/categories/AI/%E8%AE%BA%E6%96%87%E4%B8%93%E9%A2%98%E8%AE%B2%E8%A7%A3/">论文专题讲解</a>&nbsp;
+                        </li>
+                    
+                    
+                
+            </ul>
+        </span>
+    
+    
+        <span class="article-tags article-meta-item">
+            <i class="fa-regular fa-tags"></i>&nbsp;
+            <ul>
+                
+                    <li>
+                        <a href="/tags/AI/">AI</a>&nbsp;
+                    </li>
+                
+                    <li>
+                        | <a href="/tags/%E8%AE%BA%E6%96%87%E4%B8%93%E9%A2%98/">论文专题</a>&nbsp;
+                    </li>
+                
+                    <li>
+                        | <a href="/tags/%E6%8A%80%E6%9C%AF%E6%8A%A5%E5%91%8A/">技术报告</a>&nbsp;
+                    </li>
+                
+            </ul>
+        </span>
+    
+
+    
+    
+        <span class="article-wordcount article-meta-item">
+            <i class="fa-regular fa-typewriter"></i>&nbsp;<span>5.4k Words</span>
+        </span>
+    
+    
+        <span class="article-min2read article-meta-item">
+            <i class="fa-regular fa-clock"></i>&nbsp;<span>24 Mins</span>
+        </span>
+    
+    
+        <span class="article-pv article-meta-item">
+            <i class="fa-regular fa-eye"></i>&nbsp;<span id="busuanzi_value_page_pv"></span>
+        </span>
+    
+</div>
+
+				</div>
+			</div>
+		</div>
+		
+
+		
+
+
+		<div class="article-content markdown-body px-2 sm:px-6 md:px-8 pb-8">
+			<div class="callout callout--titled info mb-4 rounded-small shadow-redefine-flat bg-(--callout-bg-color) p-3 pl-1 relative flex flex-row gap-2"><div role="none" class="rounded-full self-stretch w-0.5 bg-(--callout-primary-color) shrink-0 opacity-60"></div><div class="flex flex-col gap-2"><div class="callout__title flex items-center gap-2 font-semibold tracking-tight">论文信息</div><div class="callout__content markdown-body flex-1 min-w-0"><p><strong>论文题名：</strong> Qwen3 Technical Report。<br><br />
+<strong>作者：</strong> An Yang、Anfeng Li、Baosong Yang、Beichen Zhang、Binyuan Hui、Bo Zheng、Bowen Yu、Chang Gao、Chengen Huang、Chenxu Lv 等（共 60 人）。<br><br />
+<strong>机构：</strong> 未在公开元数据中稳定解析；以 arXiv/PDF 或官方页 affiliation block 为准。<br><br />
+<strong>时间 / 主题：</strong> 2025-05；技术报告。<br><br />
+<strong>arXiv / 官方报告：</strong> arXiv：<a class="link"   target="_blank" rel="noopener" href="https://arxiv.org/abs/2505.09388" >2505.09388<i class="fa-solid fa-arrow-up-right ml-[0.2em] font-light align-text-top text-[0.7em] link-icon"></i></a>。<br><br />
+<strong>GitHub / 项目：</strong> GitHub：<a class="link"   target="_blank" rel="noopener" href="https://github.com/QwenLM/Qwen3" >github.com/QwenLM/Qwen3<i class="fa-solid fa-arrow-up-right ml-[0.2em] font-light align-text-top text-[0.7em] link-icon"></i></a>。<br><br />
+<strong>元数据来源与核验口径：</strong> 来源：<a class="link"   target="_blank" rel="noopener" href="https://arxiv.org/abs/2505.09388" >arXiv<i class="fa-solid fa-arrow-up-right ml-[0.2em] font-light align-text-top text-[0.7em] link-icon"></i></a>；<a class="link"   target="_blank" rel="noopener" href="https://github.com/QwenLM/Qwen3" >GitHub API / repo<i class="fa-solid fa-arrow-up-right ml-[0.2em] font-light align-text-top text-[0.7em] link-icon"></i></a>；Checked Date：2026-06-04；Repro Status：Paper / official materials reviewed, independent reproduction not claimed。</p></div></div></div>
+<blockquote>
+<p><strong>这篇回答的问题。</strong> 如何理解“Qwen3”背后的核心机制、适用边界和下一步阅读路径。</p>
+</blockquote>
+<p>Qwen3 这份报告的核心不是“又发布了一组模型”，而是把两个过去经常分开的产品形态合并到同一套模型里：<strong>同一个 Qwen3 可以用 thinking mode 做长 CoT 推理，也可以用 non-thinking mode 做低延迟直接回答，并且允许用户用 thinking budget 控制推理 token 成本。</strong></p>
+<table>
+<thead>
+<tr>
+<th>Dimension</th>
+<th>Qwen3</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Model Family</td>
+<td>6 dense models + 2 MoE models</td>
+</tr>
+<tr>
+<td>Parameter Range</td>
+<td>0.6B to 235B</td>
+</tr>
+<tr>
+<td>Flagship Model</td>
+<td>Qwen3-235B-A22B</td>
+</tr>
+<tr>
+<td>Flagship Params</td>
+<td>235B total, 22B activated</td>
+</tr>
+<tr>
+<td>Pre-training Tokens</td>
+<td>36T</td>
+</tr>
+<tr>
+<td>Language Coverage</td>
+<td>119 languages and dialects</td>
+</tr>
+<tr>
+<td>Base Context Length</td>
+<td>32K / 128K by model</td>
+</tr>
+<tr>
+<td>Main Post-training Goal</td>
+<td>unified thinking and non-thinking behavior</td>
+</tr>
+<tr>
+<td>License</td>
+<td>Apache 2.0</td>
+</tr>
+</tbody>
+</table>
+<p><strong>阅读边界。</strong><br />
+这是一份模型技术报告，训练数据、评测、消融和对比结果都应按作者报告理解。它很适合学习开源大模型训练和后训练 recipe，但不应把所有 benchmark 数值当作第三方独立复现结果。</p>
+<h2 id="论文位置"><a class="markdownIt-Anchor" href="#论文位置"></a> 论文位置</h2>
+<p>Qwen3 接在 Qwen2.5 和 QwQ-32B 之后。Qwen2.5 更像通用 chat / base model 系列，QwQ-32B 更像专门的 reasoning model。Qwen3 的问题意识是：能不能不用在“普通对话模型”和“推理模型”之间切换，而是在同一个模型里控制是否思考、思考多久。</p>
+<p>这条线可以压成：</p>
+<div class="code-container" data-rel="Text"><figure class="iseeu highlight text"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br></pre></td><td class="code"><pre><span class="line">Qwen2.5 通用能力</span><br><span class="line">  + QwQ / R1 式长 CoT reasoning 经验</span><br><span class="line">  + 36T token 多语和代码/STEM 数据</span><br><span class="line">  + dense / MoE 多规格模型</span><br><span class="line">  + 四阶段后训练</span><br><span class="line">  + strong-to-weak distillation</span><br><span class="line">  -&gt; 同一模型支持 thinking / non-thinking / thinking budget</span><br></pre></td></tr></table></figure></div>
+<p>Qwen3 和 DeepSeek-V3/R1 的定位也不同。DeepSeek-V3 更强调 MoE、MLA、FP8 和训练系统共设计；DeepSeek-R1 更强调可验证任务上的大规模 RLVR。Qwen3 则把重点放在“模型家族 + 双模式后训练 + 小模型蒸馏”上：既要大模型强，也要 0.6B 到 32B 的小模型可用。</p>
+<h2 id="模型家族与架构"><a class="markdownIt-Anchor" href="#模型家族与架构"></a> 模型家族与架构</h2>
+<p>Qwen3 系列有 8 个模型。dense 模型覆盖边缘到 32B，MoE 模型覆盖高性价比推理和旗舰能力。</p>
+<table>
+<thead>
+<tr>
+<th>Models</th>
+<th style="text-align:right">Layers</th>
+<th style="text-align:right">Heads (Q / KV)</th>
+<th>Tie Embedding</th>
+<th style="text-align:right">Context Length</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Qwen3-0.6B</td>
+<td style="text-align:right">28</td>
+<td style="text-align:right">16 / 8</td>
+<td>Yes</td>
+<td style="text-align:right">32K</td>
+</tr>
+<tr>
+<td>Qwen3-1.7B</td>
+<td style="text-align:right">28</td>
+<td style="text-align:right">16 / 8</td>
+<td>Yes</td>
+<td style="text-align:right">32K</td>
+</tr>
+<tr>
+<td>Qwen3-4B</td>
+<td style="text-align:right">36</td>
+<td style="text-align:right">32 / 8</td>
+<td>Yes</td>
+<td style="text-align:right">128K</td>
+</tr>
+<tr>
+<td>Qwen3-8B</td>
+<td style="text-align:right">36</td>
+<td style="text-align:right">32 / 8</td>
+<td>No</td>
+<td style="text-align:right">128K</td>
+</tr>
+<tr>
+<td>Qwen3-14B</td>
+<td style="text-align:right">40</td>
+<td style="text-align:right">40 / 8</td>
+<td>No</td>
+<td style="text-align:right">128K</td>
+</tr>
+<tr>
+<td>Qwen3-32B</td>
+<td style="text-align:right">64</td>
+<td style="text-align:right">64 / 8</td>
+<td>No</td>
+<td style="text-align:right">128K</td>
+</tr>
+</tbody>
+</table>
+<p><small>表源：<code>Qwen3 Technical Report</code>，Table 1。原论文表意：Qwen3 dense models 采用不同层数、GQA head 配置和 context length，覆盖 0.6B 到 32B。</small></p>
+<table>
+<thead>
+<tr>
+<th>Models</th>
+<th style="text-align:right">Layers</th>
+<th style="text-align:right">Heads (Q / KV)</th>
+<th style="text-align:right"># Experts (Total / Activated)</th>
+<th style="text-align:right">Context Length</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Qwen3-30B-A3B</td>
+<td style="text-align:right">48</td>
+<td style="text-align:right">32 / 4</td>
+<td style="text-align:right">128 / 8</td>
+<td style="text-align:right">128K</td>
+</tr>
+<tr>
+<td>Qwen3-235B-A22B</td>
+<td style="text-align:right">94</td>
+<td style="text-align:right">64 / 4</td>
+<td style="text-align:right">128 / 8</td>
+<td style="text-align:right">128K</td>
+</tr>
+</tbody>
+</table>
+<p><small>表源：<code>Qwen3 Technical Report</code>，Table 2。原论文表意：Qwen3 MoE models 均有 128 个 experts，每 token 激活 8 个 experts；旗舰模型 235B total、22B activated。</small></p>
+<p>架构上，Qwen3 dense models 延续 Qwen2.5 的主体设计，包括：</p>
+<table>
+<thead>
+<tr>
+<th>Component</th>
+<th>Qwen3 Choice</th>
+<th>Why It Matters</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Attention</td>
+<td>Grouped Query Attention (GQA)</td>
+<td>降低 KV cache 和推理成本</td>
+</tr>
+<tr>
+<td>FFN</td>
+<td>SwiGLU</td>
+<td>大模型常用 FFN 结构</td>
+</tr>
+<tr>
+<td>Position</td>
+<td>RoPE</td>
+<td>支持长上下文外推和扩展</td>
+</tr>
+<tr>
+<td>Norm</td>
+<td>RMSNorm with pre-normalization</td>
+<td>稳定训练</td>
+</tr>
+<tr>
+<td>Attention Stabilization</td>
+<td>remove QKV-bias, introduce QK-Norm</td>
+<td>抑制 attention logit 不稳定</td>
+</tr>
+<tr>
+<td>Tokenizer</td>
+<td>byte-level BBPE, vocab size 151,669</td>
+<td>增强多语和符号覆盖</td>
+</tr>
+</tbody>
+</table>
+<p>MoE 模型和 dense 模型共享主体架构，但使用 128 个细粒度 experts，每 token 激活 8 个。和 Qwen2.5-MoE 不同，Qwen3-MoE 不使用 shared experts，并采用 global-batch load balancing loss 鼓励 expert specialization。</p>
+<p><strong>Qwen3-MoE 和 DeepSeekMoE 的差异。</strong><br />
+两者都重视细粒度 experts，但路由和均衡策略不同。DeepSeek-V3 强调 auxiliary-loss-free load balancing，用动态 bias 控制负载；Qwen3 报告写的是 global-batch load balancing loss，并且明确 Qwen3-MoE 不设 shared experts。</p>
+<p>这说明 MoE 没有唯一标准答案。一个系统可以把 shared expert 当成通用能力锚点，也可以让所有 expert 都进入路由集合；可以把负载均衡放进 loss，也可以用路由 bias 外部调节。真正要看的是训练稳定性、专家专门化、通信成本和最终能力之间的折中。</p>
+<h2 id="预训练36t-tokens-和三阶段策略"><a class="markdownIt-Anchor" href="#预训练36t-tokens-和三阶段策略"></a> 预训练：36T tokens 和三阶段策略</h2>
+<p>Qwen3 的预训练数据比 Qwen2.5 明显扩大：token 数约翻倍，语言覆盖从 29 种扩到 119 种。数据来源不只是网页文本，还包括 PDF OCR、合成教材、问答、代码和多语数据。</p>
+<table>
+<thead>
+<tr>
+<th>Data / Processing</th>
+<th>Qwen3 Detail</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Total Tokens</td>
+<td>36T</td>
+</tr>
+<tr>
+<td>Languages and Dialects</td>
+<td>119</td>
+</tr>
+<tr>
+<td>Main Domains</td>
+<td>coding, STEM, reasoning tasks, books, multilingual texts, synthetic data</td>
+</tr>
+<tr>
+<td>PDF-like Documents</td>
+<td>Qwen2.5-VL extracts text, Qwen2.5 refines recognized text</td>
+</tr>
+<tr>
+<td>Synthetic Data</td>
+<td>Qwen2.5, Qwen2.5-Math, Qwen2.5-Coder generate textbooks, QA, instructions, code snippets</td>
+</tr>
+<tr>
+<td>Data Annotation</td>
+<td>over 30T tokens annotated by educational value, fields, domains and safety</td>
+</tr>
+<tr>
+<td>Mixture Optimization</td>
+<td>instance-level mixture optimization with fine-grained labels</td>
+</tr>
+</tbody>
+</table>
+<p>这里最值得注意的是数据扩展方式。Qwen3 并不是只扩大爬取规模，而是利用已有模型反哺数据：用 Qwen2.5-VL 处理 PDF，用 Qwen2.5-Math 和 Qwen2.5-Coder 合成数学、代码等高价值数据。这样做的好处是可以提高 STEM、coding、reasoning 数据密度；风险是合成数据会带来 teacher bias、模板化和错误放大，所以报告里强调了 annotation、filtering 和小 proxy model 消融。</p>
+<p>预训练分三阶段：</p>
+<table>
+<thead>
+<tr>
+<th>Stage</th>
+<th style="text-align:right">Tokens</th>
+<th style="text-align:right">Sequence Length</th>
+<th>Main Goal</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>General Stage (S1)</td>
+<td style="text-align:right">over 30T</td>
+<td style="text-align:right">4,096</td>
+<td>language proficiency and general world knowledge</td>
+</tr>
+<tr>
+<td>Reasoning Stage (S2)</td>
+<td style="text-align:right">about 5T</td>
+<td style="text-align:right">4,096</td>
+<td>increase STEM, coding, reasoning and synthetic data; improve reasoning ability</td>
+</tr>
+<tr>
+<td>Long Context Stage</td>
+<td style="text-align:right">hundreds of billions</td>
+<td style="text-align:right">32,768</td>
+<td>extend context length and train on long-context corpora</td>
+</tr>
+</tbody>
+</table>
+<p>Long Context Stage 的数据长度分布也有明确设计：</p>
+<table>
+<thead>
+<tr>
+<th>Long Context Corpus</th>
+<th style="text-align:right">Proportion</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>text between 16,384 and 32,768 tokens</td>
+<td style="text-align:right">75%</td>
+</tr>
+<tr>
+<td>text between 4,096 and 16,384 tokens</td>
+<td style="text-align:right">25%</td>
+</tr>
+</tbody>
+</table>
+<p>长上下文扩展使用了三类技巧：</p>
+<table>
+<thead>
+<tr>
+<th>Technique</th>
+<th>Role</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>ABF</td>
+<td>increase RoPE base frequency from 10,000 to 1,000,000</td>
+</tr>
+<tr>
+<td>YaRN</td>
+<td>length extrapolation</td>
+</tr>
+<tr>
+<td>Dual Chunk Attention (DCA)</td>
+<td>achieve four-fold increase in sequence length capacity during inference</td>
+</tr>
+</tbody>
+</table>
+<p><strong>为什么 S2 单独做 reasoning pre-training。</strong><br />
+很多 reasoning 能力不只来自后训练 RL。Qwen3 在预训练阶段就单独设置 S2，把 STEM、代码、推理和合成数据比例拉高，再加速 learning rate decay。这是在 base model 层面提高“可被后训练激发的能力上限”。</p>
+<p>如果 base model 没有足够的数学、代码和复杂推理先验，后面的 long-CoT SFT 和 RL 会更像补课；如果 base model 已经有足够好的表示，后训练更容易把能力组织成可控行为。</p>
+<h2 id="base-model-结果旗舰-moe-与小模型路线"><a class="markdownIt-Anchor" href="#base-model-结果旗舰-moe-与小模型路线"></a> Base Model 结果：旗舰 MoE 与小模型路线</h2>
+<p>Qwen3-235B-A22B-Base 用 235B total、22B activated 对比 Qwen2.5-72B、Qwen2.5-Plus、Llama-4-Maverick 和 DeepSeek-V3。报告主张它在大多数 base benchmarks 上领先，同时 activated params 低于 72B dense 和 DeepSeek-V3。</p>
+<table>
+<thead>
+<tr>
+<th>Benchmark</th>
+<th style="text-align:right">Qwen2.5-72B Base</th>
+<th style="text-align:right">Qwen2.5-Plus Base</th>
+<th style="text-align:right">Llama-4-Maverick Base</th>
+<th style="text-align:right">DeepSeek-V3 Base</th>
+<th style="text-align:right">Qwen3-235B-A22B Base</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td># Total Params</td>
+<td style="text-align:right">72B</td>
+<td style="text-align:right">271B</td>
+<td style="text-align:right">402B</td>
+<td style="text-align:right">671B</td>
+<td style="text-align:right">235B</td>
+</tr>
+<tr>
+<td># Activated Params</td>
+<td style="text-align:right">72B</td>
+<td style="text-align:right">37B</td>
+<td style="text-align:right">17B</td>
+<td style="text-align:right">37B</td>
+<td style="text-align:right">22B</td>
+</tr>
+<tr>
+<td>MMLU</td>
+<td style="text-align:right">86.06</td>
+<td style="text-align:right">85.02</td>
+<td style="text-align:right">85.16</td>
+<td style="text-align:right">87.19</td>
+<td style="text-align:right">87.81</td>
+</tr>
+<tr>
+<td>MMLU-Pro</td>
+<td style="text-align:right">58.07</td>
+<td style="text-align:right">63.52</td>
+<td style="text-align:right">63.91</td>
+<td style="text-align:right">59.84</td>
+<td style="text-align:right">68.18</td>
+</tr>
+<tr>
+<td>BBH</td>
+<td style="text-align:right">86.30</td>
+<td style="text-align:right">85.60</td>
+<td style="text-align:right">83.62</td>
+<td style="text-align:right">86.22</td>
+<td style="text-align:right">88.87</td>
+</tr>
+<tr>
+<td>GPQA</td>
+<td style="text-align:right">45.88</td>
+<td style="text-align:right">41.92</td>
+<td style="text-align:right">43.94</td>
+<td style="text-align:right">41.92</td>
+<td style="text-align:right">47.47</td>
+</tr>
+<tr>
+<td>MATH</td>
+<td style="text-align:right">62.12</td>
+<td style="text-align:right">62.78</td>
+<td style="text-align:right">63.32</td>
+<td style="text-align:right">62.62</td>
+<td style="text-align:right">71.84</td>
+</tr>
+<tr>
+<td>EvalPlus</td>
+<td style="text-align:right">65.93</td>
+<td style="text-align:right">61.43</td>
+<td style="text-align:right">68.38</td>
+<td style="text-align:right">63.75</td>
+<td style="text-align:right">77.60</td>
+</tr>
+<tr>
+<td>MultiPL-E</td>
+<td style="text-align:right">58.70</td>
+<td style="text-align:right">62.16</td>
+<td style="text-align:right">57.28</td>
+<td style="text-align:right">62.26</td>
+<td style="text-align:right">65.94</td>
+</tr>
+<tr>
+<td>MMMLU</td>
+<td style="text-align:right">84.40</td>
+<td style="text-align:right">83.49</td>
+<td style="text-align:right">83.09</td>
+<td style="text-align:right">85.88</td>
+<td style="text-align:right">86.70</td>
+</tr>
+</tbody>
+</table>
+<p><small>表源：<code>Qwen3 Technical Report</code>，Table 3 摘录。原论文表意：Qwen3-235B-A22B-Base 在大多数 base model 评测中超过对比模型，尤其在 MMLU-Pro、MATH、EvalPlus 等任务上优势明显。</small></p>
+<p>Qwen3 的另一个重点是小模型。报告写到：Qwen3-30B-A3B 只有 3B activated params，但能和更大的 dense base models 接近；Qwen3-8B/4B/1.7B/0.6B 也尽量往上一个代际的更大模型靠近。这和后面的 strong-to-weak distillation 是同一条工程路线：不是只做旗舰模型，而是把旗舰能力压到小规格。</p>
+<h2 id="后大模型训练路线图四阶段-pipeline"><a class="markdownIt-Anchor" href="#后大模型训练路线图四阶段-pipeline"></a> 后大模型训练路线图：四阶段 pipeline</h2>
+<p>Qwen3 最重要的图是后训练 pipeline。</p>
+<p><img  
+                     lazyload
+                     src="/images/loading.svg"
+                     data-src="/image/ai-notes/images/paper-deep-dives/technical-reports/qwen3/figure-1-posttrain-pipeline.png"
+                      alt="Qwen3 post-training pipeline" 
+                ></p>
+<p><small>图源：<code>Qwen3 Technical Report</code>，Figure 1。原论文图意：Qwen3 系列的 post-training pipeline，旗舰模型经过 Long-CoT Cold Start、Reasoning RL、Thinking Mode Fusion、General RL；轻量模型通过 strong-to-weak distillation 继承大模型能力。</small></p>
+<p><strong>这张 pipeline 图怎么读。</strong><br />
+上半部分是旗舰模型训练：先做 long-CoT cold start，让模型学会基本长推理格式；再做 reasoning RL，把数学、代码等可验证推理能力拉起来；然后做 thinking mode fusion，把 non-thinking 能力合进同一模型；最后用 general RL 修指令跟随、格式、工具、RAG、偏好等通用能力。</p>
+<p>下半部分是小模型训练：不是给每个小模型完整跑一遍四阶段流程，而是用强模型 teacher 做 off-policy 和 on-policy distillation。报告说这种方式能显著减少 GPU hours，并且比直接对小模型做 RL 更有效。</p>
+<p>四阶段可以这样拆：</p>
+<table>
+<thead>
+<tr>
+<th>Stage</th>
+<th>Name</th>
+<th>Main Data / Reward</th>
+<th>Main Goal</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Stage 1</td>
+<td>Long-CoT Cold Start</td>
+<td>math, code, logical reasoning, STEM; verified answers or code tests</td>
+<td>instill basic long-CoT reasoning pattern</td>
+</tr>
+<tr>
+<td>Stage 2</td>
+<td>Reasoning RL</td>
+<td>3,995 query-verifier pairs, GRPO</td>
+<td>improve verifiable reasoning in math/code-like tasks</td>
+</tr>
+<tr>
+<td>Stage 3</td>
+<td>Thinking Mode Fusion</td>
+<td>thinking data + non-thinking SFT data, chat template flags</td>
+<td>make one model support <code>/think</code> and <code>/no_think</code></td>
+</tr>
+<tr>
+<td>Stage 4</td>
+<td>General RL</td>
+<td>over 20 tasks, rule/model rewards</td>
+<td>improve instruction following, format, preference, agent and specialized scenarios</td>
+</tr>
+</tbody>
+</table>
+<h2 id="stage-1long-cot-cold-start"><a class="markdownIt-Anchor" href="#stage-1long-cot-cold-start"></a> Stage 1：Long-CoT Cold Start</h2>
+<p>Cold start 数据覆盖数学、代码、逻辑推理和 STEM。每个问题要有可验证 reference answer 或 code-based test cases。报告里最有价值的是过滤规则：</p>
+<table>
+<thead>
+<tr>
+<th>Filtering Step</th>
+<th>What It Removes / Keeps</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Query Filtering</td>
+<td>remove queries not easily verifiable, multiple sub-questions, general text generation queries</td>
+</tr>
+<tr>
+<td>Easy Query Filtering</td>
+<td>remove queries Qwen2.5-72B-Instruct can solve correctly without CoT</td>
+</tr>
+<tr>
+<td>Domain Annotation</td>
+<td>use Qwen2.5-72B-Instruct to maintain domain balance</td>
+</tr>
+<tr>
+<td>Candidate Generation</td>
+<td>generate <span class="katex"><span class="katex-mathml"><math><semantics><mrow><mi>N</mi></mrow><annotation encoding="application/x-tex">N</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.68333em;vertical-align:0em;"></span><span class="mord mathdefault" style="margin-right:0.10903em;">N</span></span></span></span> candidate responses with QwQ-32B</td>
+</tr>
+<tr>
+<td>Human Assessment</td>
+<td>manually assess queries where QwQ-32B fails consistently</td>
+</tr>
+<tr>
+<td>Response Filtering</td>
+<td>remove wrong answers, repetition, guesswork, thinking/summary inconsistency, language mixing, validation-like items</td>
+</tr>
+</tbody>
+</table>
+<p>这一步的工程判断很重要：cold start 不是越多越好。报告明确说目标是植入基础 reasoning pattern，而不是在这一步追求最高 reasoning performance，因此更倾向于控制训练样本数和 steps，避免把模型潜力过早限制在 SFT 数据风格里。</p>
+<h2 id="stage-2reasoning-rl"><a class="markdownIt-Anchor" href="#stage-2reasoning-rl"></a> Stage 2：Reasoning RL</h2>
+<p>Reasoning RL 使用 GRPO，训练数据是 3,995 个 query-verifier pairs。它们需要满足四个条件：</p>
+<table>
+<thead>
+<tr>
+<th>Criterion</th>
+<th>Meaning</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>not used during cold-start</td>
+<td>避免训练集复用</td>
+</tr>
+<tr>
+<td>learnable for the cold-start model</td>
+<td>模型有可能通过 RL 改进</td>
+</tr>
+<tr>
+<td>as challenging as possible</td>
+<td>奖励能推动复杂推理</td>
+</tr>
+<tr>
+<td>broad sub-domain coverage</td>
+<td>避免只在单一题型过拟合</td>
+</tr>
+</tbody>
+</table>
+<p>报告提到几个训练经验：</p>
+<table>
+<thead>
+<tr>
+<th>RL Detail</th>
+<th>Why It Matters</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>GRPO</td>
+<td>no separate critic; group-relative advantage</td>
+</tr>
+<tr>
+<td>large batch size</td>
+<td>stabilize reward/advantage estimates</td>
+</tr>
+<tr>
+<td>high number of rollouts per query</td>
+<td>improve exploration and verifier signal</td>
+</tr>
+<tr>
+<td>off-policy training</td>
+<td>improve sample efficiency</td>
+</tr>
+<tr>
+<td>entropy control</td>
+<td>balance exploration and exploitation</td>
+</tr>
+</tbody>
+</table>
+<p>一个具体结果是：Qwen3-235B-A22B 的 AIME’24 从 70.1 提升到 85.1，总共 170 个 RL training steps。</p>
+<p><strong>为什么只有 3,995 个 query-verifier pairs 也能有效。</strong><br />
+这里的单位不是普通 SFT 样本，而是 RL 环境里的 query-verifier pair。每个 query 可以采样多条 rollout，verifier 提供自动奖励。只要题目难度合适、可验证且覆盖子领域，单个 query 可以产生很多策略改进信号。</p>
+<p>这也解释了为什么报告强调 query 要 learnable 且 challenging。太简单的题奖励饱和，太难的题全错没有梯度；最有效的是模型能偶尔做对、但还不稳定的题。</p>
+<h2 id="stage-3thinking-mode-fusion"><a class="markdownIt-Anchor" href="#stage-3thinking-mode-fusion"></a> Stage 3：Thinking Mode Fusion</h2>
+<p>Stage 3 的目标是把 non-thinking 能力合入已经具备 thinking 能力的模型。核心不是再训练一个新模型，而是通过 SFT 和 chat template 让同一个模型识别两种行为模式。</p>
+<table>
+<thead>
+<tr>
+<th>Mode</th>
+<th>User / System Flag</th>
+<th>Assistant Format</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Thinking Mode</td>
+<td><code>/think</code>, can be omitted by default</td>
+<td><code>&lt;think&gt;&#123;thinking_content&#125;&lt;/think&gt;\n\n&#123;response&#125;</code></td>
+</tr>
+<tr>
+<td>Non-Thinking Mode</td>
+<td><code>/no_think</code></td>
+<td><code>&lt;think&gt;\n&lt;/think&gt;\n\n&#123;response&#125;</code></td>
+</tr>
+</tbody>
+</table>
+<p><small>表源：<code>Qwen3 Technical Report</code>，Table 10。原论文表意：Thinking Mode 和 Non-Thinking Mode 使用同一套 chat message 格式；non-thinking 仍保留空 thinking block，以保持内部格式一致。</small></p>
+<p>这个空 thinking block 很实用。它让模板可以显式告诉模型“不要思考”，同时保持训练时 assistant 输出格式一致。报告还说默认是 thinking mode，因此部分 thinking 样本不加 <code>/think</code>；多轮对话中会随机插入多个 <code>/think</code> 和 <code>/no_think</code> flags，模型按最后一个 flag 响应。</p>
+<h2 id="thinking-budget把推理-token-变成可控资源"><a class="markdownIt-Anchor" href="#thinking-budget把推理-token-变成可控资源"></a> Thinking Budget：把推理 token 变成可控资源</h2>
+<p>Thinking Mode Fusion 之后，模型自然具备一种中间能力：即使 thinking 没有完整生成完，也能基于已有思考给出最终答案。Qwen3 利用这个能力实现 thinking budget。</p>
+<p>具体机制是：当 thinking token 长度达到用户设定阈值，就人工停止 thinking，并插入 stop-thinking instruction：</p>
+<div class="code-container" data-rel="Text"><figure class="iseeu highlight text"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br></pre></td><td class="code"><pre><span class="line">Considering the limited time by the user, I have to give the solution based on the thinking directly now.</span><br><span class="line">&lt;/think&gt;</span><br></pre></td></tr></table></figure></div>
+<p>随后模型基于已有 reasoning 生成最终回答。报告特别指出，这个 budget 能力不是显式训练出来的，而是 Thinking Mode Fusion 后自然涌现出来的。</p>
+<p><img  
+                     lazyload
+                     src="/images/loading.svg"
+                     data-src="/image/ai-notes/images/paper-deep-dives/technical-reports/qwen3/figure-2-thinking-budget.png"
+                      alt="Qwen3 thinking budget" 
+                ></p>
+<p><small>图源：<code>Qwen3 Technical Report</code>，Figure 2。原论文图意：Qwen3-235B-A22B 在数学、代码和 STEM 相关 benchmark 上，随着 thinking budget 增加，性能平滑提升。</small></p>
+<p><strong>Thinking budget 的工程意义。</strong><br />
+过去 reasoning model 的推理成本常常不可控：模型可能想很久，也可能提前结束。Qwen3 的做法把“思考长度”暴露成一个接口变量，让应用可以按任务难度、延迟预算和成本预算选择推理深度。</p>
+<p>但这不是免费午餐。budget 太小会截断推理，budget 太大又会拉高 latency 和 token 成本。更稳妥的产品形态通常是：简单任务默认 non-thinking；中等任务给较小 budget；数学、代码、复杂 agent 任务才给更高 budget。</p>
+<h2 id="stage-4general-rl"><a class="markdownIt-Anchor" href="#stage-4general-rl"></a> Stage 4：General RL</h2>
+<p>General RL 负责把模型从“会推理”进一步调成“好用、稳、会遵守格式和工具协议”。报告说 reward system 覆盖 20 多个任务，核心能力包括：</p>
+<table>
+<thead>
+<tr>
+<th>Capability</th>
+<th>Training Target</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Instruction Following</td>
+<td>content, format, length, structured output</td>
+</tr>
+<tr>
+<td>Format Following</td>
+<td>obey <code>/think</code> and <code>/no_think</code>, use <code>&lt;think&gt;</code> and <code>&lt;/think&gt;</code> correctly</td>
+</tr>
+<tr>
+<td>Preference Alignment</td>
+<td>helpfulness, engagement, style</td>
+</tr>
+<tr>
+<td>Agent Ability</td>
+<td>tool calling through designated interfaces; multi-turn environment feedback</td>
+</tr>
+<tr>
+<td>Specialized Scenarios</td>
+<td>RAG rewards to reduce hallucination and improve context-grounded answers</td>
+</tr>
+</tbody>
+</table>
+<p>奖励分三类：</p>
+<table>
+<thead>
+<tr>
+<th>Reward Type</th>
+<th>Used For</th>
+<th>Risk / Benefit</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Rule-based Reward</td>
+<td>reasoning, instruction following, format adherence</td>
+<td>precise and less vulnerable when rules are correct</td>
+</tr>
+<tr>
+<td>Model-based Reward with Reference Answer</td>
+<td>diverse tasks with expected answers</td>
+<td>more flexible than strict rules</td>
+</tr>
+<tr>
+<td>Model-based Reward without Reference Answer</td>
+<td>open-ended preference data</td>
+<td>broad coverage, but reward hacking risk must be managed</td>
+</tr>
+</tbody>
+</table>
+<p>Stage 4 的一个重要取舍是：通用能力上升，部分 hard reasoning 指标可能下降。报告的 Qwen3-32B stage ablation 显示，Stage 3/4 强化了 ThinkFollow、ToolUse、Arena-Hard、IFEval 等能力，但 AIME’24 和 LiveCodeBench 的 thinking-mode 分数略有回落。</p>
+<table>
+<thead>
+<tr>
+<th>Benchmark</th>
+<th style="text-align:right">Stage 2 Reasoning RL Thinking</th>
+<th style="text-align:right">Stage 3 Thinking</th>
+<th style="text-align:right">Stage 3 Non-Thinking</th>
+<th style="text-align:right">Stage 4 Thinking</th>
+<th style="text-align:right">Stage 4 Non-Thinking</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>LiveBench 2024-11-25</td>
+<td style="text-align:right">68.6</td>
+<td style="text-align:right">70.9</td>
+<td style="text-align:right">57.1</td>
+<td style="text-align:right">74.9</td>
+<td style="text-align:right">59.8</td>
+</tr>
+<tr>
+<td>Arena-Hard</td>
+<td style="text-align:right">86.8</td>
+<td style="text-align:right">89.4</td>
+<td style="text-align:right">88.5</td>
+<td style="text-align:right">93.8</td>
+<td style="text-align:right">92.8</td>
+</tr>
+<tr>
+<td>CounterFactQA*</td>
+<td style="text-align:right">50.4</td>
+<td style="text-align:right">61.3</td>
+<td style="text-align:right">64.3</td>
+<td style="text-align:right">68.1</td>
+<td style="text-align:right">66.4</td>
+</tr>
+<tr>
+<td>IFEval strict prompt</td>
+<td style="text-align:right">73.0</td>
+<td style="text-align:right">78.4</td>
+<td style="text-align:right">78.4</td>
+<td style="text-align:right">85.0</td>
+<td style="text-align:right">83.2</td>
+</tr>
+<tr>
+<td>ThinkFollow*</td>
+<td style="text-align:right">-</td>
+<td style="text-align:right">88.7</td>
+<td style="text-align:right">88.7</td>
+<td style="text-align:right">98.9</td>
+<td style="text-align:right">98.9</td>
+</tr>
+<tr>
+<td>ToolUse*</td>
+<td style="text-align:right">63.3</td>
+<td style="text-align:right">70.4</td>
+<td style="text-align:right">73.2</td>
+<td style="text-align:right">85.5</td>
+<td style="text-align:right">86.5</td>
+</tr>
+<tr>
+<td>AIME’24</td>
+<td style="text-align:right">83.8</td>
+<td style="text-align:right">81.9</td>
+<td style="text-align:right">28.5</td>
+<td style="text-align:right">81.4</td>
+<td style="text-align:right">31.0</td>
+</tr>
+<tr>
+<td>LiveCodeBench v5</td>
+<td style="text-align:right">68.4</td>
+<td style="text-align:right">67.2</td>
+<td style="text-align:right">31.1</td>
+<td style="text-align:right">65.7</td>
+<td style="text-align:right">31.3</td>
+</tr>
+</tbody>
+</table>
+<p><small>表源：<code>Qwen3 Technical Report</code>，Table 18 摘录。原论文表意：Thinking Mode Fusion 和 General RL 提升通用、格式和工具能力，但对部分复杂数学/代码 thinking 指标存在小幅权衡。</small></p>
+<h2 id="strong-to-weak-distillation小模型为什么值得单独讲"><a class="markdownIt-Anchor" href="#strong-to-weak-distillation小模型为什么值得单独讲"></a> Strong-to-Weak Distillation：小模型为什么值得单独讲</h2>
+<p>Qwen3 的小模型不是简单用小模型自己走完整四阶段。报告专门设计 strong-to-weak distillation，覆盖 5 个 dense 小模型和 Qwen3-30B-A3B。</p>
+<table>
+<thead>
+<tr>
+<th>Phase</th>
+<th>What Happens</th>
+<th>Purpose</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Off-policy Distillation</td>
+<td>combine teacher outputs from <code>/think</code> and <code>/no_think</code> modes</td>
+<td>teach basic reasoning and mode switching</td>
+</tr>
+<tr>
+<td>On-policy Distillation</td>
+<td>student samples prompts and generates responses; align logits with Qwen3-32B or Qwen3-235B-A22B teacher by KL</td>
+<td>improve student with teacher guidance on student’s own distribution</td>
+</tr>
+</tbody>
+</table>
+<p>报告认为，对轻量模型来说，teacher logits distillation 比直接 RL 更高效。Qwen3-8B 的对比很直接：</p>
+<table>
+<thead>
+<tr>
+<th>Method</th>
+<th style="text-align:right">AIME’24</th>
+<th style="text-align:right">AIME’25</th>
+<th style="text-align:right">MATH500</th>
+<th style="text-align:right">LiveCodeBench v5</th>
+<th style="text-align:right">MMLU-Redux</th>
+<th style="text-align:right">GPQA-Diamond</th>
+<th style="text-align:right">GPU Hours</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Off-policy Distillation</td>
+<td style="text-align:right">55.0 (90.0)</td>
+<td style="text-align:right">42.8 (83.3)</td>
+<td style="text-align:right">92.4</td>
+<td style="text-align:right">42.0</td>
+<td style="text-align:right">86.4</td>
+<td style="text-align:right">55.6</td>
+<td style="text-align:right">-</td>
+</tr>
+<tr>
+<td>+ Reinforcement Learning</td>
+<td style="text-align:right">67.6 (90.0)</td>
+<td style="text-align:right">55.5 (83.3)</td>
+<td style="text-align:right">94.8</td>
+<td style="text-align:right">52.9</td>
+<td style="text-align:right">86.9</td>
+<td style="text-align:right">61.3</td>
+<td style="text-align:right">17,920</td>
+</tr>
+<tr>
+<td>+ On-policy Distillation</td>
+<td style="text-align:right">74.4 (93.3)</td>
+<td style="text-align:right">65.5 (86.7)</td>
+<td style="text-align:right">97.0</td>
+<td style="text-align:right">60.3</td>
+<td style="text-align:right">88.3</td>
+<td style="text-align:right">63.3</td>
+<td style="text-align:right">1,800</td>
+</tr>
+</tbody>
+</table>
+<p><small>表源：<code>Qwen3 Technical Report</code>，Table 17。原论文表意：从同一 off-policy distilled 8B checkpoint 出发，on-policy distillation 在数学、代码和知识任务上优于直接 RL，并只用约十分之一 GPU hours；括号中为 pass@64。</small></p>
+<p><strong>为什么 distillation 可能比小模型 RL 更划算。</strong><br />
+小模型直接 RL 容易受探索空间限制：它能采样出的好轨迹少，reward 信号也更稀疏。强 teacher 的 logits 不只告诉 student 最终答案，还提供了每一步分布形状，相当于更密集的训练信号。</p>
+<p>on-policy distillation 又比纯 off-policy 更贴近 student 自己会犯的错误。student 先生成自己的输出，再让 teacher 在这些轨迹上提供分布对齐目标，可以更直接修正 student 的真实行为分布。</p>
+<h2 id="thinking-vs-non-thinking-评测"><a class="markdownIt-Anchor" href="#thinking-vs-non-thinking-评测"></a> Thinking vs Non-Thinking 评测</h2>
+<p>Qwen3-235B-A22B 在 thinking mode 下对比 OpenAI-o1、DeepSeek-R1、Grok-3-Beta (Think)、Gemini2.5-Pro。摘几个关键指标：</p>
+<table>
+<thead>
+<tr>
+<th>Benchmark</th>
+<th style="text-align:right">OpenAI-o1</th>
+<th style="text-align:right">DeepSeek-R1</th>
+<th style="text-align:right">Grok-3-Beta (Think)</th>
+<th style="text-align:right">Gemini2.5-Pro</th>
+<th style="text-align:right">Qwen3-235B-A22B</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td># Activated Params</td>
+<td style="text-align:right">-</td>
+<td style="text-align:right">37B</td>
+<td style="text-align:right">-</td>
+<td style="text-align:right">-</td>
+<td style="text-align:right">22B</td>
+</tr>
+<tr>
+<td># Total Params</td>
+<td style="text-align:right">-</td>
+<td style="text-align:right">671B</td>
+<td style="text-align:right">-</td>
+<td style="text-align:right">-</td>
+<td style="text-align:right">235B</td>
+</tr>
+<tr>
+<td>MMLU-Redux</td>
+<td style="text-align:right">92.8</td>
+<td style="text-align:right">92.9</td>
+<td style="text-align:right">-</td>
+<td style="text-align:right">93.7</td>
+<td style="text-align:right">92.7</td>
+</tr>
+<tr>
+<td>AIME’24</td>
+<td style="text-align:right">74.3</td>
+<td style="text-align:right">79.8</td>
+<td style="text-align:right">83.9</td>
+<td style="text-align:right">92.0</td>
+<td style="text-align:right">85.7</td>
+</tr>
+<tr>
+<td>AIME’25</td>
+<td style="text-align:right">79.2</td>
+<td style="text-align:right">70.0</td>
+<td style="text-align:right">77.3</td>
+<td style="text-align:right">86.7</td>
+<td style="text-align:right">81.5</td>
+</tr>
+<tr>
+<td>BFCL v3</td>
+<td style="text-align:right">67.8</td>
+<td style="text-align:right">56.9</td>
+<td style="text-align:right">-</td>
+<td style="text-align:right">62.9</td>
+<td style="text-align:right">70.8</td>
+</tr>
+<tr>
+<td>LiveCodeBench v5</td>
+<td style="text-align:right">63.9</td>
+<td style="text-align:right">64.3</td>
+<td style="text-align:right">70.6</td>
+<td style="text-align:right">70.4</td>
+<td style="text-align:right">70.7</td>
+</tr>
+<tr>
+<td>CodeForces (Rating / Percentile)</td>
+<td style="text-align:right">1891 / 96.7%</td>
+<td style="text-align:right">2029 / 98.1%</td>
+<td style="text-align:right">-</td>
+<td style="text-align:right">2001 / 97.9%</td>
+<td style="text-align:right">2056 / 98.2%</td>
+</tr>
+<tr>
+<td>MT-AIME2024</td>
+<td style="text-align:right">67.4</td>
+<td style="text-align:right">73.5</td>
+<td style="text-align:right">-</td>
+<td style="text-align:right">76.9</td>
+<td style="text-align:right">80.8</td>
+</tr>
+<tr>
+<td>PolyMath</td>
+<td style="text-align:right">38.9</td>
+<td style="text-align:right">47.1</td>
+<td style="text-align:right">-</td>
+<td style="text-align:right">52.2</td>
+<td style="text-align:right">54.7</td>
+</tr>
+</tbody>
+</table>
+<p><small>表源：<code>Qwen3 Technical Report</code>，Table 5 摘录。原论文表意：Qwen3-235B-A22B thinking mode 在数学、代码、agent 和多语推理任务上具备较强竞争力。</small></p>
+<p>non-thinking mode 则对比 GPT-4o、DeepSeek-V3、Qwen2.5-72B-Instruct、LLaMA-4-Maverick：</p>
+<table>
+<thead>
+<tr>
+<th>Benchmark</th>
+<th style="text-align:right">GPT-4o-2024-11-20</th>
+<th style="text-align:right">DeepSeek-V3</th>
+<th style="text-align:right">Qwen2.5-72B-Instruct</th>
+<th style="text-align:right">LLaMA-4-Maverick</th>
+<th style="text-align:right">Qwen3-235B-A22B</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td># Activated Params</td>
+<td style="text-align:right">-</td>
+<td style="text-align:right">37B</td>
+<td style="text-align:right">72B</td>
+<td style="text-align:right">17B</td>
+<td style="text-align:right">22B</td>
+</tr>
+<tr>
+<td># Total Params</td>
+<td style="text-align:right">-</td>
+<td style="text-align:right">671B</td>
+<td style="text-align:right">72B</td>
+<td style="text-align:right">402B</td>
+<td style="text-align:right">235B</td>
+</tr>
+<tr>
+<td>GPQA-Diamond</td>
+<td style="text-align:right">46.0</td>
+<td style="text-align:right">59.1</td>
+<td style="text-align:right">49.0</td>
+<td style="text-align:right">69.8</td>
+<td style="text-align:right">62.9</td>
+</tr>
+<tr>
+<td>LiveBench 2024-11-25</td>
+<td style="text-align:right">52.2</td>
+<td style="text-align:right">60.5</td>
+<td style="text-align:right">51.4</td>
+<td style="text-align:right">59.5</td>
+<td style="text-align:right">62.5</td>
+</tr>
+<tr>
+<td>Arena-Hard</td>
+<td style="text-align:right">85.3</td>
+<td style="text-align:right">85.5</td>
+<td style="text-align:right">81.2</td>
+<td style="text-align:right">82.7</td>
+<td style="text-align:right">96.1</td>
+</tr>
+<tr>
+<td>MATH-500</td>
+<td style="text-align:right">77.2</td>
+<td style="text-align:right">90.2</td>
+<td style="text-align:right">83.6</td>
+<td style="text-align:right">90.6</td>
+<td style="text-align:right">91.2</td>
+</tr>
+<tr>
+<td>AIME’24</td>
+<td style="text-align:right">11.1</td>
+<td style="text-align:right">39.2</td>
+<td style="text-align:right">18.9</td>
+<td style="text-align:right">38.5</td>
+<td style="text-align:right">40.1</td>
+</tr>
+<tr>
+<td>BFCL v3</td>
+<td style="text-align:right">72.5</td>
+<td style="text-align:right">57.6</td>
+<td style="text-align:right">63.4</td>
+<td style="text-align:right">52.9</td>
+<td style="text-align:right">68.0</td>
+</tr>
+<tr>
+<td>CodeForces (Rating / Percentile)</td>
+<td style="text-align:right">864 / 35.4%</td>
+<td style="text-align:right">1134 / 54.1%</td>
+<td style="text-align:right">859 / 35.0%</td>
+<td style="text-align:right">712 / 24.3%</td>
+<td style="text-align:right">1387 / 75.7%</td>
+</tr>
+<tr>
+<td>MLogiQA</td>
+<td style="text-align:right">57.4</td>
+<td style="text-align:right">58.9</td>
+<td style="text-align:right">59.3</td>
+<td style="text-align:right">59.9</td>
+<td style="text-align:right">67.6</td>
+</tr>
+</tbody>
+</table>
+<p><small>表源：<code>Qwen3 Technical Report</code>，Table 6 摘录。原论文表意：Qwen3-235B-A22B non-thinking mode 在不启用长思考时仍保持较强通用、对齐、数学和多语能力。</small></p>
+<p>评测配置也值得记录：</p>
+<table>
+<thead>
+<tr>
+<th>Mode</th>
+<th>Sampling Setting</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Thinking Mode</td>
+<td>temperature 0.6, top-p 0.95, top-k 20</td>
+</tr>
+<tr>
+<td>Non-thinking Mode</td>
+<td>temperature 0.7, top-p 0.8, top-k 20, presence penalty 1.5</td>
+</tr>
+<tr>
+<td>Creative Writing / WritingBench</td>
+<td>presence penalty 1.5</td>
+</tr>
+<tr>
+<td>Max Output Length</td>
+<td>32,768 tokens</td>
+</tr>
+<tr>
+<td>AIME’24 / AIME’25 Max Output Length</td>
+<td>38,912 tokens</td>
+</tr>
+</tbody>
+</table>
+<h2 id="长上下文与多语"><a class="markdownIt-Anchor" href="#长上下文与多语"></a> 长上下文与多语</h2>
+<p>Qwen3 在报告正文里说 base context 是 32K，并通过 YaRN + DCA 做推理长度外推。附录的 RULER 表说明，Qwen3-235B-A22B 在 non-thinking mode 下 128K 仍有 90.6，thinking mode 下 128K 为 86.0。</p>
+<table>
+<thead>
+<tr>
+<th>Model / Mode</th>
+<th style="text-align:right">RULER Avg.</th>
+<th style="text-align:right">4K</th>
+<th style="text-align:right">32K</th>
+<th style="text-align:right">64K</th>
+<th style="text-align:right">128K</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Qwen2.5-72B-Instruct</td>
+<td style="text-align:right">95.1</td>
+<td style="text-align:right">97.7</td>
+<td style="text-align:right">96.5</td>
+<td style="text-align:right">93.0</td>
+<td style="text-align:right">88.4</td>
+</tr>
+<tr>
+<td>Qwen3-235B-A22B Non-thinking</td>
+<td style="text-align:right">95.0</td>
+<td style="text-align:right">97.7</td>
+<td style="text-align:right">95.1</td>
+<td style="text-align:right">93.3</td>
+<td style="text-align:right">90.6</td>
+</tr>
+<tr>
+<td>Qwen3-235B-A22B Thinking</td>
+<td style="text-align:right">92.2</td>
+<td style="text-align:right">95.1</td>
+<td style="text-align:right">92.3</td>
+<td style="text-align:right">92.0</td>
+<td style="text-align:right">86.0</td>
+</tr>
+</tbody>
+</table>
+<p><small>表源：<code>Qwen3 Technical Report</code>，Appendix Table 19 摘录。原论文表意：Qwen3 在 RULER 长上下文任务上表现较稳，但 thinking mode 对检索类任务未必有益，可能干扰 retrieval。</small></p>
+<p>这个结论很实用：不是所有任务都应该 thinking。对长文档检索、passage locating、格式抽取这类任务，额外 CoT 可能增加噪声和成本，non-thinking mode 反而更稳。</p>
+<p>多语方面，Qwen3 的主线是从训练数据层面扩到 119 languages and dialects，评测则覆盖 Multi-IF、INCLUDE、MMMLU、MT-AIME2024、PolyMath、MLogiQA 等多语任务。报告特别强调 Qwen3 相比 Qwen2.5 把语言覆盖从 29 扩到 119，这会直接影响全球化部署、低资源语言 instruction following 和多语数学推理。</p>
+<h2 id="项目启发"><a class="markdownIt-Anchor" href="#项目启发"></a> 项目启发</h2>
+<p>Qwen3 的技术报告给工程项目的启发主要有五条：</p>
+<ol>
+<li><strong>不要把 reasoning model 和 chat model 视为必须分离的产品。</strong> 通过 template、SFT 和 RL，一个模型可以同时支持 thinking 和 non-thinking。</li>
+<li><strong>推理 token 应该变成可控预算。</strong> thinking budget 把 latency、成本和准确率之间的取舍显式暴露给应用层。</li>
+<li><strong>小模型不一定要完整复刻大模型训练流程。</strong> strong-to-weak distillation 可以比直接 RL 更便宜、更稳定，尤其适合 0.6B 到 14B 规格。</li>
+<li><strong>通用 RL 会带来能力权衡。</strong> 工具、格式、指令跟随和偏好提升时，部分 hard reasoning 指标可能回落，需要按产品目标选择 checkpoint。</li>
+<li><strong>预训练数据工程仍是底座能力的核心。</strong> Qwen3 的后训练很重要，但 36T token、119 语言、PDF OCR、合成 STEM/code 数据和三阶段预训练决定了后训练能激发到什么上限。</li>
+</ol>
+<p>更准确地说，Qwen3 报告展示的是一个可部署模型家族的后训练范式：<strong>用旗舰模型探索能力边界，用双模式训练统一产品接口，再用强到弱蒸馏把能力扩散到小模型。</strong></p>
+<p>Qwen3 的关键接口是 thinking budget 和模式控制：长推理能力变成可调成本，而不是永远开启。posttrain pipeline、budget 曲线、数学/代码/通用 benchmark 要连读；最重要边界是简单题过度思考和推理 token 成本，分数提升必须和延迟、价格一起验。</p>
+<h2 id="相关阅读与下一步"><a class="markdownIt-Anchor" href="#相关阅读与下一步"></a> 相关阅读与下一步</h2>
+<ul>
+<li>外部材料：<a class="link"   target="_blank" rel="noopener" href="https://arxiv.org/search/?query=Qwen3+Technical+Report&amp;searchtype=title" >论文标题 arXiv 检索<i class="fa-solid fa-arrow-up-right ml-[0.2em] font-light align-text-top text-[0.7em] link-icon"></i></a>。</li>
+<li>外部材料：<a class="link"   target="_blank" rel="noopener" href="https://www.semanticscholar.org/search?q=Qwen3+Technical+Report" >Semantic Scholar 标题检索<i class="fa-solid fa-arrow-up-right ml-[0.2em] font-light align-text-top text-[0.7em] link-icon"></i></a>。</li>
+<li>外部材料：<a class="link"   target="_blank" rel="noopener" href="https://paperswithcode.com/search?q=Qwen3+Technical+Report" >Papers with Code 检索<i class="fa-solid fa-arrow-up-right ml-[0.2em] font-light align-text-top text-[0.7em] link-icon"></i></a>。</li>
+<li>站内下一步：论文精读专题。</li>
+<li>站内下一步：<a href="/2026/05/11/ai-files-paper-deep-dives-writing-standard/">论文专题写作规范</a>。</li>
+<li>站内下一步：外部精读来源台账。</li>
+</ul>
+
+		</div>
+
+		
+		<div class="post-copyright-info w-full my-8 px-2 sm:px-6 md:px-8">
+			<div class="article-copyright-info-container">
+    <ul>
+        <li><strong>Title:</strong> 论文专题讲解：Qwen3：Thinking 模式、36T 预训练与蒸馏</li>
+        <li><strong>Author:</strong> Charles</li>
+        <li><strong>Created at
+                :</strong> 2025-11-10 09:00:00</li>
+        
+            <li>
+                <strong>Updated at
+                    :</strong> 2025-11-10 09:00:00
+            </li>
+        
+        <li>
+            <strong>Link:</strong> https://charles2530.github.io/2025/11/10/ai-files-paper-deep-dives-technical-reports-qwen3/
+        </li>
+        <li>
+            <strong>
+                License:
+            </strong>
+            
+
+            
+                This work is licensed under <a class="license" target="_blank" rel="noopener" href="https://creativecommons.org/licenses/by-nc-sa/4.0">CC BY-NC-SA 4.0</a>.
+            
+        </li>
+    </ul>
+</div>
+
+		</div>
+		
+
+		
+		<ul class="post-tags-box text-lg mt-1.5 flex-wrap justify-center flex md:hidden">
+			
+			<li class="tag-item mx-0.5">
+				<a href="/tags/AI/">#AI</a>&nbsp;
+			</li>
+			
+			<li class="tag-item mx-0.5">
+				<a href="/tags/%E8%AE%BA%E6%96%87%E4%B8%93%E9%A2%98/">#论文专题</a>&nbsp;
+			</li>
+			
+			<li class="tag-item mx-0.5">
+				<a href="/tags/%E6%8A%80%E6%9C%AF%E6%8A%A5%E5%91%8A/">#技术报告</a>&nbsp;
+			</li>
+			
+		</ul>
+		
+
+		
+
+		
+		<div class="article-nav my-8 flex justify-between items-center px-2 sm:px-6 md:px-8">
+			
+			<div class="article-prev border-border-color shadow-redefine-flat shadow-shadow-color-2 rounded-medium px-4 py-2 hover:shadow-redefine-flat-hover hover:shadow-shadow-color-2">
+				<a class="prev" rel="prev" href="/2025/11/11/ai-files-paper-deep-dives-technical-reports-qwen35-omni/">
+					<span class="left arrow-icon flex justify-center items-center">
+						<i class="fa-solid fa-chevron-left"></i>
+					</span>
+					<span class="title flex justify-center items-center">
+						<span class="post-nav-title-item truncate max-w-48">论文专题讲解：Qwen3.5-Omni：Thinker-Talker 与全模态 Agent</span>
+						<span class="post-nav-item">Prev posts</span>
+					</span>
+				</a>
+			</div>
+			
+			
+			<div class="article-next border-border-color shadow-redefine-flat shadow-shadow-color-2 rounded-medium px-4 py-2 hover:shadow-redefine-flat-hover hover:shadow-shadow-color-2">
+				<a class="next" rel="next" href="/2025/11/08/ai-files-paper-deep-dives-technical-reports-nemotron-3-super/">
+					<span class="title flex justify-center items-center">
+						<span class="post-nav-title-item truncate max-w-48">论文专题讲解：Nemotron 3 Super：Mamba-MoE 与异步多环境 RL</span>
+						<span class="post-nav-item">Next posts</span>
+					</span>
+					<span class="right arrow-icon flex justify-center items-center">
+						<i class="fa-solid fa-chevron-right"></i>
+					</span>
+				</a>
+			</div>
+			
+		</div>
+		
+
+
+		
+		<div class="comment-container px-2 sm:px-6 md:px-8 pb-8">
+			<div class="comments-container mt-10 w-full ">
+    <div id="comment-anchor" class="w-full h-2.5"></div>
+    <div class="comment-area-title w-full my-1.5 md:my-2.5 text-xl md:text-3xl font-bold">
+        Comments
+    </div>
+    
+
+        
+            
+    <div id="gitalk-container"></div>
+    <script data-swup-reload-script
+            src="https://cdnjs.cloudflare.com/ajax/libs/gitalk/1.8.0/gitalk.min.js"></script>
+    <script data-swup-reload-script>
+        (function() {
+            const startPath = location.pathname;
+            const startTime = Date.now();
+            const retryDelay = 200;
+            const retryLimit = 5000;
+
+            const runGitalk = () => {
+                if (location.pathname !== startPath) {
+                    return;
+                }
+
+                const container = document.getElementById('gitalk-container');
+                if (!container || typeof Gitalk === 'undefined') {
+                    if (Date.now() - startTime < retryLimit) {
+                        setTimeout(runGitalk, retryDelay);
+                    }
+                    return;
+                }
+
+                container.innerHTML = '';
+
+                let pageKey = decodeURI(location.pathname);
+                const maxLength = 50;
+                if (pageKey.length > maxLength) {
+                    pageKey = pageKey.substring(0, maxLength - 3) + '...';
+                }
+
+                try {
+                    new Gitalk({
+                        clientID: '8083299a8ee2aaf23879',
+                        clientSecret: 'a8161e81d4872181e884fdb69f7be24916b6a9d0',
+                        repo: 'Charles2530.github.io',
+                        owner: 'Charles2530',
+                        admin: ['Charles2530'],
+                        id: pageKey,
+                        language: 'en',
+                        proxy: 'https://github.com/login/oauth/access_token'
+                    }).render(container);
+                } catch (e) {
+                    window.Gitalk = null;
+                }
+            };
+
+            runGitalk();
+        })();
+    </script>
+
+
+
+        
+    
+</div>
+
+		</div>
+		
+	</div>
+
+	
+	<div class="toc-content-container">
+		<div class="post-toc-wrap">
+	<div class="post-toc">
+		<div class="toc-title">On this page</div>
+		<div class="page-title">论文专题讲解：Qwen3：Thinking 模式、36T 预训练与蒸馏</div>
+		<ol class="nav"><li class="nav-item nav-level-2"><a class="nav-link" href="#%E8%AE%BA%E6%96%87%E4%BD%8D%E7%BD%AE"><span class="nav-text"> 论文位置</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#%E6%A8%A1%E5%9E%8B%E5%AE%B6%E6%97%8F%E4%B8%8E%E6%9E%B6%E6%9E%84"><span class="nav-text"> 模型家族与架构</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#%E9%A2%84%E8%AE%AD%E7%BB%8336t-tokens-%E5%92%8C%E4%B8%89%E9%98%B6%E6%AE%B5%E7%AD%96%E7%95%A5"><span class="nav-text"> 预训练：36T tokens 和三阶段策略</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#base-model-%E7%BB%93%E6%9E%9C%E6%97%97%E8%88%B0-moe-%E4%B8%8E%E5%B0%8F%E6%A8%A1%E5%9E%8B%E8%B7%AF%E7%BA%BF"><span class="nav-text"> Base Model 结果：旗舰 MoE 与小模型路线</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#%E5%90%8E%E5%A4%A7%E6%A8%A1%E5%9E%8B%E8%AE%AD%E7%BB%83%E8%B7%AF%E7%BA%BF%E5%9B%BE%E5%9B%9B%E9%98%B6%E6%AE%B5-pipeline"><span class="nav-text"> 后大模型训练路线图：四阶段 pipeline</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#stage-1long-cot-cold-start"><span class="nav-text"> Stage 1：Long-CoT Cold Start</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#stage-2reasoning-rl"><span class="nav-text"> Stage 2：Reasoning RL</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#stage-3thinking-mode-fusion"><span class="nav-text"> Stage 3：Thinking Mode Fusion</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#thinking-budget%E6%8A%8A%E6%8E%A8%E7%90%86-token-%E5%8F%98%E6%88%90%E5%8F%AF%E6%8E%A7%E8%B5%84%E6%BA%90"><span class="nav-text"> Thinking Budget：把推理 token 变成可控资源</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#stage-4general-rl"><span class="nav-text"> Stage 4：General RL</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#strong-to-weak-distillation%E5%B0%8F%E6%A8%A1%E5%9E%8B%E4%B8%BA%E4%BB%80%E4%B9%88%E5%80%BC%E5%BE%97%E5%8D%95%E7%8B%AC%E8%AE%B2"><span class="nav-text"> Strong-to-Weak Distillation：小模型为什么值得单独讲</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#thinking-vs-non-thinking-%E8%AF%84%E6%B5%8B"><span class="nav-text"> Thinking vs Non-Thinking 评测</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#%E9%95%BF%E4%B8%8A%E4%B8%8B%E6%96%87%E4%B8%8E%E5%A4%9A%E8%AF%AD"><span class="nav-text"> 长上下文与多语</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#%E9%A1%B9%E7%9B%AE%E5%90%AF%E5%8F%91"><span class="nav-text"> 项目启发</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#%E7%9B%B8%E5%85%B3%E9%98%85%E8%AF%BB%E4%B8%8E%E4%B8%8B%E4%B8%80%E6%AD%A5"><span class="nav-text"> 相关阅读与下一步</span></a></li></ol>
+
+	</div>
+</div>
+	</div>
+	
+</div>
+
+			</div>
+
+			
+		</div>
+
+		<div class="main-content-footer">
+			<footer class="footer mt-5 py-5 h-auto text-base text-third-text-color relative border-t-2 border-t-border-color">
+    <div class="info-container py-3 text-center">
+        
+        <div class="text-center">
+            &copy;
+            
+              <span>2022</span>
+              -
+            
+            2026&nbsp;&nbsp;<i class="fa-solid fa-heart fa-beat" style="--fa-animation-duration: 0.5s; color: #f54545"></i>&nbsp;&nbsp;<a href="/">Charles</a>
+            
+                
+                <p class="post-count space-x-0.5">
+                    <span>
+                        547 posts in total
+                    </span>
+                    
+                        <span>
+                            2132.4k words in total
+                        </span>
+                    
+                </p>
+            
+        </div>
+        
+            <script data-swup-reload-script src="https://cn.vercount.one/js"></script>
+            <div class="relative text-center lg:absolute lg:right-[20px] lg:top-1/2 lg:-translate-y-1/2 lg:text-right">
+                
+                    <span id="busuanzi_container_site_uv" class="lg:!block">
+                        <span class="text-sm">VISITOR COUNT</span>
+                        <span id="busuanzi_value_site_uv"></span>
+                    </span>
+                
+                
+                    <span id="busuanzi_container_site_pv" class="lg:!block">
+                        <span class="text-sm">TOTAL PAGE VIEWS</span>
+                        <span id="busuanzi_value_site_pv"></span>
+                    </span>
+                
+            </div>
+        
+        <div class="relative text-center lg:absolute lg:left-[20px] lg:top-1/2 lg:-translate-y-1/2 lg:text-left">
+            <span class="lg:block text-sm">POWERED BY <?xml version="1.0" encoding="utf-8"?><!DOCTYPE svg PUBLIC "-//W3C//DTD SVG 1.1//EN" "http://www.w3.org/Graphics/SVG/1.1/DTD/svg11.dtd"><svg class="relative top-[2px] inline-block align-baseline" version="1.1" id="圖層_1" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" x="0px" y="0px" width="1rem" height="1rem" viewBox="0 0 512 512" enable-background="new 0 0 512 512" xml:space="preserve"><path fill="#0E83CD" d="M256.4,25.8l-200,115.5L56,371.5l199.6,114.7l200-115.5l0.4-230.2L256.4,25.8z M349,354.6l-18.4,10.7l-18.6-11V275H200v79.6l-18.4,10.7l-18.6-11v-197l18.5-10.6l18.5,10.8V237h112v-79.6l18.5-10.6l18.5,10.8V354.6z"/></svg><a target="_blank" class="text-base" href="https://hexo.io">Hexo</a></span>
+            <span class="text-sm lg:block">THEME&nbsp;<a class="text-base" target="_blank" href="https://github.com/EvanNotFound/hexo-theme-redefine">Redefine v2.9.0</a></span>
+        </div>
+        
+        
+            <div>
+                Blog up for <span class="odometer" id="runtime_days" ></span> days <span class="odometer" id="runtime_hours"></span> hrs <span class="odometer" id="runtime_minutes"></span> Min <span class="odometer" id="runtime_seconds"></span> Sec
+            </div>
+        
+        
+            <script data-swup-reload-script>
+                try {
+                    function odometer_init() {
+                    const elements = document.querySelectorAll('.odometer');
+                    elements.forEach(el => {
+                        new Odometer({
+                            el,
+                            format: '( ddd).dd',
+                            duration: 200
+                        });
+                    });
+                    }
+                    odometer_init();
+                } catch (error) {}
+            </script>
+        
+        
+            
+                
+        
+                
+        
+                
+
+                    
+                        <script data-swup-reload-script type="text/javascript" src="/js/love.js"></script>
+                    
+        
+        
+    </div>  
+</footer>
+		</div>
+	</div>
+
+	
+	<div class="post-tools">
+		<div class="post-tools-container">
+	<ul class="article-tools-list">
+		<!-- TOC aside toggle -->
+		
+		<li class="right-bottom-tools page-aside-toggle">
+			<i class="fa-regular fa-outdent"></i>
+		</li>
+		
+
+		<!-- go comment -->
+		
+		<li class="go-comment">
+			<i class="fa-regular fa-comments"></i>
+		</li>
+		
+	</ul>
+</div>
+	</div>
+	
+
+	<div class="right-side-tools-container">
+		<div class="side-tools-container">
+	<ul class="hidden-tools-list">
+		<li class="right-bottom-tools tool-font-adjust-plus flex justify-center items-center">
+			<i class="fa-regular fa-magnifying-glass-plus"></i>
+		</li>
+
+		<li class="right-bottom-tools tool-font-adjust-minus flex justify-center items-center">
+			<i class="fa-regular fa-magnifying-glass-minus"></i>
+		</li>
+
+		<li class="right-bottom-tools tool-dark-light-toggle flex justify-center items-center">
+			<i class="fa-regular fa-moon"></i>
+		</li>
+
+		<!-- rss -->
+		
+		<li class="right-bottom-tools rss flex justify-center items-center">
+			<a class="flex justify-center items-center" href="/atom.xml" target="_blank">
+				<i class="fa-regular fa-rss"></i>
+			</a>
+		</li>
+		
+
+		
+
+		<li class="right-bottom-tools tool-scroll-to-bottom flex justify-center items-center">
+			<i class="fa-regular fa-arrow-down"></i>
+		</li>
+	</ul>
+
+	<ul class="visible-tools-list">
+		<li class="right-bottom-tools toggle-tools-list flex justify-center items-center">
+			<i class="fa-regular fa-cog fa-spin"></i>
+		</li>
+		
+		<li class="right-bottom-tools tool-scroll-to-top flex justify-center items-center">
+			<i class="arrow-up fas fa-arrow-up"></i>
+			<span class="percent"></span>
+		</li>
+		
+		
+	</ul>
+</div>
+	</div>
+
+	<div class="image-viewer-container" role="dialog" aria-modal="true" aria-label="Image viewer">
+	<button class="image-viewer-close" type="button" aria-label="Close">
+		<i class="fa-solid fa-xmark"></i>
+	</button>
+	<button class="image-viewer-prev" type="button" aria-label="Prev">
+		<i class="fa-solid fa-chevron-left"></i>
+	</button>
+	<div class="image-viewer-frame">
+		<img src="" alt="">
+	</div>
+	<div class="image-viewer-exif-panel hidden absolute left-1/2 bottom-20 -translate-x-1/2 w-[min(92vw,420px)] max-h-[60vh] overflow-hidden rounded-2xl bg-background-color-transparent-80 p-4 text-left shadow-redefine-flat backdrop-blur-md" role="dialog" aria-label="EXIF" aria-hidden="true">
+		<div class="flex items-center justify-between mb-3">
+			<span class="text-sm font-semibold text-first-text-color">EXIF</span>
+			<button class="image-viewer-exif-close flex h-8 w-8 items-center justify-center rounded-full bg-background-color-transparent-80 text-first-text-color transition hover:bg-background-color-transparent-40" type="button" aria-label="Close">
+				<i class="fa-solid fa-xmark text-[0.65rem]"></i>
+			</button>
+		</div>
+		<div class="image-viewer-exif-cards grid grid-cols-1 sm:grid-cols-2 gap-3 max-h-[50vh] overflow-y-auto pr-1 scrollbar-hide"></div>
+		<template class="image-viewer-exif-card-template">
+			<div class="rounded-lg bg-background-color-transparent-40 px-3 py-2">
+				<div class="image-viewer-exif-card-header flex items-center gap-2 mb-1">
+					<i class="image-viewer-exif-card-icon fa-solid fa-circle-info text-xs text-third-text-color"></i>
+					<div class="image-viewer-exif-card-title text-xs font-semibold text-first-text-color"></div>
+				</div>
+				<div class="image-viewer-exif-card-items flex flex-col gap-1"></div>
+			</div>
+		</template>
+	</div>
+	<button class="image-viewer-exif-toggle flex items-center gap-2 hidden absolute left-1/2 bottom-6 -translate-x-1/2 rounded-full border border-border-color bg-background-color-transparent-80 px-4 py-2 text-first-text-color backdrop-blur-md transition hover:bg-background-color-transparent-40" type="button" aria-label="EXIF" aria-expanded="false">
+		<i class="fa-solid fa-circle-info text-xs"></i>
+		<span class="text-xs font-semibold uppercase tracking-wider">EXIF</span>
+	</button>
+	<button class="image-viewer-next" type="button" aria-label="Next">
+		<i class="fa-solid fa-chevron-right"></i>
+	</button>
+</div>
+
+
+	
+	<div class="search-pop-overlay">
+	<div class="popup search-popup">
+		<div class="search-header">
+			<span class="search-input-field-pre">
+				<i class="fa-solid fa-keyboard"></i>
+			</span>
+			<div class="search-input-container">
+				<input autocomplete="off" autocorrect="off" autocapitalize="off" placeholder="Search..." spellcheck="false" type="search" class="search-input">
+			</div>
+			<span class="popup-btn-close">
+				<i class="fa-solid fa-times"></i>
+			</span>
+		</div>
+		<div id="search-result">
+			<div id="no-result">
+				<i class="fa-solid fa-spinner fa-spin-pulse fa-5x fa-fw"></i>
+			</div>
+		</div>
+	</div>
+</div>
+	
+
+</main>
+
+
+
+<script src="/js/build/libs/Swup.min.js"></script>
+
+<script src="/js/build/libs/SwupSlideTheme.min.js"></script>
+
+<script src="/js/build/libs/SwupScriptsPlugin.min.js"></script>
+
+<script src="/js/build/libs/SwupProgressPlugin.min.js"></script>
+
+<script src="/js/build/libs/SwupScrollPlugin.min.js"></script>
+
+<script src="/js/build/libs/SwupPreloadPlugin.min.js"></script>
+
+<script>
+    window.swup = new Swup({
+        plugins: [
+            new SwupScriptsPlugin({
+                optin: true,
+            }),
+            new SwupProgressPlugin(),
+            new SwupScrollPlugin({
+                offset: 80,
+            }),
+            new SwupSlideTheme({
+                mainElement: ".main-content-body",
+            }),
+            new SwupPreloadPlugin(),
+        ],
+        containers: ["#swup"],
+    });
+
+    window.dispatchEvent(
+        new CustomEvent("redefine:swup:ready", {
+            detail: {
+                swup: window.swup,
+            },
+        }),
+    );
+</script>
+
+
+
+
+	
+<script src="/js/build/main.js" type="module"></script>
+
+
+
+    
+<script src="/js/build/libs/odometer.min.js"></script>
+
+    
+<link rel="stylesheet" href="/assets/odometer-theme-minimal.css">
+
+
+
+
+
+
+
+  
+<script src="/js/build/libs/Typed.min.js"></script>
+<script src="/js/build/libs/minimasonry.min.js" data-swup-reload-script=""></script>
+
+
+
+
+<script src="/js/build/libs/moment-with-locales.min.js" data-swup-reload-script=""></script>
+
+
+
+	
+</body>
+
+</html>
