@@ -1,0 +1,1603 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="keywords" content="Charles">
+    
+    
+    <meta name="author" content="Charles">
+    
+    <!-- Completely eliminate flash of wrong theme -->
+    <script>
+        (function() {
+            const THEME_KEY = "REDEFINE-THEME-STATUS";
+            const DARK = "dark", LIGHT = "light";
+            
+            // Get preferred theme
+            function getTheme() {
+                try {
+                    const saved = localStorage.getItem(THEME_KEY);
+                    if (saved) {
+                        const { isDark } = JSON.parse(saved);
+                        return isDark ? DARK : LIGHT;
+                    }
+                } catch (e) {}
+                
+                return matchMedia("(prefers-color-scheme: dark)").matches ? DARK : LIGHT;
+            }
+            
+            // Apply theme to document
+            function applyTheme(theme) {
+                const isDark = theme === DARK;
+                const root = document.documentElement;
+                
+                // Set classes for compatibility
+                root.classList.add(theme);
+                root.classList.remove(isDark ? LIGHT : DARK);
+                root.style.colorScheme = theme;
+            }
+            
+            // Initial application
+            const theme = getTheme();
+            applyTheme(theme);
+            
+            // Listen for system preference changes
+            matchMedia("(prefers-color-scheme: dark)").addEventListener("change", ({ matches }) => {
+                // Only update if using system preference (no localStorage entry)
+                if (!localStorage.getItem(THEME_KEY)) {
+                    applyTheme(matches ? DARK : LIGHT);
+                }
+            });
+            
+            // Set body classes ASAP (before DOMContentLoaded)
+            (function() {
+                const addBodyClass = () => {
+                    const b = document.body;
+                    if (!b) return false;
+                    b.classList.add(theme + "-mode");
+                    return true;
+                };
+
+                // Try immediately
+                if (addBodyClass()) return;
+
+                // Observe until body exists
+                const mo = new MutationObserver(() => {
+                    if (addBodyClass()) mo.disconnect();
+                });
+                mo.observe(document.documentElement, { childList: true, subtree: true });
+            })();
+        })();
+    </script>
+    
+    <!-- preconnect -->
+<!--- Seo Part-->
+    
+    <link rel="canonical" href="https://charles2530.github.io/2026/04/28/ai-files-foundations-model-compression-pruning-and-nas-basics/"/>
+    <meta name="robots" content="index,follow">
+    <meta name="googlebot" content="index,follow">
+    <meta name="revisit-after" content="1 days">
+    
+    
+        
+        <meta name="description" content="This is Charles&#39;s Castle.">
+<meta property="og:type" content="article">
+<meta property="og:title" content="基础知识：模型压缩、剪枝与 NAS：先问省的是哪张账">
+<meta property="og:url" content="https://charles2530.github.io/2026/04/28/ai-files-foundations-model-compression-pruning-and-nas-basics/index.html">
+<meta property="og:site_name" content="Charles&#39;s Castle">
+<meta property="og:description" content="This is Charles&#39;s Castle.">
+<meta property="og:locale" content="en_US">
+<meta property="og:image" content="https://charles2530.github.io/image/background/logo.jpg">
+<meta property="article:published_time" content="2026-04-28T01:00:00.000Z">
+<meta property="article:modified_time" content="2026-04-28T01:00:00.000Z">
+<meta property="article:author" content="Du Jinyang">
+<meta property="article:tag" content="AI">
+<meta property="article:tag" content="基础知识">
+<meta name="twitter:card" content="summary">
+<meta name="twitter:image" content="https://charles2530.github.io/image/background/logo.jpg">
+    
+    
+    <!--- Icon Part-->
+    <link rel="icon" type="image/png" href="https://charles2530.github.io/image/background/favicon.png" sizes="192x192">
+    <link rel="apple-touch-icon" sizes="180x180" href="https://charles2530.github.io/image/background/favicon.png">
+    <meta name="theme-color" content="#A31F34">
+    <link rel="shortcut icon" href="https://charles2530.github.io/image/background/favicon.png">
+    <!--- Page Info-->
+    
+    <title>
+        
+            基础知识：模型压缩、剪枝与 NAS：先问省的是哪张账 | Charles&#39;s Castle
+        
+    </title>
+
+    
+<link rel="stylesheet" href="/fonts/Chillax/chillax.css">
+
+
+    <!--- Inject Part-->
+    
+        
+            
+    
+            
+    
+            
+                
+                    <link rel="stylesheet" href="/katex/katex.min.css">
+                
+    
+            
+                
+                    <link rel="stylesheet" href="/css/site-polish-v2.css">
+                
+    
+            
+                
+                    <script data-swup-reload-script>
+(function() {
+  function loadBaiduAnalytics() {
+    if (window.__baiduAnalyticsLoaded) return;
+    window.__baiduAnalyticsLoaded = true;
+    window._hmt = window._hmt || [];
+    var hm = document.createElement("script");
+    hm.async = true;
+    hm.src = "https://hm.baidu.com/hm.js?8e0e5f382d14d87cbeadc33a36e71e86";
+    document.head.appendChild(hm);
+  }
+  if ("requestIdleCallback" in window) {
+    requestIdleCallback(loadBaiduAnalytics, { timeout: 3000 });
+  } else {
+    window.addEventListener("load", function() {
+      setTimeout(loadBaiduAnalytics, 1500);
+    });
+  }
+})();
+</script>
+
+                
+    
+
+    
+<link rel="stylesheet" href="/css/style.css">
+
+
+    
+        
+<link rel="stylesheet" href="/css/build/tailwind.css">
+
+    
+
+    
+<link rel="stylesheet" href="/fonts/GeistMono/geist-mono.css">
+
+    
+<link rel="stylesheet" href="/fonts/Geist/geist.css">
+
+    <!--- Font Part-->
+    
+    
+    
+    
+    
+    
+        
+<script src="/js/build/libs/anime.min.js"></script>
+
+    
+
+    <script id="hexo-configurations">
+    window.config = {"hostname":"charles2530.github.io","root":"/","language":"en","path":"search.xml"};
+    window.theme = {"articles":{"style":{"font_size":"16px","line_height":1.5,"image_border_radius":"14px","image_alignment":"center","image_caption":false,"link_icon":true,"delete_mask":false,"title_alignment":"left","headings_top_spacing":{"h1":"5rem","h2":"4rem","h3":"2.8rem","h4":"2.5rem","h5":"2.2rem","h6":"2rem"}},"word_count":{"enable":true,"count":true,"min2read":true},"author_label":{"enable":true,"auto":true,"list":["lol","Neo","God"]},"code_block":{"copy":true,"style":"mac","highlight_theme":{"light":"github","dark":"vs2015"},"font":{"enable":false,"family":null,"url":null}},"toc":{"enable":true,"max_depth":6,"number":false,"expand":true,"init_open":true},"copyright":{"enable":true,"default":"cc_by_nc_sa"},"lazyload":true,"pangu_js":false,"recommendation":{"enable":false,"title":"recommend_articles","limit":3,"mobile_limit":2,"placeholder":"https://charles2530.github.io/image/background/p3.jfif","skip_dirs":[]}},"colors":{"primary":"#A31F34","secondary":"#1890ff","default_mode":"light"},"global":{"fonts":{"chinese":{"enable":false,"family":null,"url":null},"english":{"enable":false,"family":null,"url":null},"title":{"enable":false,"family":null,"url":null}},"content_max_width":"1000px","sidebar_width":"210px","hover":{"shadow":true,"scale":true},"scroll_progress":{"bar":true,"percentage":true},"website_counter":{"url":"https://cn.vercount.one/js","enable":true,"site_pv":true,"site_uv":true,"post_pv":true},"single_page":true,"preloader":{"enable":true,"custom_message":null},"side_tools":{"gear_rotation":true,"auto_expand":false},"open_graph":{"enable":true,"image":"https://charles2530.github.io/image/background/logo.jpg","description":"This is Charles's Castle."},"google_analytics":{"enable":false,"id":null}},"home_banner":{"enable":true,"style":"fixed","image":{"light":"https://charles2530.github.io/image/background/background-light1.jpg","dark":"https://charles2530.github.io/image/background/background-dark1.jpg"},"title":"Charles's Castle","subtitle":{"text":["Happiness is best!","Never give up!","Everyday is a gift!"],"hitokoto":{"enable":false,"show_author":false,"api":"https://v1.hitokoto.cn"},"typing_speed":100,"backing_speed":80,"starting_delay":500,"backing_delay":1500,"loop":true,"smart_backspace":true},"text_color":{"light":"#000000","dark":"#d1d1b6"},"text_style":{"title_size":"3.2rem","subtitle_size":"1.5rem","line_height":1.2},"custom_font":{"enable":false,"family":null,"url":null},"social_links":{"enable":true,"style":"center","links":[{"icon":"fa-brands fa-github","url":"https://github.com/Charles2530/"},{"icon":"fa-brands fa-zhihu","url":"https://www.zhihu.com/people/yang-guang-xiao-zi-55-55"},{"icon":"fa-solid fa-at","url":"mailto:charles2530@163.com"},{"icon":"fa-brands fa-telegram","url":null},{"icon":"/images/custom-icon.svg","url":null}],"qrs":[{"icon":"fa-brands fa-weixin","qr":"https://charles2530.github.io/image/background/Wechat_icon.png"},{"icon":"/images/custom-icon.svg","qr":null}]}},"plugins":{"feed":{"enable":true},"aplayer":{"enable":false,"type":"fixed","audios":[{"name":null,"artist":null,"url":null,"cover":null,"lrc":null}]},"mermaid":{"enable":false,"version":"11.4.1","theme":{"light":"default","dark":"dark"}}},"version":"2.9.0","navbar":{"auto_hide":true,"color":{"left":"#f78736","right":"#367df7","transparency":35},"width":{"home":"1200px","pages":"1000px"},"links":{"Home":{"path":"/","icon":"fa-regular fa-house"},"Categories":{"path":"/categories","icon":"fas fa-bookmark"},"Tags":{"path":"/tags","icon":"fas fa-tags"},"About":{"icon":"fa-regular fa-user","submenus":{"Me":"https://jinyang-du.github.io/","Github":"https://github.com/Charles2530/","Blog":"https://charles2530.github.io","Statistics":"https://tongji.baidu.com/"}}},"search":{"enable":true,"preload":false}},"page_templates":{"friends_column":2,"tags_style":"blur","masonry":{"batch_size":12,"initial_batch_size":24}},"home":{"sidebar":{"enable":true,"position":"left","first_item":"menu","announcement":"This is Charles's Castle","show_on_mobile":true,"links":{"Archives":{"path":"/archives","icon":"fa-regular fa-archive"},"Photos":{"icon":"fa-solid fa-image","path":"/masonry/"},"Essays":{"icon":"fa-solid fa-message-lines","path":"/essay/"},"Friends":{"icon":"fa-solid fa-user-group","path":"/friends/"}}},"article_date_format":"auto","excerpt_length":200,"categories":{"enable":true,"limit":3},"tags":{"enable":true,"limit":3}},"footer":{"runtime":true,"icon":"<i class=\"fa-solid fa-heart fa-beat\" style=\"--fa-animation-duration: 0.5s; color: #f54545\"></i>","start":"2022/12/27 00:00:00","statistics":true,"customize":null,"icp":{"enable":false,"number":null,"url":null}},"footerStart":"2022/12/27 00:00:00","mermaid":{"style":{"light":"default","dark":"dark"}}};
+    window.lang_ago = {"second":"%s seconds ago","minute":"%s minutes ago","hour":"%s hours ago","day":"%s days ago","week":"%s weeks ago","month":"%s months ago","year":"%s years ago"};
+    window.i18n = {"search":"Search...","toc":"On this page","prev":"Prev","next":"Next","prev_posts":"Prev posts","next_posts":"Next posts","page":"Page %d","recent_posts":"Recent Posts","share":"Share","powered_by":"POWERED BY %s","theme":"THEME","rss_feed":"RSS Feed","category":"Category","categories":"Categories","tag":"Tag","tags":"Tags","post":"Post","posts":"Posts","tagcloud":"Tag Cloud","comment":"Comment","comments":"Comments","home":"Home","archive":"Archive","archives":"Archives","top":"TOP","sticky":"Sticky","go-back-home":"Go Back Home","masonry_loading":"Loading photos...","image_viewer":"Image viewer","close":"Close","exif":{"title":"EXIF","cards":{"camera":"Camera","lens":"Lens","exposure":"Exposure","other":"Other"},"fields":{"make":"Brand","model":"Model","date_taken":"Date taken","lens_model":"Lens","focal_length":"Focal length","focus_mode":"Focus mode","shutter":"Shutter","aperture":"Aperture","iso":"ISO","exposure_program":"Exposure program","exposure_compensation":"Exposure compensation","metering_mode":"Metering mode","flash":"Flash","white_balance":"White balance","latitude":"Latitude","longitude":"Longitude","altitude":"Altitude"},"status":{"loading":"Loading...","no_exif":"No EXIF available","library_missing":"EXIF library not loaded","image_source_missing":"Image source unavailable","unavailable":"EXIF unavailable (blocked by CORS or missing metadata)","flag_unavailable":"EXIF unavailable"}},"about":"About","changelog":"Changelog","links":"Links","link":"Link","friends":"Friends","friend":"Friend","timeline":"Timeline","shuoshuo":"Shuoshuo","bookmarks":"Bookmarks","site_uv":"VISITOR COUNT","site_pv":"TOTAL PAGE VIEWS","read_more":"Read more","wordcount":"Words","min2read":"Mins","status":"Status","runtime":"Blog up for","days":"days","hours":"hrs","minutes":"Min","seconds":"Sec","optimized_by":"and Optimized by Evan","rights":"All Rights Reserved","site_posts":"%s posts in total","site_wordcount":"%s words in total","copyright":{"author":"Author","title":"Title","link":"Link","create_time":"Created at","update_time":"Updated at","license_title":"License","license_content":"This work is licensed under %s.","all_rights_reserved":"All Rights Reserved &#169; %s","public_domain":"This work is in the public domain."},"ago":{"second":"%s seconds ago","minute":"%s minutes ago","hour":"%s hours ago","day":"%s days ago","week":"%s weeks ago","month":"%s months ago","year":"%s years ago"},"create_time":"Created","update_time":"Updated","expired":"This post is written %s days ago, and the content may not be up to date."};
+    window.data = {"masonry":true};
+  </script>
+    
+    <!--- Fontawesome Part-->
+    
+<link rel="stylesheet" href="/fontawesome/fontawesome.min.css">
+
+    
+<link rel="stylesheet" href="/fontawesome/brands.min.css">
+
+    
+<link rel="stylesheet" href="/fontawesome/solid.min.css">
+
+    
+<link rel="stylesheet" href="/fontawesome/regular.min.css">
+
+    
+    
+    
+    
+<meta name="generator" content="Hexo 6.3.0"><link rel="alternate" href="/atom.xml" title="Charles's Castle" type="application/atom+xml">
+<link rel="stylesheet" href="/css/prism-tomorrow.css" type="text/css"></head>
+
+
+<body>
+	<div class="progress-bar-container">
+	
+	<span class="scroll-progress-bar"></span>
+	
+
+	
+	<span class="pjax-progress-bar"></span>
+	<!--        <span class="swup-progress-icon">-->
+	<!--            <i class="fa-solid fa-circle-notch fa-spin"></i>-->
+	<!--        </span>-->
+	
+</div>
+
+<style>
+    :root {
+        --preloader-background-color: #fff;
+        --preloader-text-color: #000;
+    }
+
+    @media (prefers-color-scheme: dark) {
+        :root {
+            --preloader-background-color: #202124;
+            --preloader-text-color: #fff;
+        }
+    }
+
+    @media (prefers-color-scheme: light) {
+        :root {
+            --preloader-background-color: #fff;
+            --preloader-text-color: #000;
+        }
+    }
+
+    @media (max-width: 600px) {
+        .ml13 {
+            font-size: 2.6rem !important; /* Adjust this value as needed */
+        }
+    }
+
+    .preloader {
+        display: flex;
+        flex-direction: column;
+        gap: 1rem; /* Tailwind 'gap-4' is 1rem */
+        align-items: center;
+        justify-content: center;
+        position: fixed;
+        padding: 12px;
+        top: 0;
+        right: 0;
+        bottom: 0;
+        left: 0;
+        width: 100vw;
+        height: 100vh; /* 'h-screen' is 100% of the viewport height */
+        background-color: var(--preloader-background-color);
+        z-index: 1100; /* 'z-[1100]' sets the z-index */
+        transition: opacity 0.2s ease-in-out;
+    }
+
+    .ml13 {
+        font-size: 3.2rem;
+        /* text-transform: uppercase; */
+        color: var(--preloader-text-color);
+        letter-spacing: -1px;
+        font-weight: 500;
+        font-family: 'Chillax-Variable', sans-serif;
+        text-align: center;
+    }
+
+    .ml13 .word {
+        display: inline-flex;
+        flex-wrap: wrap;
+        white-space: nowrap;
+    }
+
+    .ml13 .letter {
+        display: inline-block;
+        line-height: 1em;
+    }
+</style>
+
+<div class="preloader">
+    <h2 class="ml13">
+        Charles&#39;s Castle
+    </h2>
+    <script>
+        var textWrapper = document.querySelector('.ml13');
+        // Split text into words
+        var words = textWrapper.textContent.trim().split(' ');
+
+        // Clear the existing content
+        textWrapper.innerHTML = '';
+
+        // Wrap each word and its letters in spans
+        words.forEach(function(word) {
+            var wordSpan = document.createElement('span');
+            wordSpan.classList.add('word');
+            wordSpan.innerHTML = word.replace(/\S/g, "<span class='letter'>$&</span>");
+            textWrapper.appendChild(wordSpan);
+            textWrapper.appendChild(document.createTextNode(' ')); // Add space between words
+        });
+
+        var animation = anime.timeline({ loop: true })
+            .add({
+                targets: '.ml13 .letter',
+                translateY: [20, 0],
+                translateZ: 0,
+                opacity: [0, 1],
+                filter: ['blur(5px)', 'blur(0px)'],
+                easing: "easeOutExpo",
+                duration: 1200,
+                delay: (el, i) => 300 + 20 * i,
+            })
+            .add({
+                targets: '.ml13 .letter',
+                translateY: [0, -20],
+                opacity: [1, 0],
+                filter: ['blur(0px)', 'blur(5px)'],
+                easing: "easeInExpo",
+                duration: 1000,
+                delay: (el, i) => 15 * i,
+                complete: function() {
+                    hidePreloader();
+                }
+            }, '-=700');
+
+
+        let themeStatus = JSON.parse(localStorage.getItem('REDEFINE-THEME-STATUS'))?.isDark;
+
+        // If the theme status is not found in local storage, check the preferred color scheme
+        if (themeStatus === undefined || themeStatus === null) {
+            if (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) {
+                themeStatus = 'dark';
+            } else {
+                themeStatus = 'light';
+            }
+        }
+
+        // Now you can use the themeStatus variable in your code
+        if (themeStatus) {
+            document.documentElement.style.setProperty('--preloader-background-color', '#202124');
+            document.documentElement.style.setProperty('--preloader-text-color', '#fff');
+        } else {
+            document.documentElement.style.setProperty('--preloader-background-color', '#fff');
+            document.documentElement.style.setProperty('--preloader-text-color', '#000');
+        }
+
+        window.addEventListener('load', function () {
+            setTimeout(hidePreloader, 5000); // Call hidePreloader after 5000 milliseconds if not already called by animation
+        });
+
+        function hidePreloader() {
+            var preloader = document.querySelector('.preloader');
+            preloader.style.opacity = '0';
+            setTimeout(function () {
+                preloader.style.display = 'none';
+            }, 200);
+        }
+    </script>
+</div>
+
+<main class="page-container" id="swup">
+
+	
+
+	<div class="main-content-container flex flex-col justify-between min-h-dvh">
+		<div class="main-content-header">
+			<header class="navbar-container px-6 md:px-12">
+    <div class="navbar-content transition-navbar ">
+        <div class="left">
+            
+                <a class="logo-image h-8 w-8 sm:w-10 sm:h-10 mr-3" href="/">
+                    <img src="https://charles2530.github.io/image/background/logo.jpg" class="w-full h-full rounded-xs">
+                </a>
+            
+            <a class="logo-title" href="/">
+                
+                Charles&#39;s Castle
+                
+            </a>
+        </div>
+
+        <div class="right">
+            <!-- PC -->
+            <div class="desktop">
+                <ul class="navbar-list">
+                    
+                        
+                            
+
+                            <li class="navbar-item">
+                                <!-- Menu -->
+                                <a class=""
+                                   href="/"
+                                        >
+                                    <i class="fa-regular fa-house fa-fw"></i>
+                                    HOME
+                                    
+                                </a>
+
+                                <!-- Submenu -->
+                                
+                            </li>
+                    
+                        
+                            
+
+                            <li class="navbar-item">
+                                <!-- Menu -->
+                                <a class=""
+                                   href="/categories"
+                                        >
+                                    <i class="fas fa-bookmark fa-fw"></i>
+                                    CATEGORIES
+                                    
+                                </a>
+
+                                <!-- Submenu -->
+                                
+                            </li>
+                    
+                        
+                            
+
+                            <li class="navbar-item">
+                                <!-- Menu -->
+                                <a class=""
+                                   href="/tags"
+                                        >
+                                    <i class="fas fa-tags fa-fw"></i>
+                                    TAGS
+                                    
+                                </a>
+
+                                <!-- Submenu -->
+                                
+                            </li>
+                    
+                        
+                            
+
+                            <li class="navbar-item">
+                                <!-- Menu -->
+                                <a class="has-dropdown"
+                                   href="#"
+                                        onClick=&#34;return false;&#34;>
+                                    <i class="fa-regular fa-user fa-fw"></i>
+                                    ABOUT
+                                    <i class="fa-solid fa-chevron-down fa-fw"></i>
+                                </a>
+
+                                <!-- Submenu -->
+                                
+                                    <ul class="sub-menu">
+                                        
+                                            <li>
+                                                <a target="_blank" rel="noopener" href="https://jinyang-du.github.io/">
+                                                    ME
+                                                </a>
+                                            </li>
+                                        
+                                            <li>
+                                                <a target="_blank" rel="noopener" href="https://github.com/Charles2530/">
+                                                    GITHUB
+                                                </a>
+                                            </li>
+                                        
+                                            <li>
+                                                <a href="https://charles2530.github.io">
+                                                    BLOG
+                                                </a>
+                                            </li>
+                                        
+                                            <li>
+                                                <a target="_blank" rel="noopener" href="https://tongji.baidu.com/">
+                                                    STATISTICS
+                                                </a>
+                                            </li>
+                                        
+                                    </ul>
+                                
+                            </li>
+                    
+                    
+                        <li class="navbar-item search search-popup-trigger">
+                            <i class="fa-solid fa-magnifying-glass"></i>
+                        </li>
+                    
+                </ul>
+            </div>
+            <!-- Mobile -->
+            <div class="mobile">
+                
+                    <div class="icon-item search search-popup-trigger"><i class="fa-solid fa-magnifying-glass"></i>
+                    </div>
+                
+                <div class="icon-item navbar-bar">
+                    <div class="navbar-bar-middle"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Mobile sheet -->
+    <div class="navbar-drawer h-dvh w-full absolute top-0 left-0 bg-background-color flex flex-col justify-between">
+        <ul class="drawer-navbar-list flex flex-col px-4 justify-center items-start">
+            
+                
+                    
+
+                    <li class="drawer-navbar-item text-base my-1.5 flex flex-col w-full">
+                        
+                        <a class="py-1.5 px-2 flex flex-row items-center justify-between gap-1 hover:!text-primary active:!text-primary text-2xl font-semibold group border-b border-border-color hover:border-primary w-full "
+                           href="/"
+                        >
+                            <span>
+                                HOME
+                            </span>
+                            
+                                <i class="fa-regular fa-house fa-sm fa-fw"></i>
+                            
+                        </a>
+                        
+
+                        
+                    </li>
+            
+                
+                    
+
+                    <li class="drawer-navbar-item text-base my-1.5 flex flex-col w-full">
+                        
+                        <a class="py-1.5 px-2 flex flex-row items-center justify-between gap-1 hover:!text-primary active:!text-primary text-2xl font-semibold group border-b border-border-color hover:border-primary w-full "
+                           href="/categories"
+                        >
+                            <span>
+                                CATEGORIES
+                            </span>
+                            
+                                <i class="fas fa-bookmark fa-sm fa-fw"></i>
+                            
+                        </a>
+                        
+
+                        
+                    </li>
+            
+                
+                    
+
+                    <li class="drawer-navbar-item text-base my-1.5 flex flex-col w-full">
+                        
+                        <a class="py-1.5 px-2 flex flex-row items-center justify-between gap-1 hover:!text-primary active:!text-primary text-2xl font-semibold group border-b border-border-color hover:border-primary w-full "
+                           href="/tags"
+                        >
+                            <span>
+                                TAGS
+                            </span>
+                            
+                                <i class="fas fa-tags fa-sm fa-fw"></i>
+                            
+                        </a>
+                        
+
+                        
+                    </li>
+            
+                
+                    
+
+                    <li class="drawer-navbar-item-sub text-base my-1.5 flex flex-col w-full">
+                        
+                        <div class="py-1.5 px-2 flex flex-row items-center justify-between gap-1 hover:!text-primary active:!text-primary cursor-pointer text-2xl font-semibold group border-b border-border-color hover:border-primary w-full "
+                             navbar-data-toggle="submenu-About"
+                        >
+                            <span>
+                                ABOUT
+                            </span>
+                            
+                                <i class="fa-solid fa-chevron-right fa-sm fa-fw transition-all"></i>
+                            
+                        </div>
+                        
+
+                        
+                            <div class="flex-col items-start px-2 py-2 hidden" data-target="submenu-About">
+                                
+                                    <div class="drawer-navbar-item text-base flex flex-col justify-center items-start hover:underline active:underline hover:underline-offset-1 rounded-3xl">
+                                        <a class=" text-third-text-color text-xl"
+                                           target="_blank" rel="noopener" href="https://jinyang-du.github.io/">ME</a>
+                                    </div>
+                                
+                                    <div class="drawer-navbar-item text-base flex flex-col justify-center items-start hover:underline active:underline hover:underline-offset-1 rounded-3xl">
+                                        <a class=" text-third-text-color text-xl"
+                                           target="_blank" rel="noopener" href="https://github.com/Charles2530/">GITHUB</a>
+                                    </div>
+                                
+                                    <div class="drawer-navbar-item text-base flex flex-col justify-center items-start hover:underline active:underline hover:underline-offset-1 rounded-3xl">
+                                        <a class=" text-third-text-color text-xl"
+                                           href="https://charles2530.github.io">BLOG</a>
+                                    </div>
+                                
+                                    <div class="drawer-navbar-item text-base flex flex-col justify-center items-start hover:underline active:underline hover:underline-offset-1 rounded-3xl">
+                                        <a class=" text-third-text-color text-xl"
+                                           target="_blank" rel="noopener" href="https://tongji.baidu.com/">STATISTICS</a>
+                                    </div>
+                                
+                            </div>
+                        
+                    </li>
+            
+
+            
+            
+                
+                    
+                    <li class="drawer-navbar-item text-base my-1.5 flex flex-col w-full">
+                        <a class="py-1.5 px-2 flex flex-row items-center justify-between gap-1 hover:!text-primary active:!text-primary text-2xl font-semibold group border-b border-border-color hover:border-primary w-full active"
+                           href="/archives"
+                        >
+                            <span>Archives</span>
+                            <i class="fa-regular fa-archive fa-sm fa-fw"></i>
+                        </a>
+                    </li>
+                
+                    
+                    <li class="drawer-navbar-item text-base my-1.5 flex flex-col w-full">
+                        <a class="py-1.5 px-2 flex flex-row items-center justify-between gap-1 hover:!text-primary active:!text-primary text-2xl font-semibold group border-b border-border-color hover:border-primary w-full active"
+                           href="/masonry/"
+                        >
+                            <span>Photos</span>
+                            <i class="fa-solid fa-image fa-sm fa-fw"></i>
+                        </a>
+                    </li>
+                
+                    
+                    <li class="drawer-navbar-item text-base my-1.5 flex flex-col w-full">
+                        <a class="py-1.5 px-2 flex flex-row items-center justify-between gap-1 hover:!text-primary active:!text-primary text-2xl font-semibold group border-b border-border-color hover:border-primary w-full active"
+                           href="/essay/"
+                        >
+                            <span>Essays</span>
+                            <i class="fa-solid fa-message-lines fa-sm fa-fw"></i>
+                        </a>
+                    </li>
+                
+                    
+                    <li class="drawer-navbar-item text-base my-1.5 flex flex-col w-full">
+                        <a class="py-1.5 px-2 flex flex-row items-center justify-between gap-1 hover:!text-primary active:!text-primary text-2xl font-semibold group border-b border-border-color hover:border-primary w-full active"
+                           href="/friends/"
+                        >
+                            <span>Friends</span>
+                            <i class="fa-solid fa-user-group fa-sm fa-fw"></i>
+                        </a>
+                    </li>
+                
+            
+        </ul>
+
+        <div class="statistics flex justify-around my-2.5">
+    <a class="item tag-count-item flex flex-col justify-center items-center w-20" href="/tags">
+        <div class="number text-2xl sm:text-xl text-second-text-color font-semibold">47</div>
+        <div class="label text-third-text-color text-sm">Tags</div>
+    </a>
+    <a class="item tag-count-item flex flex-col justify-center items-center w-20" href="/categories">
+        <div class="number text-2xl sm:text-xl text-second-text-color font-semibold">95</div>
+        <div class="label text-third-text-color text-sm">Categories</div>
+    </a>
+    <a class="item tag-count-item flex flex-col justify-center items-center w-20" href="/archives">
+        <div class="number text-2xl sm:text-xl text-second-text-color font-semibold">554</div>
+        <div class="label text-third-text-color text-sm">Posts</div>
+    </a>
+</div>
+    </div>
+
+    <div class="window-mask"></div>
+
+</header>
+
+
+		</div>
+
+		<div class="main-content-body transition-fade-up">
+			
+
+			<div class="main-content">
+				<div class="post-page-container flex relative justify-between box-border w-full h-full">
+	<div class="article-content-container">
+
+		<div class="article-title relative w-full">
+			
+			
+			
+			<img src="https://charles2530.github.io/image/background/p1.jpg" alt="基础知识：模型压缩、剪枝与 NAS：先问省的是哪张账" class="w-full h-60 sm:h-72 md:h-80 object-cover sm:rounded-t-large dark:brightness-75" />
+			
+			<div class="w-full flex items-center absolute bottom-0 justify-start">
+				<h1 class="article-title-cover text-center mx-6 my-6 text-second-text-color bg-background-color-transparent px-4 py-3 text-3xl sm:text-4xl md:text-5xl font-semibold backdrop-blur-lg rounded-xl border border-border-color ">基础知识：模型压缩、剪枝与 NAS：先问省的是哪张账</h1>
+			</div>
+			
+		</div>
+
+		
+		<div class="article-header flex flex-row gap-2 items-center px-2 sm:px-6 md:px-8">
+			<div class="avatar w-[46px] h-[46px] shrink-0 rounded-medium border border-border-color p-px">
+				<img src="https://charles2530.github.io/image/background/logo2.jpg">
+			</div>
+			<div class="info flex flex-col justify-between">
+				<div class="author flex items-center">
+					<span class="name text-default-text-color text-lg font-semibold">Charles</span>
+					
+					<span class="author-label ml-1.5 text-xs px-2 py-0.5 rounded-small text-third-text-color border border-shadow-color-1">Lv8</span>
+					
+				</div>
+				<div class="meta-info">
+					<div class="article-meta-info">
+    <span class="article-date article-meta-item">
+        <i class="fa-regular fa-pen-fancy"></i>&nbsp;
+        <span class="desktop">2026-04-28 09:00</span>
+        <span class="mobile">2026-04-28 09:00</span>
+        <span class="hover-info">Created</span>
+    </span>
+    
+        <span class="article-date article-meta-item">
+            <i class="fa-regular fa-wrench"></i>&nbsp;
+            <span class="desktop">2026-04-28 09:00</span>
+            <span class="mobile">2026-04-28 09:00</span>
+            <span class="hover-info">Updated</span>
+        </span>
+    
+
+    
+        <span class="article-categories article-meta-item">
+            <i class="fa-regular fa-folders"></i>&nbsp;
+            <ul>
+                
+                
+                    
+                        
+                        <li>
+                            <a href="/categories/AI/">AI</a>&nbsp;
+                        </li>
+                    
+                    
+                
+                    
+                        
+                            <li>></li>
+                        
+                        <li>
+                            <a href="/categories/AI/%E5%9F%BA%E7%A1%80%E7%9F%A5%E8%AF%86/">基础知识</a>&nbsp;
+                        </li>
+                    
+                    
+                
+            </ul>
+        </span>
+    
+    
+        <span class="article-tags article-meta-item">
+            <i class="fa-regular fa-tags"></i>&nbsp;
+            <ul>
+                
+                    <li>
+                        <a href="/tags/AI/">AI</a>&nbsp;
+                    </li>
+                
+                    <li>
+                        | <a href="/tags/%E5%9F%BA%E7%A1%80%E7%9F%A5%E8%AF%86/">基础知识</a>&nbsp;
+                    </li>
+                
+            </ul>
+        </span>
+    
+
+    
+    
+        <span class="article-wordcount article-meta-item">
+            <i class="fa-regular fa-typewriter"></i>&nbsp;<span>4k Words</span>
+        </span>
+    
+    
+        <span class="article-min2read article-meta-item">
+            <i class="fa-regular fa-clock"></i>&nbsp;<span>15 Mins</span>
+        </span>
+    
+    
+        <span class="article-pv article-meta-item">
+            <i class="fa-regular fa-eye"></i>&nbsp;<span id="busuanzi_value_page_pv"></span>
+        </span>
+    
+</div>
+
+				</div>
+			</div>
+		</div>
+		
+
+		
+
+
+		<div class="article-content markdown-body px-2 sm:px-6 md:px-8 pb-8">
+			<blockquote>
+<p><strong>这篇回答的问题。</strong> 如何理解“模型压缩、剪枝与 NAS”背后的核心机制、适用边界和下一步阅读路径。</p>
+</blockquote>
+<p>很多模型压缩项目的第一版都会遇到一个尴尬结果：参数量少了，模型文件小了，论文表里的 MACs 也降了，但线上请求并没有明显变快，P99 甚至更差。原因通常不是“压缩没用”，而是压缩方法改的是一张账，真实系统卡的是另一张账。</p>
+<p>这页按高质量技术博客常用的讲法展开：先固定一个具体困惑，再把方法放回数据流和硬件路径里看。模型压缩不是“把模型变小”的同义词，而是在质量、成本和可部署结构之间重新设计模型。</p>
+<h2 id="把压缩目标写成成本账"><a class="markdownIt-Anchor" href="#把压缩目标写成成本账"></a> 把压缩目标写成成本账</h2>
+<p>假设原模型是 <span class="katex"><span class="katex-mathml"><math><semantics><mrow><mi>M</mi></mrow><annotation encoding="application/x-tex">M</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.68333em;vertical-align:0em;"></span><span class="mord mathdefault" style="margin-right:0.10903em;">M</span></span></span></span>，压缩后的模型是 <span class="katex"><span class="katex-mathml"><math><semantics><mrow><msup><mi>M</mi><mo mathvariant="normal">′</mo></msup></mrow><annotation encoding="application/x-tex">M&#x27;</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.751892em;vertical-align:0em;"></span><span class="mord"><span class="mord mathdefault" style="margin-right:0.10903em;">M</span><span class="msupsub"><span class="vlist-t"><span class="vlist-r"><span class="vlist" style="height:0.751892em;"><span style="top:-3.063em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mtight"><span class="mord mtight">′</span></span></span></span></span></span></span></span></span></span></span></span>。我们希望 <span class="katex"><span class="katex-mathml"><math><semantics><mrow><msup><mi>M</mi><mo mathvariant="normal">′</mo></msup></mrow><annotation encoding="application/x-tex">M&#x27;</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.751892em;vertical-align:0em;"></span><span class="mord"><span class="mord mathdefault" style="margin-right:0.10903em;">M</span><span class="msupsub"><span class="vlist-t"><span class="vlist-r"><span class="vlist" style="height:0.751892em;"><span style="top:-3.063em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mtight"><span class="mord mtight">′</span></span></span></span></span></span></span></span></span></span></span></span> 的任务质量足够接近 <span class="katex"><span class="katex-mathml"><math><semantics><mrow><mi>M</mi></mrow><annotation encoding="application/x-tex">M</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.68333em;vertical-align:0em;"></span><span class="mord mathdefault" style="margin-right:0.10903em;">M</span></span></span></span>，同时降低某个真实成本：</p>
+<p><span class="katex-display"><span class="katex"><span class="katex-mathml"><math><semantics><mrow><munder><mo><mi>min</mi><mo>⁡</mo></mo><msup><mi>M</mi><mo mathvariant="normal">′</mo></msup></munder><mtext> </mtext><msub><mi mathvariant="script">L</mi><mrow><mi>t</mi><mi>a</mi><mi>s</mi><mi>k</mi></mrow></msub><mo stretchy="false">(</mo><msup><mi>M</mi><mo mathvariant="normal">′</mo></msup><mo stretchy="false">)</mo><mo>+</mo><mi>λ</mi><mi>C</mi><mo stretchy="false">(</mo><msup><mi>M</mi><mo mathvariant="normal">′</mo></msup><mo stretchy="false">)</mo></mrow><annotation encoding="application/x-tex">\min_{M&#x27;}\ \mathcal{L}_{task}(M&#x27;) + \lambda C(M&#x27;)
+</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:1.546223em;vertical-align:-0.744331em;"></span><span class="mop op-limits"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height:0.66786em;"><span style="top:-2.055669em;margin-left:0em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mtight"><span class="mord mtight"><span class="mord mathdefault mtight" style="margin-right:0.10903em;">M</span><span class="msupsub"><span class="vlist-t"><span class="vlist-r"><span class="vlist" style="height:0.6828285714285715em;"><span style="top:-2.786em;margin-right:0.07142857142857144em;"><span class="pstrut" style="height:2.5em;"></span><span class="sizing reset-size3 size1 mtight"><span class="mord mtight"><span class="mord mtight">′</span></span></span></span></span></span></span></span></span></span></span></span><span style="top:-2.7em;"><span class="pstrut" style="height:2.7em;"></span><span><span class="mop">min</span></span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height:0.744331em;"><span></span></span></span></span></span><span class="mspace" style="margin-right:0.16666666666666666em;"></span><span class="mspace"> </span><span class="mord"><span class="mord"><span class="mord mathcal">L</span></span><span class="msupsub"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height:0.33610799999999996em;"><span style="top:-2.5500000000000003em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mtight"><span class="mord mathdefault mtight">t</span><span class="mord mathdefault mtight">a</span><span class="mord mathdefault mtight">s</span><span class="mord mathdefault mtight" style="margin-right:0.03148em;">k</span></span></span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height:0.15em;"><span></span></span></span></span></span></span><span class="mopen">(</span><span class="mord"><span class="mord mathdefault" style="margin-right:0.10903em;">M</span><span class="msupsub"><span class="vlist-t"><span class="vlist-r"><span class="vlist" style="height:0.801892em;"><span style="top:-3.113em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mtight"><span class="mord mtight">′</span></span></span></span></span></span></span></span></span><span class="mclose">)</span><span class="mspace" style="margin-right:0.2222222222222222em;"></span><span class="mbin">+</span><span class="mspace" style="margin-right:0.2222222222222222em;"></span></span><span class="base"><span class="strut" style="height:1.051892em;vertical-align:-0.25em;"></span><span class="mord mathdefault">λ</span><span class="mord mathdefault" style="margin-right:0.07153em;">C</span><span class="mopen">(</span><span class="mord"><span class="mord mathdefault" style="margin-right:0.10903em;">M</span><span class="msupsub"><span class="vlist-t"><span class="vlist-r"><span class="vlist" style="height:0.801892em;"><span style="top:-3.113em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mtight"><span class="mord mtight">′</span></span></span></span></span></span></span></span></span><span class="mclose">)</span></span></span></span></span></p>
+<p>这里 <span class="katex"><span class="katex-mathml"><math><semantics><mrow><msub><mi mathvariant="script">L</mi><mrow><mi>t</mi><mi>a</mi><mi>s</mi><mi>k</mi></mrow></msub></mrow><annotation encoding="application/x-tex">\mathcal{L}_{task}</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.83333em;vertical-align:-0.15em;"></span><span class="mord"><span class="mord"><span class="mord mathcal">L</span></span><span class="msupsub"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height:0.33610799999999996em;"><span style="top:-2.5500000000000003em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mtight"><span class="mord mathdefault mtight">t</span><span class="mord mathdefault mtight">a</span><span class="mord mathdefault mtight">s</span><span class="mord mathdefault mtight" style="margin-right:0.03148em;">k</span></span></span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height:0.15em;"><span></span></span></span></span></span></span></span></span></span> 表示任务损失，<span class="katex"><span class="katex-mathml"><math><semantics><mrow><mi>C</mi><mo stretchy="false">(</mo><msup><mi>M</mi><mo mathvariant="normal">′</mo></msup><mo stretchy="false">)</mo></mrow><annotation encoding="application/x-tex">C(M&#x27;)</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:1.001892em;vertical-align:-0.25em;"></span><span class="mord mathdefault" style="margin-right:0.07153em;">C</span><span class="mopen">(</span><span class="mord"><span class="mord mathdefault" style="margin-right:0.10903em;">M</span><span class="msupsub"><span class="vlist-t"><span class="vlist-r"><span class="vlist" style="height:0.751892em;"><span style="top:-3.063em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mtight"><span class="mord mtight">′</span></span></span></span></span></span></span></span></span><span class="mclose">)</span></span></span></span> 表示你真正想压低的成本，<span class="katex"><span class="katex-mathml"><math><semantics><mrow><mi>λ</mi></mrow><annotation encoding="application/x-tex">\lambda</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.69444em;vertical-align:0em;"></span><span class="mord mathdefault">λ</span></span></span></span> 表示质量和成本之间的取舍权重。这个式子不重要在求解形式，而重要在提醒你：如果 <span class="katex"><span class="katex-mathml"><math><semantics><mrow><mi>C</mi></mrow><annotation encoding="application/x-tex">C</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.68333em;vertical-align:0em;"></span><span class="mord mathdefault" style="margin-right:0.07153em;">C</span></span></span></span> 写成参数量，搜索会偏向小模型；如果 <span class="katex"><span class="katex-mathml"><math><semantics><mrow><mi>C</mi></mrow><annotation encoding="application/x-tex">C</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.68333em;vertical-align:0em;"></span><span class="mord mathdefault" style="margin-right:0.07153em;">C</span></span></span></span> 写成 A100 上 batch=1 的 P99 latency，结果可能完全不同；如果 <span class="katex"><span class="katex-mathml"><math><semantics><mrow><mi>C</mi></mrow><annotation encoding="application/x-tex">C</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.68333em;vertical-align:0em;"></span><span class="mord mathdefault" style="margin-right:0.07153em;">C</span></span></span></span> 写成手机 NPU 的能耗和内存峰值，又会得到第三种设计。</p>
+<p>模型压缩常见方法其实在改不同账：</p>
+<table>
+<thead>
+<tr>
+<th>方法</th>
+<th>主要改哪里</th>
+<th>常见收益</th>
+<th>最容易错读</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>蒸馏</td>
+<td>学生模型的训练信号和行为</td>
+<td>小模型质量、数据效率</td>
+<td>student 可能继承 teacher 偏差</td>
+</tr>
+<tr>
+<td>量化</td>
+<td>权重、activation、KV 的数值格式</td>
+<td>显存、带宽、部分 kernel latency</td>
+<td>没有 kernel 支持时只是文件小</td>
+</tr>
+<tr>
+<td>剪枝</td>
+<td>weight、channel、head、block、layer</td>
+<td>参数、MACs、dense shape 或稀疏路径</td>
+<td>稀疏率不等于加速率</td>
+</tr>
+<tr>
+<td>NAS</td>
+<td>搜索结构、宽度、深度、block 组合</td>
+<td>平台特定 accuracy/latency trade-off</td>
+<td>proxy 指标不等于真实端到端</td>
+</tr>
+<tr>
+<td>Runtime / kernel</td>
+<td>编译、融合、layout、batch、cache</td>
+<td>P50/P99、throughput、能耗</td>
+<td>离开目标 shape/hardware 就失效</td>
+</tr>
+</tbody>
+</table>
+<p>好文章会在开头就问清楚“省的是哪张账”。这比先列一堆方法名更有用，因为压缩失败通常不是方法名选错，而是成本账写错。</p>
+<h2 id="参数-macs-latency-不是同一个东西"><a class="markdownIt-Anchor" href="#参数-macs-latency-不是同一个东西"></a> 参数、MACs、latency 不是同一个东西</h2>
+<p>读压缩论文时，先把三个最常混用的指标拆开：</p>
+<table>
+<thead>
+<tr>
+<th>指标</th>
+<th>它测什么</th>
+<th>不能证明什么</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Params</td>
+<td>权重数量或权重存储</td>
+<td>不证明每次推理都触达这些权重，也不证明请求更快</td>
+</tr>
+<tr>
+<td>MACs / FLOPs</td>
+<td>某个输入 shape 下的乘加量</td>
+<td>不包含 HBM 读写、layout transform、dequant、launch、同步</td>
+</tr>
+<tr>
+<td>Latency</td>
+<td>指定硬件和 runtime 上的真实时间</td>
+<td>不具备跨硬件、跨 batch、跨 shape 自动外推性</td>
+</tr>
+</tbody>
+</table>
+<p>MACs 降了但 latency 不降，常见原因很具体：shape 变碎导致 Tensor Core 吃不满，非结构化稀疏走不到硬件稀疏路径，dequant 或 gather/scatter 抵消了算力节省，layout transform 变多，batch 太小导致 launch overhead 占主导，或者服务瓶颈本来在 KV cache、memory bandwidth、queue wait，而不是乘加。</p>
+<p>所以更可靠的压缩证据不是“参数少了 50%”，而是同硬件、同 batch、同输入分布、同 runtime 下的端到端延迟、P95/P99、内存峰值、功耗或成本 per successful request。模型越接近上线，越应该把 metric 从“模型形状”挪到“系统行为”。</p>
+<h2 id="deep-compression-的启发先看存储和带宽"><a class="markdownIt-Anchor" href="#deep-compression-的启发先看存储和带宽"></a> Deep Compression 的启发：先看存储和带宽</h2>
+<p>Deep Compression 的经典路线是 pruning、trained quantization、Huffman coding 三段式。它很适合建立第一层直觉：早期压缩并不只是为了少算 FLOPs，很多时候是为了让模型权重从昂贵的 off-chip memory 移到更近、更便宜的存储层，或者减少带宽压力。</p>
+<p>这条思路到今天仍然成立，但要补上新的系统边界。LLM/VLM/扩散模型里，权重只是成本的一部分；activation、KV cache、optimizer state、routing buffer、scale metadata、temporary workspace 也会占资源。权重文件变小，如果 decode 阶段卡在 KV 读取，用户体验未必改善；INT4 权重如果没有 fused dequant GEMM，可能省了显存却多了 kernel 和搬运。</p>
+<p>因此，压缩页不能只讲“更小”，要讲“更接近哪条硬件路径”。能被 Tensor Core、Sparse Tensor Core、TensorRT、cuSPARSELt、移动端 NPU 或图编译器真正消费的压缩，才更可能变成真实加速。</p>
+<h2 id="剪枝先分清稀疏模式和结构变化"><a class="markdownIt-Anchor" href="#剪枝先分清稀疏模式和结构变化"></a> 剪枝：先分清稀疏模式和结构变化</h2>
+<p>剪枝的直觉是删掉贡献小的东西，再通过继续训练恢复质量。但“删掉”可以发生在很多粒度：</p>
+<table>
+<thead>
+<tr>
+<th>剪枝粒度</th>
+<th>删除对象</th>
+<th>部署含义</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Unstructured pruning</td>
+<td>单个 weight</td>
+<td>稀疏率高，但普通 dense GEMM 不会自动变快</td>
+</tr>
+<tr>
+<td>Semi-structured pruning</td>
+<td>固定模式，例如 2:4</td>
+<td>如果硬件和库支持，可以换到稀疏 Tensor Core 路径</td>
+</tr>
+<tr>
+<td>Structured pruning</td>
+<td>channel、filter、head、block</td>
+<td>改变 dense tensor shape，更容易转成真实加速</td>
+</tr>
+<tr>
+<td>Layer / block dropping</td>
+<td>整层或整块</td>
+<td>路径长度变短，但质量恢复更难</td>
+</tr>
+</tbody>
+</table>
+<p>Lottery Ticket Hypothesis 说明大网络中可能存在更小的可训练子网络，这对理解冗余很有启发。但它不是部署结论。它不能保证任意稀疏 mask 都能让你的 GPU 更快，也不能替代 runtime、kernel 和质量恢复实验。</p>
+<p>NVIDIA Ampere/Hopper 的 2:4 structured sparsity 是另一个好例子。它要求每 4 个连续权重里至少 2 个为零，模式比任意稀疏更受约束，但正因为模式固定，硬件可以存非零值和少量 metadata，并让 Sparse Tensor Core 处理。部署世界经常如此：自由度少一点，硬件收益反而更真实。</p>
+<h2 id="结构化剪枝要先画依赖图"><a class="markdownIt-Anchor" href="#结构化剪枝要先画依赖图"></a> 结构化剪枝要先画依赖图</h2>
+<p>结构化剪枝比单个 weight pruning 更接近真实加速，因为它会改变 dense tensor shape。但它也更容易剪坏接口。剪掉卷积的第 17 个输出通道，后续消费这个特征图的层也要同步删除对应输入通道；剪掉 attention head，Q/K/V 和 output projection 通常要成组处理；剪掉 recurrent state 的一部分，下一步状态更新也要跟着改。</p>
+<table>
+<thead>
+<tr>
+<th>结构</th>
+<th>为什么不能局部乱剪</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>residual add</td>
+<td>两条分支输出 channel 必须一致</td>
+</tr>
+<tr>
+<td>concat</td>
+<td>后续层输入 channel 要按拼接结果重算</td>
+</tr>
+<tr>
+<td>attention head</td>
+<td>Q/K/V 和 output projection 通常按 head 成组</td>
+</tr>
+<tr>
+<td>recurrent state</td>
+<td><span class="katex"><span class="katex-mathml"><math><semantics><mrow><msub><mi>h</mi><mrow><mi>t</mi><mo>−</mo><mn>1</mn></mrow></msub></mrow><annotation encoding="application/x-tex">h_{t-1}</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.902771em;vertical-align:-0.208331em;"></span><span class="mord"><span class="mord mathdefault">h</span><span class="msupsub"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height:0.301108em;"><span style="top:-2.5500000000000003em;margin-left:0em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mtight"><span class="mord mathdefault mtight">t</span><span class="mbin mtight">−</span><span class="mord mtight">1</span></span></span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height:0.208331em;"><span></span></span></span></span></span></span></span></span></span> 的通道会被下一步 <span class="katex"><span class="katex-mathml"><math><semantics><mrow><msub><mi>h</mi><mi>t</mi></msub></mrow><annotation encoding="application/x-tex">h_t</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.84444em;vertical-align:-0.15em;"></span><span class="mord"><span class="mord mathdefault">h</span><span class="msupsub"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height:0.2805559999999999em;"><span style="top:-2.5500000000000003em;margin-left:0em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mathdefault mtight">t</span></span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height:0.15em;"><span></span></span></span></span></span></span></span></span></span> 消费</td>
+</tr>
+<tr>
+<td>fixed output head</td>
+<td>类别数、mask 通道、disparity 输出格式不能改</td>
+</tr>
+</tbody>
+</table>
+<p>DepGraph 这类工作强调 dependency graph，就是因为结构化剪枝必须先找出哪些参数是一个不可分割的组。否则剪枝代码可能直接 shape 报错；更糟的是 shape 不报错，但语义已经错了。</p>
+<p>Fast-FoundationStereo 的 refinement pruning 图很适合作为部署型剪枝案例。</p>
+<p><img  
+                     lazyload
+                     src="/images/loading.svg"
+                     data-src="/image/ai-notes/images/paper-deep-dives/inference/fast-foundation-stereo/figure-5-refinement-pruning.png"
+                      alt="Fast-FoundationStereo refinement pruning" 
+                ></p>
+<p><small>图源：<a class="link"   target="_blank" rel="noopener" href="https://arxiv.org/abs/2512.11130" >Fast-FoundationStereo<i class="fa-solid fa-arrow-up-right ml-[0.2em] font-light align-text-top text-[0.7em] link-icon"></i></a>，Figure 5。原图表达 refinement module 里的 ConvGRU 存在 recurrent dependency，剪枝时要区分可剪通道、固定通道和依赖关系。本站使用这张图说明：结构化剪枝不是简单按通道重要性排序，还要保证迭代模块前后接口一致。</small></p>
+<p>图里最关键的是 recurrent dependency。ConvGRU 会反复更新 hidden state，上一轮输出的 hidden channel 下一轮还要继续用。若只按某一层局部重要性剪掉通道，后续迭代可能接口不一致。真正可部署的剪枝流程通常是：构建依赖图，按组评估重要性，剪掉结构组，短期恢复训练，再测真实 runtime。</p>
+<h2 id="taylor-重要性是排队工具不是最后证据"><a class="markdownIt-Anchor" href="#taylor-重要性是排队工具不是最后证据"></a> Taylor 重要性是排队工具，不是最后证据</h2>
+<p>剪枝需要估计“删谁伤害最小”。一种常见方法是一阶 Taylor 近似。对参数 <span class="katex"><span class="katex-mathml"><math><semantics><mrow><msub><mi>θ</mi><mi>i</mi></msub></mrow><annotation encoding="application/x-tex">\theta_i</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.84444em;vertical-align:-0.15em;"></span><span class="mord"><span class="mord mathdefault" style="margin-right:0.02778em;">θ</span><span class="msupsub"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height:0.31166399999999994em;"><span style="top:-2.5500000000000003em;margin-left:-0.02778em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mathdefault mtight">i</span></span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height:0.15em;"><span></span></span></span></span></span></span></span></span></span>，可以写成：</p>
+<p><span class="katex-display"><span class="katex"><span class="katex-mathml"><math><semantics><mrow><mi mathvariant="normal">Δ</mi><msub><mi mathvariant="script">L</mi><mi>i</mi></msub><mo>≈</mo><mrow><mo fence="true">∣</mo><mfrac><mrow><mi mathvariant="normal">∂</mi><mi mathvariant="script">L</mi></mrow><mrow><mi mathvariant="normal">∂</mi><msub><mi>θ</mi><mi>i</mi></msub></mrow></mfrac><msub><mi>θ</mi><mi>i</mi></msub><mo fence="true">∣</mo></mrow></mrow><annotation encoding="application/x-tex">\Delta \mathcal{L}_i
+\approx
+\left|
+\frac{\partial \mathcal{L}}{\partial \theta_i}\theta_i
+\right|
+</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.83333em;vertical-align:-0.15em;"></span><span class="mord">Δ</span><span class="mord"><span class="mord"><span class="mord mathcal">L</span></span><span class="msupsub"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height:0.31166399999999994em;"><span style="top:-2.5500000000000003em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mathdefault mtight">i</span></span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height:0.15em;"><span></span></span></span></span></span></span><span class="mspace" style="margin-right:0.2777777777777778em;"></span><span class="mrel">≈</span><span class="mspace" style="margin-right:0.2777777777777778em;"></span></span><span class="base"><span class="strut" style="height:2.424em;vertical-align:-0.9500199999999999em;"></span><span class="minner"><span class="mopen"><span class="delimsizing mult"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height:1.47398em;"><span style="top:-1.65598em;"><span class="pstrut" style="height:2.606em;"></span><span class="delimsizinginner delim-size1"><span>∣</span></span></span><span style="top:-2.26198em;"><span class="pstrut" style="height:2.606em;"></span><span class="delimsizinginner delim-size1"><span>∣</span></span></span><span style="top:-2.86798em;"><span class="pstrut" style="height:2.606em;"></span><span class="delimsizinginner delim-size1"><span>∣</span></span></span><span style="top:-3.47398em;"><span class="pstrut" style="height:2.606em;"></span><span class="delimsizinginner delim-size1"><span>∣</span></span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height:0.9500199999999999em;"><span></span></span></span></span></span></span><span class="mord"><span class="mopen nulldelimiter"></span><span class="mfrac"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height:1.37144em;"><span style="top:-2.3139999999999996em;"><span class="pstrut" style="height:3em;"></span><span class="mord"><span class="mord" style="margin-right:0.05556em;">∂</span><span class="mord"><span class="mord mathdefault" style="margin-right:0.02778em;">θ</span><span class="msupsub"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height:0.31166399999999994em;"><span style="top:-2.5500000000000003em;margin-left:-0.02778em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mathdefault mtight">i</span></span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height:0.15em;"><span></span></span></span></span></span></span></span></span><span style="top:-3.23em;"><span class="pstrut" style="height:3em;"></span><span class="frac-line" style="border-bottom-width:0.04em;"></span></span><span style="top:-3.677em;"><span class="pstrut" style="height:3em;"></span><span class="mord"><span class="mord" style="margin-right:0.05556em;">∂</span><span class="mord"><span class="mord mathcal">L</span></span></span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height:0.8360000000000001em;"><span></span></span></span></span></span><span class="mclose nulldelimiter"></span></span><span class="mord"><span class="mord mathdefault" style="margin-right:0.02778em;">θ</span><span class="msupsub"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height:0.31166399999999994em;"><span style="top:-2.5500000000000003em;margin-left:-0.02778em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mathdefault mtight">i</span></span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height:0.15em;"><span></span></span></span></span></span></span><span class="mclose"><span class="delimsizing mult"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height:1.47398em;"><span style="top:-1.65598em;"><span class="pstrut" style="height:2.606em;"></span><span class="delimsizinginner delim-size1"><span>∣</span></span></span><span style="top:-2.26198em;"><span class="pstrut" style="height:2.606em;"></span><span class="delimsizinginner delim-size1"><span>∣</span></span></span><span style="top:-2.86798em;"><span class="pstrut" style="height:2.606em;"></span><span class="delimsizinginner delim-size1"><span>∣</span></span></span><span style="top:-3.47398em;"><span class="pstrut" style="height:2.606em;"></span><span class="delimsizinginner delim-size1"><span>∣</span></span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height:0.9500199999999999em;"><span></span></span></span></span></span></span></span></span></span></span></span></p>
+<p>这里 <span class="katex"><span class="katex-mathml"><math><semantics><mrow><mi mathvariant="normal">Δ</mi><msub><mi mathvariant="script">L</mi><mi>i</mi></msub></mrow><annotation encoding="application/x-tex">\Delta \mathcal{L}_i</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.83333em;vertical-align:-0.15em;"></span><span class="mord">Δ</span><span class="mord"><span class="mord"><span class="mord mathcal">L</span></span><span class="msupsub"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height:0.31166399999999994em;"><span style="top:-2.5500000000000003em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mathdefault mtight">i</span></span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height:0.15em;"><span></span></span></span></span></span></span></span></span></span> 表示删掉第 <span class="katex"><span class="katex-mathml"><math><semantics><mrow><mi>i</mi></mrow><annotation encoding="application/x-tex">i</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.65952em;vertical-align:0em;"></span><span class="mord mathdefault">i</span></span></span></span> 个参数后损失可能增加多少，<span class="katex"><span class="katex-mathml"><math><semantics><mrow><mfrac><mrow><mi mathvariant="normal">∂</mi><mi mathvariant="script">L</mi></mrow><mrow><mi mathvariant="normal">∂</mi><msub><mi>θ</mi><mi>i</mi></msub></mrow></mfrac></mrow><annotation encoding="application/x-tex">\frac{\partial \mathcal{L}}{\partial \theta_i}</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:1.325208em;vertical-align:-0.44509999999999994em;"></span><span class="mord"><span class="mopen nulldelimiter"></span><span class="mfrac"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height:0.8801079999999999em;"><span style="top:-2.655em;"><span class="pstrut" style="height:3em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mtight"><span class="mord mtight" style="margin-right:0.05556em;">∂</span><span class="mord mtight"><span class="mord mathdefault mtight" style="margin-right:0.02778em;">θ</span><span class="msupsub"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height:0.3280857142857143em;"><span style="top:-2.357em;margin-left:-0.02778em;margin-right:0.07142857142857144em;"><span class="pstrut" style="height:2.5em;"></span><span class="sizing reset-size3 size1 mtight"><span class="mord mathdefault mtight">i</span></span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height:0.143em;"><span></span></span></span></span></span></span></span></span></span><span style="top:-3.23em;"><span class="pstrut" style="height:3em;"></span><span class="frac-line" style="border-bottom-width:0.04em;"></span></span><span style="top:-3.394em;"><span class="pstrut" style="height:3em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mtight"><span class="mord mtight" style="margin-right:0.05556em;">∂</span><span class="mord mtight"><span class="mord mathcal mtight">L</span></span></span></span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height:0.44509999999999994em;"><span></span></span></span></span></span><span class="mclose nulldelimiter"></span></span></span></span></span> 是训练样本上 loss 对该参数的梯度，<span class="katex"><span class="katex-mathml"><math><semantics><mrow><msub><mi>θ</mi><mi>i</mi></msub></mrow><annotation encoding="application/x-tex">\theta_i</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.84444em;vertical-align:-0.15em;"></span><span class="mord"><span class="mord mathdefault" style="margin-right:0.02778em;">θ</span><span class="msupsub"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height:0.31166399999999994em;"><span style="top:-2.5500000000000003em;margin-left:-0.02778em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mathdefault mtight">i</span></span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height:0.15em;"><span></span></span></span></span></span></span></span></span></span> 是参数值本身。直觉是：参数越大、loss 对它越敏感，删掉越危险。</p>
+<p>但这个分数只是局部一阶近似。剪掉一组 channel 后，其他参数会重新适应；剪枝后的质量常常取决于 retraining、蒸馏、学习率和数据分布，而不是剪完那一刻的 loss。结构化剪枝里还要把单个参数分数聚合成 channel、head、block 或 dependency group 分数，再和真实 latency 一起看。</p>
+<h2 id="nas-搜索的是结构空间不是魔法模型"><a class="markdownIt-Anchor" href="#nas-搜索的是结构空间不是魔法模型"></a> NAS 搜索的是结构空间，不是魔法模型</h2>
+<p>NAS 的核心不是“自动发现通用最优架构”，而是在给定搜索空间和预算下选择结构组合。搜索空间可以包含 depth、width、kernel size、expansion ratio、attention head、block 类型、输入分辨率等；目标可以包含准确率、延迟、能耗或内存峰值。</p>
+<p>一个平台感知 NAS 目标可以写成：</p>
+<p><span class="katex-display"><span class="katex"><span class="katex-mathml"><math><semantics><mrow><munder><mo><mi>max</mi><mo>⁡</mo></mo><mrow><mi>a</mi><mo>∈</mo><mi mathvariant="script">A</mi></mrow></munder><mi>A</mi><mi>c</mi><mi>c</mi><mo stretchy="false">(</mo><mi>a</mi><mo stretchy="false">)</mo><mspace width="1em"/><mtext>s.t.</mtext><mspace width="1em"/><mi>L</mi><mi>a</mi><mi>t</mi><mi>e</mi><mi>n</mi><mi>c</mi><msub><mi>y</mi><mi>h</mi></msub><mo stretchy="false">(</mo><mi>a</mi><mo stretchy="false">)</mo><mo>≤</mo><mi>τ</mi></mrow><annotation encoding="application/x-tex">\max_{a\in\mathcal{A}} Acc(a)
+\quad
+\text{s.t.}
+\quad
+Latency_h(a)\le \tau
+</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:1.521701em;vertical-align:-0.771701em;"></span><span class="mop op-limits"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height:0.43055999999999994em;"><span style="top:-2.055669em;margin-left:0em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mtight"><span class="mord mathdefault mtight">a</span><span class="mrel mtight">∈</span><span class="mord mtight"><span class="mord mathcal mtight">A</span></span></span></span></span><span style="top:-2.7em;"><span class="pstrut" style="height:2.7em;"></span><span><span class="mop">max</span></span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height:0.771701em;"><span></span></span></span></span></span><span class="mspace" style="margin-right:0.16666666666666666em;"></span><span class="mord mathdefault">A</span><span class="mord mathdefault">c</span><span class="mord mathdefault">c</span><span class="mopen">(</span><span class="mord mathdefault">a</span><span class="mclose">)</span><span class="mspace" style="margin-right:1em;"></span><span class="mord text"><span class="mord">s.t.</span></span><span class="mspace" style="margin-right:1em;"></span><span class="mord mathdefault">L</span><span class="mord mathdefault">a</span><span class="mord mathdefault">t</span><span class="mord mathdefault">e</span><span class="mord mathdefault">n</span><span class="mord mathdefault">c</span><span class="mord"><span class="mord mathdefault" style="margin-right:0.03588em;">y</span><span class="msupsub"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height:0.33610799999999996em;"><span style="top:-2.5500000000000003em;margin-left:-0.03588em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mathdefault mtight">h</span></span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height:0.15em;"><span></span></span></span></span></span></span><span class="mopen">(</span><span class="mord mathdefault">a</span><span class="mclose">)</span><span class="mspace" style="margin-right:0.2777777777777778em;"></span><span class="mrel">≤</span><span class="mspace" style="margin-right:0.2777777777777778em;"></span></span><span class="base"><span class="strut" style="height:0.43056em;vertical-align:0em;"></span><span class="mord mathdefault" style="margin-right:0.1132em;">τ</span></span></span></span></span></p>
+<p>这里 <span class="katex"><span class="katex-mathml"><math><semantics><mrow><mi>a</mi></mrow><annotation encoding="application/x-tex">a</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.43056em;vertical-align:0em;"></span><span class="mord mathdefault">a</span></span></span></span> 表示候选架构，<span class="katex"><span class="katex-mathml"><math><semantics><mrow><mi mathvariant="script">A</mi></mrow><annotation encoding="application/x-tex">\mathcal{A}</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.68333em;vertical-align:0em;"></span><span class="mord"><span class="mord mathcal">A</span></span></span></span></span> 表示搜索空间，<span class="katex"><span class="katex-mathml"><math><semantics><mrow><mi>A</mi><mi>c</mi><mi>c</mi><mo stretchy="false">(</mo><mi>a</mi><mo stretchy="false">)</mo></mrow><annotation encoding="application/x-tex">Acc(a)</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:1em;vertical-align:-0.25em;"></span><span class="mord mathdefault">A</span><span class="mord mathdefault">c</span><span class="mord mathdefault">c</span><span class="mopen">(</span><span class="mord mathdefault">a</span><span class="mclose">)</span></span></span></span> 表示验证集质量，<span class="katex"><span class="katex-mathml"><math><semantics><mrow><mi>L</mi><mi>a</mi><mi>t</mi><mi>e</mi><mi>n</mi><mi>c</mi><msub><mi>y</mi><mi>h</mi></msub><mo stretchy="false">(</mo><mi>a</mi><mo stretchy="false">)</mo></mrow><annotation encoding="application/x-tex">Latency_h(a)</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:1em;vertical-align:-0.25em;"></span><span class="mord mathdefault">L</span><span class="mord mathdefault">a</span><span class="mord mathdefault">t</span><span class="mord mathdefault">e</span><span class="mord mathdefault">n</span><span class="mord mathdefault">c</span><span class="mord"><span class="mord mathdefault" style="margin-right:0.03588em;">y</span><span class="msupsub"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height:0.33610799999999996em;"><span style="top:-2.5500000000000003em;margin-left:-0.03588em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mathdefault mtight">h</span></span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height:0.15em;"><span></span></span></span></span></span></span><span class="mopen">(</span><span class="mord mathdefault">a</span><span class="mclose">)</span></span></span></span> 表示在目标硬件 <span class="katex"><span class="katex-mathml"><math><semantics><mrow><mi>h</mi></mrow><annotation encoding="application/x-tex">h</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.69444em;vertical-align:0em;"></span><span class="mord mathdefault">h</span></span></span></span> 上测到或预测的延迟，<span class="katex"><span class="katex-mathml"><math><semantics><mrow><mi>τ</mi></mrow><annotation encoding="application/x-tex">\tau</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.43056em;vertical-align:0em;"></span><span class="mord mathdefault" style="margin-right:0.1132em;">τ</span></span></span></span> 是延迟预算。MnasNet 的关键就在于把移动端真实 latency 放进目标，而不是只用 FLOPs proxy。</p>
+<p>Once-for-All 的思路则是先训练一个 supernet，再从里面抽出适配不同设备和预算的 subnet。它的价值是降低“每个设备重新训练一个网络”的成本；边界是 supernet 训练、progressive shrinking、子网采样、校准和最终微调本身也会带来复杂度。</p>
+<h2 id="blockwise-nas把全局搜索拆成局部候选"><a class="markdownIt-Anchor" href="#blockwise-nas把全局搜索拆成局部候选"></a> Blockwise NAS：把全局搜索拆成局部候选</h2>
+<p>Fast-FoundationStereo 的 cost filtering 阶段直接结构剪枝收益有限，于是论文改用 blockwise NAS：每个 block 提供多个候选结构，先让候选 block 局部蒸馏 teacher block，再测候选替换后的误差变化和耗时变化，最后用 ILP 选组合。</p>
+<p>可以把选择问题写成：</p>
+<p><span class="katex-display"><span class="katex"><span class="katex-mathml"><math><semantics><mrow><mi>min</mi><mo>⁡</mo><munder><mo>∑</mo><mrow><mi>i</mi><mo separator="true">,</mo><mi>c</mi></mrow></munder><mi mathvariant="normal">Δ</mi><msubsup><mi>m</mi><mi>i</mi><mi>c</mi></msubsup><msubsup><mi>e</mi><mi>i</mi><mi>c</mi></msubsup><mspace width="1em"/><mtext>s.t.</mtext><mspace width="1em"/><munder><mo>∑</mo><mrow><mi>i</mi><mo separator="true">,</mo><mi>c</mi></mrow></munder><mi mathvariant="normal">Δ</mi><msubsup><mi>t</mi><mi>i</mi><mi>c</mi></msubsup><msubsup><mi>e</mi><mi>i</mi><mi>c</mi></msubsup><mo>≤</mo><mi mathvariant="normal">Δ</mi><mi>τ</mi></mrow><annotation encoding="application/x-tex">\min \sum_{i,c} \Delta m_i^c e_i^c
+\quad
+\text{s.t.}
+\quad
+\sum_{i,c} \Delta t_i^c e_i^c \leq \Delta \tau
+</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:2.463782em;vertical-align:-1.413777em;"></span><span class="mop">min</span><span class="mspace" style="margin-right:0.16666666666666666em;"></span><span class="mop op-limits"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height:1.050005em;"><span style="top:-1.8723309999999997em;margin-left:0em;"><span class="pstrut" style="height:3.05em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mtight"><span class="mord mathdefault mtight">i</span><span class="mpunct mtight">,</span><span class="mord mathdefault mtight">c</span></span></span></span><span style="top:-3.0500049999999996em;"><span class="pstrut" style="height:3.05em;"></span><span><span class="mop op-symbol large-op">∑</span></span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height:1.413777em;"><span></span></span></span></span></span><span class="mspace" style="margin-right:0.16666666666666666em;"></span><span class="mord">Δ</span><span class="mord"><span class="mord mathdefault">m</span><span class="msupsub"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height:0.7143919999999999em;"><span style="top:-2.4530000000000003em;margin-left:0em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mathdefault mtight">i</span></span></span><span style="top:-3.113em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mathdefault mtight">c</span></span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height:0.247em;"><span></span></span></span></span></span></span><span class="mord"><span class="mord mathdefault">e</span><span class="msupsub"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height:0.7143919999999999em;"><span style="top:-2.4530000000000003em;margin-left:0em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mathdefault mtight">i</span></span></span><span style="top:-3.113em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mathdefault mtight">c</span></span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height:0.247em;"><span></span></span></span></span></span></span><span class="mspace" style="margin-right:1em;"></span><span class="mord text"><span class="mord">s.t.</span></span><span class="mspace" style="margin-right:0.16666666666666666em;"></span><span class="mspace" style="margin-right:1em;"></span><span class="mop op-limits"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height:1.050005em;"><span style="top:-1.8723309999999997em;margin-left:0em;"><span class="pstrut" style="height:3.05em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mtight"><span class="mord mathdefault mtight">i</span><span class="mpunct mtight">,</span><span class="mord mathdefault mtight">c</span></span></span></span><span style="top:-3.0500049999999996em;"><span class="pstrut" style="height:3.05em;"></span><span><span class="mop op-symbol large-op">∑</span></span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height:1.413777em;"><span></span></span></span></span></span><span class="mspace" style="margin-right:0.16666666666666666em;"></span><span class="mord">Δ</span><span class="mord"><span class="mord mathdefault">t</span><span class="msupsub"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height:0.7143919999999999em;"><span style="top:-2.4530000000000003em;margin-left:0em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mathdefault mtight">i</span></span></span><span style="top:-3.113em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mathdefault mtight">c</span></span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height:0.247em;"><span></span></span></span></span></span></span><span class="mord"><span class="mord mathdefault">e</span><span class="msupsub"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height:0.7143919999999999em;"><span style="top:-2.4530000000000003em;margin-left:0em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mathdefault mtight">i</span></span></span><span style="top:-3.113em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mathdefault mtight">c</span></span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height:0.247em;"><span></span></span></span></span></span></span><span class="mspace" style="margin-right:0.2777777777777778em;"></span><span class="mrel">≤</span><span class="mspace" style="margin-right:0.2777777777777778em;"></span></span><span class="base"><span class="strut" style="height:0.68333em;vertical-align:0em;"></span><span class="mord">Δ</span><span class="mord mathdefault" style="margin-right:0.1132em;">τ</span></span></span></span></span></p>
+<p>这里 <span class="katex"><span class="katex-mathml"><math><semantics><mrow><mi>i</mi></mrow><annotation encoding="application/x-tex">i</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.65952em;vertical-align:0em;"></span><span class="mord mathdefault">i</span></span></span></span> 表示第几个 block，<span class="katex"><span class="katex-mathml"><math><semantics><mrow><mi>c</mi></mrow><annotation encoding="application/x-tex">c</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.43056em;vertical-align:0em;"></span><span class="mord mathdefault">c</span></span></span></span> 表示该 block 的候选结构，<span class="katex"><span class="katex-mathml"><math><semantics><mrow><mi mathvariant="normal">Δ</mi><msubsup><mi>m</mi><mi>i</mi><mi>c</mi></msubsup></mrow><annotation encoding="application/x-tex">\Delta m_i^c</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.941994em;vertical-align:-0.258664em;"></span><span class="mord">Δ</span><span class="mord"><span class="mord mathdefault">m</span><span class="msupsub"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height:0.664392em;"><span style="top:-2.441336em;margin-left:0em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mathdefault mtight">i</span></span></span><span style="top:-3.063em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mathdefault mtight">c</span></span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height:0.258664em;"><span></span></span></span></span></span></span></span></span></span> 表示选择候选 <span class="katex"><span class="katex-mathml"><math><semantics><mrow><mi>c</mi></mrow><annotation encoding="application/x-tex">c</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.43056em;vertical-align:0em;"></span><span class="mord mathdefault">c</span></span></span></span> 后的误差变化，<span class="katex"><span class="katex-mathml"><math><semantics><mrow><mi mathvariant="normal">Δ</mi><msubsup><mi>t</mi><mi>i</mi><mi>c</mi></msubsup></mrow><annotation encoding="application/x-tex">\Delta t_i^c</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.941994em;vertical-align:-0.258664em;"></span><span class="mord">Δ</span><span class="mord"><span class="mord mathdefault">t</span><span class="msupsub"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height:0.664392em;"><span style="top:-2.441336em;margin-left:0em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mathdefault mtight">i</span></span></span><span style="top:-3.063em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mathdefault mtight">c</span></span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height:0.258664em;"><span></span></span></span></span></span></span></span></span></span> 表示耗时变化，<span class="katex"><span class="katex-mathml"><math><semantics><mrow><msubsup><mi>e</mi><mi>i</mi><mi>c</mi></msubsup></mrow><annotation encoding="application/x-tex">e_i^c</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.923056em;vertical-align:-0.258664em;"></span><span class="mord"><span class="mord mathdefault">e</span><span class="msupsub"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height:0.664392em;"><span style="top:-2.441336em;margin-left:0em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mathdefault mtight">i</span></span></span><span style="top:-3.063em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mathdefault mtight">c</span></span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height:0.258664em;"><span></span></span></span></span></span></span></span></span></span> 是 0/1 决策变量，<span class="katex"><span class="katex-mathml"><math><semantics><mrow><mi mathvariant="normal">Δ</mi><mi>τ</mi></mrow><annotation encoding="application/x-tex">\Delta \tau</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.68333em;vertical-align:0em;"></span><span class="mord">Δ</span><span class="mord mathdefault" style="margin-right:0.1132em;">τ</span></span></span></span> 是总 latency 预算。读作：在总耗时约束内，为每个 block 选一个候选，让误差增加尽量小。</p>
+<p><img  
+                     lazyload
+                     src="/images/loading.svg"
+                     data-src="/image/ai-notes/images/paper-deep-dives/inference/fast-foundation-stereo/figure-8-blockwise-search.png"
+                      alt="Fast-FoundationStereo blockwise search" 
+                ></p>
+<p><small>图源：<a class="link"   target="_blank" rel="noopener" href="https://arxiv.org/abs/2512.11130" >Fast-FoundationStereo<i class="fa-solid fa-arrow-up-right ml-[0.2em] font-light align-text-top text-[0.7em] link-icon"></i></a>，Figure 8。原图比较不同 latency budget 下 searched candidate 和 random candidate 的精度/速度。本站使用这张图说明：NAS 的价值不是搜索空间听起来很大，而是在明确预算下找到比随机选择更好的结构组合。</small></p>
+<p>这类 blockwise proxy 有代价：局部误差不一定完全可加，候选之间可能有交互，最终仍要端到端 retrain 和评测。但它给了一个清晰工程模式：先把昂贵的全局搜索拆成局部候选，再用可解释的成本约束组合。</p>
+<h2 id="系统里常常要混用多种压缩"><a class="markdownIt-Anchor" href="#系统里常常要混用多种压缩"></a> 系统里常常要混用多种压缩</h2>
+<p>真实高效模型很少只靠一种技术。Fast-FoundationStereo 的总体框架很典型：不同瓶颈对应不同工具。</p>
+<p><img  
+                     lazyload
+                     src="/images/loading.svg"
+                     data-src="/image/ai-notes/images/paper-deep-dives/inference/fast-foundation-stereo/figure-3-framework-padded.png"
+                      alt="Fast-FoundationStereo framework" 
+                ></p>
+<p><small>图源：<a class="link"   target="_blank" rel="noopener" href="https://arxiv.org/abs/2512.11130" >Fast-FoundationStereo<i class="fa-solid fa-arrow-up-right ml-[0.2em] font-light align-text-top text-[0.7em] link-icon"></i></a>，Figure 3。原图表达 FoundationStereo pipeline 包含 feature extraction、cost filtering 和 disparity refinement，论文分别用 backbone distillation、cost filtering blockwise search、refinement pruning 加速。本站使用这张图说明：部署型压缩要先做瓶颈拆解，再为每段选择不同方法。</small></p>
+<p>这张图的读法是先找热路径，而不是先找“用了什么算法”。Feature backbone 重，适合用 distillation 换成轻量 student；cost filtering 的结构空间复杂，但直接剪枝收益有限，适合 blockwise NAS；refinement 是反复迭代模块，有结构冗余，适合 dependency-aware structured pruning；最后再接 TensorRT/runtime 验证。它的核心经验是：压缩策略应该跟瓶颈形态匹配，而不是拿同一种方法扫全模型。</p>
+<h2 id="压缩上线前的六个门禁"><a class="markdownIt-Anchor" href="#压缩上线前的六个门禁"></a> 压缩上线前的六个门禁</h2>
+<p>压缩前先写清目标资源。如果目标是移动端安装包，Deep Compression 式存储压缩、权重量化和编码很重要；如果目标是 LLM decode TPOT，KV cache、attention kernel、batching 和 speculative decoding 可能比剪枝更关键；如果目标是机器人实时感知，端到端 P99、输入分辨率、TensorRT 支持和失败场景更关键。</p>
+<table>
+<thead>
+<tr>
+<th>门禁</th>
+<th>要问的问题</th>
+<th>为什么</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>瓶颈</td>
+<td>是权重、activation、KV、算力、带宽、P99 还是能耗？</td>
+<td>不同瓶颈对应不同压缩方法</td>
+</tr>
+<tr>
+<td>口径</td>
+<td>硬件、batch、shape、runtime、精度格式是否固定？</td>
+<td>防止 benchmark 漂移</td>
+</tr>
+<tr>
+<td>方法</td>
+<td>量化、蒸馏、剪枝、NAS、kernel 哪个正中瓶颈？</td>
+<td>避免为了压缩而压缩</td>
+</tr>
+<tr>
+<td>恢复</td>
+<td>是否需要 retrain、KD、QAT、校准或继续训练？</td>
+<td>压缩后质量通常要恢复</td>
+</tr>
+<tr>
+<td>Trace</td>
+<td>是否报告模块分解、P50/P99、throughput、内存峰值？</td>
+<td>局部快不等于整体快</td>
+</tr>
+<tr>
+<td>失败桶</td>
+<td>OOD、长尾、小目标、透明材质、长上下文是否掉点？</td>
+<td>压缩常先伤难例</td>
+</tr>
+</tbody>
+</table>
+<p>压缩评审最好把“省下什么、损失什么、哪些请求会变慢”写在同一张表里。只看平均精度和平均 latency，会把长尾任务、冷启动、fallback、稀有 shape 和安全边界藏起来。</p>
+<h2 id="容易踩坑的判断"><a class="markdownIt-Anchor" href="#容易踩坑的判断"></a> 容易踩坑的判断</h2>
+<table>
+<thead>
+<tr>
+<th>看起来合理的说法</th>
+<th>更准确的说法</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>参数少就一定快</td>
+<td>只有当计算、带宽或 runtime 热路径真的减少，才会快</td>
+</tr>
+<tr>
+<td>稀疏率高就一定加速</td>
+<td>稀疏模式必须被硬件、kernel 和 runtime 支持</td>
+</tr>
+<tr>
+<td>剪枝就是按重要性排序删除</td>
+<td>结构化剪枝还要满足 dependency graph</td>
+</tr>
+<tr>
+<td>NAS 找到的是通用最优架构</td>
+<td>它通常只在某个搜索空间、数据、硬件和预算下最优</td>
+</tr>
+<tr>
+<td>MACs 是最公平指标</td>
+<td>MACs 方便比较，但不能替代真实 latency 和能耗</td>
+</tr>
+<tr>
+<td>压缩只影响平均精度</td>
+<td>长尾、OOD、校准、安全边界和失败模式常先被压坏</td>
+</tr>
+</tbody>
+</table>
+<h2 id="最后判断"><a class="markdownIt-Anchor" href="#最后判断"></a> 最后判断</h2>
+<p>模型压缩的核心不是“把模型变小”，而是“把模型变成目标平台愿意执行的形态”。剪枝要看结构依赖，量化要看数值分布和 kernel，NAS 要看搜索空间和真实 latency，蒸馏要看 teacher 信号和 student 容量，runtime 要看端到端热路径。</p>
+<p>读任何压缩、剪枝或 NAS 论文时，先画三件事：原模型的热路径，压缩方法改动的位置，目标硬件实际省下的成本。只要这三件事没对齐，参数表再漂亮也可能只是纸面压缩。</p>
+<h2 id="外部精读"><a class="markdownIt-Anchor" href="#外部精读"></a> 外部精读</h2>
+<ul>
+<li><a class="link"   target="_blank" rel="noopener" href="https://arxiv.org/abs/1510.00149" >Deep Compression<i class="fa-solid fa-arrow-up-right ml-[0.2em] font-light align-text-top text-[0.7em] link-icon"></i></a>：理解 pruning、trained quantization、Huffman coding 如何共同降低存储和带宽。</li>
+<li><a class="link"   target="_blank" rel="noopener" href="https://arxiv.org/abs/1803.03635" >The Lottery Ticket Hypothesis<i class="fa-solid fa-arrow-up-right ml-[0.2em] font-light align-text-top text-[0.7em] link-icon"></i></a>：理解稀疏子网络和剪枝现象，但不要把它直接等同于部署加速。</li>
+<li><a class="link"   target="_blank" rel="noopener" href="https://arxiv.org/abs/2301.12900" >DepGraph: Towards Any Structural Pruning<i class="fa-solid fa-arrow-up-right ml-[0.2em] font-light align-text-top text-[0.7em] link-icon"></i></a>：理解 dependency graph 为什么是结构化剪枝的核心。</li>
+<li><a class="link"   target="_blank" rel="noopener" href="https://developer.nvidia.com/blog/structured-sparsity-in-the-nvidia-ampere-architecture-and-applications-in-search-engines/" >NVIDIA Structured Sparsity<i class="fa-solid fa-arrow-up-right ml-[0.2em] font-light align-text-top text-[0.7em] link-icon"></i></a>：理解 2:4 稀疏为什么要匹配硬件和 TensorRT / cuSPARSELt 路径。</li>
+<li><a class="link"   target="_blank" rel="noopener" href="https://arxiv.org/abs/1807.11626" >MnasNet<i class="fa-solid fa-arrow-up-right ml-[0.2em] font-light align-text-top text-[0.7em] link-icon"></i></a>：理解平台感知 NAS 为什么要把真实 latency 放进目标。</li>
+<li><a class="link"   target="_blank" rel="noopener" href="https://arxiv.org/abs/1908.09791" >Once-for-All<i class="fa-solid fa-arrow-up-right ml-[0.2em] font-light align-text-top text-[0.7em] link-icon"></i></a>：理解 supernet 和多设备子网选择。</li>
+<li><a class="link"   target="_blank" rel="noopener" href="https://docs.pytorch.org/tutorials/intermediate/pruning_tutorial.html" >PyTorch Pruning Tutorial<i class="fa-solid fa-arrow-up-right ml-[0.2em] font-light align-text-top text-[0.7em] link-icon"></i></a>：看工程上 mask、parameter reparameterization 和 pruning API 如何落地。</li>
+<li><a class="link"   target="_blank" rel="noopener" href="https://pytorch.org/blog/accelerating-neural-network-training/" >PyTorch Semi-Structured Sparsity<i class="fa-solid fa-arrow-up-right ml-[0.2em] font-light align-text-top text-[0.7em] link-icon"></i></a>：对照 2:4 sparse training 的工程边界。</li>
+<li><a class="link"   target="_blank" rel="noopener" href="https://arxiv.org/abs/2512.11130" >Fast-FoundationStereo<i class="fa-solid fa-arrow-up-right ml-[0.2em] font-light align-text-top text-[0.7em] link-icon"></i></a>：看蒸馏、blockwise NAS、结构化剪枝如何在同一个实时感知系统里配合。</li>
+</ul>
+<h2 id="相关阅读与下一步"><a class="markdownIt-Anchor" href="#相关阅读与下一步"></a> 相关阅读与下一步</h2>
+<ul>
+<li>外部材料：<a class="link"   target="_blank" rel="noopener" href="https://jalammar.github.io/illustrated-transformer/" >The Illustrated Transformer<i class="fa-solid fa-arrow-up-right ml-[0.2em] font-light align-text-top text-[0.7em] link-icon"></i></a>。</li>
+<li>外部材料：<a class="link"   target="_blank" rel="noopener" href="https://d2l.ai/" >Dive into Deep Learning<i class="fa-solid fa-arrow-up-right ml-[0.2em] font-light align-text-top text-[0.7em] link-icon"></i></a>。</li>
+<li>外部材料：<a class="link"   target="_blank" rel="noopener" href="https://distill.pub/2020/circuits/visualizing-weights/" >Distill Circuits<i class="fa-solid fa-arrow-up-right ml-[0.2em] font-light align-text-top text-[0.7em] link-icon"></i></a>。</li>
+<li>站内下一步：基础概念专题。</li>
+<li>站内下一步：<a href="/2026/05/11/ai-files-foundations-transformer-attention-and-tokenization/">Transformer 输入与注意力</a>。</li>
+<li>站内下一步：<a href="/2026/05/11/ai-files-foundations-numerics-memory-and-runtime-basics/">数值、内存与运行时基础</a>。</li>
+</ul>
+
+		</div>
+
+		
+		<div class="post-copyright-info w-full my-8 px-2 sm:px-6 md:px-8">
+			<div class="article-copyright-info-container">
+    <ul>
+        <li><strong>Title:</strong> 基础知识：模型压缩、剪枝与 NAS：先问省的是哪张账</li>
+        <li><strong>Author:</strong> Charles</li>
+        <li><strong>Created at
+                :</strong> 2026-04-28 09:00:00</li>
+        
+            <li>
+                <strong>Updated at
+                    :</strong> 2026-04-28 09:00:00
+            </li>
+        
+        <li>
+            <strong>Link:</strong> https://charles2530.github.io/2026/04/28/ai-files-foundations-model-compression-pruning-and-nas-basics/
+        </li>
+        <li>
+            <strong>
+                License:
+            </strong>
+            
+
+            
+                This work is licensed under <a class="license" target="_blank" rel="noopener" href="https://creativecommons.org/licenses/by-nc-sa/4.0">CC BY-NC-SA 4.0</a>.
+            
+        </li>
+    </ul>
+</div>
+
+		</div>
+		
+
+		
+		<ul class="post-tags-box text-lg mt-1.5 flex-wrap justify-center flex md:hidden">
+			
+			<li class="tag-item mx-0.5">
+				<a href="/tags/AI/">#AI</a>&nbsp;
+			</li>
+			
+			<li class="tag-item mx-0.5">
+				<a href="/tags/%E5%9F%BA%E7%A1%80%E7%9F%A5%E8%AF%86/">#基础知识</a>&nbsp;
+			</li>
+			
+		</ul>
+		
+
+		
+
+		
+		<div class="article-nav my-8 flex justify-between items-center px-2 sm:px-6 md:px-8">
+			
+			<div class="article-prev border-border-color shadow-redefine-flat shadow-shadow-color-2 rounded-medium px-4 py-2 hover:shadow-redefine-flat-hover hover:shadow-shadow-color-2">
+				<a class="prev" rel="prev" href="/2026/04/29/ai-files-thinking-exploration-fast-foundation-stereo-prerequisite-map/">
+					<span class="left arrow-icon flex justify-center items-center">
+						<i class="fa-solid fa-chevron-left"></i>
+					</span>
+					<span class="title flex justify-center items-center">
+						<span class="post-nav-title-item truncate max-w-48">思考探索：读懂 Fast-FoundationStereo：从双目几何到高效推理</span>
+						<span class="post-nav-item">Prev posts</span>
+					</span>
+				</a>
+			</div>
+			
+			
+			<div class="article-next border-border-color shadow-redefine-flat shadow-shadow-color-2 rounded-medium px-4 py-2 hover:shadow-redefine-flat-hover hover:shadow-shadow-color-2">
+				<a class="next" rel="next" href="/2026/04/26/ai-files-embodied-ai-stereo-matching-and-cost-volume/">
+					<span class="title flex justify-center items-center">
+						<span class="post-nav-title-item truncate max-w-48">具身智能：双目匹配与 Cost Volume：把深度先变成对应点问题</span>
+						<span class="post-nav-item">Next posts</span>
+					</span>
+					<span class="right arrow-icon flex justify-center items-center">
+						<i class="fa-solid fa-chevron-right"></i>
+					</span>
+				</a>
+			</div>
+			
+		</div>
+		
+
+
+		
+		<div class="comment-container px-2 sm:px-6 md:px-8 pb-8">
+			<div class="comments-container mt-10 w-full ">
+    <div id="comment-anchor" class="w-full h-2.5"></div>
+    <div class="comment-area-title w-full my-1.5 md:my-2.5 text-xl md:text-3xl font-bold">
+        Comments
+    </div>
+    
+
+        
+            
+    <div id="gitalk-container"></div>
+    <script data-swup-reload-script
+            src="https://cdnjs.cloudflare.com/ajax/libs/gitalk/1.8.0/gitalk.min.js"></script>
+    <script data-swup-reload-script>
+        (function() {
+            const startPath = location.pathname;
+            const startTime = Date.now();
+            const retryDelay = 200;
+            const retryLimit = 5000;
+
+            const runGitalk = () => {
+                if (location.pathname !== startPath) {
+                    return;
+                }
+
+                const container = document.getElementById('gitalk-container');
+                if (!container || typeof Gitalk === 'undefined') {
+                    if (Date.now() - startTime < retryLimit) {
+                        setTimeout(runGitalk, retryDelay);
+                    }
+                    return;
+                }
+
+                container.innerHTML = '';
+
+                let pageKey = decodeURI(location.pathname);
+                const maxLength = 50;
+                if (pageKey.length > maxLength) {
+                    pageKey = pageKey.substring(0, maxLength - 3) + '...';
+                }
+
+                try {
+                    new Gitalk({
+                        clientID: '8083299a8ee2aaf23879',
+                        clientSecret: 'a8161e81d4872181e884fdb69f7be24916b6a9d0',
+                        repo: 'Charles2530.github.io',
+                        owner: 'Charles2530',
+                        admin: ['Charles2530'],
+                        id: pageKey,
+                        language: 'en',
+                        proxy: 'https://github.com/login/oauth/access_token'
+                    }).render(container);
+                } catch (e) {
+                    window.Gitalk = null;
+                }
+            };
+
+            runGitalk();
+        })();
+    </script>
+
+
+
+        
+    
+</div>
+
+		</div>
+		
+	</div>
+
+	
+	<div class="toc-content-container">
+		<div class="post-toc-wrap">
+	<div class="post-toc">
+		<div class="toc-title">On this page</div>
+		<div class="page-title">基础知识：模型压缩、剪枝与 NAS：先问省的是哪张账</div>
+		<ol class="nav"><li class="nav-item nav-level-2"><a class="nav-link" href="#%E6%8A%8A%E5%8E%8B%E7%BC%A9%E7%9B%AE%E6%A0%87%E5%86%99%E6%88%90%E6%88%90%E6%9C%AC%E8%B4%A6"><span class="nav-text"> 把压缩目标写成成本账</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#%E5%8F%82%E6%95%B0-macs-latency-%E4%B8%8D%E6%98%AF%E5%90%8C%E4%B8%80%E4%B8%AA%E4%B8%9C%E8%A5%BF"><span class="nav-text"> 参数、MACs、latency 不是同一个东西</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#deep-compression-%E7%9A%84%E5%90%AF%E5%8F%91%E5%85%88%E7%9C%8B%E5%AD%98%E5%82%A8%E5%92%8C%E5%B8%A6%E5%AE%BD"><span class="nav-text"> Deep Compression 的启发：先看存储和带宽</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#%E5%89%AA%E6%9E%9D%E5%85%88%E5%88%86%E6%B8%85%E7%A8%80%E7%96%8F%E6%A8%A1%E5%BC%8F%E5%92%8C%E7%BB%93%E6%9E%84%E5%8F%98%E5%8C%96"><span class="nav-text"> 剪枝：先分清稀疏模式和结构变化</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#%E7%BB%93%E6%9E%84%E5%8C%96%E5%89%AA%E6%9E%9D%E8%A6%81%E5%85%88%E7%94%BB%E4%BE%9D%E8%B5%96%E5%9B%BE"><span class="nav-text"> 结构化剪枝要先画依赖图</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#taylor-%E9%87%8D%E8%A6%81%E6%80%A7%E6%98%AF%E6%8E%92%E9%98%9F%E5%B7%A5%E5%85%B7%E4%B8%8D%E6%98%AF%E6%9C%80%E5%90%8E%E8%AF%81%E6%8D%AE"><span class="nav-text"> Taylor 重要性是排队工具，不是最后证据</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#nas-%E6%90%9C%E7%B4%A2%E7%9A%84%E6%98%AF%E7%BB%93%E6%9E%84%E7%A9%BA%E9%97%B4%E4%B8%8D%E6%98%AF%E9%AD%94%E6%B3%95%E6%A8%A1%E5%9E%8B"><span class="nav-text"> NAS 搜索的是结构空间，不是魔法模型</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#blockwise-nas%E6%8A%8A%E5%85%A8%E5%B1%80%E6%90%9C%E7%B4%A2%E6%8B%86%E6%88%90%E5%B1%80%E9%83%A8%E5%80%99%E9%80%89"><span class="nav-text"> Blockwise NAS：把全局搜索拆成局部候选</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#%E7%B3%BB%E7%BB%9F%E9%87%8C%E5%B8%B8%E5%B8%B8%E8%A6%81%E6%B7%B7%E7%94%A8%E5%A4%9A%E7%A7%8D%E5%8E%8B%E7%BC%A9"><span class="nav-text"> 系统里常常要混用多种压缩</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#%E5%8E%8B%E7%BC%A9%E4%B8%8A%E7%BA%BF%E5%89%8D%E7%9A%84%E5%85%AD%E4%B8%AA%E9%97%A8%E7%A6%81"><span class="nav-text"> 压缩上线前的六个门禁</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#%E5%AE%B9%E6%98%93%E8%B8%A9%E5%9D%91%E7%9A%84%E5%88%A4%E6%96%AD"><span class="nav-text"> 容易踩坑的判断</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#%E6%9C%80%E5%90%8E%E5%88%A4%E6%96%AD"><span class="nav-text"> 最后判断</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#%E5%A4%96%E9%83%A8%E7%B2%BE%E8%AF%BB"><span class="nav-text"> 外部精读</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#%E7%9B%B8%E5%85%B3%E9%98%85%E8%AF%BB%E4%B8%8E%E4%B8%8B%E4%B8%80%E6%AD%A5"><span class="nav-text"> 相关阅读与下一步</span></a></li></ol>
+
+	</div>
+</div>
+	</div>
+	
+</div>
+
+			</div>
+
+			
+		</div>
+
+		<div class="main-content-footer">
+			<footer class="footer mt-5 py-5 h-auto text-base text-third-text-color relative border-t-2 border-t-border-color">
+    <div class="info-container py-3 text-center">
+        
+        <div class="text-center">
+            &copy;
+            
+              <span>2022</span>
+              -
+            
+            2026&nbsp;&nbsp;<i class="fa-solid fa-heart fa-beat" style="--fa-animation-duration: 0.5s; color: #f54545"></i>&nbsp;&nbsp;<a href="/">Charles</a>
+            
+                
+                <p class="post-count space-x-0.5">
+                    <span>
+                        554 posts in total
+                    </span>
+                    
+                        <span>
+                            2191.9k words in total
+                        </span>
+                    
+                </p>
+            
+        </div>
+        
+            <script data-swup-reload-script src="https://cn.vercount.one/js"></script>
+            <div class="relative text-center lg:absolute lg:right-[20px] lg:top-1/2 lg:-translate-y-1/2 lg:text-right">
+                
+                    <span id="busuanzi_container_site_uv" class="lg:!block">
+                        <span class="text-sm">VISITOR COUNT</span>
+                        <span id="busuanzi_value_site_uv"></span>
+                    </span>
+                
+                
+                    <span id="busuanzi_container_site_pv" class="lg:!block">
+                        <span class="text-sm">TOTAL PAGE VIEWS</span>
+                        <span id="busuanzi_value_site_pv"></span>
+                    </span>
+                
+            </div>
+        
+        <div class="relative text-center lg:absolute lg:left-[20px] lg:top-1/2 lg:-translate-y-1/2 lg:text-left">
+            <span class="lg:block text-sm">POWERED BY <?xml version="1.0" encoding="utf-8"?><!DOCTYPE svg PUBLIC "-//W3C//DTD SVG 1.1//EN" "http://www.w3.org/Graphics/SVG/1.1/DTD/svg11.dtd"><svg class="relative top-[2px] inline-block align-baseline" version="1.1" id="圖層_1" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" x="0px" y="0px" width="1rem" height="1rem" viewBox="0 0 512 512" enable-background="new 0 0 512 512" xml:space="preserve"><path fill="#0E83CD" d="M256.4,25.8l-200,115.5L56,371.5l199.6,114.7l200-115.5l0.4-230.2L256.4,25.8z M349,354.6l-18.4,10.7l-18.6-11V275H200v79.6l-18.4,10.7l-18.6-11v-197l18.5-10.6l18.5,10.8V237h112v-79.6l18.5-10.6l18.5,10.8V354.6z"/></svg><a target="_blank" class="text-base" href="https://hexo.io">Hexo</a></span>
+            <span class="text-sm lg:block">THEME&nbsp;<a class="text-base" target="_blank" href="https://github.com/EvanNotFound/hexo-theme-redefine">Redefine v2.9.0</a></span>
+        </div>
+        
+        
+            <div>
+                Blog up for <span class="odometer" id="runtime_days" ></span> days <span class="odometer" id="runtime_hours"></span> hrs <span class="odometer" id="runtime_minutes"></span> Min <span class="odometer" id="runtime_seconds"></span> Sec
+            </div>
+        
+        
+            <script data-swup-reload-script>
+                try {
+                    function odometer_init() {
+                    const elements = document.querySelectorAll('.odometer');
+                    elements.forEach(el => {
+                        new Odometer({
+                            el,
+                            format: '( ddd).dd',
+                            duration: 200
+                        });
+                    });
+                    }
+                    odometer_init();
+                } catch (error) {}
+            </script>
+        
+        
+            
+                
+        
+                
+        
+                
+
+                    
+                        <script data-swup-reload-script type="text/javascript" src="/js/love.js"></script>
+                    
+        
+        
+    </div>  
+</footer>
+		</div>
+	</div>
+
+	
+	<div class="post-tools">
+		<div class="post-tools-container">
+	<ul class="article-tools-list">
+		<!-- TOC aside toggle -->
+		
+		<li class="right-bottom-tools page-aside-toggle">
+			<i class="fa-regular fa-outdent"></i>
+		</li>
+		
+
+		<!-- go comment -->
+		
+		<li class="go-comment">
+			<i class="fa-regular fa-comments"></i>
+		</li>
+		
+	</ul>
+</div>
+	</div>
+	
+
+	<div class="right-side-tools-container">
+		<div class="side-tools-container">
+	<ul class="hidden-tools-list">
+		<li class="right-bottom-tools tool-font-adjust-plus flex justify-center items-center">
+			<i class="fa-regular fa-magnifying-glass-plus"></i>
+		</li>
+
+		<li class="right-bottom-tools tool-font-adjust-minus flex justify-center items-center">
+			<i class="fa-regular fa-magnifying-glass-minus"></i>
+		</li>
+
+		<li class="right-bottom-tools tool-dark-light-toggle flex justify-center items-center">
+			<i class="fa-regular fa-moon"></i>
+		</li>
+
+		<!-- rss -->
+		
+		<li class="right-bottom-tools rss flex justify-center items-center">
+			<a class="flex justify-center items-center" href="/atom.xml" target="_blank">
+				<i class="fa-regular fa-rss"></i>
+			</a>
+		</li>
+		
+
+		
+
+		<li class="right-bottom-tools tool-scroll-to-bottom flex justify-center items-center">
+			<i class="fa-regular fa-arrow-down"></i>
+		</li>
+	</ul>
+
+	<ul class="visible-tools-list">
+		<li class="right-bottom-tools toggle-tools-list flex justify-center items-center">
+			<i class="fa-regular fa-cog fa-spin"></i>
+		</li>
+		
+		<li class="right-bottom-tools tool-scroll-to-top flex justify-center items-center">
+			<i class="arrow-up fas fa-arrow-up"></i>
+			<span class="percent"></span>
+		</li>
+		
+		
+	</ul>
+</div>
+	</div>
+
+	<div class="image-viewer-container" role="dialog" aria-modal="true" aria-label="Image viewer">
+	<button class="image-viewer-close" type="button" aria-label="Close">
+		<i class="fa-solid fa-xmark"></i>
+	</button>
+	<button class="image-viewer-prev" type="button" aria-label="Prev">
+		<i class="fa-solid fa-chevron-left"></i>
+	</button>
+	<div class="image-viewer-frame">
+		<img src="" alt="">
+	</div>
+	<div class="image-viewer-exif-panel hidden absolute left-1/2 bottom-20 -translate-x-1/2 w-[min(92vw,420px)] max-h-[60vh] overflow-hidden rounded-2xl bg-background-color-transparent-80 p-4 text-left shadow-redefine-flat backdrop-blur-md" role="dialog" aria-label="EXIF" aria-hidden="true">
+		<div class="flex items-center justify-between mb-3">
+			<span class="text-sm font-semibold text-first-text-color">EXIF</span>
+			<button class="image-viewer-exif-close flex h-8 w-8 items-center justify-center rounded-full bg-background-color-transparent-80 text-first-text-color transition hover:bg-background-color-transparent-40" type="button" aria-label="Close">
+				<i class="fa-solid fa-xmark text-[0.65rem]"></i>
+			</button>
+		</div>
+		<div class="image-viewer-exif-cards grid grid-cols-1 sm:grid-cols-2 gap-3 max-h-[50vh] overflow-y-auto pr-1 scrollbar-hide"></div>
+		<template class="image-viewer-exif-card-template">
+			<div class="rounded-lg bg-background-color-transparent-40 px-3 py-2">
+				<div class="image-viewer-exif-card-header flex items-center gap-2 mb-1">
+					<i class="image-viewer-exif-card-icon fa-solid fa-circle-info text-xs text-third-text-color"></i>
+					<div class="image-viewer-exif-card-title text-xs font-semibold text-first-text-color"></div>
+				</div>
+				<div class="image-viewer-exif-card-items flex flex-col gap-1"></div>
+			</div>
+		</template>
+	</div>
+	<button class="image-viewer-exif-toggle flex items-center gap-2 hidden absolute left-1/2 bottom-6 -translate-x-1/2 rounded-full border border-border-color bg-background-color-transparent-80 px-4 py-2 text-first-text-color backdrop-blur-md transition hover:bg-background-color-transparent-40" type="button" aria-label="EXIF" aria-expanded="false">
+		<i class="fa-solid fa-circle-info text-xs"></i>
+		<span class="text-xs font-semibold uppercase tracking-wider">EXIF</span>
+	</button>
+	<button class="image-viewer-next" type="button" aria-label="Next">
+		<i class="fa-solid fa-chevron-right"></i>
+	</button>
+</div>
+
+
+	
+	<div class="search-pop-overlay">
+	<div class="popup search-popup">
+		<div class="search-header">
+			<span class="search-input-field-pre">
+				<i class="fa-solid fa-keyboard"></i>
+			</span>
+			<div class="search-input-container">
+				<input autocomplete="off" autocorrect="off" autocapitalize="off" placeholder="Search..." spellcheck="false" type="search" class="search-input">
+			</div>
+			<span class="popup-btn-close">
+				<i class="fa-solid fa-times"></i>
+			</span>
+		</div>
+		<div id="search-result">
+			<div id="no-result">
+				<i class="fa-solid fa-spinner fa-spin-pulse fa-5x fa-fw"></i>
+			</div>
+		</div>
+	</div>
+</div>
+	
+
+</main>
+
+
+
+<script src="/js/build/libs/Swup.min.js"></script>
+
+<script src="/js/build/libs/SwupSlideTheme.min.js"></script>
+
+<script src="/js/build/libs/SwupScriptsPlugin.min.js"></script>
+
+<script src="/js/build/libs/SwupProgressPlugin.min.js"></script>
+
+<script src="/js/build/libs/SwupScrollPlugin.min.js"></script>
+
+<script src="/js/build/libs/SwupPreloadPlugin.min.js"></script>
+
+<script>
+    window.swup = new Swup({
+        plugins: [
+            new SwupScriptsPlugin({
+                optin: true,
+            }),
+            new SwupProgressPlugin(),
+            new SwupScrollPlugin({
+                offset: 80,
+            }),
+            new SwupSlideTheme({
+                mainElement: ".main-content-body",
+            }),
+            new SwupPreloadPlugin(),
+        ],
+        containers: ["#swup"],
+    });
+
+    window.dispatchEvent(
+        new CustomEvent("redefine:swup:ready", {
+            detail: {
+                swup: window.swup,
+            },
+        }),
+    );
+</script>
+
+
+
+
+	
+<script src="/js/build/main.js" type="module"></script>
+
+
+
+    
+<script src="/js/build/libs/odometer.min.js"></script>
+
+    
+<link rel="stylesheet" href="/assets/odometer-theme-minimal.css">
+
+
+
+
+
+
+
+  
+<script src="/js/build/libs/Typed.min.js"></script>
+<script src="/js/build/libs/minimasonry.min.js" data-swup-reload-script=""></script>
+
+
+
+
+<script src="/js/build/libs/moment-with-locales.min.js" data-swup-reload-script=""></script>
+
+
+
+	
+</body>
+
+</html>

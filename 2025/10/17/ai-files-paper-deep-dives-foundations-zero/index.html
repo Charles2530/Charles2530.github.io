@@ -685,7 +685,7 @@
         <div class="label text-third-text-color text-sm">Categories</div>
     </a>
     <a class="item tag-count-item flex flex-col justify-center items-center w-20" href="/archives">
-        <div class="number text-2xl sm:text-xl text-second-text-color font-semibold">547</div>
+        <div class="number text-2xl sm:text-xl text-second-text-color font-semibold">554</div>
         <div class="label text-third-text-color text-sm">Posts</div>
     </a>
 </div>
@@ -801,12 +801,12 @@
     
     
         <span class="article-wordcount article-meta-item">
-            <i class="fa-regular fa-typewriter"></i>&nbsp;<span>2.7k Words</span>
+            <i class="fa-regular fa-typewriter"></i>&nbsp;<span>4.1k Words</span>
         </span>
     
     
         <span class="article-min2read article-meta-item">
-            <i class="fa-regular fa-clock"></i>&nbsp;<span>10 Mins</span>
+            <i class="fa-regular fa-clock"></i>&nbsp;<span>16 Mins</span>
         </span>
     
     
@@ -831,7 +831,7 @@
 <strong>时间 / 主题：</strong> 2019-10；高效训练。<br><br />
 <strong>arXiv / 官方报告：</strong> arXiv：<a class="link"   target="_blank" rel="noopener" href="https://arxiv.org/abs/1910.02054" >1910.02054<i class="fa-solid fa-arrow-up-right ml-[0.2em] font-light align-text-top text-[0.7em] link-icon"></i></a>；官方材料：<a class="link"   target="_blank" rel="noopener" href="https://www.microsoft.com/en-us/research/publication/zero-memory-optimizations-toward-training-trillion-parameter-models/" >www.microsoft.com/en-us/research/publication/zero-memory-optimizations-toward-training-trillion-parameter-models/<i class="fa-solid fa-arrow-up-right ml-[0.2em] font-light align-text-top text-[0.7em] link-icon"></i></a>。<br><br />
 <strong>GitHub / 项目：</strong> GitHub：未找到官方链接；项目页：<a class="link"   target="_blank" rel="noopener" href="https://www.microsoft.com/en-us/research/publication/zero-memory-optimizations-toward-training-trillion-parameter-models/" >www.microsoft.com/en-us/research/publication/zero-memory-optimizations-toward-training-trillion-parameter-models/<i class="fa-solid fa-arrow-up-right ml-[0.2em] font-light align-text-top text-[0.7em] link-icon"></i></a>。<br><br />
-<strong>元数据来源与核验口径：</strong> 来源：<a class="link"   target="_blank" rel="noopener" href="https://arxiv.org/abs/1910.02054" >arXiv<i class="fa-solid fa-arrow-up-right ml-[0.2em] font-light align-text-top text-[0.7em] link-icon"></i></a>；<a class="link"   target="_blank" rel="noopener" href="https://www.microsoft.com/en-us/research/publication/zero-memory-optimizations-toward-training-trillion-parameter-models/" >官方 / 项目材料<i class="fa-solid fa-arrow-up-right ml-[0.2em] font-light align-text-top text-[0.7em] link-icon"></i></a>；Checked Date：2026-06-04；Repro Status：Paper / official materials reviewed, independent reproduction not claimed。</p></div></div></div>
+<strong>元数据来源与核验口径：</strong> 来源：<a class="link"   target="_blank" rel="noopener" href="https://arxiv.org/abs/1910.02054" >arXiv<i class="fa-solid fa-arrow-up-right ml-[0.2em] font-light align-text-top text-[0.7em] link-icon"></i></a>；<a class="link"   target="_blank" rel="noopener" href="https://www.microsoft.com/en-us/research/publication/zero-memory-optimizations-toward-training-trillion-parameter-models/" >官方 / 项目材料<i class="fa-solid fa-arrow-up-right ml-[0.2em] font-light align-text-top text-[0.7em] link-icon"></i></a>；Checked Date：2026-06-15；Repro Status：Paper / official materials reviewed, independent reproduction not claimed。</p></div></div></div>
 <p>ZeRO 要解决的问题不是“模型太大”这么笼统，而是更精确的一笔显存账：普通 data parallel 让每张 GPU 都保存完整 parameters、gradients 和 optimizer states。GPU 数量增加后，计算吞吐和全局 batch 可以变大，但单卡上那份训练状态没有变小。于是训练大模型时，你经常不是被 fp16 权重本身卡住，而是被 Adam 状态、梯度、master weights、激活和临时 buffer 一起挤爆。</p>
 <p>ZeRO 的核心思想很朴素：<strong>既然 data-parallel ranks 训练的是同一个模型，就不应该让每张卡长期保存同一份训练状态；把 optimizer states、gradients、parameters 分阶段切到不同 ranks，需要时再通信取回。</strong></p>
 <h2 id="先拆显存model-states-和-residual-states"><a class="markdownIt-Anchor" href="#先拆显存model-states-和-residual-states"></a> 先拆显存：model states 和 residual states</h2>
@@ -966,6 +966,102 @@
 </tbody>
 </table>
 <p>FSDP 和 ZeRO-3 思想相近，都是 full sharding、按需 gather、用完释放，但生态气质不同：DeepSpeed 更像训练 runtime 和配置化系统，FSDP 更贴近 PyTorch 原生 module wrapping 与 state dict 生态。选择哪一个，不应只看“谁更省显存”，还要看模型改造、checkpoint、导出、调试和团队维护成本。</p>
+<h2 id="stage-选择要从显存账本倒推"><a class="markdownIt-Anchor" href="#stage-选择要从显存账本倒推"></a> Stage 选择要从显存账本倒推</h2>
+<p>ZeRO 的三阶段经常被误读成“数字越大越先进”。更稳的做法是先拆 OOM 来源，再选最小够用的 stage。</p>
+<table>
+<thead>
+<tr>
+<th>场景</th>
+<th>优先考虑</th>
+<th>原因</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Adam states 占大头，参数和激活还放得下</td>
+<td>ZeRO-1</td>
+<td>优化器状态最大，改动相对轻</td>
+</tr>
+<tr>
+<td>梯度也占明显空间，通信拓扑支持 reduce-scatter</td>
+<td>ZeRO-2</td>
+<td>optimizer + gradient shard 能进一步降低常驻显存</td>
+</tr>
+<tr>
+<td>参数副本本身放不下，或需要更大模型</td>
+<td>ZeRO-3 / FSDP full shard</td>
+<td>参数按需 all-gather，容量收益最大</td>
+</tr>
+<tr>
+<td>激活随 sequence length 爆炸</td>
+<td>checkpointing / sequence parallel / FlashAttention</td>
+<td>ZeRO-DP 不直接解决 activation 主导的 OOM</td>
+</tr>
+<tr>
+<td>GPU 总显存不足但 CPU/NVMe 空间足</td>
+<td>offload / ZeRO-Infinity</td>
+<td>用带宽和延迟换容量，训练吞吐要重新测</td>
+</tr>
+</tbody>
+</table>
+<p>这个表的实用点是避免过度上 Stage 3。Stage 3 能省最多显存，但它把参数生命周期交给 runtime，容易让通信、checkpoint、debug 和导出复杂度上升。如果 ZeRO-1 已经让 batch 和模型装下，并且吞吐更稳，就没有必要为了“配置更高级”而上 Stage 3。</p>
+<h2 id="checkpoint-和恢复是系统级证据"><a class="markdownIt-Anchor" href="#checkpoint-和恢复是系统级证据"></a> Checkpoint 和恢复是系统级证据</h2>
+<p>论文强调的是训练容量和吞吐，但在真实工程里，ZeRO 是否可用还取决于 checkpoint。普通 data parallel 保存一份完整参数和优化器状态；ZeRO sharding 后，参数、梯度和 optimizer states 分布在不同 ranks。保存时要决定：是保存分片 state，还是 gather 成完整 state dict；恢复时要决定：world size 变化能否重分片，optimizer states 能否对齐。</p>
+<p>这会影响三个流程。</p>
+<p>第一，故障恢复。大规模训练必然会遇到节点失败，如果 checkpoint 只在某些 rank 上不完整保存，恢复流程必须知道每个 shard 的来源和版本。第二，后训练和评测。SFT、RLHF、量化或推理导出通常需要完整权重，ZeRO-3/FSDP 训练产物要能可靠转换。第三，实验复现。切分策略、通信 bucket、offload、mixed precision 和 optimizer states 都会影响恢复后是否继续同一条训练曲线。</p>
+<p>因此，ZeRO 页面的工程验收不应只写“显存降了”。还要补四项：能否从 checkpoint 恢复同一 world size；能否恢复到不同 world size；能否导出完整权重给推理；恢复后 loss 是否连续。缺其中一项，训练跑通也不等于系统可维护。</p>
+<h2 id="offload-不是免费扩显存"><a class="markdownIt-Anchor" href="#offload-不是免费扩显存"></a> Offload 不是免费扩显存</h2>
+<p>ZeRO-Offload 和后续 ZeRO-Infinity 很容易让人兴奋：把 optimizer states、parameters 或 activations 放到 CPU/NVMe，看起来 GPU 显存立刻变大。但 offload 的本质是把容量瓶颈转成带宽和延迟瓶颈。每次 forward/backward 需要的参数和 optimizer update 需要的数据，都要在 PCIe、NVLink、CPU memory 或 NVMe 之间移动。</p>
+<p>适合 offload 的情况通常是：模型太大，不 offload 根本不能跑；训练吞吐不是第一优先级；或者有足够好的 overlap，让数据搬运被计算遮住。不适合的情况是：模型本来能放下，只是想追求更高吞吐；网络或 PCIe 已经是瓶颈；step time 对延迟敏感；checkpoint 和恢复流程还没打通。</p>
+<p>读 ZeRO 系列时可以把这当成一个统一原则：显存优化从来不是单目标优化。每省下一份常驻状态，都可能增加通信、重计算、调度或 I/O。系统论文的好处是把这笔账显式化，而不是让训练 OOM 变成玄学。</p>
+<h2 id="一个训练显存排查模板"><a class="markdownIt-Anchor" href="#一个训练显存排查模板"></a> 一个训练显存排查模板</h2>
+<p>把 ZeRO 用好，最好先写一张显存账，而不是先改配置。一个最小排查模板可以这样列：</p>
+<table>
+<thead>
+<tr>
+<th>项</th>
+<th>估算方法</th>
+<th>可能动作</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Parameters</td>
+<td>参数量 × dtype bytes</td>
+<td>模型切分、ZeRO-3、FSDP</td>
+</tr>
+<tr>
+<td>Gradients</td>
+<td>参数量 × grad dtype bytes</td>
+<td>ZeRO-2、gradient accumulation 调整</td>
+</tr>
+<tr>
+<td>Optimizer states</td>
+<td>Adam 约 8-12 bytes / param，取决于 master weight</td>
+<td>ZeRO-1、optimizer offload</td>
+</tr>
+<tr>
+<td>Activations</td>
+<td>batch × sequence × layers × hidden 相关</td>
+<td>activation checkpointing、sequence parallel</td>
+</tr>
+<tr>
+<td>Temporary buffers</td>
+<td>attention/GEMM/通信 workspace</td>
+<td>kernel、bucket、allocator 调整</td>
+</tr>
+<tr>
+<td>Fragmentation</td>
+<td>reserved 和 allocated 差距</td>
+<td>defragmentation、固定 buffer、重启进程验证</td>
+</tr>
+</tbody>
+</table>
+<p>这个模板能解释一个常见现象：同样是 OOM，短序列大模型和长序列中模型的解法完全不同。前者可能被 optimizer states 和 parameter replica 卡住，ZeRO-1/2/3 很直接；后者可能被 activation 和 attention workspace 卡住，单纯上 ZeRO stage 只能缓一部分。</p>
+<p>因此，ZeRO 的工程使用顺序应是：先用 profiler 或框架日志区分 allocated、reserved、optimizer、activation；再选最低复杂度的 stage；最后用吞吐和 checkpoint 恢复确认没有把问题转移到通信或 I/O。这个顺序比“直接复制别人 DeepSpeed config”更可靠。</p>
+<h2 id="为什么-zero-仍然是现代训练栈的基础语言"><a class="markdownIt-Anchor" href="#为什么-zero-仍然是现代训练栈的基础语言"></a> 为什么 ZeRO 仍然是现代训练栈的基础语言</h2>
+<p>今天很多团队直接使用 FSDP、DeepSpeed ZeRO、Megatron-DeepSpeed 或自研分布式训练框架，不一定手写 ZeRO 论文里的实现。但论文提出的“训练状态冗余”语言仍然是沟通基础：参数、梯度、优化器状态、激活、临时 buffer 到底谁被复制，谁被分片，谁被重算，谁被 offload。</p>
+<p>这种语言能帮助团队避免把不同技术混在一起。Tensor parallel 解决单层计算切分，pipeline parallel 解决层切分，sequence parallel 解决序列维度激活和通信，ZeRO/FSDP 解决 data parallel 副本冗余。真正的大模型训练通常是这些工具叠加，调参时必须知道每一层工具在动哪一份内存和哪一段通信。</p>
 <h2 id="阅读结论"><a class="markdownIt-Anchor" href="#阅读结论"></a> 阅读结论</h2>
 <p>ZeRO 最值得带走的是一套显存账本，而不是一个配置名。普通 data parallel 浪费的是完整复制的 model states；mixed precision Adam 的常驻状态约 <span class="katex"><span class="katex-mathml"><math><semantics><mrow><mn>16</mn><mi mathvariant="normal">Ψ</mi></mrow><annotation encoding="application/x-tex">16\Psi</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.68333em;vertical-align:0em;"></span><span class="mord">1</span><span class="mord">6</span><span class="mord">Ψ</span></span></span></span>；ZeRO-1/2/3 分别切 optimizer states、gradients 和 parameters；ZeRO-R 继续处理 activations、temporary buffers 和 fragmentation。</p>
 <p>上线到真实训练栈时，先问五个问题：OOM 来自哪类显存？省下显存是否会被通信吃掉？checkpoint 是否能保存和恢复分片状态？导出到后训练/推理是否有明确格式？当前硬件拓扑是否支撑 Stage 3 的 all-gather 和 overlap？这些问题答清楚，ZeRO 才是训练系统设计，而不是一个救火开关。</p>
@@ -1157,7 +1253,7 @@
 	<div class="post-toc">
 		<div class="toc-title">On this page</div>
 		<div class="page-title">论文专题讲解：ZeRO：数据并行真正浪费的是训练状态副本</div>
-		<ol class="nav"><li class="nav-item nav-level-2"><a class="nav-link" href="#%E5%85%88%E6%8B%86%E6%98%BE%E5%AD%98model-states-%E5%92%8C-residual-states"><span class="nav-text"> 先拆显存：model states 和 residual states</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#%E4%B8%BA%E4%BB%80%E4%B9%88-mixed-precision-adam-%E6%98%AF-16psi"><span class="nav-text"> 为什么 mixed precision Adam 是 16Ψ16\Psi16Ψ</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#zero-dp%E4%B8%89%E9%98%B6%E6%AE%B5%E5%88%86%E5%88%AB%E5%88%87%E6%8E%89%E4%BB%80%E4%B9%88%E5%86%97%E4%BD%99"><span class="nav-text"> ZeRO-DP：三阶段分别切掉什么冗余</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#stage-1optimizer-state-sharding"><span class="nav-text"> Stage 1：optimizer state sharding</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#stage-2gradient-partitioning"><span class="nav-text"> Stage 2：gradient partitioning</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#stage-3parameter-partitioning"><span class="nav-text"> Stage 3：parameter partitioning</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#zero-r%E6%A8%A1%E5%9E%8B%E7%8A%B6%E6%80%81%E4%B8%8D%E6%98%AF%E5%85%A8%E9%83%A8%E6%98%BE%E5%AD%98"><span class="nav-text"> ZeRO-R：模型状态不是全部显存</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#%E5%AE%9E%E9%AA%8C%E5%9B%BE%E5%BA%94%E8%AF%A5%E7%9C%8B%E8%A7%84%E6%A8%A1-%E5%90%9E%E5%90%90%E5%92%8C%E6%98%BE%E5%AD%98%E4%B8%89%E4%BB%B6%E4%BA%8B"><span class="nav-text"> 实验图应该看规模、吞吐和显存三件事</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#zero-fsdp-tppp-%E4%B8%8D%E6%98%AF%E5%90%8C%E4%B8%80%E5%B1%82%E5%B7%A5%E5%85%B7"><span class="nav-text"> ZeRO、FSDP、TP&#x2F;PP 不是同一层工具</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#%E9%98%85%E8%AF%BB%E7%BB%93%E8%AE%BA"><span class="nav-text"> 阅读结论</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#%E5%A4%96%E9%83%A8%E7%B2%BE%E8%AF%BB"><span class="nav-text"> 外部精读</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#%E7%9B%B8%E5%85%B3%E9%98%85%E8%AF%BB%E4%B8%8E%E4%B8%8B%E4%B8%80%E6%AD%A5"><span class="nav-text"> 相关阅读与下一步</span></a></li></ol>
+		<ol class="nav"><li class="nav-item nav-level-2"><a class="nav-link" href="#%E5%85%88%E6%8B%86%E6%98%BE%E5%AD%98model-states-%E5%92%8C-residual-states"><span class="nav-text"> 先拆显存：model states 和 residual states</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#%E4%B8%BA%E4%BB%80%E4%B9%88-mixed-precision-adam-%E6%98%AF-16psi"><span class="nav-text"> 为什么 mixed precision Adam 是 16Ψ16\Psi16Ψ</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#zero-dp%E4%B8%89%E9%98%B6%E6%AE%B5%E5%88%86%E5%88%AB%E5%88%87%E6%8E%89%E4%BB%80%E4%B9%88%E5%86%97%E4%BD%99"><span class="nav-text"> ZeRO-DP：三阶段分别切掉什么冗余</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#stage-1optimizer-state-sharding"><span class="nav-text"> Stage 1：optimizer state sharding</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#stage-2gradient-partitioning"><span class="nav-text"> Stage 2：gradient partitioning</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#stage-3parameter-partitioning"><span class="nav-text"> Stage 3：parameter partitioning</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#zero-r%E6%A8%A1%E5%9E%8B%E7%8A%B6%E6%80%81%E4%B8%8D%E6%98%AF%E5%85%A8%E9%83%A8%E6%98%BE%E5%AD%98"><span class="nav-text"> ZeRO-R：模型状态不是全部显存</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#%E5%AE%9E%E9%AA%8C%E5%9B%BE%E5%BA%94%E8%AF%A5%E7%9C%8B%E8%A7%84%E6%A8%A1-%E5%90%9E%E5%90%90%E5%92%8C%E6%98%BE%E5%AD%98%E4%B8%89%E4%BB%B6%E4%BA%8B"><span class="nav-text"> 实验图应该看规模、吞吐和显存三件事</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#zero-fsdp-tppp-%E4%B8%8D%E6%98%AF%E5%90%8C%E4%B8%80%E5%B1%82%E5%B7%A5%E5%85%B7"><span class="nav-text"> ZeRO、FSDP、TP&#x2F;PP 不是同一层工具</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#stage-%E9%80%89%E6%8B%A9%E8%A6%81%E4%BB%8E%E6%98%BE%E5%AD%98%E8%B4%A6%E6%9C%AC%E5%80%92%E6%8E%A8"><span class="nav-text"> Stage 选择要从显存账本倒推</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#checkpoint-%E5%92%8C%E6%81%A2%E5%A4%8D%E6%98%AF%E7%B3%BB%E7%BB%9F%E7%BA%A7%E8%AF%81%E6%8D%AE"><span class="nav-text"> Checkpoint 和恢复是系统级证据</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#offload-%E4%B8%8D%E6%98%AF%E5%85%8D%E8%B4%B9%E6%89%A9%E6%98%BE%E5%AD%98"><span class="nav-text"> Offload 不是免费扩显存</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#%E4%B8%80%E4%B8%AA%E8%AE%AD%E7%BB%83%E6%98%BE%E5%AD%98%E6%8E%92%E6%9F%A5%E6%A8%A1%E6%9D%BF"><span class="nav-text"> 一个训练显存排查模板</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#%E4%B8%BA%E4%BB%80%E4%B9%88-zero-%E4%BB%8D%E7%84%B6%E6%98%AF%E7%8E%B0%E4%BB%A3%E8%AE%AD%E7%BB%83%E6%A0%88%E7%9A%84%E5%9F%BA%E7%A1%80%E8%AF%AD%E8%A8%80"><span class="nav-text"> 为什么 ZeRO 仍然是现代训练栈的基础语言</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#%E9%98%85%E8%AF%BB%E7%BB%93%E8%AE%BA"><span class="nav-text"> 阅读结论</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#%E5%A4%96%E9%83%A8%E7%B2%BE%E8%AF%BB"><span class="nav-text"> 外部精读</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#%E7%9B%B8%E5%85%B3%E9%98%85%E8%AF%BB%E4%B8%8E%E4%B8%8B%E4%B8%80%E6%AD%A5"><span class="nav-text"> 相关阅读与下一步</span></a></li></ol>
 
 	</div>
 </div>
@@ -1185,11 +1281,11 @@
                 
                 <p class="post-count space-x-0.5">
                     <span>
-                        547 posts in total
+                        554 posts in total
                     </span>
                     
                         <span>
-                            2132.4k words in total
+                            2191.9k words in total
                         </span>
                     
                 </p>

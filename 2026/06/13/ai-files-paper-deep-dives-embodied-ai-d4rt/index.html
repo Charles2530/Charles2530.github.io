@@ -1,0 +1,2171 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="keywords" content="Charles">
+    
+    
+    <meta name="author" content="Charles">
+    
+    <!-- Completely eliminate flash of wrong theme -->
+    <script>
+        (function() {
+            const THEME_KEY = "REDEFINE-THEME-STATUS";
+            const DARK = "dark", LIGHT = "light";
+            
+            // Get preferred theme
+            function getTheme() {
+                try {
+                    const saved = localStorage.getItem(THEME_KEY);
+                    if (saved) {
+                        const { isDark } = JSON.parse(saved);
+                        return isDark ? DARK : LIGHT;
+                    }
+                } catch (e) {}
+                
+                return matchMedia("(prefers-color-scheme: dark)").matches ? DARK : LIGHT;
+            }
+            
+            // Apply theme to document
+            function applyTheme(theme) {
+                const isDark = theme === DARK;
+                const root = document.documentElement;
+                
+                // Set classes for compatibility
+                root.classList.add(theme);
+                root.classList.remove(isDark ? LIGHT : DARK);
+                root.style.colorScheme = theme;
+            }
+            
+            // Initial application
+            const theme = getTheme();
+            applyTheme(theme);
+            
+            // Listen for system preference changes
+            matchMedia("(prefers-color-scheme: dark)").addEventListener("change", ({ matches }) => {
+                // Only update if using system preference (no localStorage entry)
+                if (!localStorage.getItem(THEME_KEY)) {
+                    applyTheme(matches ? DARK : LIGHT);
+                }
+            });
+            
+            // Set body classes ASAP (before DOMContentLoaded)
+            (function() {
+                const addBodyClass = () => {
+                    const b = document.body;
+                    if (!b) return false;
+                    b.classList.add(theme + "-mode");
+                    return true;
+                };
+
+                // Try immediately
+                if (addBodyClass()) return;
+
+                // Observe until body exists
+                const mo = new MutationObserver(() => {
+                    if (addBodyClass()) mo.disconnect();
+                });
+                mo.observe(document.documentElement, { childList: true, subtree: true });
+            })();
+        })();
+    </script>
+    
+    <!-- preconnect -->
+<!--- Seo Part-->
+    
+    <link rel="canonical" href="https://charles2530.github.io/2026/06/13/ai-files-paper-deep-dives-embodied-ai-d4rt/"/>
+    <meta name="robots" content="index,follow">
+    <meta name="googlebot" content="index,follow">
+    <meta name="revisit-after" content="1 days">
+    
+    
+        
+        <meta name="description" content="This is Charles&#39;s Castle.">
+<meta property="og:type" content="article">
+<meta property="og:title" content="论文专题讲解：D4RT：动态场景的 4D 重建与跟踪">
+<meta property="og:url" content="https://charles2530.github.io/2026/06/13/ai-files-paper-deep-dives-embodied-ai-d4rt/index.html">
+<meta property="og:site_name" content="Charles&#39;s Castle">
+<meta property="og:description" content="This is Charles&#39;s Castle.">
+<meta property="og:locale" content="en_US">
+<meta property="og:image" content="https://charles2530.github.io/image/background/logo.jpg">
+<meta property="article:published_time" content="2026-06-13T01:00:00.000Z">
+<meta property="article:modified_time" content="2026-06-13T01:00:00.000Z">
+<meta property="article:author" content="Du Jinyang">
+<meta property="article:tag" content="AI">
+<meta property="article:tag" content="具身智能">
+<meta property="article:tag" content="论文专题">
+<meta name="twitter:card" content="summary">
+<meta name="twitter:image" content="https://charles2530.github.io/image/background/logo.jpg">
+    
+    
+    <!--- Icon Part-->
+    <link rel="icon" type="image/png" href="https://charles2530.github.io/image/background/favicon.png" sizes="192x192">
+    <link rel="apple-touch-icon" sizes="180x180" href="https://charles2530.github.io/image/background/favicon.png">
+    <meta name="theme-color" content="#A31F34">
+    <link rel="shortcut icon" href="https://charles2530.github.io/image/background/favicon.png">
+    <!--- Page Info-->
+    
+    <title>
+        
+            论文专题讲解：D4RT：动态场景的 4D 重建与跟踪 | Charles&#39;s Castle
+        
+    </title>
+
+    
+<link rel="stylesheet" href="/fonts/Chillax/chillax.css">
+
+
+    <!--- Inject Part-->
+    
+        
+            
+    
+            
+    
+            
+                
+                    <link rel="stylesheet" href="/katex/katex.min.css">
+                
+    
+            
+                
+                    <link rel="stylesheet" href="/css/site-polish-v2.css">
+                
+    
+            
+                
+                    <script data-swup-reload-script>
+(function() {
+  function loadBaiduAnalytics() {
+    if (window.__baiduAnalyticsLoaded) return;
+    window.__baiduAnalyticsLoaded = true;
+    window._hmt = window._hmt || [];
+    var hm = document.createElement("script");
+    hm.async = true;
+    hm.src = "https://hm.baidu.com/hm.js?8e0e5f382d14d87cbeadc33a36e71e86";
+    document.head.appendChild(hm);
+  }
+  if ("requestIdleCallback" in window) {
+    requestIdleCallback(loadBaiduAnalytics, { timeout: 3000 });
+  } else {
+    window.addEventListener("load", function() {
+      setTimeout(loadBaiduAnalytics, 1500);
+    });
+  }
+})();
+</script>
+
+                
+    
+
+    
+<link rel="stylesheet" href="/css/style.css">
+
+
+    
+        
+<link rel="stylesheet" href="/css/build/tailwind.css">
+
+    
+
+    
+<link rel="stylesheet" href="/fonts/GeistMono/geist-mono.css">
+
+    
+<link rel="stylesheet" href="/fonts/Geist/geist.css">
+
+    <!--- Font Part-->
+    
+    
+    
+    
+    
+    
+        
+<script src="/js/build/libs/anime.min.js"></script>
+
+    
+
+    <script id="hexo-configurations">
+    window.config = {"hostname":"charles2530.github.io","root":"/","language":"en","path":"search.xml"};
+    window.theme = {"articles":{"style":{"font_size":"16px","line_height":1.5,"image_border_radius":"14px","image_alignment":"center","image_caption":false,"link_icon":true,"delete_mask":false,"title_alignment":"left","headings_top_spacing":{"h1":"5rem","h2":"4rem","h3":"2.8rem","h4":"2.5rem","h5":"2.2rem","h6":"2rem"}},"word_count":{"enable":true,"count":true,"min2read":true},"author_label":{"enable":true,"auto":true,"list":["lol","Neo","God"]},"code_block":{"copy":true,"style":"mac","highlight_theme":{"light":"github","dark":"vs2015"},"font":{"enable":false,"family":null,"url":null}},"toc":{"enable":true,"max_depth":6,"number":false,"expand":true,"init_open":true},"copyright":{"enable":true,"default":"cc_by_nc_sa"},"lazyload":true,"pangu_js":false,"recommendation":{"enable":false,"title":"recommend_articles","limit":3,"mobile_limit":2,"placeholder":"https://charles2530.github.io/image/background/p3.jfif","skip_dirs":[]}},"colors":{"primary":"#A31F34","secondary":"#1890ff","default_mode":"light"},"global":{"fonts":{"chinese":{"enable":false,"family":null,"url":null},"english":{"enable":false,"family":null,"url":null},"title":{"enable":false,"family":null,"url":null}},"content_max_width":"1000px","sidebar_width":"210px","hover":{"shadow":true,"scale":true},"scroll_progress":{"bar":true,"percentage":true},"website_counter":{"url":"https://cn.vercount.one/js","enable":true,"site_pv":true,"site_uv":true,"post_pv":true},"single_page":true,"preloader":{"enable":true,"custom_message":null},"side_tools":{"gear_rotation":true,"auto_expand":false},"open_graph":{"enable":true,"image":"https://charles2530.github.io/image/background/logo.jpg","description":"This is Charles's Castle."},"google_analytics":{"enable":false,"id":null}},"home_banner":{"enable":true,"style":"fixed","image":{"light":"https://charles2530.github.io/image/background/background-light1.jpg","dark":"https://charles2530.github.io/image/background/background-dark1.jpg"},"title":"Charles's Castle","subtitle":{"text":["Happiness is best!","Never give up!","Everyday is a gift!"],"hitokoto":{"enable":false,"show_author":false,"api":"https://v1.hitokoto.cn"},"typing_speed":100,"backing_speed":80,"starting_delay":500,"backing_delay":1500,"loop":true,"smart_backspace":true},"text_color":{"light":"#000000","dark":"#d1d1b6"},"text_style":{"title_size":"3.2rem","subtitle_size":"1.5rem","line_height":1.2},"custom_font":{"enable":false,"family":null,"url":null},"social_links":{"enable":true,"style":"center","links":[{"icon":"fa-brands fa-github","url":"https://github.com/Charles2530/"},{"icon":"fa-brands fa-zhihu","url":"https://www.zhihu.com/people/yang-guang-xiao-zi-55-55"},{"icon":"fa-solid fa-at","url":"mailto:charles2530@163.com"},{"icon":"fa-brands fa-telegram","url":null},{"icon":"/images/custom-icon.svg","url":null}],"qrs":[{"icon":"fa-brands fa-weixin","qr":"https://charles2530.github.io/image/background/Wechat_icon.png"},{"icon":"/images/custom-icon.svg","qr":null}]}},"plugins":{"feed":{"enable":true},"aplayer":{"enable":false,"type":"fixed","audios":[{"name":null,"artist":null,"url":null,"cover":null,"lrc":null}]},"mermaid":{"enable":false,"version":"11.4.1","theme":{"light":"default","dark":"dark"}}},"version":"2.9.0","navbar":{"auto_hide":true,"color":{"left":"#f78736","right":"#367df7","transparency":35},"width":{"home":"1200px","pages":"1000px"},"links":{"Home":{"path":"/","icon":"fa-regular fa-house"},"Categories":{"path":"/categories","icon":"fas fa-bookmark"},"Tags":{"path":"/tags","icon":"fas fa-tags"},"About":{"icon":"fa-regular fa-user","submenus":{"Me":"https://jinyang-du.github.io/","Github":"https://github.com/Charles2530/","Blog":"https://charles2530.github.io","Statistics":"https://tongji.baidu.com/"}}},"search":{"enable":true,"preload":false}},"page_templates":{"friends_column":2,"tags_style":"blur","masonry":{"batch_size":12,"initial_batch_size":24}},"home":{"sidebar":{"enable":true,"position":"left","first_item":"menu","announcement":"This is Charles's Castle","show_on_mobile":true,"links":{"Archives":{"path":"/archives","icon":"fa-regular fa-archive"},"Photos":{"icon":"fa-solid fa-image","path":"/masonry/"},"Essays":{"icon":"fa-solid fa-message-lines","path":"/essay/"},"Friends":{"icon":"fa-solid fa-user-group","path":"/friends/"}}},"article_date_format":"auto","excerpt_length":200,"categories":{"enable":true,"limit":3},"tags":{"enable":true,"limit":3}},"footer":{"runtime":true,"icon":"<i class=\"fa-solid fa-heart fa-beat\" style=\"--fa-animation-duration: 0.5s; color: #f54545\"></i>","start":"2022/12/27 00:00:00","statistics":true,"customize":null,"icp":{"enable":false,"number":null,"url":null}},"footerStart":"2022/12/27 00:00:00","mermaid":{"style":{"light":"default","dark":"dark"}}};
+    window.lang_ago = {"second":"%s seconds ago","minute":"%s minutes ago","hour":"%s hours ago","day":"%s days ago","week":"%s weeks ago","month":"%s months ago","year":"%s years ago"};
+    window.i18n = {"search":"Search...","toc":"On this page","prev":"Prev","next":"Next","prev_posts":"Prev posts","next_posts":"Next posts","page":"Page %d","recent_posts":"Recent Posts","share":"Share","powered_by":"POWERED BY %s","theme":"THEME","rss_feed":"RSS Feed","category":"Category","categories":"Categories","tag":"Tag","tags":"Tags","post":"Post","posts":"Posts","tagcloud":"Tag Cloud","comment":"Comment","comments":"Comments","home":"Home","archive":"Archive","archives":"Archives","top":"TOP","sticky":"Sticky","go-back-home":"Go Back Home","masonry_loading":"Loading photos...","image_viewer":"Image viewer","close":"Close","exif":{"title":"EXIF","cards":{"camera":"Camera","lens":"Lens","exposure":"Exposure","other":"Other"},"fields":{"make":"Brand","model":"Model","date_taken":"Date taken","lens_model":"Lens","focal_length":"Focal length","focus_mode":"Focus mode","shutter":"Shutter","aperture":"Aperture","iso":"ISO","exposure_program":"Exposure program","exposure_compensation":"Exposure compensation","metering_mode":"Metering mode","flash":"Flash","white_balance":"White balance","latitude":"Latitude","longitude":"Longitude","altitude":"Altitude"},"status":{"loading":"Loading...","no_exif":"No EXIF available","library_missing":"EXIF library not loaded","image_source_missing":"Image source unavailable","unavailable":"EXIF unavailable (blocked by CORS or missing metadata)","flag_unavailable":"EXIF unavailable"}},"about":"About","changelog":"Changelog","links":"Links","link":"Link","friends":"Friends","friend":"Friend","timeline":"Timeline","shuoshuo":"Shuoshuo","bookmarks":"Bookmarks","site_uv":"VISITOR COUNT","site_pv":"TOTAL PAGE VIEWS","read_more":"Read more","wordcount":"Words","min2read":"Mins","status":"Status","runtime":"Blog up for","days":"days","hours":"hrs","minutes":"Min","seconds":"Sec","optimized_by":"and Optimized by Evan","rights":"All Rights Reserved","site_posts":"%s posts in total","site_wordcount":"%s words in total","copyright":{"author":"Author","title":"Title","link":"Link","create_time":"Created at","update_time":"Updated at","license_title":"License","license_content":"This work is licensed under %s.","all_rights_reserved":"All Rights Reserved &#169; %s","public_domain":"This work is in the public domain."},"ago":{"second":"%s seconds ago","minute":"%s minutes ago","hour":"%s hours ago","day":"%s days ago","week":"%s weeks ago","month":"%s months ago","year":"%s years ago"},"create_time":"Created","update_time":"Updated","expired":"This post is written %s days ago, and the content may not be up to date."};
+    window.data = {"masonry":true};
+  </script>
+    
+    <!--- Fontawesome Part-->
+    
+<link rel="stylesheet" href="/fontawesome/fontawesome.min.css">
+
+    
+<link rel="stylesheet" href="/fontawesome/brands.min.css">
+
+    
+<link rel="stylesheet" href="/fontawesome/solid.min.css">
+
+    
+<link rel="stylesheet" href="/fontawesome/regular.min.css">
+
+    
+    
+    
+    
+<meta name="generator" content="Hexo 6.3.0"><link rel="alternate" href="/atom.xml" title="Charles's Castle" type="application/atom+xml">
+<link rel="stylesheet" href="/css/prism-tomorrow.css" type="text/css"></head>
+
+
+<body>
+	<div class="progress-bar-container">
+	
+	<span class="scroll-progress-bar"></span>
+	
+
+	
+	<span class="pjax-progress-bar"></span>
+	<!--        <span class="swup-progress-icon">-->
+	<!--            <i class="fa-solid fa-circle-notch fa-spin"></i>-->
+	<!--        </span>-->
+	
+</div>
+
+<style>
+    :root {
+        --preloader-background-color: #fff;
+        --preloader-text-color: #000;
+    }
+
+    @media (prefers-color-scheme: dark) {
+        :root {
+            --preloader-background-color: #202124;
+            --preloader-text-color: #fff;
+        }
+    }
+
+    @media (prefers-color-scheme: light) {
+        :root {
+            --preloader-background-color: #fff;
+            --preloader-text-color: #000;
+        }
+    }
+
+    @media (max-width: 600px) {
+        .ml13 {
+            font-size: 2.6rem !important; /* Adjust this value as needed */
+        }
+    }
+
+    .preloader {
+        display: flex;
+        flex-direction: column;
+        gap: 1rem; /* Tailwind 'gap-4' is 1rem */
+        align-items: center;
+        justify-content: center;
+        position: fixed;
+        padding: 12px;
+        top: 0;
+        right: 0;
+        bottom: 0;
+        left: 0;
+        width: 100vw;
+        height: 100vh; /* 'h-screen' is 100% of the viewport height */
+        background-color: var(--preloader-background-color);
+        z-index: 1100; /* 'z-[1100]' sets the z-index */
+        transition: opacity 0.2s ease-in-out;
+    }
+
+    .ml13 {
+        font-size: 3.2rem;
+        /* text-transform: uppercase; */
+        color: var(--preloader-text-color);
+        letter-spacing: -1px;
+        font-weight: 500;
+        font-family: 'Chillax-Variable', sans-serif;
+        text-align: center;
+    }
+
+    .ml13 .word {
+        display: inline-flex;
+        flex-wrap: wrap;
+        white-space: nowrap;
+    }
+
+    .ml13 .letter {
+        display: inline-block;
+        line-height: 1em;
+    }
+</style>
+
+<div class="preloader">
+    <h2 class="ml13">
+        Charles&#39;s Castle
+    </h2>
+    <script>
+        var textWrapper = document.querySelector('.ml13');
+        // Split text into words
+        var words = textWrapper.textContent.trim().split(' ');
+
+        // Clear the existing content
+        textWrapper.innerHTML = '';
+
+        // Wrap each word and its letters in spans
+        words.forEach(function(word) {
+            var wordSpan = document.createElement('span');
+            wordSpan.classList.add('word');
+            wordSpan.innerHTML = word.replace(/\S/g, "<span class='letter'>$&</span>");
+            textWrapper.appendChild(wordSpan);
+            textWrapper.appendChild(document.createTextNode(' ')); // Add space between words
+        });
+
+        var animation = anime.timeline({ loop: true })
+            .add({
+                targets: '.ml13 .letter',
+                translateY: [20, 0],
+                translateZ: 0,
+                opacity: [0, 1],
+                filter: ['blur(5px)', 'blur(0px)'],
+                easing: "easeOutExpo",
+                duration: 1200,
+                delay: (el, i) => 300 + 20 * i,
+            })
+            .add({
+                targets: '.ml13 .letter',
+                translateY: [0, -20],
+                opacity: [1, 0],
+                filter: ['blur(0px)', 'blur(5px)'],
+                easing: "easeInExpo",
+                duration: 1000,
+                delay: (el, i) => 15 * i,
+                complete: function() {
+                    hidePreloader();
+                }
+            }, '-=700');
+
+
+        let themeStatus = JSON.parse(localStorage.getItem('REDEFINE-THEME-STATUS'))?.isDark;
+
+        // If the theme status is not found in local storage, check the preferred color scheme
+        if (themeStatus === undefined || themeStatus === null) {
+            if (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) {
+                themeStatus = 'dark';
+            } else {
+                themeStatus = 'light';
+            }
+        }
+
+        // Now you can use the themeStatus variable in your code
+        if (themeStatus) {
+            document.documentElement.style.setProperty('--preloader-background-color', '#202124');
+            document.documentElement.style.setProperty('--preloader-text-color', '#fff');
+        } else {
+            document.documentElement.style.setProperty('--preloader-background-color', '#fff');
+            document.documentElement.style.setProperty('--preloader-text-color', '#000');
+        }
+
+        window.addEventListener('load', function () {
+            setTimeout(hidePreloader, 5000); // Call hidePreloader after 5000 milliseconds if not already called by animation
+        });
+
+        function hidePreloader() {
+            var preloader = document.querySelector('.preloader');
+            preloader.style.opacity = '0';
+            setTimeout(function () {
+                preloader.style.display = 'none';
+            }, 200);
+        }
+    </script>
+</div>
+
+<main class="page-container" id="swup">
+
+	
+
+	<div class="main-content-container flex flex-col justify-between min-h-dvh">
+		<div class="main-content-header">
+			<header class="navbar-container px-6 md:px-12">
+    <div class="navbar-content transition-navbar ">
+        <div class="left">
+            
+                <a class="logo-image h-8 w-8 sm:w-10 sm:h-10 mr-3" href="/">
+                    <img src="https://charles2530.github.io/image/background/logo.jpg" class="w-full h-full rounded-xs">
+                </a>
+            
+            <a class="logo-title" href="/">
+                
+                Charles&#39;s Castle
+                
+            </a>
+        </div>
+
+        <div class="right">
+            <!-- PC -->
+            <div class="desktop">
+                <ul class="navbar-list">
+                    
+                        
+                            
+
+                            <li class="navbar-item">
+                                <!-- Menu -->
+                                <a class=""
+                                   href="/"
+                                        >
+                                    <i class="fa-regular fa-house fa-fw"></i>
+                                    HOME
+                                    
+                                </a>
+
+                                <!-- Submenu -->
+                                
+                            </li>
+                    
+                        
+                            
+
+                            <li class="navbar-item">
+                                <!-- Menu -->
+                                <a class=""
+                                   href="/categories"
+                                        >
+                                    <i class="fas fa-bookmark fa-fw"></i>
+                                    CATEGORIES
+                                    
+                                </a>
+
+                                <!-- Submenu -->
+                                
+                            </li>
+                    
+                        
+                            
+
+                            <li class="navbar-item">
+                                <!-- Menu -->
+                                <a class=""
+                                   href="/tags"
+                                        >
+                                    <i class="fas fa-tags fa-fw"></i>
+                                    TAGS
+                                    
+                                </a>
+
+                                <!-- Submenu -->
+                                
+                            </li>
+                    
+                        
+                            
+
+                            <li class="navbar-item">
+                                <!-- Menu -->
+                                <a class="has-dropdown"
+                                   href="#"
+                                        onClick=&#34;return false;&#34;>
+                                    <i class="fa-regular fa-user fa-fw"></i>
+                                    ABOUT
+                                    <i class="fa-solid fa-chevron-down fa-fw"></i>
+                                </a>
+
+                                <!-- Submenu -->
+                                
+                                    <ul class="sub-menu">
+                                        
+                                            <li>
+                                                <a target="_blank" rel="noopener" href="https://jinyang-du.github.io/">
+                                                    ME
+                                                </a>
+                                            </li>
+                                        
+                                            <li>
+                                                <a target="_blank" rel="noopener" href="https://github.com/Charles2530/">
+                                                    GITHUB
+                                                </a>
+                                            </li>
+                                        
+                                            <li>
+                                                <a href="https://charles2530.github.io">
+                                                    BLOG
+                                                </a>
+                                            </li>
+                                        
+                                            <li>
+                                                <a target="_blank" rel="noopener" href="https://tongji.baidu.com/">
+                                                    STATISTICS
+                                                </a>
+                                            </li>
+                                        
+                                    </ul>
+                                
+                            </li>
+                    
+                    
+                        <li class="navbar-item search search-popup-trigger">
+                            <i class="fa-solid fa-magnifying-glass"></i>
+                        </li>
+                    
+                </ul>
+            </div>
+            <!-- Mobile -->
+            <div class="mobile">
+                
+                    <div class="icon-item search search-popup-trigger"><i class="fa-solid fa-magnifying-glass"></i>
+                    </div>
+                
+                <div class="icon-item navbar-bar">
+                    <div class="navbar-bar-middle"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Mobile sheet -->
+    <div class="navbar-drawer h-dvh w-full absolute top-0 left-0 bg-background-color flex flex-col justify-between">
+        <ul class="drawer-navbar-list flex flex-col px-4 justify-center items-start">
+            
+                
+                    
+
+                    <li class="drawer-navbar-item text-base my-1.5 flex flex-col w-full">
+                        
+                        <a class="py-1.5 px-2 flex flex-row items-center justify-between gap-1 hover:!text-primary active:!text-primary text-2xl font-semibold group border-b border-border-color hover:border-primary w-full "
+                           href="/"
+                        >
+                            <span>
+                                HOME
+                            </span>
+                            
+                                <i class="fa-regular fa-house fa-sm fa-fw"></i>
+                            
+                        </a>
+                        
+
+                        
+                    </li>
+            
+                
+                    
+
+                    <li class="drawer-navbar-item text-base my-1.5 flex flex-col w-full">
+                        
+                        <a class="py-1.5 px-2 flex flex-row items-center justify-between gap-1 hover:!text-primary active:!text-primary text-2xl font-semibold group border-b border-border-color hover:border-primary w-full "
+                           href="/categories"
+                        >
+                            <span>
+                                CATEGORIES
+                            </span>
+                            
+                                <i class="fas fa-bookmark fa-sm fa-fw"></i>
+                            
+                        </a>
+                        
+
+                        
+                    </li>
+            
+                
+                    
+
+                    <li class="drawer-navbar-item text-base my-1.5 flex flex-col w-full">
+                        
+                        <a class="py-1.5 px-2 flex flex-row items-center justify-between gap-1 hover:!text-primary active:!text-primary text-2xl font-semibold group border-b border-border-color hover:border-primary w-full "
+                           href="/tags"
+                        >
+                            <span>
+                                TAGS
+                            </span>
+                            
+                                <i class="fas fa-tags fa-sm fa-fw"></i>
+                            
+                        </a>
+                        
+
+                        
+                    </li>
+            
+                
+                    
+
+                    <li class="drawer-navbar-item-sub text-base my-1.5 flex flex-col w-full">
+                        
+                        <div class="py-1.5 px-2 flex flex-row items-center justify-between gap-1 hover:!text-primary active:!text-primary cursor-pointer text-2xl font-semibold group border-b border-border-color hover:border-primary w-full "
+                             navbar-data-toggle="submenu-About"
+                        >
+                            <span>
+                                ABOUT
+                            </span>
+                            
+                                <i class="fa-solid fa-chevron-right fa-sm fa-fw transition-all"></i>
+                            
+                        </div>
+                        
+
+                        
+                            <div class="flex-col items-start px-2 py-2 hidden" data-target="submenu-About">
+                                
+                                    <div class="drawer-navbar-item text-base flex flex-col justify-center items-start hover:underline active:underline hover:underline-offset-1 rounded-3xl">
+                                        <a class=" text-third-text-color text-xl"
+                                           target="_blank" rel="noopener" href="https://jinyang-du.github.io/">ME</a>
+                                    </div>
+                                
+                                    <div class="drawer-navbar-item text-base flex flex-col justify-center items-start hover:underline active:underline hover:underline-offset-1 rounded-3xl">
+                                        <a class=" text-third-text-color text-xl"
+                                           target="_blank" rel="noopener" href="https://github.com/Charles2530/">GITHUB</a>
+                                    </div>
+                                
+                                    <div class="drawer-navbar-item text-base flex flex-col justify-center items-start hover:underline active:underline hover:underline-offset-1 rounded-3xl">
+                                        <a class=" text-third-text-color text-xl"
+                                           href="https://charles2530.github.io">BLOG</a>
+                                    </div>
+                                
+                                    <div class="drawer-navbar-item text-base flex flex-col justify-center items-start hover:underline active:underline hover:underline-offset-1 rounded-3xl">
+                                        <a class=" text-third-text-color text-xl"
+                                           target="_blank" rel="noopener" href="https://tongji.baidu.com/">STATISTICS</a>
+                                    </div>
+                                
+                            </div>
+                        
+                    </li>
+            
+
+            
+            
+                
+                    
+                    <li class="drawer-navbar-item text-base my-1.5 flex flex-col w-full">
+                        <a class="py-1.5 px-2 flex flex-row items-center justify-between gap-1 hover:!text-primary active:!text-primary text-2xl font-semibold group border-b border-border-color hover:border-primary w-full active"
+                           href="/archives"
+                        >
+                            <span>Archives</span>
+                            <i class="fa-regular fa-archive fa-sm fa-fw"></i>
+                        </a>
+                    </li>
+                
+                    
+                    <li class="drawer-navbar-item text-base my-1.5 flex flex-col w-full">
+                        <a class="py-1.5 px-2 flex flex-row items-center justify-between gap-1 hover:!text-primary active:!text-primary text-2xl font-semibold group border-b border-border-color hover:border-primary w-full active"
+                           href="/masonry/"
+                        >
+                            <span>Photos</span>
+                            <i class="fa-solid fa-image fa-sm fa-fw"></i>
+                        </a>
+                    </li>
+                
+                    
+                    <li class="drawer-navbar-item text-base my-1.5 flex flex-col w-full">
+                        <a class="py-1.5 px-2 flex flex-row items-center justify-between gap-1 hover:!text-primary active:!text-primary text-2xl font-semibold group border-b border-border-color hover:border-primary w-full active"
+                           href="/essay/"
+                        >
+                            <span>Essays</span>
+                            <i class="fa-solid fa-message-lines fa-sm fa-fw"></i>
+                        </a>
+                    </li>
+                
+                    
+                    <li class="drawer-navbar-item text-base my-1.5 flex flex-col w-full">
+                        <a class="py-1.5 px-2 flex flex-row items-center justify-between gap-1 hover:!text-primary active:!text-primary text-2xl font-semibold group border-b border-border-color hover:border-primary w-full active"
+                           href="/friends/"
+                        >
+                            <span>Friends</span>
+                            <i class="fa-solid fa-user-group fa-sm fa-fw"></i>
+                        </a>
+                    </li>
+                
+            
+        </ul>
+
+        <div class="statistics flex justify-around my-2.5">
+    <a class="item tag-count-item flex flex-col justify-center items-center w-20" href="/tags">
+        <div class="number text-2xl sm:text-xl text-second-text-color font-semibold">47</div>
+        <div class="label text-third-text-color text-sm">Tags</div>
+    </a>
+    <a class="item tag-count-item flex flex-col justify-center items-center w-20" href="/categories">
+        <div class="number text-2xl sm:text-xl text-second-text-color font-semibold">95</div>
+        <div class="label text-third-text-color text-sm">Categories</div>
+    </a>
+    <a class="item tag-count-item flex flex-col justify-center items-center w-20" href="/archives">
+        <div class="number text-2xl sm:text-xl text-second-text-color font-semibold">554</div>
+        <div class="label text-third-text-color text-sm">Posts</div>
+    </a>
+</div>
+    </div>
+
+    <div class="window-mask"></div>
+
+</header>
+
+
+		</div>
+
+		<div class="main-content-body transition-fade-up">
+			
+
+			<div class="main-content">
+				<div class="post-page-container flex relative justify-between box-border w-full h-full">
+	<div class="article-content-container">
+
+		<div class="article-title relative w-full">
+			
+			
+			
+			<img src="https://charles2530.github.io/image/background/background-dark1.jpg" alt="论文专题讲解：D4RT：动态场景的 4D 重建与跟踪" class="w-full h-60 sm:h-72 md:h-80 object-cover sm:rounded-t-large dark:brightness-75" />
+			
+			<div class="w-full flex items-center absolute bottom-0 justify-start">
+				<h1 class="article-title-cover text-center mx-6 my-6 text-second-text-color bg-background-color-transparent px-4 py-3 text-3xl sm:text-4xl md:text-5xl font-semibold backdrop-blur-lg rounded-xl border border-border-color ">论文专题讲解：D4RT：动态场景的 4D 重建与跟踪</h1>
+			</div>
+			
+		</div>
+
+		
+		<div class="article-header flex flex-row gap-2 items-center px-2 sm:px-6 md:px-8">
+			<div class="avatar w-[46px] h-[46px] shrink-0 rounded-medium border border-border-color p-px">
+				<img src="https://charles2530.github.io/image/background/logo2.jpg">
+			</div>
+			<div class="info flex flex-col justify-between">
+				<div class="author flex items-center">
+					<span class="name text-default-text-color text-lg font-semibold">Charles</span>
+					
+					<span class="author-label ml-1.5 text-xs px-2 py-0.5 rounded-small text-third-text-color border border-shadow-color-1">Lv8</span>
+					
+				</div>
+				<div class="meta-info">
+					<div class="article-meta-info">
+    <span class="article-date article-meta-item">
+        <i class="fa-regular fa-pen-fancy"></i>&nbsp;
+        <span class="desktop">2026-06-13 09:00</span>
+        <span class="mobile">2026-06-13 09:00</span>
+        <span class="hover-info">Created</span>
+    </span>
+    
+        <span class="article-date article-meta-item">
+            <i class="fa-regular fa-wrench"></i>&nbsp;
+            <span class="desktop">2026-06-13 09:00</span>
+            <span class="mobile">2026-06-13 09:00</span>
+            <span class="hover-info">Updated</span>
+        </span>
+    
+
+    
+        <span class="article-categories article-meta-item">
+            <i class="fa-regular fa-folders"></i>&nbsp;
+            <ul>
+                
+                
+                    
+                        
+                        <li>
+                            <a href="/categories/AI/">AI</a>&nbsp;
+                        </li>
+                    
+                    
+                
+                    
+                        
+                            <li>></li>
+                        
+                        <li>
+                            <a href="/categories/AI/%E8%AE%BA%E6%96%87%E4%B8%93%E9%A2%98%E8%AE%B2%E8%A7%A3/">论文专题讲解</a>&nbsp;
+                        </li>
+                    
+                    
+                
+            </ul>
+        </span>
+    
+    
+        <span class="article-tags article-meta-item">
+            <i class="fa-regular fa-tags"></i>&nbsp;
+            <ul>
+                
+                    <li>
+                        <a href="/tags/AI/">AI</a>&nbsp;
+                    </li>
+                
+                    <li>
+                        | <a href="/tags/%E5%85%B7%E8%BA%AB%E6%99%BA%E8%83%BD/">具身智能</a>&nbsp;
+                    </li>
+                
+                    <li>
+                        | <a href="/tags/%E8%AE%BA%E6%96%87%E4%B8%93%E9%A2%98/">论文专题</a>&nbsp;
+                    </li>
+                
+            </ul>
+        </span>
+    
+
+    
+    
+        <span class="article-wordcount article-meta-item">
+            <i class="fa-regular fa-typewriter"></i>&nbsp;<span>5.5k Words</span>
+        </span>
+    
+    
+        <span class="article-min2read article-meta-item">
+            <i class="fa-regular fa-clock"></i>&nbsp;<span>24 Mins</span>
+        </span>
+    
+    
+        <span class="article-pv article-meta-item">
+            <i class="fa-regular fa-eye"></i>&nbsp;<span id="busuanzi_value_page_pv"></span>
+        </span>
+    
+</div>
+
+				</div>
+			</div>
+		</div>
+		
+
+		
+
+
+		<div class="article-content markdown-body px-2 sm:px-6 md:px-8 pb-8">
+			<div class="callout callout--titled info mb-4 rounded-small shadow-redefine-flat bg-(--callout-bg-color) p-3 pl-1 relative flex flex-row gap-2"><div role="none" class="rounded-full self-stretch w-0.5 bg-(--callout-primary-color) shrink-0 opacity-60"></div><div class="flex flex-col gap-2"><div class="callout__title flex items-center gap-2 font-semibold tracking-tight">论文信息</div><div class="callout__content markdown-body flex-1 min-w-0"><p><strong>论文题名：</strong> Efficiently Reconstructing Dynamic Scenes One D4RT at a Time。<br><br />
+<strong>作者：</strong> Chuhan Zhang、Guillaume Le Moing、Skanda Koppula、Ignacio Rocco、Liliane Momeni、Junyu Xie、Shuyang Sun、Rahul Sukthankar、Joëlle K. Barral、Raia Hadsell、Zoubin Ghahramani、Andrew Zisserman、Junlin Zhang、Mehdi S. M. Sajjadi。<br><br />
+<strong>机构：</strong> Google DeepMind、University College London、University of Oxford。<br><br />
+<strong>时间 / 主题：</strong> 2025-12；具身智能 / 4D reconstruction / tracking。项目页标注 CVPR 2026 Best Paper。<br><br />
+<strong>arXiv / 官方报告：</strong> arXiv：<a class="link"   target="_blank" rel="noopener" href="https://arxiv.org/abs/2512.08924" >2512.08924<i class="fa-solid fa-arrow-up-right ml-[0.2em] font-light align-text-top text-[0.7em] link-icon"></i></a>；项目页：<a class="link"   target="_blank" rel="noopener" href="https://d4rt-paper.github.io/" >d4rt-paper.github.io<i class="fa-solid fa-arrow-up-right ml-[0.2em] font-light align-text-top text-[0.7em] link-icon"></i></a>；Google DeepMind blog：<a class="link"   target="_blank" rel="noopener" href="https://deepmind.google/blog/d4rt-teaching-ai-to-see-the-world-in-four-dimensions/" >D4RT<i class="fa-solid fa-arrow-up-right ml-[0.2em] font-light align-text-top text-[0.7em] link-icon"></i></a>。<br><br />
+<strong>GitHub / 项目：</strong> GitHub：未找到官方代码链接；项目页提供论文、arXiv、blog 和交互式可视化。<br><br />
+<strong>元数据来源与核验口径：</strong> 来源：<a class="link"   target="_blank" rel="noopener" href="https://arxiv.org/abs/2512.08924" >arXiv<i class="fa-solid fa-arrow-up-right ml-[0.2em] font-light align-text-top text-[0.7em] link-icon"></i></a>；<a class="link"   target="_blank" rel="noopener" href="https://d4rt-paper.github.io/" >项目页<i class="fa-solid fa-arrow-up-right ml-[0.2em] font-light align-text-top text-[0.7em] link-icon"></i></a>；<a class="link"   target="_blank" rel="noopener" href="https://deepmind.google/blog/d4rt-teaching-ai-to-see-the-world-in-four-dimensions/" >Google DeepMind blog<i class="fa-solid fa-arrow-up-right ml-[0.2em] font-light align-text-top text-[0.7em] link-icon"></i></a>；Checked Date：2026-06-15；Repro Status：Paper / official materials reviewed, independent reproduction not claimed。</p></div></div></div>
+<p>D4RT 放在具身智能专题里，不是因为它直接输出机器人动作，而是因为它补了一块很底层、很关键的状态接口：<strong>从普通视频里同时恢复动态 3D 几何、点轨迹、深度、相机参数和可见性。</strong></p>
+<p>如果把 VLA、机器人 planner 或世界模型看成“要在空间里行动的上层模块”，它们首先要知道世界在哪里、物体怎么动、相机自己怎么动。D4RT 试图把这些几何问题统一成一个查询接口，而不是为 depth、pose、tracking、point cloud 分别接一堆模型。</p>
+<h2 id="一句话核心"><a class="markdownIt-Anchor" href="#一句话核心"></a> 一句话核心</h2>
+<p>D4RT 的核心机制是：</p>
+<div class="code-container" data-rel="Text"><figure class="iseeu highlight text"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br></pre></td><td class="code"><pre><span class="line">input video</span><br><span class="line">  -&gt; global self-attention encoder</span><br><span class="line">  -&gt; Global Scene Representation</span><br><span class="line">  -&gt; lightweight pointwise cross-attention decoder</span><br><span class="line">  -&gt; query any point in space and time</span><br></pre></td></tr></table></figure></div>
+<p>它的查询写成：</p>
+<p><span class="katex-display"><span class="katex"><span class="katex-mathml"><math><semantics><mrow><mi>q</mi><mo>=</mo><mo stretchy="false">(</mo><mi>u</mi><mo separator="true">,</mo><mi>v</mi><mo separator="true">,</mo><msub><mi>t</mi><mtext>src</mtext></msub><mo separator="true">,</mo><msub><mi>t</mi><mtext>tgt</mtext></msub><mo separator="true">,</mo><msub><mi>t</mi><mtext>cam</mtext></msub><mo stretchy="false">)</mo></mrow><annotation encoding="application/x-tex">q = (u, v, t_{\text{src}}, t_{\text{tgt}}, t_{\text{cam}})
+</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.625em;vertical-align:-0.19444em;"></span><span class="mord mathdefault" style="margin-right:0.03588em;">q</span><span class="mspace" style="margin-right:0.2777777777777778em;"></span><span class="mrel">=</span><span class="mspace" style="margin-right:0.2777777777777778em;"></span></span><span class="base"><span class="strut" style="height:1.036108em;vertical-align:-0.286108em;"></span><span class="mopen">(</span><span class="mord mathdefault">u</span><span class="mpunct">,</span><span class="mspace" style="margin-right:0.16666666666666666em;"></span><span class="mord mathdefault" style="margin-right:0.03588em;">v</span><span class="mpunct">,</span><span class="mspace" style="margin-right:0.16666666666666666em;"></span><span class="mord"><span class="mord mathdefault">t</span><span class="msupsub"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height:0.151392em;"><span style="top:-2.5500000000000003em;margin-left:0em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mtight"><span class="mord text mtight"><span class="mord mtight">src</span></span></span></span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height:0.15em;"><span></span></span></span></span></span></span><span class="mpunct">,</span><span class="mspace" style="margin-right:0.16666666666666666em;"></span><span class="mord"><span class="mord mathdefault">t</span><span class="msupsub"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height:0.28055599999999997em;"><span style="top:-2.5500000000000003em;margin-left:0em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mtight"><span class="mord text mtight"><span class="mord mtight">tgt</span></span></span></span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height:0.286108em;"><span></span></span></span></span></span></span><span class="mpunct">,</span><span class="mspace" style="margin-right:0.16666666666666666em;"></span><span class="mord"><span class="mord mathdefault">t</span><span class="msupsub"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height:0.151392em;"><span style="top:-2.5500000000000003em;margin-left:0em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mtight"><span class="mord text mtight"><span class="mord mtight">cam</span></span></span></span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height:0.15em;"><span></span></span></span></span></span></span><span class="mclose">)</span></span></span></span></span></p>
+<p>其中 <span class="katex"><span class="katex-mathml"><math><semantics><mrow><mo stretchy="false">(</mo><mi>u</mi><mo separator="true">,</mo><mi>v</mi><mo stretchy="false">)</mo></mrow><annotation encoding="application/x-tex">(u, v)</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:1em;vertical-align:-0.25em;"></span><span class="mopen">(</span><span class="mord mathdefault">u</span><span class="mpunct">,</span><span class="mspace" style="margin-right:0.16666666666666666em;"></span><span class="mord mathdefault" style="margin-right:0.03588em;">v</span><span class="mclose">)</span></span></span></span> 是源帧里的 2D 点，<span class="katex"><span class="katex-mathml"><math><semantics><mrow><msub><mi>t</mi><mtext>src</mtext></msub></mrow><annotation encoding="application/x-tex">t_{\text{src}}</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.76508em;vertical-align:-0.15em;"></span><span class="mord"><span class="mord mathdefault">t</span><span class="msupsub"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height:0.151392em;"><span style="top:-2.5500000000000003em;margin-left:0em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mtight"><span class="mord text mtight"><span class="mord mtight">src</span></span></span></span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height:0.15em;"><span></span></span></span></span></span></span></span></span></span> 是这个点来自哪一帧，<span class="katex"><span class="katex-mathml"><math><semantics><mrow><msub><mi>t</mi><mtext>tgt</mtext></msub></mrow><annotation encoding="application/x-tex">t_{\text{tgt}}</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.9011879999999999em;vertical-align:-0.286108em;"></span><span class="mord"><span class="mord mathdefault">t</span><span class="msupsub"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height:0.28055599999999997em;"><span style="top:-2.5500000000000003em;margin-left:0em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mtight"><span class="mord text mtight"><span class="mord mtight">tgt</span></span></span></span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height:0.286108em;"><span></span></span></span></span></span></span></span></span></span> 是想查询哪个时刻的 3D 位置，<span class="katex"><span class="katex-mathml"><math><semantics><mrow><msub><mi>t</mi><mtext>cam</mtext></msub></mrow><annotation encoding="application/x-tex">t_{\text{cam}}</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.76508em;vertical-align:-0.15em;"></span><span class="mord"><span class="mord mathdefault">t</span><span class="msupsub"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height:0.151392em;"><span style="top:-2.5500000000000003em;margin-left:0em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mtight"><span class="mord text mtight"><span class="mord mtight">cam</span></span></span></span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height:0.15em;"><span></span></span></span></span></span></span></span></span></span> 是希望结果表达在哪个相机坐标系里。模型输出：</p>
+<p><span class="katex-display"><span class="katex"><span class="katex-mathml"><math><semantics><mrow><mi mathvariant="bold">P</mi><mo>=</mo><mrow><mi mathvariant="normal">D</mi><mi mathvariant="normal">e</mi><mi mathvariant="normal">c</mi></mrow><mo stretchy="false">(</mo><mi>q</mi><mo separator="true">,</mo><mi>F</mi><mo stretchy="false">)</mo><mo>∈</mo><msup><mi mathvariant="double-struck">R</mi><mn>3</mn></msup><mo separator="true">,</mo><mspace width="1em"/><mi>F</mi><mo>=</mo><mrow><mi mathvariant="normal">E</mi><mi mathvariant="normal">n</mi><mi mathvariant="normal">c</mi></mrow><mo stretchy="false">(</mo><mi>V</mi><mo stretchy="false">)</mo></mrow><annotation encoding="application/x-tex">\mathbf{P} = \mathrm{Dec}(q, F) \in \mathbb{R}^3,\quad F=\mathrm{Enc}(V)
+</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.68611em;vertical-align:0em;"></span><span class="mord"><span class="mord mathbf">P</span></span><span class="mspace" style="margin-right:0.2777777777777778em;"></span><span class="mrel">=</span><span class="mspace" style="margin-right:0.2777777777777778em;"></span></span><span class="base"><span class="strut" style="height:1em;vertical-align:-0.25em;"></span><span class="mord"><span class="mord mathrm">D</span><span class="mord mathrm">e</span><span class="mord mathrm">c</span></span><span class="mopen">(</span><span class="mord mathdefault" style="margin-right:0.03588em;">q</span><span class="mpunct">,</span><span class="mspace" style="margin-right:0.16666666666666666em;"></span><span class="mord mathdefault" style="margin-right:0.13889em;">F</span><span class="mclose">)</span><span class="mspace" style="margin-right:0.2777777777777778em;"></span><span class="mrel">∈</span><span class="mspace" style="margin-right:0.2777777777777778em;"></span></span><span class="base"><span class="strut" style="height:1.0585479999999998em;vertical-align:-0.19444em;"></span><span class="mord"><span class="mord"><span class="mord mathbb">R</span></span><span class="msupsub"><span class="vlist-t"><span class="vlist-r"><span class="vlist" style="height:0.8641079999999999em;"><span style="top:-3.113em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mtight">3</span></span></span></span></span></span></span></span><span class="mpunct">,</span><span class="mspace" style="margin-right:0.16666666666666666em;"></span><span class="mspace" style="margin-right:1em;"></span><span class="mord mathdefault" style="margin-right:0.13889em;">F</span><span class="mspace" style="margin-right:0.2777777777777778em;"></span><span class="mrel">=</span><span class="mspace" style="margin-right:0.2777777777777778em;"></span></span><span class="base"><span class="strut" style="height:1em;vertical-align:-0.25em;"></span><span class="mord"><span class="mord mathrm">E</span><span class="mord mathrm">n</span><span class="mord mathrm">c</span></span><span class="mopen">(</span><span class="mord mathdefault" style="margin-right:0.22222em;">V</span><span class="mclose">)</span></span></span></span></span></p>
+<p>最重要的是：查询之间彼此独立。训练时只要采样少量 query 就能产生监督；推理时可以按需要查几个点，也可以查所有像素。这个设计让它同时服务 sparse tracking 和 dense reconstruction。</p>
+<p><img  
+                     lazyload
+                     src="/images/loading.svg"
+                     data-src="/image/ai-notes/images/paper-deep-dives/embodied-ai/d4rt/figure-1-teaser.png"
+                      alt="D4RT teaser 原论文图" 
+                ></p>
+<p><small>Figure source: <code>Efficiently Reconstructing Dynamic Scenes One D4RT at a Time</code>, Figure 1。原论文图意：D4RT 用统一接口输出 point cloud、point tracks 和 camera parameters。本站读法：先看“统一输出”而不是单项指标，D4RT 的价值在于把动态 4D 场景理解变成同一个 query-decoder 问题。</small></p>
+<h2 id="它解决的不是静态-3d而是动态-4d"><a class="markdownIt-Anchor" href="#它解决的不是静态-3d而是动态-4d"></a> 它解决的不是静态 3D，而是动态 4D</h2>
+<p>传统 3D reconstruction 更像回答“这一堆照片对应的静态几何是什么”。但机器人、AR 和世界模型面对的是动态世界：人会走动，物体会遮挡，摄像头也在动。这里同时有三类运动：</p>
+<table>
+<thead>
+<tr>
+<th>Motion source</th>
+<th>What changes</th>
+<th>Why it is hard</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Camera motion</td>
+<td>viewpoint and coordinate frame</td>
+<td>同一个静态点在不同帧里的投影变化，不等于物体自身运动</td>
+</tr>
+<tr>
+<td>Object motion</td>
+<td>dynamic foreground geometry</td>
+<td>动态物体不能简单用静态 SfM / MVS 融合</td>
+</tr>
+<tr>
+<td>Occlusion and reappearance</td>
+<td>visibility over time</td>
+<td>点可能短暂不可见，但 3D track 仍应保持连续</td>
+</tr>
+</tbody>
+</table>
+<p>D4RT 的查询参数把这三件事拆开：<span class="katex"><span class="katex-mathml"><math><semantics><mrow><mo stretchy="false">(</mo><mi>u</mi><mo separator="true">,</mo><mi>v</mi><mo separator="true">,</mo><msub><mi>t</mi><mtext>src</mtext></msub><mo stretchy="false">)</mo></mrow><annotation encoding="application/x-tex">(u,v,t_{\text{src}})</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:1em;vertical-align:-0.25em;"></span><span class="mopen">(</span><span class="mord mathdefault">u</span><span class="mpunct">,</span><span class="mspace" style="margin-right:0.16666666666666666em;"></span><span class="mord mathdefault" style="margin-right:0.03588em;">v</span><span class="mpunct">,</span><span class="mspace" style="margin-right:0.16666666666666666em;"></span><span class="mord"><span class="mord mathdefault">t</span><span class="msupsub"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height:0.151392em;"><span style="top:-2.5500000000000003em;margin-left:0em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mtight"><span class="mord text mtight"><span class="mord mtight">src</span></span></span></span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height:0.15em;"><span></span></span></span></span></span></span><span class="mclose">)</span></span></span></span> 定义源点，<span class="katex"><span class="katex-mathml"><math><semantics><mrow><msub><mi>t</mi><mtext>tgt</mtext></msub></mrow><annotation encoding="application/x-tex">t_{\text{tgt}}</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.9011879999999999em;vertical-align:-0.286108em;"></span><span class="mord"><span class="mord mathdefault">t</span><span class="msupsub"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height:0.28055599999999997em;"><span style="top:-2.5500000000000003em;margin-left:0em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mtight"><span class="mord text mtight"><span class="mord mtight">tgt</span></span></span></span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height:0.286108em;"><span></span></span></span></span></span></span></span></span></span> 定义世界处于哪个时间状态，<span class="katex"><span class="katex-mathml"><math><semantics><mrow><msub><mi>t</mi><mtext>cam</mtext></msub></mrow><annotation encoding="application/x-tex">t_{\text{cam}}</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.76508em;vertical-align:-0.15em;"></span><span class="mord"><span class="mord mathdefault">t</span><span class="msupsub"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height:0.151392em;"><span style="top:-2.5500000000000003em;margin-left:0em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mtight"><span class="mord text mtight"><span class="mord mtight">cam</span></span></span></span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height:0.15em;"><span></span></span></span></span></span></span></span></span></span> 定义用哪个相机坐标系表达。这个拆分使它能问出很多具体问题：</p>
+<ol>
+<li>这个像素在后续每一帧的 3D 位置在哪里；</li>
+<li>某一帧所有像素在同一参考相机下组成什么点云；</li>
+<li>这段视频每帧的 depth map 是什么；</li>
+<li>两个相机参考系之间的相对位姿是什么；</li>
+<li>当前帧内参如何从一组 3D 点反推出。</li>
+</ol>
+<p>这也是它对具身智能有用的地方：上层策略不一定需要完整电影级重建，但经常需要“某些任务相关点在 3D 空间里怎样运动”。</p>
+<h2 id="方法图怎么读"><a class="markdownIt-Anchor" href="#方法图怎么读"></a> 方法图怎么读</h2>
+<p><img  
+                     lazyload
+                     src="/images/loading.svg"
+                     data-src="/image/ai-notes/images/paper-deep-dives/embodied-ai/d4rt/figure-2-method.png"
+                      alt="D4RT method 原论文图" 
+                ></p>
+<p><small>Figure source: <code>Efficiently Reconstructing Dynamic Scenes One D4RT at a Time</code>, Figure 2。原论文图意：全局 self-attention encoder 先把输入视频变成 Global Scene Representation，轻量 decoder 再根据 <span class="katex"><span class="katex-mathml"><math><semantics><mrow><mo stretchy="false">(</mo><mi>u</mi><mo separator="true">,</mo><mi>v</mi><mo separator="true">,</mo><msub><mi>t</mi><mtext>src</mtext></msub><mo separator="true">,</mo><msub><mi>t</mi><mtext>tgt</mtext></msub><mo separator="true">,</mo><msub><mi>t</mi><mtext>cam</mtext></msub><mo stretchy="false">)</mo></mrow><annotation encoding="application/x-tex">(u,v,t_{\text{src}},t_{\text{tgt}},t_{\text{cam}})</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:1.036108em;vertical-align:-0.286108em;"></span><span class="mopen">(</span><span class="mord mathdefault">u</span><span class="mpunct">,</span><span class="mspace" style="margin-right:0.16666666666666666em;"></span><span class="mord mathdefault" style="margin-right:0.03588em;">v</span><span class="mpunct">,</span><span class="mspace" style="margin-right:0.16666666666666666em;"></span><span class="mord"><span class="mord mathdefault">t</span><span class="msupsub"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height:0.151392em;"><span style="top:-2.5500000000000003em;margin-left:0em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mtight"><span class="mord text mtight"><span class="mord mtight">src</span></span></span></span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height:0.15em;"><span></span></span></span></span></span></span><span class="mpunct">,</span><span class="mspace" style="margin-right:0.16666666666666666em;"></span><span class="mord"><span class="mord mathdefault">t</span><span class="msupsub"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height:0.28055599999999997em;"><span style="top:-2.5500000000000003em;margin-left:0em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mtight"><span class="mord text mtight"><span class="mord mtight">tgt</span></span></span></span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height:0.286108em;"><span></span></span></span></span></span></span><span class="mpunct">,</span><span class="mspace" style="margin-right:0.16666666666666666em;"></span><span class="mord"><span class="mord mathdefault">t</span><span class="msupsub"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height:0.151392em;"><span style="top:-2.5500000000000003em;margin-left:0em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mtight"><span class="mord text mtight"><span class="mord mtight">cam</span></span></span></span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height:0.15em;"><span></span></span></span></span></span></span><span class="mclose">)</span></span></span></span> 查询任意点的 3D 位置，query 还包含源点附近的 local video patch embedding。</small></p>
+<p>这张图要分三层看。</p>
+<p>第一层是 encoder。D4RT 不是逐帧独立估深度，而是先用全局 self-attention 编码整段视频，让表示里包含跨帧对应、时间流动和场景结构。</p>
+<p>第二层是 query。query 不是一个语义 prompt，而是低层几何问题：源点坐标、源时间、目标时间、参考相机时间。这个接口非常“笨”，但也正因为笨，depth、tracking、pose、point cloud 都能落到同一组变量上。</p>
+<p>第三层是 decoder。decoder 只做 cross-attention，不让不同 queries 之间 self-attend。论文明确说早期实验中让 queries 互相交互会导致明显性能下降。这里的直觉是：每个 query 都应该独立地从全局场景表示中取答案；如果 query 之间互相通信，训练时少量 query 的分布和推理时密集 query 的分布会更容易错位。</p>
+<h2 id="table-1统一查询接口"><a class="markdownIt-Anchor" href="#table-1统一查询接口"></a> Table 1：统一查询接口</h2>
+<p>论文 Table 1 是理解 D4RT 的入口。下面保留原表的英文列名和单元格格式。</p>
+<table>
+<thead>
+<tr>
+<th>Task</th>
+<th><span class="katex"><span class="katex-mathml"><math><semantics><mrow><mi>u</mi></mrow><annotation encoding="application/x-tex">u</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.43056em;vertical-align:0em;"></span><span class="mord mathdefault">u</span></span></span></span></th>
+<th><span class="katex"><span class="katex-mathml"><math><semantics><mrow><mi>v</mi></mrow><annotation encoding="application/x-tex">v</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.43056em;vertical-align:0em;"></span><span class="mord mathdefault" style="margin-right:0.03588em;">v</span></span></span></span></th>
+<th><span class="katex"><span class="katex-mathml"><math><semantics><mrow><msub><mi>t</mi><mrow><mi>s</mi><mi>r</mi><mi>c</mi></mrow></msub></mrow><annotation encoding="application/x-tex">t_{src}</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.76508em;vertical-align:-0.15em;"></span><span class="mord"><span class="mord mathdefault">t</span><span class="msupsub"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height:0.151392em;"><span style="top:-2.5500000000000003em;margin-left:0em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mtight"><span class="mord mathdefault mtight">s</span><span class="mord mathdefault mtight" style="margin-right:0.02778em;">r</span><span class="mord mathdefault mtight">c</span></span></span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height:0.15em;"><span></span></span></span></span></span></span></span></span></span></th>
+<th><span class="katex"><span class="katex-mathml"><math><semantics><mrow><msub><mi>t</mi><mrow><mi>t</mi><mi>g</mi><mi>t</mi></mrow></msub></mrow><annotation encoding="application/x-tex">t_{tgt}</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.9011879999999999em;vertical-align:-0.286108em;"></span><span class="mord"><span class="mord mathdefault">t</span><span class="msupsub"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height:0.28055599999999997em;"><span style="top:-2.5500000000000003em;margin-left:0em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mtight"><span class="mord mathdefault mtight">t</span><span class="mord mathdefault mtight" style="margin-right:0.03588em;">g</span><span class="mord mathdefault mtight">t</span></span></span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height:0.286108em;"><span></span></span></span></span></span></span></span></span></span></th>
+<th><span class="katex"><span class="katex-mathml"><math><semantics><mrow><msub><mi>t</mi><mrow><mi>c</mi><mi>a</mi><mi>m</mi></mrow></msub></mrow><annotation encoding="application/x-tex">t_{cam}</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.76508em;vertical-align:-0.15em;"></span><span class="mord"><span class="mord mathdefault">t</span><span class="msupsub"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height:0.151392em;"><span style="top:-2.5500000000000003em;margin-left:0em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mtight"><span class="mord mathdefault mtight">c</span><span class="mord mathdefault mtight">a</span><span class="mord mathdefault mtight">m</span></span></span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height:0.15em;"><span></span></span></span></span></span></span></span></span></span></th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Point Track</td>
+<td>Fixed</td>
+<td>Fixed</td>
+<td>Fixed</td>
+<td><span class="katex"><span class="katex-mathml"><math><semantics><mrow><mn>1</mn><mo>…</mo><mi>T</mi></mrow><annotation encoding="application/x-tex">1 \ldots T</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.68333em;vertical-align:0em;"></span><span class="mord">1</span><span class="mspace" style="margin-right:0.16666666666666666em;"></span><span class="minner">…</span><span class="mspace" style="margin-right:0.16666666666666666em;"></span><span class="mord mathdefault" style="margin-right:0.13889em;">T</span></span></span></span></td>
+<td><span class="katex"><span class="katex-mathml"><math><semantics><mrow><mn>1</mn><mo>…</mo><mi>T</mi></mrow><annotation encoding="application/x-tex">1 \ldots T</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.68333em;vertical-align:0em;"></span><span class="mord">1</span><span class="mspace" style="margin-right:0.16666666666666666em;"></span><span class="minner">…</span><span class="mspace" style="margin-right:0.16666666666666666em;"></span><span class="mord mathdefault" style="margin-right:0.13889em;">T</span></span></span></span></td>
+</tr>
+<tr>
+<td>Point Cloud</td>
+<td><span class="katex"><span class="katex-mathml"><math><semantics><mrow><mn>1</mn><mo>…</mo><mi>W</mi></mrow><annotation encoding="application/x-tex">1 \ldots W</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.68333em;vertical-align:0em;"></span><span class="mord">1</span><span class="mspace" style="margin-right:0.16666666666666666em;"></span><span class="minner">…</span><span class="mspace" style="margin-right:0.16666666666666666em;"></span><span class="mord mathdefault" style="margin-right:0.13889em;">W</span></span></span></span></td>
+<td><span class="katex"><span class="katex-mathml"><math><semantics><mrow><mn>1</mn><mo>…</mo><mi>H</mi></mrow><annotation encoding="application/x-tex">1 \ldots H</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.68333em;vertical-align:0em;"></span><span class="mord">1</span><span class="mspace" style="margin-right:0.16666666666666666em;"></span><span class="minner">…</span><span class="mspace" style="margin-right:0.16666666666666666em;"></span><span class="mord mathdefault" style="margin-right:0.08125em;">H</span></span></span></span></td>
+<td><span class="katex"><span class="katex-mathml"><math><semantics><mrow><mn>1</mn><mo>…</mo><mi>T</mi></mrow><annotation encoding="application/x-tex">1 \ldots T</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.68333em;vertical-align:0em;"></span><span class="mord">1</span><span class="mspace" style="margin-right:0.16666666666666666em;"></span><span class="minner">…</span><span class="mspace" style="margin-right:0.16666666666666666em;"></span><span class="mord mathdefault" style="margin-right:0.13889em;">T</span></span></span></span></td>
+<td><span class="katex"><span class="katex-mathml"><math><semantics><mrow><mn>1</mn><mo>…</mo><mi>T</mi></mrow><annotation encoding="application/x-tex">1 \ldots T</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.68333em;vertical-align:0em;"></span><span class="mord">1</span><span class="mspace" style="margin-right:0.16666666666666666em;"></span><span class="minner">…</span><span class="mspace" style="margin-right:0.16666666666666666em;"></span><span class="mord mathdefault" style="margin-right:0.13889em;">T</span></span></span></span></td>
+<td>Fixed</td>
+</tr>
+<tr>
+<td>Depth Map</td>
+<td><span class="katex"><span class="katex-mathml"><math><semantics><mrow><mn>1</mn><mo>…</mo><mi>W</mi></mrow><annotation encoding="application/x-tex">1 \ldots W</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.68333em;vertical-align:0em;"></span><span class="mord">1</span><span class="mspace" style="margin-right:0.16666666666666666em;"></span><span class="minner">…</span><span class="mspace" style="margin-right:0.16666666666666666em;"></span><span class="mord mathdefault" style="margin-right:0.13889em;">W</span></span></span></span></td>
+<td><span class="katex"><span class="katex-mathml"><math><semantics><mrow><mn>1</mn><mo>…</mo><mi>H</mi></mrow><annotation encoding="application/x-tex">1 \ldots H</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.68333em;vertical-align:0em;"></span><span class="mord">1</span><span class="mspace" style="margin-right:0.16666666666666666em;"></span><span class="minner">…</span><span class="mspace" style="margin-right:0.16666666666666666em;"></span><span class="mord mathdefault" style="margin-right:0.08125em;">H</span></span></span></span></td>
+<td><span class="katex"><span class="katex-mathml"><math><semantics><mrow><mn>1</mn><mo>…</mo><mi>T</mi></mrow><annotation encoding="application/x-tex">1 \ldots T</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.68333em;vertical-align:0em;"></span><span class="mord">1</span><span class="mspace" style="margin-right:0.16666666666666666em;"></span><span class="minner">…</span><span class="mspace" style="margin-right:0.16666666666666666em;"></span><span class="mord mathdefault" style="margin-right:0.13889em;">T</span></span></span></span></td>
+<td><span class="katex"><span class="katex-mathml"><math><semantics><mrow><mn>1</mn><mo>…</mo><mi>T</mi></mrow><annotation encoding="application/x-tex">1 \ldots T</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.68333em;vertical-align:0em;"></span><span class="mord">1</span><span class="mspace" style="margin-right:0.16666666666666666em;"></span><span class="minner">…</span><span class="mspace" style="margin-right:0.16666666666666666em;"></span><span class="mord mathdefault" style="margin-right:0.13889em;">T</span></span></span></span></td>
+<td><span class="katex"><span class="katex-mathml"><math><semantics><mrow><mn>1</mn><mo>…</mo><mi>T</mi></mrow><annotation encoding="application/x-tex">1 \ldots T</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.68333em;vertical-align:0em;"></span><span class="mord">1</span><span class="mspace" style="margin-right:0.16666666666666666em;"></span><span class="minner">…</span><span class="mspace" style="margin-right:0.16666666666666666em;"></span><span class="mord mathdefault" style="margin-right:0.13889em;">T</span></span></span></span></td>
+</tr>
+<tr>
+<td>Extrinsics</td>
+<td><span class="katex"><span class="katex-mathml"><math><semantics><mrow><mn>1</mn><mo>…</mo><mi>h</mi></mrow><annotation encoding="application/x-tex">1 \ldots h</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.69444em;vertical-align:0em;"></span><span class="mord">1</span><span class="mspace" style="margin-right:0.16666666666666666em;"></span><span class="minner">…</span><span class="mspace" style="margin-right:0.16666666666666666em;"></span><span class="mord mathdefault">h</span></span></span></span></td>
+<td><span class="katex"><span class="katex-mathml"><math><semantics><mrow><mn>1</mn><mo>…</mo><mi>w</mi></mrow><annotation encoding="application/x-tex">1 \ldots w</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.64444em;vertical-align:0em;"></span><span class="mord">1</span><span class="mspace" style="margin-right:0.16666666666666666em;"></span><span class="minner">…</span><span class="mspace" style="margin-right:0.16666666666666666em;"></span><span class="mord mathdefault" style="margin-right:0.02691em;">w</span></span></span></span></td>
+<td>Fixed</td>
+<td>Fixed</td>
+<td><span class="katex"><span class="katex-mathml"><math><semantics><mrow><mn>1</mn><mo>…</mo><mi>T</mi></mrow><annotation encoding="application/x-tex">1 \ldots T</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.68333em;vertical-align:0em;"></span><span class="mord">1</span><span class="mspace" style="margin-right:0.16666666666666666em;"></span><span class="minner">…</span><span class="mspace" style="margin-right:0.16666666666666666em;"></span><span class="mord mathdefault" style="margin-right:0.13889em;">T</span></span></span></span></td>
+</tr>
+<tr>
+<td>Intrinsics</td>
+<td><span class="katex"><span class="katex-mathml"><math><semantics><mrow><mn>1</mn><mo>…</mo><mi>h</mi></mrow><annotation encoding="application/x-tex">1 \ldots h</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.69444em;vertical-align:0em;"></span><span class="mord">1</span><span class="mspace" style="margin-right:0.16666666666666666em;"></span><span class="minner">…</span><span class="mspace" style="margin-right:0.16666666666666666em;"></span><span class="mord mathdefault">h</span></span></span></span></td>
+<td><span class="katex"><span class="katex-mathml"><math><semantics><mrow><mn>1</mn><mo>…</mo><mi>w</mi></mrow><annotation encoding="application/x-tex">1 \ldots w</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.64444em;vertical-align:0em;"></span><span class="mord">1</span><span class="mspace" style="margin-right:0.16666666666666666em;"></span><span class="minner">…</span><span class="mspace" style="margin-right:0.16666666666666666em;"></span><span class="mord mathdefault" style="margin-right:0.02691em;">w</span></span></span></span></td>
+<td><span class="katex"><span class="katex-mathml"><math><semantics><mrow><mn>1</mn><mo>…</mo><mi>T</mi></mrow><annotation encoding="application/x-tex">1 \ldots T</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.68333em;vertical-align:0em;"></span><span class="mord">1</span><span class="mspace" style="margin-right:0.16666666666666666em;"></span><span class="minner">…</span><span class="mspace" style="margin-right:0.16666666666666666em;"></span><span class="mord mathdefault" style="margin-right:0.13889em;">T</span></span></span></span></td>
+<td><span class="katex"><span class="katex-mathml"><math><semantics><mrow><mn>1</mn><mo>…</mo><mi>T</mi></mrow><annotation encoding="application/x-tex">1 \ldots T</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.68333em;vertical-align:0em;"></span><span class="mord">1</span><span class="mspace" style="margin-right:0.16666666666666666em;"></span><span class="minner">…</span><span class="mspace" style="margin-right:0.16666666666666666em;"></span><span class="mord mathdefault" style="margin-right:0.13889em;">T</span></span></span></span></td>
+<td><span class="katex"><span class="katex-mathml"><math><semantics><mrow><mn>1</mn><mo>…</mo><mi>T</mi></mrow><annotation encoding="application/x-tex">1 \ldots T</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.68333em;vertical-align:0em;"></span><span class="mord">1</span><span class="mspace" style="margin-right:0.16666666666666666em;"></span><span class="minner">…</span><span class="mspace" style="margin-right:0.16666666666666666em;"></span><span class="mord mathdefault" style="margin-right:0.13889em;">T</span></span></span></span></td>
+</tr>
+</tbody>
+</table>
+<p><small>表源：<code>Efficiently Reconstructing Dynamic Scenes One D4RT at a Time</code>，Table 1。原论文表格含义：不同几何任务都能通过 Cartesian product of query entries 推出；intrinsics / extrinsics 为了速度只查 coarse <span class="katex"><span class="katex-mathml"><math><semantics><mrow><mo stretchy="false">(</mo><mi>h</mi><mo separator="true">,</mo><mi>w</mi><mo stretchy="false">)</mo></mrow><annotation encoding="application/x-tex">(h,w)</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:1em;vertical-align:-0.25em;"></span><span class="mopen">(</span><span class="mord mathdefault">h</span><span class="mpunct">,</span><span class="mspace" style="margin-right:0.16666666666666666em;"></span><span class="mord mathdefault" style="margin-right:0.02691em;">w</span><span class="mclose">)</span></span></span></span> grid。</small></p>
+<p><strong>Point Track。</strong> 固定一个源点和源帧，扫过 <span class="katex"><span class="katex-mathml"><math><semantics><mrow><msub><mi>t</mi><mtext>tgt</mtext></msub></mrow><annotation encoding="application/x-tex">t_{\text{tgt}}</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.9011879999999999em;vertical-align:-0.286108em;"></span><span class="mord"><span class="mord mathdefault">t</span><span class="msupsub"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height:0.28055599999999997em;"><span style="top:-2.5500000000000003em;margin-left:0em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mtight"><span class="mord text mtight"><span class="mord mtight">tgt</span></span></span></span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height:0.286108em;"><span></span></span></span></span></span></span></span></span></span> 与 <span class="katex"><span class="katex-mathml"><math><semantics><mrow><msub><mi>t</mi><mtext>cam</mtext></msub></mrow><annotation encoding="application/x-tex">t_{\text{cam}}</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.76508em;vertical-align:-0.15em;"></span><span class="mord"><span class="mord mathdefault">t</span><span class="msupsub"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height:0.151392em;"><span style="top:-2.5500000000000003em;margin-left:0em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mtight"><span class="mord text mtight"><span class="mord mtight">cam</span></span></span></span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height:0.15em;"><span></span></span></span></span></span></span></span></span></span>，得到这个点在视频全过程中的 3D trajectory。</p>
+<p><strong>Point Cloud。</strong> 扫所有像素和时间，把点都表达在固定参考相机下，就能得到同一坐标系里的点云。它不需要先估每帧相机再把点云硬融合。</p>
+<p><strong>Depth Map。</strong> 令 <span class="katex"><span class="katex-mathml"><math><semantics><mrow><msub><mi>t</mi><mtext>src</mtext></msub><mo>=</mo><msub><mi>t</mi><mtext>tgt</mtext></msub><mo>=</mo><msub><mi>t</mi><mtext>cam</mtext></msub></mrow><annotation encoding="application/x-tex">t_{\text{src}}=t_{\text{tgt}}=t_{\text{cam}}</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.76508em;vertical-align:-0.15em;"></span><span class="mord"><span class="mord mathdefault">t</span><span class="msupsub"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height:0.151392em;"><span style="top:-2.5500000000000003em;margin-left:0em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mtight"><span class="mord text mtight"><span class="mord mtight">src</span></span></span></span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height:0.15em;"><span></span></span></span></span></span></span><span class="mspace" style="margin-right:0.2777777777777778em;"></span><span class="mrel">=</span><span class="mspace" style="margin-right:0.2777777777777778em;"></span></span><span class="base"><span class="strut" style="height:0.9011879999999999em;vertical-align:-0.286108em;"></span><span class="mord"><span class="mord mathdefault">t</span><span class="msupsub"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height:0.28055599999999997em;"><span style="top:-2.5500000000000003em;margin-left:0em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mtight"><span class="mord text mtight"><span class="mord mtight">tgt</span></span></span></span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height:0.286108em;"><span></span></span></span></span></span></span><span class="mspace" style="margin-right:0.2777777777777778em;"></span><span class="mrel">=</span><span class="mspace" style="margin-right:0.2777777777777778em;"></span></span><span class="base"><span class="strut" style="height:0.76508em;vertical-align:-0.15em;"></span><span class="mord"><span class="mord mathdefault">t</span><span class="msupsub"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height:0.151392em;"><span style="top:-2.5500000000000003em;margin-left:0em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mtight"><span class="mord text mtight"><span class="mord mtight">cam</span></span></span></span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height:0.15em;"><span></span></span></span></span></span></span></span></span></span>，再只取输出 <span class="katex"><span class="katex-mathml"><math><semantics><mrow><mi mathvariant="bold">P</mi></mrow><annotation encoding="application/x-tex">\mathbf{P}</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.68611em;vertical-align:0em;"></span><span class="mord"><span class="mord mathbf">P</span></span></span></span></span> 的 Z 维，就是对应帧的 depth。</p>
+<p><strong>Extrinsics。</strong> 论文用同一批 grid source points，在两个参考相机坐标系下查询同一组 3D 点，再用 Umeyama algorithm 求刚体变换。</p>
+<p><strong>Intrinsics。</strong> 对一个 grid 解码 3D 点，假设 pinhole camera principal point 在 <span class="katex"><span class="katex-mathml"><math><semantics><mrow><mo stretchy="false">(</mo><mn>0.5</mn><mo separator="true">,</mo><mn>0.5</mn><mo stretchy="false">)</mo></mrow><annotation encoding="application/x-tex">(0.5,0.5)</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:1em;vertical-align:-0.25em;"></span><span class="mopen">(</span><span class="mord">0</span><span class="mord">.</span><span class="mord">5</span><span class="mpunct">,</span><span class="mspace" style="margin-right:0.16666666666666666em;"></span><span class="mord">0</span><span class="mord">.</span><span class="mord">5</span><span class="mclose">)</span></span></span></span>，由</p>
+<p><span class="katex-display"><span class="katex"><span class="katex-mathml"><math><semantics><mrow><msub><mi>f</mi><mi>x</mi></msub><mo>=</mo><msub><mi>p</mi><mi>z</mi></msub><mo stretchy="false">(</mo><mi>u</mi><mo>−</mo><mn>0.5</mn><mo stretchy="false">)</mo><mi mathvariant="normal">/</mi><msub><mi>p</mi><mi>x</mi></msub><mo separator="true">,</mo><mspace width="1em"/><msub><mi>f</mi><mi>y</mi></msub><mo>=</mo><msub><mi>p</mi><mi>z</mi></msub><mo stretchy="false">(</mo><mi>v</mi><mo>−</mo><mn>0.5</mn><mo stretchy="false">)</mo><mi mathvariant="normal">/</mi><msub><mi>p</mi><mi>y</mi></msub></mrow><annotation encoding="application/x-tex">f_x = p_z(u-0.5)/p_x,\quad f_y = p_z(v-0.5)/p_y
+</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.8888799999999999em;vertical-align:-0.19444em;"></span><span class="mord"><span class="mord mathdefault" style="margin-right:0.10764em;">f</span><span class="msupsub"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height:0.151392em;"><span style="top:-2.5500000000000003em;margin-left:-0.10764em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mathdefault mtight">x</span></span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height:0.15em;"><span></span></span></span></span></span></span><span class="mspace" style="margin-right:0.2777777777777778em;"></span><span class="mrel">=</span><span class="mspace" style="margin-right:0.2777777777777778em;"></span></span><span class="base"><span class="strut" style="height:1em;vertical-align:-0.25em;"></span><span class="mord"><span class="mord mathdefault">p</span><span class="msupsub"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height:0.151392em;"><span style="top:-2.5500000000000003em;margin-left:0em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mathdefault mtight" style="margin-right:0.04398em;">z</span></span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height:0.15em;"><span></span></span></span></span></span></span><span class="mopen">(</span><span class="mord mathdefault">u</span><span class="mspace" style="margin-right:0.2222222222222222em;"></span><span class="mbin">−</span><span class="mspace" style="margin-right:0.2222222222222222em;"></span></span><span class="base"><span class="strut" style="height:1.036108em;vertical-align:-0.286108em;"></span><span class="mord">0</span><span class="mord">.</span><span class="mord">5</span><span class="mclose">)</span><span class="mord">/</span><span class="mord"><span class="mord mathdefault">p</span><span class="msupsub"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height:0.151392em;"><span style="top:-2.5500000000000003em;margin-left:0em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mathdefault mtight">x</span></span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height:0.15em;"><span></span></span></span></span></span></span><span class="mpunct">,</span><span class="mspace" style="margin-right:0.16666666666666666em;"></span><span class="mspace" style="margin-right:1em;"></span><span class="mord"><span class="mord mathdefault" style="margin-right:0.10764em;">f</span><span class="msupsub"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height:0.15139200000000003em;"><span style="top:-2.5500000000000003em;margin-left:-0.10764em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mathdefault mtight" style="margin-right:0.03588em;">y</span></span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height:0.286108em;"><span></span></span></span></span></span></span><span class="mspace" style="margin-right:0.2777777777777778em;"></span><span class="mrel">=</span><span class="mspace" style="margin-right:0.2777777777777778em;"></span></span><span class="base"><span class="strut" style="height:1em;vertical-align:-0.25em;"></span><span class="mord"><span class="mord mathdefault">p</span><span class="msupsub"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height:0.151392em;"><span style="top:-2.5500000000000003em;margin-left:0em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mathdefault mtight" style="margin-right:0.04398em;">z</span></span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height:0.15em;"><span></span></span></span></span></span></span><span class="mopen">(</span><span class="mord mathdefault" style="margin-right:0.03588em;">v</span><span class="mspace" style="margin-right:0.2222222222222222em;"></span><span class="mbin">−</span><span class="mspace" style="margin-right:0.2222222222222222em;"></span></span><span class="base"><span class="strut" style="height:1.036108em;vertical-align:-0.286108em;"></span><span class="mord">0</span><span class="mord">.</span><span class="mord">5</span><span class="mclose">)</span><span class="mord">/</span><span class="mord"><span class="mord mathdefault">p</span><span class="msupsub"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height:0.15139200000000003em;"><span style="top:-2.5500000000000003em;margin-left:0em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mathdefault mtight" style="margin-right:0.03588em;">y</span></span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height:0.286108em;"><span></span></span></span></span></span></span></span></span></span></span></p>
+<p>估计 focal length，并取 median 增强鲁棒性。</p>
+<h2 id="模型结构"><a class="markdownIt-Anchor" href="#模型结构"></a> 模型结构</h2>
+<p>D4RT 的主干是 ViT 风格 encoder 加 pointwise decoder。</p>
+<table>
+<thead>
+<tr>
+<th>Component</th>
+<th>D4RT choice</th>
+<th>Why it matters</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Encoder</td>
+<td>Vision Transformer with interleaved local frame-wise and global self-attention</td>
+<td>局部 attention 保留帧内结构，全局 attention 建立跨帧场景关系</td>
+</tr>
+<tr>
+<td>Input resizing</td>
+<td>resize input video to fixed square resolution</td>
+<td>简化 tokenization，同时用额外 token 编码 original aspect ratio</td>
+</tr>
+<tr>
+<td>Query embedding</td>
+<td>Fourier feature for <span class="katex"><span class="katex-mathml"><math><semantics><mrow><mo stretchy="false">(</mo><mi>u</mi><mo separator="true">,</mo><mi>v</mi><mo stretchy="false">)</mo></mrow><annotation encoding="application/x-tex">(u,v)</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:1em;vertical-align:-0.25em;"></span><span class="mopen">(</span><span class="mord mathdefault">u</span><span class="mpunct">,</span><span class="mspace" style="margin-right:0.16666666666666666em;"></span><span class="mord mathdefault" style="margin-right:0.03588em;">v</span><span class="mclose">)</span></span></span></span> + learned timestep embeddings for <span class="katex"><span class="katex-mathml"><math><semantics><mrow><msub><mi>t</mi><mrow><mi>s</mi><mi>r</mi><mi>c</mi></mrow></msub><mo separator="true">,</mo><msub><mi>t</mi><mrow><mi>t</mi><mi>g</mi><mi>t</mi></mrow></msub><mo separator="true">,</mo><msub><mi>t</mi><mrow><mi>c</mi><mi>a</mi><mi>m</mi></mrow></msub></mrow><annotation encoding="application/x-tex">t_{src}, t_{tgt}, t_{cam}</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.9011879999999999em;vertical-align:-0.286108em;"></span><span class="mord"><span class="mord mathdefault">t</span><span class="msupsub"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height:0.151392em;"><span style="top:-2.5500000000000003em;margin-left:0em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mtight"><span class="mord mathdefault mtight">s</span><span class="mord mathdefault mtight" style="margin-right:0.02778em;">r</span><span class="mord mathdefault mtight">c</span></span></span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height:0.15em;"><span></span></span></span></span></span></span><span class="mpunct">,</span><span class="mspace" style="margin-right:0.16666666666666666em;"></span><span class="mord"><span class="mord mathdefault">t</span><span class="msupsub"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height:0.28055599999999997em;"><span style="top:-2.5500000000000003em;margin-left:0em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mtight"><span class="mord mathdefault mtight">t</span><span class="mord mathdefault mtight" style="margin-right:0.03588em;">g</span><span class="mord mathdefault mtight">t</span></span></span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height:0.286108em;"><span></span></span></span></span></span></span><span class="mpunct">,</span><span class="mspace" style="margin-right:0.16666666666666666em;"></span><span class="mord"><span class="mord mathdefault">t</span><span class="msupsub"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height:0.151392em;"><span style="top:-2.5500000000000003em;margin-left:0em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mtight"><span class="mord mathdefault mtight">c</span><span class="mord mathdefault mtight">a</span><span class="mord mathdefault mtight">m</span></span></span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height:0.15em;"><span></span></span></span></span></span></span></span></span></span></td>
+<td>让连续 2D 坐标和离散时间索引都能进入 decoder</td>
+</tr>
+<tr>
+<td>Local patch</td>
+<td><span class="katex"><span class="katex-mathml"><math><semantics><mrow><mn>9</mn><mo>×</mo><mn>9</mn></mrow><annotation encoding="application/x-tex">9 \times 9</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.72777em;vertical-align:-0.08333em;"></span><span class="mord">9</span><span class="mspace" style="margin-right:0.2222222222222222em;"></span><span class="mbin">×</span><span class="mspace" style="margin-right:0.2222222222222222em;"></span></span><span class="base"><span class="strut" style="height:0.64444em;vertical-align:0em;"></span><span class="mord">9</span></span></span></span> local RGB patch centered at <span class="katex"><span class="katex-mathml"><math><semantics><mrow><mo stretchy="false">(</mo><mi>u</mi><mo separator="true">,</mo><mi>v</mi><mo stretchy="false">)</mo></mrow><annotation encoding="application/x-tex">(u,v)</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:1em;vertical-align:-0.25em;"></span><span class="mopen">(</span><span class="mord mathdefault">u</span><span class="mpunct">,</span><span class="mspace" style="margin-right:0.16666666666666666em;"></span><span class="mord mathdefault" style="margin-right:0.03588em;">v</span><span class="mclose">)</span></span></span></span></td>
+<td>给 decoder 低层纹理和边界线索，弥补全局表示的分辨率损失</td>
+</tr>
+<tr>
+<td>Decoder</td>
+<td>small cross-attention transformer</td>
+<td>query 独立 cross-attend 到 Global Scene Representation</td>
+</tr>
+<tr>
+<td>Output head</td>
+<td>3D position plus auxiliary predictions</td>
+<td>同时监督 3D、2D、visibility、motion、normal、confidence</td>
+</tr>
+</tbody>
+</table>
+<p><img  
+                     lazyload
+                     src="/images/loading.svg"
+                     data-src="/image/ai-notes/images/paper-deep-dives/embodied-ai/d4rt/figure-6-full-model.png"
+                      alt="D4RT full model overview 原论文图" 
+                ></p>
+<p><small>Figure source: <code>Efficiently Reconstructing Dynamic Scenes One D4RT at a Time</code>, Appendix Figure。原论文图意：完整展示视频输入、aspect-ratio token、query embedding、encoder / decoder blocks 和 13 维 4D predictions。本站读法：注意右侧输出不只有 XYZ，还包括 UV、visibility、point motion、surface normal 和 confidence，这些辅助头是训练稳定和几何质量的一部分。</small></p>
+<h2 id="训练细节"><a class="markdownIt-Anchor" href="#训练细节"></a> 训练细节</h2>
+<p>这部分值得认真读，因为 D4RT 的效率不是只来自“模型小”。它靠的是训练时只采样 query、推理时按需解码，以及用多种辅助监督稳定几何表示。</p>
+<h3 id="主模型训练配置"><a class="markdownIt-Anchor" href="#主模型训练配置"></a> 主模型训练配置</h3>
+<table>
+<thead>
+<tr>
+<th>Detail</th>
+<th>Value</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Implementation</td>
+<td>Kauldron</td>
+</tr>
+<tr>
+<td>Encoder variant</td>
+<td>ViT-g</td>
+</tr>
+<tr>
+<td>Encoder depth</td>
+<td>40 layers</td>
+</tr>
+<tr>
+<td>Spatio-temporal patch size</td>
+<td><span class="katex"><span class="katex-mathml"><math><semantics><mrow><mn>2</mn><mo>×</mo><mn>16</mn><mo>×</mo><mn>16</mn></mrow><annotation encoding="application/x-tex">2 \times 16 \times 16</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.72777em;vertical-align:-0.08333em;"></span><span class="mord">2</span><span class="mspace" style="margin-right:0.2222222222222222em;"></span><span class="mbin">×</span><span class="mspace" style="margin-right:0.2222222222222222em;"></span></span><span class="base"><span class="strut" style="height:0.72777em;vertical-align:-0.08333em;"></span><span class="mord">1</span><span class="mord">6</span><span class="mspace" style="margin-right:0.2222222222222222em;"></span><span class="mbin">×</span><span class="mspace" style="margin-right:0.2222222222222222em;"></span></span><span class="base"><span class="strut" style="height:0.64444em;vertical-align:0em;"></span><span class="mord">1</span><span class="mord">6</span></span></span></span></td>
+</tr>
+<tr>
+<td>Encoder parameters</td>
+<td>1B</td>
+</tr>
+<tr>
+<td>Decoder</td>
+<td>8-layer cross-attention decoder</td>
+</tr>
+<tr>
+<td>Decoder parameters</td>
+<td>144M</td>
+</tr>
+<tr>
+<td>Training clips</td>
+<td>48-frame clips</td>
+</tr>
+<tr>
+<td>Training resolution</td>
+<td><span class="katex"><span class="katex-mathml"><math><semantics><mrow><mn>256</mn><mo>×</mo><mn>256</mn></mrow><annotation encoding="application/x-tex">256 \times 256</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.72777em;vertical-align:-0.08333em;"></span><span class="mord">2</span><span class="mord">5</span><span class="mord">6</span><span class="mspace" style="margin-right:0.2222222222222222em;"></span><span class="mbin">×</span><span class="mspace" style="margin-right:0.2222222222222222em;"></span></span><span class="base"><span class="strut" style="height:0.64444em;vertical-align:0em;"></span><span class="mord">2</span><span class="mord">5</span><span class="mord">6</span></span></span></span></td>
+</tr>
+<tr>
+<td>Queries per clip</td>
+<td>2048 random queries</td>
+</tr>
+<tr>
+<td>Query sampling</td>
+<td>oversampled on challenging regions</td>
+</tr>
+<tr>
+<td>Optimizer</td>
+<td>AdamW</td>
+</tr>
+<tr>
+<td>Main training steps</td>
+<td>500k</td>
+</tr>
+<tr>
+<td>Hardware</td>
+<td>64 TPU chips</td>
+</tr>
+<tr>
+<td>Local batch size</td>
+<td>1</td>
+</tr>
+<tr>
+<td>Training time</td>
+<td>just over 2 days</td>
+</tr>
+</tbody>
+</table>
+<p>论文没有把 D4RT 训练成一个逐帧密集预测器。每个 batch 只解码一批 sampled queries，因此 decoder 训练成本随 query 数线性增长。这个设计非常重要：如果每步都要求对 48 帧所有像素做 dense decoding，训练会被输出分辨率和时间长度拖垮。</p>
+<h3 id="数据混合"><a class="markdownIt-Anchor" href="#数据混合"></a> 数据混合</h3>
+<p>论文主文明确列出的训练数据包括公开和内部数据：</p>
+<table>
+<thead>
+<tr>
+<th>Dataset type</th>
+<th>Listed datasets</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Multi-view / reconstruction</td>
+<td>BlendedMVS, Co3Dv2, MVS-Synth, ScanNet++, ScanNet</td>
+</tr>
+<tr>
+<td>Dynamic / synthetic</td>
+<td>Dynamic Replica, Kubric, PointOdyssey, VirtualKitti</td>
+</tr>
+<tr>
+<td>Navigation / driving</td>
+<td>Tartanair, Waymo Open</td>
+</tr>
+</tbody>
+</table>
+<p>这里要注意外推边界：论文训练混合包含 internal datasets，公开信息不足以完全复现实验数据配方。因此本站只把训练数据表作为“模型能力来源”理解，不把它写成可复现 recipe。</p>
+<h3 id="loss-设计"><a class="markdownIt-Anchor" href="#loss-设计"></a> Loss 设计</h3>
+<p>主监督是 normalized 3D point position 的 <span class="katex"><span class="katex-mathml"><math><semantics><mrow><msub><mi>L</mi><mn>1</mn></msub></mrow><annotation encoding="application/x-tex">L_1</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.83333em;vertical-align:-0.15em;"></span><span class="mord"><span class="mord mathdefault">L</span><span class="msupsub"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height:0.30110799999999993em;"><span style="top:-2.5500000000000003em;margin-left:0em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mtight">1</span></span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height:0.15em;"><span></span></span></span></span></span></span></span></span></span> loss。论文会先按 mean depth 对预测点和目标点归一化，再经过</p>
+<p><span class="katex-display"><span class="katex"><span class="katex-mathml"><math><semantics><mrow><mrow><mi mathvariant="normal">s</mi><mi mathvariant="normal">i</mi><mi mathvariant="normal">g</mi><mi mathvariant="normal">n</mi></mrow><mo stretchy="false">(</mo><mi>x</mi><mo stretchy="false">)</mo><mo>⋅</mo><mi>log</mi><mo>⁡</mo><mo stretchy="false">(</mo><mn>1</mn><mo>+</mo><mi mathvariant="normal">∣</mi><mi>x</mi><mi mathvariant="normal">∣</mi><mo stretchy="false">)</mo></mrow><annotation encoding="application/x-tex">\mathrm{sign}(x)\cdot \log(1+|x|)
+</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:1em;vertical-align:-0.25em;"></span><span class="mord"><span class="mord mathrm">s</span><span class="mord mathrm">i</span><span class="mord mathrm" style="margin-right:0.01389em;">g</span><span class="mord mathrm">n</span></span><span class="mopen">(</span><span class="mord mathdefault">x</span><span class="mclose">)</span><span class="mspace" style="margin-right:0.2222222222222222em;"></span><span class="mbin">⋅</span><span class="mspace" style="margin-right:0.2222222222222222em;"></span></span><span class="base"><span class="strut" style="height:1em;vertical-align:-0.25em;"></span><span class="mop">lo<span style="margin-right:0.01389em;">g</span></span><span class="mopen">(</span><span class="mord">1</span><span class="mspace" style="margin-right:0.2222222222222222em;"></span><span class="mbin">+</span><span class="mspace" style="margin-right:0.2222222222222222em;"></span></span><span class="base"><span class="strut" style="height:1em;vertical-align:-0.25em;"></span><span class="mord">∣</span><span class="mord mathdefault">x</span><span class="mord">∣</span><span class="mclose">)</span></span></span></span></span></p>
+<p>来减弱远距离点对 loss 的影响。除此之外，decoder 输出还接多个辅助头：</p>
+<table>
+<thead>
+<tr>
+<th>Auxiliary prediction</th>
+<th>Loss</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>2D coordinates</td>
+<td><span class="katex"><span class="katex-mathml"><math><semantics><mrow><msub><mi>L</mi><mn>1</mn></msub></mrow><annotation encoding="application/x-tex">L_1</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.83333em;vertical-align:-0.15em;"></span><span class="mord"><span class="mord mathdefault">L</span><span class="msupsub"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height:0.30110799999999993em;"><span style="top:-2.5500000000000003em;margin-left:0em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mtight">1</span></span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height:0.15em;"><span></span></span></span></span></span></span></span></span></span></td>
+</tr>
+<tr>
+<td>3D surface normals</td>
+<td>cosine similarity</td>
+</tr>
+<tr>
+<td>target point visibility</td>
+<td>binary cross-entropy</td>
+</tr>
+<tr>
+<td>point motion / displacement</td>
+<td><span class="katex"><span class="katex-mathml"><math><semantics><mrow><msub><mi>L</mi><mn>1</mn></msub></mrow><annotation encoding="application/x-tex">L_1</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.83333em;vertical-align:-0.15em;"></span><span class="mord"><span class="mord mathdefault">L</span><span class="msupsub"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height:0.30110799999999993em;"><span style="top:-2.5500000000000003em;margin-left:0em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mtight">1</span></span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height:0.15em;"><span></span></span></span></span></span></span></span></span></span></td>
+</tr>
+<tr>
+<td>confidence</td>
+<td>confidence penalty and confidence-related supervision</td>
+</tr>
+</tbody>
+</table>
+<p>Appendix 中给出的 composite loss 可以概括为：</p>
+<p><span class="katex-display"><span class="katex"><span class="katex-mathml"><math><semantics><mrow><mi mathvariant="script">L</mi><mo>=</mo><mfrac><mn>1</mn><mi>N</mi></mfrac><munder><mo>∑</mo><mi>i</mi></munder><msub><mrow><mo fence="true">(</mo><mi>c</mi><msub><mi>λ</mi><mrow><mn>3</mn><mi>D</mi></mrow></msub><msub><mi mathvariant="script">L</mi><mrow><mn>3</mn><mi>D</mi></mrow></msub><mo>−</mo><msub><mi>λ</mi><mtext>conf</mtext></msub><mi>log</mi><mo>⁡</mo><mi>c</mi><mo>+</mo><msub><mi>λ</mi><mrow><mn>2</mn><mi>D</mi></mrow></msub><msub><mi mathvariant="script">L</mi><mrow><mn>2</mn><mi>D</mi></mrow></msub><mo>+</mo><msub><mi>λ</mi><mtext>vis</mtext></msub><msub><mi mathvariant="script">L</mi><mtext>vis</mtext></msub><mo>+</mo><msub><mi>λ</mi><mtext>disp</mtext></msub><msub><mi mathvariant="script">L</mi><mtext>disp</mtext></msub><mo>+</mo><msub><mi>λ</mi><mtext>conf</mtext></msub><msub><mi mathvariant="script">L</mi><mtext>conf</mtext></msub><mo>+</mo><msub><mi>λ</mi><mtext>normal</mtext></msub><msub><mi mathvariant="script">L</mi><mtext>normal</mtext></msub><mo fence="true">)</mo></mrow><mi>i</mi></msub></mrow><annotation encoding="application/x-tex">\mathcal{L}
+= \frac{1}{N}\sum_i
+\left(
+c\lambda_{3D}\mathcal{L}_{3D}
+-\lambda_{\text{conf}}\log c
++\lambda_{2D}\mathcal{L}_{2D}
++\lambda_{\text{vis}}\mathcal{L}_{\text{vis}}
++\lambda_{\text{disp}}\mathcal{L}_{\text{disp}}
++\lambda_{\text{conf}}\mathcal{L}_{\text{conf}}
++\lambda_{\text{normal}}\mathcal{L}_{\text{normal}}
+\right)_i
+</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.68333em;vertical-align:0em;"></span><span class="mord"><span class="mord mathcal">L</span></span><span class="mspace" style="margin-right:0.2777777777777778em;"></span><span class="mrel">=</span><span class="mspace" style="margin-right:0.2777777777777778em;"></span></span><span class="base"><span class="strut" style="height:2.599109em;vertical-align:-1.277669em;"></span><span class="mord"><span class="mopen nulldelimiter"></span><span class="mfrac"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height:1.32144em;"><span style="top:-2.314em;"><span class="pstrut" style="height:3em;"></span><span class="mord"><span class="mord mathdefault" style="margin-right:0.10903em;">N</span></span></span><span style="top:-3.23em;"><span class="pstrut" style="height:3em;"></span><span class="frac-line" style="border-bottom-width:0.04em;"></span></span><span style="top:-3.677em;"><span class="pstrut" style="height:3em;"></span><span class="mord"><span class="mord">1</span></span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height:0.686em;"><span></span></span></span></span></span><span class="mclose nulldelimiter"></span></span><span class="mspace" style="margin-right:0.16666666666666666em;"></span><span class="mop op-limits"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height:1.0500050000000003em;"><span style="top:-1.872331em;margin-left:0em;"><span class="pstrut" style="height:3.05em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mathdefault mtight">i</span></span></span><span style="top:-3.050005em;"><span class="pstrut" style="height:3.05em;"></span><span><span class="mop op-symbol large-op">∑</span></span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height:1.277669em;"><span></span></span></span></span></span><span class="mspace" style="margin-right:0.16666666666666666em;"></span><span class="minner"><span class="minner"><span class="mopen delimcenter" style="top:0em;">(</span><span class="mord mathdefault">c</span><span class="mord"><span class="mord mathdefault">λ</span><span class="msupsub"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height:0.32833099999999993em;"><span style="top:-2.5500000000000003em;margin-left:0em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mtight"><span class="mord mtight">3</span><span class="mord mathdefault mtight" style="margin-right:0.02778em;">D</span></span></span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height:0.15em;"><span></span></span></span></span></span></span><span class="mord"><span class="mord"><span class="mord mathcal">L</span></span><span class="msupsub"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height:0.32833099999999993em;"><span style="top:-2.5500000000000003em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mtight"><span class="mord mtight">3</span><span class="mord mathdefault mtight" style="margin-right:0.02778em;">D</span></span></span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height:0.15em;"><span></span></span></span></span></span></span><span class="mspace" style="margin-right:0.2222222222222222em;"></span><span class="mbin">−</span><span class="mspace" style="margin-right:0.2222222222222222em;"></span><span class="mord"><span class="mord mathdefault">λ</span><span class="msupsub"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height:0.33610799999999996em;"><span style="top:-2.5500000000000003em;margin-left:0em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mtight"><span class="mord text mtight"><span class="mord mtight">conf</span></span></span></span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height:0.15em;"><span></span></span></span></span></span></span><span class="mspace" style="margin-right:0.16666666666666666em;"></span><span class="mop">lo<span style="margin-right:0.01389em;">g</span></span><span class="mspace" style="margin-right:0.16666666666666666em;"></span><span class="mord mathdefault">c</span><span class="mspace" style="margin-right:0.2222222222222222em;"></span><span class="mbin">+</span><span class="mspace" style="margin-right:0.2222222222222222em;"></span><span class="mord"><span class="mord mathdefault">λ</span><span class="msupsub"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height:0.32833099999999993em;"><span style="top:-2.5500000000000003em;margin-left:0em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mtight"><span class="mord mtight">2</span><span class="mord mathdefault mtight" style="margin-right:0.02778em;">D</span></span></span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height:0.15em;"><span></span></span></span></span></span></span><span class="mord"><span class="mord"><span class="mord mathcal">L</span></span><span class="msupsub"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height:0.32833099999999993em;"><span style="top:-2.5500000000000003em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mtight"><span class="mord mtight">2</span><span class="mord mathdefault mtight" style="margin-right:0.02778em;">D</span></span></span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height:0.15em;"><span></span></span></span></span></span></span><span class="mspace" style="margin-right:0.2222222222222222em;"></span><span class="mbin">+</span><span class="mspace" style="margin-right:0.2222222222222222em;"></span><span class="mord"><span class="mord mathdefault">λ</span><span class="msupsub"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height:0.31750199999999995em;"><span style="top:-2.5500000000000003em;margin-left:0em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mtight"><span class="mord text mtight"><span class="mord mtight">vis</span></span></span></span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height:0.15em;"><span></span></span></span></span></span></span><span class="mord"><span class="mord"><span class="mord mathcal">L</span></span><span class="msupsub"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height:0.31750199999999995em;"><span style="top:-2.5500000000000003em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mtight"><span class="mord text mtight"><span class="mord mtight">vis</span></span></span></span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height:0.15em;"><span></span></span></span></span></span></span><span class="mspace" style="margin-right:0.2222222222222222em;"></span><span class="mbin">+</span><span class="mspace" style="margin-right:0.2222222222222222em;"></span><span class="mord"><span class="mord mathdefault">λ</span><span class="msupsub"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height:0.3361079999999999em;"><span style="top:-2.5500000000000003em;margin-left:0em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mtight"><span class="mord text mtight"><span class="mord mtight">disp</span></span></span></span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height:0.286108em;"><span></span></span></span></span></span></span><span class="mord"><span class="mord"><span class="mord mathcal">L</span></span><span class="msupsub"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height:0.3361079999999999em;"><span style="top:-2.5500000000000003em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mtight"><span class="mord text mtight"><span class="mord mtight">disp</span></span></span></span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height:0.286108em;"><span></span></span></span></span></span></span><span class="mspace" style="margin-right:0.2222222222222222em;"></span><span class="mbin">+</span><span class="mspace" style="margin-right:0.2222222222222222em;"></span><span class="mord"><span class="mord mathdefault">λ</span><span class="msupsub"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height:0.33610799999999996em;"><span style="top:-2.5500000000000003em;margin-left:0em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mtight"><span class="mord text mtight"><span class="mord mtight">conf</span></span></span></span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height:0.15em;"><span></span></span></span></span></span></span><span class="mord"><span class="mord"><span class="mord mathcal">L</span></span><span class="msupsub"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height:0.33610799999999996em;"><span style="top:-2.5500000000000003em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mtight"><span class="mord text mtight"><span class="mord mtight">conf</span></span></span></span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height:0.15em;"><span></span></span></span></span></span></span><span class="mspace" style="margin-right:0.2222222222222222em;"></span><span class="mbin">+</span><span class="mspace" style="margin-right:0.2222222222222222em;"></span><span class="mord"><span class="mord mathdefault">λ</span><span class="msupsub"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height:0.33610799999999996em;"><span style="top:-2.5500000000000003em;margin-left:0em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mtight"><span class="mord text mtight"><span class="mord mtight">normal</span></span></span></span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height:0.15em;"><span></span></span></span></span></span></span><span class="mord"><span class="mord"><span class="mord mathcal">L</span></span><span class="msupsub"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height:0.33610799999999996em;"><span style="top:-2.5500000000000003em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mtight"><span class="mord text mtight"><span class="mord mtight">normal</span></span></span></span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height:0.15em;"><span></span></span></span></span></span></span><span class="mclose delimcenter" style="top:0em;">)</span></span><span class="msupsub"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height:0.12585599999999997em;"><span style="top:-2.364192em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mathdefault mtight">i</span></span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height:0.335808em;"><span></span></span></span></span></span></span></span></span></span></span></p>
+<p>对应权重：</p>
+<table>
+<thead>
+<tr>
+<th>Weight</th>
+<th>Value</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><span class="katex"><span class="katex-mathml"><math><semantics><mrow><msub><mi>λ</mi><mrow><mn>3</mn><mi>D</mi></mrow></msub></mrow><annotation encoding="application/x-tex">\lambda_{3D}</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.84444em;vertical-align:-0.15em;"></span><span class="mord"><span class="mord mathdefault">λ</span><span class="msupsub"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height:0.32833099999999993em;"><span style="top:-2.5500000000000003em;margin-left:0em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mtight"><span class="mord mtight">3</span><span class="mord mathdefault mtight" style="margin-right:0.02778em;">D</span></span></span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height:0.15em;"><span></span></span></span></span></span></span></span></span></span></td>
+<td>1.0</td>
+</tr>
+<tr>
+<td><span class="katex"><span class="katex-mathml"><math><semantics><mrow><msub><mi>λ</mi><mrow><mn>2</mn><mi>D</mi></mrow></msub></mrow><annotation encoding="application/x-tex">\lambda_{2D}</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.84444em;vertical-align:-0.15em;"></span><span class="mord"><span class="mord mathdefault">λ</span><span class="msupsub"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height:0.32833099999999993em;"><span style="top:-2.5500000000000003em;margin-left:0em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mtight"><span class="mord mtight">2</span><span class="mord mathdefault mtight" style="margin-right:0.02778em;">D</span></span></span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height:0.15em;"><span></span></span></span></span></span></span></span></span></span></td>
+<td>0.1</td>
+</tr>
+<tr>
+<td><span class="katex"><span class="katex-mathml"><math><semantics><mrow><msub><mi>λ</mi><mrow><mi>v</mi><mi>i</mi><mi>s</mi></mrow></msub></mrow><annotation encoding="application/x-tex">\lambda_{vis}</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.84444em;vertical-align:-0.15em;"></span><span class="mord"><span class="mord mathdefault">λ</span><span class="msupsub"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height:0.31166399999999994em;"><span style="top:-2.5500000000000003em;margin-left:0em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mtight"><span class="mord mathdefault mtight" style="margin-right:0.03588em;">v</span><span class="mord mathdefault mtight">i</span><span class="mord mathdefault mtight">s</span></span></span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height:0.15em;"><span></span></span></span></span></span></span></span></span></span></td>
+<td>0.1</td>
+</tr>
+<tr>
+<td><span class="katex"><span class="katex-mathml"><math><semantics><mrow><msub><mi>λ</mi><mrow><mi>d</mi><mi>i</mi><mi>s</mi><mi>p</mi></mrow></msub></mrow><annotation encoding="application/x-tex">\lambda_{disp}</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.980548em;vertical-align:-0.286108em;"></span><span class="mord"><span class="mord mathdefault">λ</span><span class="msupsub"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height:0.3361079999999999em;"><span style="top:-2.5500000000000003em;margin-left:0em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mtight"><span class="mord mathdefault mtight">d</span><span class="mord mathdefault mtight">i</span><span class="mord mathdefault mtight">s</span><span class="mord mathdefault mtight">p</span></span></span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height:0.286108em;"><span></span></span></span></span></span></span></span></span></span></td>
+<td>0.1</td>
+</tr>
+<tr>
+<td><span class="katex"><span class="katex-mathml"><math><semantics><mrow><msub><mi>λ</mi><mrow><mi>c</mi><mi>o</mi><mi>n</mi><mi>f</mi></mrow></msub></mrow><annotation encoding="application/x-tex">\lambda_{conf}</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.980548em;vertical-align:-0.286108em;"></span><span class="mord"><span class="mord mathdefault">λ</span><span class="msupsub"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height:0.3361079999999999em;"><span style="top:-2.5500000000000003em;margin-left:0em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mtight"><span class="mord mathdefault mtight">c</span><span class="mord mathdefault mtight">o</span><span class="mord mathdefault mtight">n</span><span class="mord mathdefault mtight" style="margin-right:0.10764em;">f</span></span></span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height:0.286108em;"><span></span></span></span></span></span></span></span></span></span></td>
+<td>0.2</td>
+</tr>
+<tr>
+<td><span class="katex"><span class="katex-mathml"><math><semantics><mrow><msub><mi>λ</mi><mrow><mi>n</mi><mi>o</mi><mi>r</mi><mi>m</mi><mi>a</mi><mi>l</mi></mrow></msub></mrow><annotation encoding="application/x-tex">\lambda_{normal}</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.84444em;vertical-align:-0.15em;"></span><span class="mord"><span class="mord mathdefault">λ</span><span class="msupsub"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height:0.33610799999999996em;"><span style="top:-2.5500000000000003em;margin-left:0em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mtight"><span class="mord mathdefault mtight">n</span><span class="mord mathdefault mtight">o</span><span class="mord mathdefault mtight" style="margin-right:0.02778em;">r</span><span class="mord mathdefault mtight">m</span><span class="mord mathdefault mtight">a</span><span class="mord mathdefault mtight" style="margin-right:0.01968em;">l</span></span></span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height:0.15em;"><span></span></span></span></span></span></span></span></span></span></td>
+<td>0.5</td>
+</tr>
+</tbody>
+</table>
+<p>读这组 loss 时，不要把 auxiliary heads 当成附属装饰。D4RT 要同时推 depth、pose、tracks 和 point cloud，单纯监督 3D 点可能无法稳定分解可见性、局部边界和相机坐标变化。辅助头给了模型更多几何约束。</p>
+<h3 id="optimizer-和-schedule"><a class="markdownIt-Anchor" href="#optimizer-和-schedule"></a> Optimizer 和 schedule</h3>
+<p>Appendix 给出更细的优化配置：</p>
+<table>
+<thead>
+<tr>
+<th>Hyperparameter</th>
+<th>Value</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Optimizer</td>
+<td>AdamW</td>
+</tr>
+<tr>
+<td>Weight decay</td>
+<td>0.03</td>
+</tr>
+<tr>
+<td>Warmup</td>
+<td>2,500 steps</td>
+</tr>
+<tr>
+<td>Peak learning rate</td>
+<td><span class="katex"><span class="katex-mathml"><math><semantics><mrow><mn>1</mn><msup><mn>0</mn><mrow><mo>−</mo><mn>4</mn></mrow></msup></mrow><annotation encoding="application/x-tex">10^{-4}</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.8141079999999999em;vertical-align:0em;"></span><span class="mord">1</span><span class="mord"><span class="mord">0</span><span class="msupsub"><span class="vlist-t"><span class="vlist-r"><span class="vlist" style="height:0.8141079999999999em;"><span style="top:-3.063em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mtight"><span class="mord mtight">−</span><span class="mord mtight">4</span></span></span></span></span></span></span></span></span></span></span></span></td>
+</tr>
+<tr>
+<td>Schedule after warmup</td>
+<td>cosine annealing</td>
+</tr>
+<tr>
+<td>Final learning rate</td>
+<td><span class="katex"><span class="katex-mathml"><math><semantics><mrow><mn>1</mn><msup><mn>0</mn><mrow><mo>−</mo><mn>6</mn></mrow></msup></mrow><annotation encoding="application/x-tex">10^{-6}</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.8141079999999999em;vertical-align:0em;"></span><span class="mord">1</span><span class="mord"><span class="mord">0</span><span class="msupsub"><span class="vlist-t"><span class="vlist-r"><span class="vlist" style="height:0.8141079999999999em;"><span style="top:-3.063em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mtight"><span class="mord mtight">−</span><span class="mord mtight">6</span></span></span></span></span></span></span></span></span></span></span></span></td>
+</tr>
+<tr>
+<td>Gradient clipping</td>
+<td>max <span class="katex"><span class="katex-mathml"><math><semantics><mrow><msup><mi>L</mi><mn>2</mn></msup></mrow><annotation encoding="application/x-tex">L^2</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.8141079999999999em;vertical-align:0em;"></span><span class="mord"><span class="mord mathdefault">L</span><span class="msupsub"><span class="vlist-t"><span class="vlist-r"><span class="vlist" style="height:0.8141079999999999em;"><span style="top:-3.063em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mtight">2</span></span></span></span></span></span></span></span></span></span></span>-norm 10</td>
+</tr>
+</tbody>
+</table>
+<h3 id="data-augmentation"><a class="markdownIt-Anchor" href="#data-augmentation"></a> Data augmentation</h3>
+<p>训练增强覆盖颜色、空间和时间：</p>
+<table>
+<thead>
+<tr>
+<th>Augmentation</th>
+<th>Detail</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Color jitter</td>
+<td>random brightness, saturation, contrast, hue</td>
+</tr>
+<tr>
+<td>Color drop</td>
+<td>probability 0.2</td>
+</tr>
+<tr>
+<td>Gaussian blur</td>
+<td>probability 0.4</td>
+</tr>
+<tr>
+<td>Random crop</td>
+<td>scale ratio 0.3 to 1.0</td>
+</tr>
+<tr>
+<td>Aspect ratio</td>
+<td>sampled uniformly in log domain</td>
+</tr>
+<tr>
+<td>Random zoom-in during crop</td>
+<td>probability 0.05</td>
+</tr>
+<tr>
+<td>Temporal sampling</td>
+<td>frames subsampled with random stride</td>
+</tr>
+</tbody>
+</table>
+<p>这说明 D4RT 不是只在规整多视角数据上学习。随机 stride 和强 spatial / color augmentation 会逼模型处理真实视频里的视角、尺度、颜色和时间采样变化。</p>
+<h3 id="query-sampling"><a class="markdownIt-Anchor" href="#query-sampling"></a> Query sampling</h3>
+<p>论文对 training queries 的处理很值得借鉴：</p>
+<table>
+<thead>
+<tr>
+<th>Query detail</th>
+<th>Setting</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Source</td>
+<td>sampled from available ground-truth point trajectories</td>
+</tr>
+<tr>
+<td>Challenging regions</td>
+<td>30% of <span class="katex"><span class="katex-mathml"><math><semantics><mrow><mo stretchy="false">(</mo><mi>u</mi><mo separator="true">,</mo><mi>v</mi><mo stretchy="false">)</mo></mrow><annotation encoding="application/x-tex">(u,v)</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:1em;vertical-align:-0.25em;"></span><span class="mopen">(</span><span class="mord mathdefault">u</span><span class="mpunct">,</span><span class="mspace" style="margin-right:0.16666666666666666em;"></span><span class="mord mathdefault" style="margin-right:0.03588em;">v</span><span class="mclose">)</span></span></span></span> queries near depth discontinuities or motion boundaries</td>
+</tr>
+<tr>
+<td>Boundary detection</td>
+<td>pre-computed using Sobel filter on depth maps</td>
+</tr>
+<tr>
+<td>Time sampling</td>
+<td><span class="katex"><span class="katex-mathml"><math><semantics><mrow><msub><mi>t</mi><mrow><mi>s</mi><mi>r</mi><mi>c</mi></mrow></msub><mo separator="true">,</mo><msub><mi>t</mi><mrow><mi>t</mi><mi>g</mi><mi>t</mi></mrow></msub><mo separator="true">,</mo><msub><mi>t</mi><mrow><mi>c</mi><mi>a</mi><mi>m</mi></mrow></msub></mrow><annotation encoding="application/x-tex">t_{src}, t_{tgt}, t_{cam}</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.9011879999999999em;vertical-align:-0.286108em;"></span><span class="mord"><span class="mord mathdefault">t</span><span class="msupsub"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height:0.151392em;"><span style="top:-2.5500000000000003em;margin-left:0em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mtight"><span class="mord mathdefault mtight">s</span><span class="mord mathdefault mtight" style="margin-right:0.02778em;">r</span><span class="mord mathdefault mtight">c</span></span></span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height:0.15em;"><span></span></span></span></span></span></span><span class="mpunct">,</span><span class="mspace" style="margin-right:0.16666666666666666em;"></span><span class="mord"><span class="mord mathdefault">t</span><span class="msupsub"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height:0.28055599999999997em;"><span style="top:-2.5500000000000003em;margin-left:0em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mtight"><span class="mord mathdefault mtight">t</span><span class="mord mathdefault mtight" style="margin-right:0.03588em;">g</span><span class="mord mathdefault mtight">t</span></span></span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height:0.286108em;"><span></span></span></span></span></span></span><span class="mpunct">,</span><span class="mspace" style="margin-right:0.16666666666666666em;"></span><span class="mord"><span class="mord mathdefault">t</span><span class="msupsub"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height:0.151392em;"><span style="top:-2.5500000000000003em;margin-left:0em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mtight"><span class="mord mathdefault mtight">c</span><span class="mord mathdefault mtight">a</span><span class="mord mathdefault mtight">m</span></span></span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height:0.15em;"><span></span></span></span></span></span></span></span></span></span> sampled uniformly at random</td>
+</tr>
+<tr>
+<td>Special constraint</td>
+<td>enforce <span class="katex"><span class="katex-mathml"><math><semantics><mrow><msub><mi>t</mi><mrow><mi>t</mi><mi>g</mi><mi>t</mi></mrow></msub><mo>=</mo><msub><mi>t</mi><mrow><mi>c</mi><mi>a</mi><mi>m</mi></mrow></msub></mrow><annotation encoding="application/x-tex">t_{tgt}=t_{cam}</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.9011879999999999em;vertical-align:-0.286108em;"></span><span class="mord"><span class="mord mathdefault">t</span><span class="msupsub"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height:0.28055599999999997em;"><span style="top:-2.5500000000000003em;margin-left:0em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mtight"><span class="mord mathdefault mtight">t</span><span class="mord mathdefault mtight" style="margin-right:0.03588em;">g</span><span class="mord mathdefault mtight">t</span></span></span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height:0.286108em;"><span></span></span></span></span></span></span><span class="mspace" style="margin-right:0.2777777777777778em;"></span><span class="mrel">=</span><span class="mspace" style="margin-right:0.2777777777777778em;"></span></span><span class="base"><span class="strut" style="height:0.76508em;vertical-align:-0.15em;"></span><span class="mord"><span class="mord mathdefault">t</span><span class="msupsub"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height:0.151392em;"><span style="top:-2.5500000000000003em;margin-left:0em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mtight"><span class="mord mathdefault mtight">c</span><span class="mord mathdefault mtight">a</span><span class="mord mathdefault mtight">m</span></span></span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height:0.15em;"><span></span></span></span></span></span></span></span></span></span> with probability 0.4</td>
+</tr>
+</tbody>
+</table>
+<p>这比“随机采点”更强。深度边界和运动边界正是 4D 重建最容易错的地方：物体轮廓、遮挡边缘、动态前景和背景分离。把 30% queries 放在这些区域，相当于把训练预算花到几何决策边界上。</p>
+<h2 id="推理效率为什么-query-decoder-快"><a class="markdownIt-Anchor" href="#推理效率为什么-query-decoder-快"></a> 推理效率：为什么 query decoder 快</h2>
+<p>普通 dense reconstruction 很容易变成：</p>
+<div class="code-container" data-rel="Text"><figure class="iseeu highlight text"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br></pre></td><td class="code"><pre><span class="line">每一帧都解 depth / pose / track / flow</span><br><span class="line">  -&gt; 再做跨帧融合或优化</span><br><span class="line">  -&gt; 动态物体处还要单独处理 correspondence</span><br></pre></td></tr></table></figure></div>
+<p>D4RT 的成本结构不同：</p>
+<div class="code-container" data-rel="Text"><figure class="iseeu highlight text"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br></pre></td><td class="code"><pre><span class="line">encode video once</span><br><span class="line">  -&gt; cache Global Scene Representation</span><br><span class="line">  -&gt; ask only the queries needed by the task</span><br></pre></td></tr></table></figure></div>
+<p>如果只需要少量 3D tracks，就只查那些点；如果需要 dense reconstruction，再查所有像素。也就是说，encoder 成本固定，decoder 成本随 query 数线性扩展。</p>
+<p>论文还提出 all-pixels dense tracking 的加速算法。朴素做法需要 <span class="katex"><span class="katex-mathml"><math><semantics><mrow><mi>O</mi><mo stretchy="false">(</mo><msup><mi>T</mi><mn>2</mn></msup><mi>H</mi><mi>W</mi><mo stretchy="false">)</mo></mrow><annotation encoding="application/x-tex">O(T^2HW)</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:1.064108em;vertical-align:-0.25em;"></span><span class="mord mathdefault" style="margin-right:0.02778em;">O</span><span class="mopen">(</span><span class="mord"><span class="mord mathdefault" style="margin-right:0.13889em;">T</span><span class="msupsub"><span class="vlist-t"><span class="vlist-r"><span class="vlist" style="height:0.8141079999999999em;"><span style="top:-3.063em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mtight">2</span></span></span></span></span></span></span></span><span class="mord mathdefault" style="margin-right:0.08125em;">H</span><span class="mord mathdefault" style="margin-right:0.13889em;">W</span><span class="mclose">)</span></span></span></span> queries，因为每个时空像素都要追踪到所有时间。D4RT 用 occupancy grid 记录已经被可见 track 覆盖的时空像素，只从未访问像素启动新 track。论文报告这带来 5-15x 自适应加速，具体取决于视频运动复杂度。</p>
+<p><img  
+                     lazyload
+                     src="/images/loading.svg"
+                     data-src="/image/ai-notes/images/paper-deep-dives/embodied-ai/d4rt/figure-3-speed.png"
+                      alt="D4RT speed 原论文图" 
+                ></p>
+<p><small>Figure source: <code>Efficiently Reconstructing Dynamic Scenes One D4RT at a Time</code>, Figure 3。原论文图意：比较 pose accuracy 和 throughput，throughput 在 A100 GPU 上测量。本站读法：D4RT 右上角的位置说明它不是单靠牺牲精度换速度，而是用 query-based decoder 改变了计算路径。</small></p>
+<p>吞吐表也能体现这个差异：</p>
+<table>
+<thead>
+<tr>
+<th>Method</th>
+<th style="text-align:right">60 FPS</th>
+<th style="text-align:right">24 FPS</th>
+<th style="text-align:right">10 FPS</th>
+<th style="text-align:right">1 FPS</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>DELTA</td>
+<td style="text-align:right">0</td>
+<td style="text-align:right">5</td>
+<td style="text-align:right">408</td>
+<td style="text-align:right">5,770</td>
+</tr>
+<tr>
+<td>SpatialTrackerV2</td>
+<td style="text-align:right">29</td>
+<td style="text-align:right">84</td>
+<td style="text-align:right">219</td>
+<td style="text-align:right">2,290</td>
+</tr>
+<tr>
+<td>D4RT (Ours)</td>
+<td style="text-align:right">550</td>
+<td style="text-align:right">1,570</td>
+<td style="text-align:right">3,890</td>
+<td style="text-align:right">40,180</td>
+</tr>
+</tbody>
+</table>
+<p><small>表源：<code>Efficiently Reconstructing Dynamic Scenes One D4RT at a Time</code>，Table 3。原论文表格含义：在单张 A100 GPU 上，不同方法在目标 FPS 下能维持的 full-video 3D point tracks 数量。论文总结 D4RT 相比先前方法快 18-300x。</small></p>
+<p>Google DeepMind blog 还给了一个更直观的系统口径：D4RT 处理一分钟视频约 5 秒，而先前 SOTA 方法可能需要约 10 分钟；这对应约 120x 的应用级速度差。这个数字来自官方 blog，不是论文主表里的标准 benchmark，应作为部署直觉而非可复现实验配置。</p>
+<h2 id="实验怎么读"><a class="markdownIt-Anchor" href="#实验怎么读"></a> 实验怎么读</h2>
+<p>D4RT 的实验覆盖三层问题。</p>
+<p>第一层是 qualitative reconstruction：动态物体是不是被重建成连续对象，而不是在不同位置重复出现。</p>
+<p><img  
+                     lazyload
+                     src="/images/loading.svg"
+                     data-src="/image/ai-notes/images/paper-deep-dives/embodied-ai/d4rt/figure-4-reconstruction-comparison.png"
+                      alt="D4RT reconstruction comparison 原论文图" 
+                ></p>
+<p><small>Figure source: <code>Efficiently Reconstructing Dynamic Scenes One D4RT at a Time</code>, Figure 4。原论文图意：比较 Input video、MegaSaM、<span class="katex"><span class="katex-mathml"><math><semantics><mrow><msup><mi>π</mi><mn>3</mn></msup></mrow><annotation encoding="application/x-tex">\pi^3</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.8141079999999999em;vertical-align:0em;"></span><span class="mord"><span class="mord mathdefault" style="margin-right:0.03588em;">π</span><span class="msupsub"><span class="vlist-t"><span class="vlist-r"><span class="vlist" style="height:0.8141079999999999em;"><span style="top:-3.063em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mtight">3</span></span></span></span></span></span></span></span></span></span></span>、SpatialTrackerV2 和 D4RT。本站读法：看动态前景是否被重复、漏掉，或只追踪一帧来源的稀疏区域。D4RT 的重点是 full 4D representation including all pixels。</small></p>
+<p>这张图很适合说明 D4RT 和静态 reconstruction 的差别。MegaSaM / <span class="katex"><span class="katex-mathml"><math><semantics><mrow><msup><mi>π</mi><mn>3</mn></msup></mrow><annotation encoding="application/x-tex">\pi^3</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.8141079999999999em;vertical-align:0em;"></span><span class="mord"><span class="mord mathdefault" style="margin-right:0.03588em;">π</span><span class="msupsub"><span class="vlist-t"><span class="vlist-r"><span class="vlist" style="height:0.8141079999999999em;"><span style="top:-3.063em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mtight">3</span></span></span></span></span></span></span></span></span></span></span> 这类重建方法在动态物体上会出现重复或缺失；SpatialTrackerV2 能处理动态轨迹，但通常只从一帧出发追踪，导致遮挡后区域有缺口；D4RT 通过 all-pixels tracking 试图补齐完整动态场景。</p>
+<p>第二层是 in-the-wild visualization：它能不能处理真实静态和动态视频。</p>
+<p><img  
+                     lazyload
+                     src="/images/loading.svg"
+                     data-src="/image/ai-notes/images/paper-deep-dives/embodied-ai/d4rt/figure-5-in-the-wild.png"
+                      alt="D4RT in-the-wild visualization 原论文图" 
+                ></p>
+<p><small>Figure source: <code>Efficiently Reconstructing Dynamic Scenes One D4RT at a Time</code>, Figure 5。原论文图意：展示 D4RT 在静态和动态 in-the-wild videos 上的重建；动态场景还展示 3D point trajectories。</small></p>
+<p>第三层是 quantitative benchmark：论文在 TAPVid-3D、point cloud、video depth、camera pose 上和 MegaSaM、VGGT、MapAnything、SpatialTrackerV2、<span class="katex"><span class="katex-mathml"><math><semantics><mrow><msup><mi>π</mi><mn>3</mn></msup></mrow><annotation encoding="application/x-tex">\pi^3</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.8141079999999999em;vertical-align:0em;"></span><span class="mord"><span class="mord mathdefault" style="margin-right:0.03588em;">π</span><span class="msupsub"><span class="vlist-t"><span class="vlist-r"><span class="vlist" style="height:0.8141079999999999em;"><span style="top:-3.063em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mtight">3</span></span></span></span></span></span></span></span></span></span></span> 等对比。对本站主线来说，不必背每个数字，但要知道证据覆盖了哪些输出：</p>
+<table>
+<thead>
+<tr>
+<th>Output</th>
+<th>Benchmarks / metrics in paper</th>
+<th>What it supports</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>3D tracking</td>
+<td>TAPVid-3D, AJ, APD3D, OA, L1</td>
+<td>动态点轨迹和世界坐标 tracking</td>
+</tr>
+<tr>
+<td>Point cloud</td>
+<td>Sintel, ScanNet, L1</td>
+<td>同一坐标系下的场景重建</td>
+</tr>
+<tr>
+<td>Video depth</td>
+<td>Sintel, ScanNet, KITTI, Bonn, AbsRel</td>
+<td>单视频深度估计能力</td>
+</tr>
+<tr>
+<td>Camera pose</td>
+<td>Sintel, ScanNet, Re10K, ATE / RPE / Pose AUC</td>
+<td>相机轨迹和位姿恢复</td>
+</tr>
+<tr>
+<td>Throughput</td>
+<td>target FPS on A100</td>
+<td>query decoder 的效率优势</td>
+</tr>
+</tbody>
+</table>
+<h2 id="消融训练设计里哪些真的有用"><a class="markdownIt-Anchor" href="#消融训练设计里哪些真的有用"></a> 消融：训练设计里哪些真的有用</h2>
+<h3 id="local-rgb-patch"><a class="markdownIt-Anchor" href="#local-rgb-patch"></a> Local RGB patch</h3>
+<p>local <span class="katex"><span class="katex-mathml"><math><semantics><mrow><mn>9</mn><mo>×</mo><mn>9</mn></mrow><annotation encoding="application/x-tex">9 \times 9</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.72777em;vertical-align:-0.08333em;"></span><span class="mord">9</span><span class="mspace" style="margin-right:0.2222222222222222em;"></span><span class="mbin">×</span><span class="mspace" style="margin-right:0.2222222222222222em;"></span></span><span class="base"><span class="strut" style="height:0.64444em;vertical-align:0em;"></span><span class="mord">9</span></span></span></span> patch 是 D4RT 最容易被忽略的小设计。它把源点附近的 RGB 局部外观编码进 query，帮助 decoder 找对应点和边界。</p>
+<table>
+<thead>
+<tr>
+<th>w/ local appear. patch</th>
+<th style="text-align:right">AbsRel (S) ↓</th>
+<th style="text-align:right">AbsRel (SS) ↓</th>
+<th style="text-align:right">ATE ↓</th>
+<th style="text-align:right">RPE-T ↓</th>
+<th style="text-align:right">RPE-R ↓</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>✗</td>
+<td style="text-align:right">0.366</td>
+<td style="text-align:right">0.306</td>
+<td style="text-align:right">0.173</td>
+<td style="text-align:right">0.031</td>
+<td style="text-align:right">0.262</td>
+</tr>
+<tr>
+<td>✓</td>
+<td style="text-align:right">0.302</td>
+<td style="text-align:right">0.257</td>
+<td style="text-align:right">0.091</td>
+<td style="text-align:right">0.028</td>
+<td style="text-align:right">0.245</td>
+</tr>
+</tbody>
+</table>
+<p><small>表源：<code>Efficiently Reconstructing Dynamic Scenes One D4RT at a Time</code>，Local RGB patch ablation table。原论文表格含义：在 Sintel 上比较 ViT-L 模型是否把 local appearance patch 输入 decoder。</small></p>
+<p>这个消融说明，全局 video representation 不足以保留所有低层细节。尤其在物体边缘、细小结构和遮挡边界处，query 附带局部 RGB patch 能显著改善 depth 和 pose。</p>
+<h3 id="backbone-size"><a class="markdownIt-Anchor" href="#backbone-size"></a> Backbone size</h3>
+<table>
+<thead>
+<tr>
+<th>Backbone size</th>
+<th style="text-align:right">AbsRel (S) ↓</th>
+<th style="text-align:right">AbsRel (SS) ↓</th>
+<th style="text-align:right">ATE ↓</th>
+<th style="text-align:right">RPE-T ↓</th>
+<th style="text-align:right">RPE-R ↓</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>ViT-B</td>
+<td style="text-align:right">0.319</td>
+<td style="text-align:right">0.232</td>
+<td style="text-align:right">0.145</td>
+<td style="text-align:right">0.034</td>
+<td style="text-align:right">0.266</td>
+</tr>
+<tr>
+<td>ViT-L</td>
+<td style="text-align:right">0.256</td>
+<td style="text-align:right">0.214</td>
+<td style="text-align:right">0.073</td>
+<td style="text-align:right">0.027</td>
+<td style="text-align:right">0.191</td>
+</tr>
+<tr>
+<td>ViT-H</td>
+<td style="text-align:right">0.226</td>
+<td style="text-align:right">0.173</td>
+<td style="text-align:right">0.070</td>
+<td style="text-align:right">0.028</td>
+<td style="text-align:right">0.186</td>
+</tr>
+<tr>
+<td>ViT-g</td>
+<td style="text-align:right">0.191</td>
+<td style="text-align:right">0.168</td>
+<td style="text-align:right">0.078</td>
+<td style="text-align:right">0.026</td>
+<td style="text-align:right">0.160</td>
+</tr>
+</tbody>
+</table>
+<p><small>表源：<code>Efficiently Reconstructing Dynamic Scenes One D4RT at a Time</code>，Backbone size ablation table。原论文表格含义：在 Sintel 上比较不同 encoder backbone size 的 depth 和 camera pose 表现。</small></p>
+<p>这个表的信号很清楚：D4RT 的统一 query 接口并不意味着小模型就够。encoder 需要强全局场景表示来承载跨帧对应、动态物体和相机运动；decoder 轻量，但 encoder 不能太弱。</p>
+<h3 id="pretrained-encoder"><a class="markdownIt-Anchor" href="#pretrained-encoder"></a> Pretrained encoder</h3>
+<p>Appendix 还比较了从随机初始化和 VideoMAE 初始化出发的差异：</p>
+<table>
+<thead>
+<tr>
+<th>Model weight initialization</th>
+<th style="text-align:right">AbsRel (S) ↓</th>
+<th style="text-align:right">AbsRel (SS) ↓</th>
+<th style="text-align:right">ATE ↓</th>
+<th style="text-align:right">RPE-T ↓</th>
+<th style="text-align:right">RPE-R ↓</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>None</td>
+<td style="text-align:right">0.738</td>
+<td style="text-align:right">0.520</td>
+<td style="text-align:right">0.334</td>
+<td style="text-align:right">0.139</td>
+<td style="text-align:right">1.126</td>
+</tr>
+<tr>
+<td>VideoMAE</td>
+<td style="text-align:right">0.302</td>
+<td style="text-align:right">0.257</td>
+<td style="text-align:right">0.091</td>
+<td style="text-align:right">0.028</td>
+<td style="text-align:right">0.245</td>
+</tr>
+</tbody>
+</table>
+<p>这个结果很重要。D4RT 不是只靠几何 loss 从零学出一切，它明显受益于视频预训练初始化。对具身智能系统来说，这和 VLA / world model 路线有相似经验：底层时空表征先验通常比从零拟合小规模机器人数据更可靠。</p>
+<h3 id="auxiliary-losses"><a class="markdownIt-Anchor" href="#auxiliary-losses"></a> Auxiliary losses</h3>
+<p>论文逐项移除 auxiliary losses，观察到不同 loss 对 depth 和 pose 的贡献不同。最值得记的是：</p>
+<table>
+<thead>
+<tr>
+<th>Ablation</th>
+<th>Main effect</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>w/o 2D position</td>
+<td>depth 明显变差</td>
+</tr>
+<tr>
+<td>w/o normal</td>
+<td>depth 明显变差</td>
+</tr>
+<tr>
+<td>w/o confidence</td>
+<td>camera pose 明显变差</td>
+</tr>
+<tr>
+<td>w/o displacement / visibility</td>
+<td>对部分指标有较小但仍可见影响</td>
+</tr>
+</tbody>
+</table>
+<p>这说明 D4RT 的输出头不是“为了多任务好看”。2D position、normal、visibility、motion、confidence 都在帮模型把动态 4D 几何拆成可学习的约束。</p>
+<h2 id="和-vggt-mapanything-的关系"><a class="markdownIt-Anchor" href="#和-vggt-mapanything-的关系"></a> 和 VGGT / MapAnything 的关系</h2>
+<p>D4RT 应该接在 <a href="/2026/05/11/ai-files-paper-deep-dives-embodied-ai-vggt/">VGGT</a> 和 <a href="/2026/05/11/ai-files-paper-deep-dives-embodied-ai-mapanything/">MapAnything</a> 后面读。</p>
+<table>
+<thead>
+<tr>
+<th>Model</th>
+<th>Strong at</th>
+<th>D4RT changes</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>VGGT</td>
+<td>feed-forward camera / depth / point map / tracks for static or mostly rigid settings</td>
+<td>D4RT 更强调 dynamic correspondence 和 single query decoder</td>
+</tr>
+<tr>
+<td>MapAnything</td>
+<td>融合 images、intrinsics、poses、depth 等 auxiliary geometric inputs</td>
+<td>D4RT 更强调从单视频统一查询 4D point state</td>
+</tr>
+<tr>
+<td>SpatialTrackerV2</td>
+<td>dynamic point tracking</td>
+<td>D4RT 用全局视频表示和独立 query decoder 支持 all-pixels tracking 和更多几何任务</td>
+</tr>
+<tr>
+<td>MegaSaM / <span class="katex"><span class="katex-mathml"><math><semantics><mrow><msup><mi>π</mi><mn>3</mn></msup></mrow><annotation encoding="application/x-tex">\pi^3</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.8141079999999999em;vertical-align:0em;"></span><span class="mord"><span class="mord mathdefault" style="margin-right:0.03588em;">π</span><span class="msupsub"><span class="vlist-t"><span class="vlist-r"><span class="vlist" style="height:0.8141079999999999em;"><span style="top:-3.063em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mtight">3</span></span></span></span></span></span></span></span></span></span></span></td>
+<td>reconstruction / geometry recovery</td>
+<td>D4RT 针对动态物体和高效查询补上短板</td>
+</tr>
+</tbody>
+</table>
+<p>如果说 VGGT 是“前向几何底座”，MapAnything 是“可吃多种几何输入的 metric reconstruction 底座”，D4RT 更像是“动态视频里的点级 4D 状态查询器”。三者都不是机器人 policy，但都能成为机器人状态估计、数据质检、world model grounding 的底层模块。</p>
+<h2 id="对具身智能的启发"><a class="markdownIt-Anchor" href="#对具身智能的启发"></a> 对具身智能的启发</h2>
+<p>D4RT 对具身智能最有价值的不是论文标题里的 4D，而是它把几何状态做成了可查询接口。</p>
+<table>
+<thead>
+<tr>
+<th>Embodied need</th>
+<th>D4RT output that helps</th>
+<th>Remaining gap</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Navigation in dynamic scenes</td>
+<td>camera pose, point cloud, moving object tracks</td>
+<td>还需要 collision checking、local planner 和实时传感器融合</td>
+</tr>
+<tr>
+<td>Manipulation with moving objects</td>
+<td>3D point tracks, visibility, depth</td>
+<td>还需要接触、物体刚柔性、抓取 affordance</td>
+</tr>
+<tr>
+<td>Robot dataset debugging</td>
+<td>reconstructed trajectories, camera motion, confidence</td>
+<td>还需要和 robot state/action 时间同步</td>
+</tr>
+<tr>
+<td>World model grounding</td>
+<td>disentangle camera motion, object motion, static geometry</td>
+<td>D4RT 不是动作条件动力学模型</td>
+</tr>
+<tr>
+<td>AR / spatial computing</td>
+<td>low-latency geometry and camera state</td>
+<td>还需要设备端部署、漂移控制和交互稳定性</td>
+</tr>
+</tbody>
+</table>
+<p>最关键的边界是：D4RT 是 perception / reconstruction 模型，不是闭环控制器。它能告诉你“点在 3D/4D 中可能在哪里”，但不能直接决定机器人应该怎么抓、怎么避障、怎么在失败后恢复。</p>
+<p>不过，把它作为中间状态层很自然。例如一个机器人系统可以用 D4RT 产生：</p>
+<div class="code-container" data-rel="Text"><figure class="iseeu highlight text"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br></pre></td><td class="code"><pre><span class="line">video episode</span><br><span class="line">  -&gt; camera pose / depth / point cloud / dynamic tracks / confidence</span><br><span class="line">  -&gt; task-relevant state extraction</span><br><span class="line">  -&gt; VLA policy / planner / world model / failure analysis</span><br></pre></td></tr></table></figure></div>
+<p>这里的好处是失败归因更清楚。VLA 失败时，可以检查：是相机位姿错了、动态物体 track 丢了、深度边界不可信，还是策略本身动作选择错了。</p>
+<h2 id="证据链快照"><a class="markdownIt-Anchor" href="#证据链快照"></a> 证据链快照</h2>
+<table>
+<thead>
+<tr>
+<th>论文主张</th>
+<th>主要证据</th>
+<th>读数边界</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>单一 query interface 能统一 4D geometry tasks</td>
+<td>Table 1、Figure 2、method derivation</td>
+<td>统一接口不等于所有任务部署约束都解决</td>
+</tr>
+<tr>
+<td>独立 pointwise decoder 提高训练和推理效率</td>
+<td>decoder design、throughput table、speed figure</td>
+<td>encoder 仍较大，训练仍依赖大规模数据和 TPU</td>
+</tr>
+<tr>
+<td>D4RT 能处理动态 correspondence</td>
+<td>TAPVid-3D、qualitative dynamic reconstructions</td>
+<td>benchmark 不等于真实机器人长尾场景全覆盖</td>
+</tr>
+<tr>
+<td>local patch 和 auxiliary heads 很关键</td>
+<td>local patch / loss ablations</td>
+<td>不是一个纯架构 trick，数据和监督质量同样重要</td>
+</tr>
+<tr>
+<td>视频预训练初始化很重要</td>
+<td>VideoMAE initialization ablation</td>
+<td>从零训练或公开数据复现难度较高</td>
+</tr>
+</tbody>
+</table>
+<h2 id="阅读结论"><a class="markdownIt-Anchor" href="#阅读结论"></a> 阅读结论</h2>
+<p>D4RT 最值得带走的知识点是：<strong>动态 4D 场景理解可以被组织成一个“点在任意时间、任意参考相机下的位置查询”问题。</strong> 这个抽象把 depth、tracking、pose 和 point cloud 放进同一个 decoder，不需要为每个任务单独堆模块。</p>
+<p>对具身智能来说，D4RT 更像一个几何状态层，而不是动作模型。它能给机器人、AR 或世界模型提供更稳定的 camera / depth / point track / dynamic reconstruction 输入；但闭环控制、安全约束、接触建模和动作选择仍然要由 VLA、planner、controller 或 world model 继续承担。</p>
+<h2 id="外部精读"><a class="markdownIt-Anchor" href="#外部精读"></a> 外部精读</h2>
+<ol>
+<li><a class="link"   target="_blank" rel="noopener" href="https://arxiv.org/abs/2512.08924" >arXiv:2512.08924<i class="fa-solid fa-arrow-up-right ml-[0.2em] font-light align-text-top text-[0.7em] link-icon"></i></a></li>
+<li><a class="link"   target="_blank" rel="noopener" href="https://d4rt-paper.github.io/" >D4RT project page<i class="fa-solid fa-arrow-up-right ml-[0.2em] font-light align-text-top text-[0.7em] link-icon"></i></a></li>
+<li><a class="link"   target="_blank" rel="noopener" href="https://deepmind.google/blog/d4rt-teaching-ai-to-see-the-world-in-four-dimensions/" >Google DeepMind blog: D4RT<i class="fa-solid fa-arrow-up-right ml-[0.2em] font-light align-text-top text-[0.7em] link-icon"></i></a></li>
+<li><a class="link"   target="_blank" rel="noopener" href="https://arxiv.org/abs/2503.11651" >VGGT<i class="fa-solid fa-arrow-up-right ml-[0.2em] font-light align-text-top text-[0.7em] link-icon"></i></a>：理解 D4RT 为什么要强调 single query decoder 和 dynamic correspondence。</li>
+<li><a class="link"   target="_blank" rel="noopener" href="https://arxiv.org/abs/2509.13414" >MapAnything<i class="fa-solid fa-arrow-up-right ml-[0.2em] font-light align-text-top text-[0.7em] link-icon"></i></a>：作为 metric reconstruction 与几何输入融合路线对照。</li>
+</ol>
+<h2 id="相关阅读与下一步"><a class="markdownIt-Anchor" href="#相关阅读与下一步"></a> 相关阅读与下一步</h2>
+<ul>
+<li>站内下一步：<a href="/2026/05/11/ai-files-paper-deep-dives-embodied-ai-vggt/">VGGT：前向恢复相机、深度、点云与轨迹</a>。</li>
+<li>站内下一步：<a href="/2026/05/11/ai-files-paper-deep-dives-embodied-ai-mapanything/">MapAnything：统一前向 Metric 3D 重建骨干</a>。</li>
+<li>站内下一步：<a href="/2026/05/11/ai-files-paper-deep-dives-embodied-ai-depth-anything-3/">Depth Anything 3：任意视角 3D 几何底座</a>。</li>
+<li>站内下一步：具身智能专题。</li>
+<li>站内下一步：论文精读专题。</li>
+</ul>
+
+		</div>
+
+		
+		<div class="post-copyright-info w-full my-8 px-2 sm:px-6 md:px-8">
+			<div class="article-copyright-info-container">
+    <ul>
+        <li><strong>Title:</strong> 论文专题讲解：D4RT：动态场景的 4D 重建与跟踪</li>
+        <li><strong>Author:</strong> Charles</li>
+        <li><strong>Created at
+                :</strong> 2026-06-13 09:00:00</li>
+        
+            <li>
+                <strong>Updated at
+                    :</strong> 2026-06-13 09:00:00
+            </li>
+        
+        <li>
+            <strong>Link:</strong> https://charles2530.github.io/2026/06/13/ai-files-paper-deep-dives-embodied-ai-d4rt/
+        </li>
+        <li>
+            <strong>
+                License:
+            </strong>
+            
+
+            
+                This work is licensed under <a class="license" target="_blank" rel="noopener" href="https://creativecommons.org/licenses/by-nc-sa/4.0">CC BY-NC-SA 4.0</a>.
+            
+        </li>
+    </ul>
+</div>
+
+		</div>
+		
+
+		
+		<ul class="post-tags-box text-lg mt-1.5 flex-wrap justify-center flex md:hidden">
+			
+			<li class="tag-item mx-0.5">
+				<a href="/tags/AI/">#AI</a>&nbsp;
+			</li>
+			
+			<li class="tag-item mx-0.5">
+				<a href="/tags/%E5%85%B7%E8%BA%AB%E6%99%BA%E8%83%BD/">#具身智能</a>&nbsp;
+			</li>
+			
+			<li class="tag-item mx-0.5">
+				<a href="/tags/%E8%AE%BA%E6%96%87%E4%B8%93%E9%A2%98/">#论文专题</a>&nbsp;
+			</li>
+			
+		</ul>
+		
+
+		
+
+		
+		<div class="article-nav my-8 flex justify-between items-center px-2 sm:px-6 md:px-8">
+			
+			<div class="article-prev border-border-color shadow-redefine-flat shadow-shadow-color-2 rounded-medium px-4 py-2 hover:shadow-redefine-flat-hover hover:shadow-shadow-color-2">
+				<a class="prev" rel="prev" href="/2026/06/14/ai-files-thinking-exploration-world-model-infrastructure/">
+					<span class="left arrow-icon flex justify-center items-center">
+						<i class="fa-solid fa-chevron-left"></i>
+					</span>
+					<span class="title flex justify-center items-center">
+						<span class="post-nav-title-item truncate max-w-48">思考探索：世界模型 Infra：从模型谱系到物理 AI 工程栈</span>
+						<span class="post-nav-item">Prev posts</span>
+					</span>
+				</a>
+			</div>
+			
+			
+			<div class="article-next border-border-color shadow-redefine-flat shadow-shadow-color-2 rounded-medium px-4 py-2 hover:shadow-redefine-flat-hover hover:shadow-shadow-color-2">
+				<a class="next" rel="next" href="/2026/06/11/ai-files-paper-deep-dives-embodied-ai-kai0/">
+					<span class="title flex justify-center items-center">
+						<span class="post-nav-title-item truncate max-w-48">论文专题讲解：kai0：资源受限下的高可靠机器人操作</span>
+						<span class="post-nav-item">Next posts</span>
+					</span>
+					<span class="right arrow-icon flex justify-center items-center">
+						<i class="fa-solid fa-chevron-right"></i>
+					</span>
+				</a>
+			</div>
+			
+		</div>
+		
+
+
+		
+		<div class="comment-container px-2 sm:px-6 md:px-8 pb-8">
+			<div class="comments-container mt-10 w-full ">
+    <div id="comment-anchor" class="w-full h-2.5"></div>
+    <div class="comment-area-title w-full my-1.5 md:my-2.5 text-xl md:text-3xl font-bold">
+        Comments
+    </div>
+    
+
+        
+            
+    <div id="gitalk-container"></div>
+    <script data-swup-reload-script
+            src="https://cdnjs.cloudflare.com/ajax/libs/gitalk/1.8.0/gitalk.min.js"></script>
+    <script data-swup-reload-script>
+        (function() {
+            const startPath = location.pathname;
+            const startTime = Date.now();
+            const retryDelay = 200;
+            const retryLimit = 5000;
+
+            const runGitalk = () => {
+                if (location.pathname !== startPath) {
+                    return;
+                }
+
+                const container = document.getElementById('gitalk-container');
+                if (!container || typeof Gitalk === 'undefined') {
+                    if (Date.now() - startTime < retryLimit) {
+                        setTimeout(runGitalk, retryDelay);
+                    }
+                    return;
+                }
+
+                container.innerHTML = '';
+
+                let pageKey = decodeURI(location.pathname);
+                const maxLength = 50;
+                if (pageKey.length > maxLength) {
+                    pageKey = pageKey.substring(0, maxLength - 3) + '...';
+                }
+
+                try {
+                    new Gitalk({
+                        clientID: '8083299a8ee2aaf23879',
+                        clientSecret: 'a8161e81d4872181e884fdb69f7be24916b6a9d0',
+                        repo: 'Charles2530.github.io',
+                        owner: 'Charles2530',
+                        admin: ['Charles2530'],
+                        id: pageKey,
+                        language: 'en',
+                        proxy: 'https://github.com/login/oauth/access_token'
+                    }).render(container);
+                } catch (e) {
+                    window.Gitalk = null;
+                }
+            };
+
+            runGitalk();
+        })();
+    </script>
+
+
+
+        
+    
+</div>
+
+		</div>
+		
+	</div>
+
+	
+	<div class="toc-content-container">
+		<div class="post-toc-wrap">
+	<div class="post-toc">
+		<div class="toc-title">On this page</div>
+		<div class="page-title">论文专题讲解：D4RT：动态场景的 4D 重建与跟踪</div>
+		<ol class="nav"><li class="nav-item nav-level-2"><a class="nav-link" href="#%E4%B8%80%E5%8F%A5%E8%AF%9D%E6%A0%B8%E5%BF%83"><span class="nav-text"> 一句话核心</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#%E5%AE%83%E8%A7%A3%E5%86%B3%E7%9A%84%E4%B8%8D%E6%98%AF%E9%9D%99%E6%80%81-3d%E8%80%8C%E6%98%AF%E5%8A%A8%E6%80%81-4d"><span class="nav-text"> 它解决的不是静态 3D，而是动态 4D</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#%E6%96%B9%E6%B3%95%E5%9B%BE%E6%80%8E%E4%B9%88%E8%AF%BB"><span class="nav-text"> 方法图怎么读</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#table-1%E7%BB%9F%E4%B8%80%E6%9F%A5%E8%AF%A2%E6%8E%A5%E5%8F%A3"><span class="nav-text"> Table 1：统一查询接口</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#%E6%A8%A1%E5%9E%8B%E7%BB%93%E6%9E%84"><span class="nav-text"> 模型结构</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#%E8%AE%AD%E7%BB%83%E7%BB%86%E8%8A%82"><span class="nav-text"> 训练细节</span></a><ol class="nav-child"><li class="nav-item nav-level-3"><a class="nav-link" href="#%E4%B8%BB%E6%A8%A1%E5%9E%8B%E8%AE%AD%E7%BB%83%E9%85%8D%E7%BD%AE"><span class="nav-text"> 主模型训练配置</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#%E6%95%B0%E6%8D%AE%E6%B7%B7%E5%90%88"><span class="nav-text"> 数据混合</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#loss-%E8%AE%BE%E8%AE%A1"><span class="nav-text"> Loss 设计</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#optimizer-%E5%92%8C-schedule"><span class="nav-text"> Optimizer 和 schedule</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#data-augmentation"><span class="nav-text"> Data augmentation</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#query-sampling"><span class="nav-text"> Query sampling</span></a></li></ol></li><li class="nav-item nav-level-2"><a class="nav-link" href="#%E6%8E%A8%E7%90%86%E6%95%88%E7%8E%87%E4%B8%BA%E4%BB%80%E4%B9%88-query-decoder-%E5%BF%AB"><span class="nav-text"> 推理效率：为什么 query decoder 快</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#%E5%AE%9E%E9%AA%8C%E6%80%8E%E4%B9%88%E8%AF%BB"><span class="nav-text"> 实验怎么读</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#%E6%B6%88%E8%9E%8D%E8%AE%AD%E7%BB%83%E8%AE%BE%E8%AE%A1%E9%87%8C%E5%93%AA%E4%BA%9B%E7%9C%9F%E7%9A%84%E6%9C%89%E7%94%A8"><span class="nav-text"> 消融：训练设计里哪些真的有用</span></a><ol class="nav-child"><li class="nav-item nav-level-3"><a class="nav-link" href="#local-rgb-patch"><span class="nav-text"> Local RGB patch</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#backbone-size"><span class="nav-text"> Backbone size</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#pretrained-encoder"><span class="nav-text"> Pretrained encoder</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#auxiliary-losses"><span class="nav-text"> Auxiliary losses</span></a></li></ol></li><li class="nav-item nav-level-2"><a class="nav-link" href="#%E5%92%8C-vggt-mapanything-%E7%9A%84%E5%85%B3%E7%B3%BB"><span class="nav-text"> 和 VGGT &#x2F; MapAnything 的关系</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#%E5%AF%B9%E5%85%B7%E8%BA%AB%E6%99%BA%E8%83%BD%E7%9A%84%E5%90%AF%E5%8F%91"><span class="nav-text"> 对具身智能的启发</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#%E8%AF%81%E6%8D%AE%E9%93%BE%E5%BF%AB%E7%85%A7"><span class="nav-text"> 证据链快照</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#%E9%98%85%E8%AF%BB%E7%BB%93%E8%AE%BA"><span class="nav-text"> 阅读结论</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#%E5%A4%96%E9%83%A8%E7%B2%BE%E8%AF%BB"><span class="nav-text"> 外部精读</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#%E7%9B%B8%E5%85%B3%E9%98%85%E8%AF%BB%E4%B8%8E%E4%B8%8B%E4%B8%80%E6%AD%A5"><span class="nav-text"> 相关阅读与下一步</span></a></li></ol>
+
+	</div>
+</div>
+	</div>
+	
+</div>
+
+			</div>
+
+			
+		</div>
+
+		<div class="main-content-footer">
+			<footer class="footer mt-5 py-5 h-auto text-base text-third-text-color relative border-t-2 border-t-border-color">
+    <div class="info-container py-3 text-center">
+        
+        <div class="text-center">
+            &copy;
+            
+              <span>2022</span>
+              -
+            
+            2026&nbsp;&nbsp;<i class="fa-solid fa-heart fa-beat" style="--fa-animation-duration: 0.5s; color: #f54545"></i>&nbsp;&nbsp;<a href="/">Charles</a>
+            
+                
+                <p class="post-count space-x-0.5">
+                    <span>
+                        554 posts in total
+                    </span>
+                    
+                        <span>
+                            2191.9k words in total
+                        </span>
+                    
+                </p>
+            
+        </div>
+        
+            <script data-swup-reload-script src="https://cn.vercount.one/js"></script>
+            <div class="relative text-center lg:absolute lg:right-[20px] lg:top-1/2 lg:-translate-y-1/2 lg:text-right">
+                
+                    <span id="busuanzi_container_site_uv" class="lg:!block">
+                        <span class="text-sm">VISITOR COUNT</span>
+                        <span id="busuanzi_value_site_uv"></span>
+                    </span>
+                
+                
+                    <span id="busuanzi_container_site_pv" class="lg:!block">
+                        <span class="text-sm">TOTAL PAGE VIEWS</span>
+                        <span id="busuanzi_value_site_pv"></span>
+                    </span>
+                
+            </div>
+        
+        <div class="relative text-center lg:absolute lg:left-[20px] lg:top-1/2 lg:-translate-y-1/2 lg:text-left">
+            <span class="lg:block text-sm">POWERED BY <?xml version="1.0" encoding="utf-8"?><!DOCTYPE svg PUBLIC "-//W3C//DTD SVG 1.1//EN" "http://www.w3.org/Graphics/SVG/1.1/DTD/svg11.dtd"><svg class="relative top-[2px] inline-block align-baseline" version="1.1" id="圖層_1" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" x="0px" y="0px" width="1rem" height="1rem" viewBox="0 0 512 512" enable-background="new 0 0 512 512" xml:space="preserve"><path fill="#0E83CD" d="M256.4,25.8l-200,115.5L56,371.5l199.6,114.7l200-115.5l0.4-230.2L256.4,25.8z M349,354.6l-18.4,10.7l-18.6-11V275H200v79.6l-18.4,10.7l-18.6-11v-197l18.5-10.6l18.5,10.8V237h112v-79.6l18.5-10.6l18.5,10.8V354.6z"/></svg><a target="_blank" class="text-base" href="https://hexo.io">Hexo</a></span>
+            <span class="text-sm lg:block">THEME&nbsp;<a class="text-base" target="_blank" href="https://github.com/EvanNotFound/hexo-theme-redefine">Redefine v2.9.0</a></span>
+        </div>
+        
+        
+            <div>
+                Blog up for <span class="odometer" id="runtime_days" ></span> days <span class="odometer" id="runtime_hours"></span> hrs <span class="odometer" id="runtime_minutes"></span> Min <span class="odometer" id="runtime_seconds"></span> Sec
+            </div>
+        
+        
+            <script data-swup-reload-script>
+                try {
+                    function odometer_init() {
+                    const elements = document.querySelectorAll('.odometer');
+                    elements.forEach(el => {
+                        new Odometer({
+                            el,
+                            format: '( ddd).dd',
+                            duration: 200
+                        });
+                    });
+                    }
+                    odometer_init();
+                } catch (error) {}
+            </script>
+        
+        
+            
+                
+        
+                
+        
+                
+
+                    
+                        <script data-swup-reload-script type="text/javascript" src="/js/love.js"></script>
+                    
+        
+        
+    </div>  
+</footer>
+		</div>
+	</div>
+
+	
+	<div class="post-tools">
+		<div class="post-tools-container">
+	<ul class="article-tools-list">
+		<!-- TOC aside toggle -->
+		
+		<li class="right-bottom-tools page-aside-toggle">
+			<i class="fa-regular fa-outdent"></i>
+		</li>
+		
+
+		<!-- go comment -->
+		
+		<li class="go-comment">
+			<i class="fa-regular fa-comments"></i>
+		</li>
+		
+	</ul>
+</div>
+	</div>
+	
+
+	<div class="right-side-tools-container">
+		<div class="side-tools-container">
+	<ul class="hidden-tools-list">
+		<li class="right-bottom-tools tool-font-adjust-plus flex justify-center items-center">
+			<i class="fa-regular fa-magnifying-glass-plus"></i>
+		</li>
+
+		<li class="right-bottom-tools tool-font-adjust-minus flex justify-center items-center">
+			<i class="fa-regular fa-magnifying-glass-minus"></i>
+		</li>
+
+		<li class="right-bottom-tools tool-dark-light-toggle flex justify-center items-center">
+			<i class="fa-regular fa-moon"></i>
+		</li>
+
+		<!-- rss -->
+		
+		<li class="right-bottom-tools rss flex justify-center items-center">
+			<a class="flex justify-center items-center" href="/atom.xml" target="_blank">
+				<i class="fa-regular fa-rss"></i>
+			</a>
+		</li>
+		
+
+		
+
+		<li class="right-bottom-tools tool-scroll-to-bottom flex justify-center items-center">
+			<i class="fa-regular fa-arrow-down"></i>
+		</li>
+	</ul>
+
+	<ul class="visible-tools-list">
+		<li class="right-bottom-tools toggle-tools-list flex justify-center items-center">
+			<i class="fa-regular fa-cog fa-spin"></i>
+		</li>
+		
+		<li class="right-bottom-tools tool-scroll-to-top flex justify-center items-center">
+			<i class="arrow-up fas fa-arrow-up"></i>
+			<span class="percent"></span>
+		</li>
+		
+		
+	</ul>
+</div>
+	</div>
+
+	<div class="image-viewer-container" role="dialog" aria-modal="true" aria-label="Image viewer">
+	<button class="image-viewer-close" type="button" aria-label="Close">
+		<i class="fa-solid fa-xmark"></i>
+	</button>
+	<button class="image-viewer-prev" type="button" aria-label="Prev">
+		<i class="fa-solid fa-chevron-left"></i>
+	</button>
+	<div class="image-viewer-frame">
+		<img src="" alt="">
+	</div>
+	<div class="image-viewer-exif-panel hidden absolute left-1/2 bottom-20 -translate-x-1/2 w-[min(92vw,420px)] max-h-[60vh] overflow-hidden rounded-2xl bg-background-color-transparent-80 p-4 text-left shadow-redefine-flat backdrop-blur-md" role="dialog" aria-label="EXIF" aria-hidden="true">
+		<div class="flex items-center justify-between mb-3">
+			<span class="text-sm font-semibold text-first-text-color">EXIF</span>
+			<button class="image-viewer-exif-close flex h-8 w-8 items-center justify-center rounded-full bg-background-color-transparent-80 text-first-text-color transition hover:bg-background-color-transparent-40" type="button" aria-label="Close">
+				<i class="fa-solid fa-xmark text-[0.65rem]"></i>
+			</button>
+		</div>
+		<div class="image-viewer-exif-cards grid grid-cols-1 sm:grid-cols-2 gap-3 max-h-[50vh] overflow-y-auto pr-1 scrollbar-hide"></div>
+		<template class="image-viewer-exif-card-template">
+			<div class="rounded-lg bg-background-color-transparent-40 px-3 py-2">
+				<div class="image-viewer-exif-card-header flex items-center gap-2 mb-1">
+					<i class="image-viewer-exif-card-icon fa-solid fa-circle-info text-xs text-third-text-color"></i>
+					<div class="image-viewer-exif-card-title text-xs font-semibold text-first-text-color"></div>
+				</div>
+				<div class="image-viewer-exif-card-items flex flex-col gap-1"></div>
+			</div>
+		</template>
+	</div>
+	<button class="image-viewer-exif-toggle flex items-center gap-2 hidden absolute left-1/2 bottom-6 -translate-x-1/2 rounded-full border border-border-color bg-background-color-transparent-80 px-4 py-2 text-first-text-color backdrop-blur-md transition hover:bg-background-color-transparent-40" type="button" aria-label="EXIF" aria-expanded="false">
+		<i class="fa-solid fa-circle-info text-xs"></i>
+		<span class="text-xs font-semibold uppercase tracking-wider">EXIF</span>
+	</button>
+	<button class="image-viewer-next" type="button" aria-label="Next">
+		<i class="fa-solid fa-chevron-right"></i>
+	</button>
+</div>
+
+
+	
+	<div class="search-pop-overlay">
+	<div class="popup search-popup">
+		<div class="search-header">
+			<span class="search-input-field-pre">
+				<i class="fa-solid fa-keyboard"></i>
+			</span>
+			<div class="search-input-container">
+				<input autocomplete="off" autocorrect="off" autocapitalize="off" placeholder="Search..." spellcheck="false" type="search" class="search-input">
+			</div>
+			<span class="popup-btn-close">
+				<i class="fa-solid fa-times"></i>
+			</span>
+		</div>
+		<div id="search-result">
+			<div id="no-result">
+				<i class="fa-solid fa-spinner fa-spin-pulse fa-5x fa-fw"></i>
+			</div>
+		</div>
+	</div>
+</div>
+	
+
+</main>
+
+
+
+<script src="/js/build/libs/Swup.min.js"></script>
+
+<script src="/js/build/libs/SwupSlideTheme.min.js"></script>
+
+<script src="/js/build/libs/SwupScriptsPlugin.min.js"></script>
+
+<script src="/js/build/libs/SwupProgressPlugin.min.js"></script>
+
+<script src="/js/build/libs/SwupScrollPlugin.min.js"></script>
+
+<script src="/js/build/libs/SwupPreloadPlugin.min.js"></script>
+
+<script>
+    window.swup = new Swup({
+        plugins: [
+            new SwupScriptsPlugin({
+                optin: true,
+            }),
+            new SwupProgressPlugin(),
+            new SwupScrollPlugin({
+                offset: 80,
+            }),
+            new SwupSlideTheme({
+                mainElement: ".main-content-body",
+            }),
+            new SwupPreloadPlugin(),
+        ],
+        containers: ["#swup"],
+    });
+
+    window.dispatchEvent(
+        new CustomEvent("redefine:swup:ready", {
+            detail: {
+                swup: window.swup,
+            },
+        }),
+    );
+</script>
+
+
+
+
+	
+<script src="/js/build/main.js" type="module"></script>
+
+
+
+    
+<script src="/js/build/libs/odometer.min.js"></script>
+
+    
+<link rel="stylesheet" href="/assets/odometer-theme-minimal.css">
+
+
+
+
+
+
+
+  
+<script src="/js/build/libs/Typed.min.js"></script>
+<script src="/js/build/libs/minimasonry.min.js" data-swup-reload-script=""></script>
+
+
+
+
+<script src="/js/build/libs/moment-with-locales.min.js" data-swup-reload-script=""></script>
+
+
+
+	
+</body>
+
+</html>

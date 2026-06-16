@@ -684,7 +684,7 @@
         <div class="label text-third-text-color text-sm">Categories</div>
     </a>
     <a class="item tag-count-item flex flex-col justify-center items-center w-20" href="/archives">
-        <div class="number text-2xl sm:text-xl text-second-text-color font-semibold">547</div>
+        <div class="number text-2xl sm:text-xl text-second-text-color font-semibold">554</div>
         <div class="label text-third-text-color text-sm">Posts</div>
     </a>
 </div>
@@ -796,12 +796,12 @@
     
     
         <span class="article-wordcount article-meta-item">
-            <i class="fa-regular fa-typewriter"></i>&nbsp;<span>2k Words</span>
+            <i class="fa-regular fa-typewriter"></i>&nbsp;<span>4k Words</span>
         </span>
     
     
         <span class="article-min2read article-meta-item">
-            <i class="fa-regular fa-clock"></i>&nbsp;<span>8 Mins</span>
+            <i class="fa-regular fa-clock"></i>&nbsp;<span>16 Mins</span>
         </span>
     
     
@@ -826,7 +826,7 @@
 <strong>时间 / 主题：</strong> 2025-03；高效推理。<br><br />
 <strong>arXiv / 官方报告：</strong> arXiv：<a class="link"   target="_blank" rel="noopener" href="https://arxiv.org/abs/2503.01840" >2503.01840<i class="fa-solid fa-arrow-up-right ml-[0.2em] font-light align-text-top text-[0.7em] link-icon"></i></a>。<br><br />
 <strong>GitHub / 项目：</strong> GitHub：<a class="link"   target="_blank" rel="noopener" href="https://github.com/SafeAILab/EAGLE" >github.com/SafeAILab/EAGLE<i class="fa-solid fa-arrow-up-right ml-[0.2em] font-light align-text-top text-[0.7em] link-icon"></i></a>。<br><br />
-<strong>元数据来源与核验口径：</strong> 来源：<a class="link"   target="_blank" rel="noopener" href="https://arxiv.org/abs/2503.01840" >arXiv<i class="fa-solid fa-arrow-up-right ml-[0.2em] font-light align-text-top text-[0.7em] link-icon"></i></a>；<a class="link"   target="_blank" rel="noopener" href="https://github.com/SafeAILab/EAGLE" >GitHub API / repo<i class="fa-solid fa-arrow-up-right ml-[0.2em] font-light align-text-top text-[0.7em] link-icon"></i></a>；Checked Date：2026-06-04；Repro Status：Paper / official materials reviewed, independent reproduction not claimed。</p></div></div></div>
+<strong>元数据来源与核验口径：</strong> 来源：<a class="link"   target="_blank" rel="noopener" href="https://arxiv.org/abs/2503.01840" >arXiv<i class="fa-solid fa-arrow-up-right ml-[0.2em] font-light align-text-top text-[0.7em] link-icon"></i></a>；<a class="link"   target="_blank" rel="noopener" href="https://github.com/SafeAILab/EAGLE" >GitHub API / repo<i class="fa-solid fa-arrow-up-right ml-[0.2em] font-light align-text-top text-[0.7em] link-icon"></i></a>；Checked Date：2026-06-15；Repro Status：Paper / official materials reviewed, independent reproduction not claimed。</p></div></div></div>
 <p>EAGLE-3 继续解决投机解码里的同一个问题：怎么让便宜 draft path 猜出 target LLM 更可能接受的未来 token。它和 EAGLE 的关键差别不是“又换了一个小模型”，而是指出：<strong>draft model 训练时如果只看真实前缀，推理时却要吃自己上一轮生成的前缀，多步 draft 就会分布偏移。</strong></p>
 <p>EAGLE-3 的回答是 training-time test：在训练阶段就模拟测试时的递归 draft，让 draft model 见过自己生成的中间状态。这样它往后猜第 2、第 3、第 4 个 token 时，不会因为输入分布突然变成“自己造出来的前缀”而崩。</p>
 <h2 id="从-eagle-到-eagle-3放弃-feature-regression-约束"><a class="markdownIt-Anchor" href="#从-eagle-到-eagle-3放弃-feature-regression-约束"></a> 从 EAGLE 到 EAGLE-3：放弃 feature regression 约束</h2>
@@ -998,6 +998,130 @@
 </tbody>
 </table>
 <p>把三篇连起来看，主线很清楚：先找到 target feature 这个低成本接口，再把候选树按上下文动态分配，最后让 draft model 在训练时见过推理时的递归输入。</p>
+<h2 id="训练和推理接口要逐项对齐"><a class="markdownIt-Anchor" href="#训练和推理接口要逐项对齐"></a> 训练和推理接口要逐项对齐</h2>
+<p>EAGLE-3 最容易被讲成“训练时也做一次测试”，但工程上要拆成三个接口。第一个接口是 target feature export：target LLM 的低层、中层、高层 hidden states 必须在一次 forward 中稳定取出，并且和 LM head、position、attention mask 对齐。第二个接口是 draft recursion：draft model 第一轮吃 target fused feature，后续轮次吃自己的中间表示和采样 token。第三个接口是 target verification：候选树必须被构造成 target model 可以一次验证的 token/mask/KV 形状。</p>
+<p>这三个接口任何一个错位，都会让论文里的 acceptance length 变成线上 bug。例如 fused feature 的层号和训练不一致，draft 会看到分布外输入；tree mask 如果让候选分支互相泄漏，就会破坏 speculative decoding 的分布保持；verification 阶段如果没有正确处理被拒绝 token 后的 KV cache，下一步 decode 会带着错误上下文继续跑。</p>
+<p>可以把 EAGLE-3 的上线检查写成一条状态机：</p>
+<div class="code-container" data-rel="Text"><figure class="iseeu highlight text"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br></pre></td><td class="code"><pre><span class="line">prefill target LLM</span><br><span class="line">  -&gt; collect multi-layer features</span><br><span class="line">  -&gt; draft recursive candidates</span><br><span class="line">  -&gt; build tree attention mask</span><br><span class="line">  -&gt; target verifies all candidate paths</span><br><span class="line">  -&gt; accept prefix / reject branch</span><br><span class="line">  -&gt; commit only accepted KV and tokens</span><br></pre></td></tr></table></figure></div>
+<p>这个状态机解释了为什么论文同时报告 algorithm speedup 和 runtime integration。方法本身只让 draft 更准；真正落地还需要 scheduler 知道候选树占多少 token，KV manager 知道哪些 token 可以提交，sampling module 知道拒绝后从 target distribution 继续。</p>
+<h2 id="证据链不是一张速度图就够了"><a class="markdownIt-Anchor" href="#证据链不是一张速度图就够了"></a> 证据链：不是一张速度图就够了</h2>
+<p>EAGLE-3 的论文证据可以按“机制、规模、系统”三层读。</p>
+<table>
+<thead>
+<tr>
+<th>证据节点</th>
+<th>支撑的 claim</th>
+<th>不能证明什么</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Figure 1 scaling law</td>
+<td>direct token prediction 和 training-time test 能把更多数据转成 speedup / acceptance length</td>
+<td>不证明任意领域流量都能同样随数据扩展</td>
+</tr>
+<tr>
+<td>Figure 3 training-time test</td>
+<td>训练过程显式模拟多步 draft recursion</td>
+<td>不证明 draft 输出质量本身优于 target</td>
+</tr>
+<tr>
+<td>Table 2 ablation</td>
+<td>remove feature constraint 和 fused features 都贡献增益</td>
+<td>不证明多层 feature 的最优层组合已经穷尽</td>
+</tr>
+<tr>
+<td>Figure 7 acceptance by recursion step</td>
+<td>接受率随 draft 深度更稳定</td>
+<td>不证明无限深 tree 都值得扩展</td>
+</tr>
+<tr>
+<td>SGLang / vLLM runtime 表</td>
+<td>方法能嵌入真实 serving runtime</td>
+<td>不证明所有 batch size、所有硬件和所有 prompt 分布下都更快</td>
+</tr>
+</tbody>
+</table>
+<p>这个分层很重要。投机解码的质量保持来自 target verification，不来自 draft model “更聪明”。因此 EAGLE-3 的核心指标不是 perplexity 或回答分，而是 accepted tokens、verification overhead、end-to-end throughput / latency。读 speedup 时还要确认 baseline 是否包含同等 runtime 优化、是否启用 tree attention、是否相同 sampling temperature、是否同样 batch size。</p>
+<h2 id="部署时最容易踩的坑"><a class="markdownIt-Anchor" href="#部署时最容易踩的坑"></a> 部署时最容易踩的坑</h2>
+<p>第一类坑是 request mix。EAGLE-3 对低温、长输出、模式稳定的请求更友好；对短输出、工具调用、强随机采样和频繁 stop 的请求，draft 成本可能没有足够 token 可以摊销。线上不应只开全局开关，而应该按 route、temperature、max output、历史 acceptance rate 做 gating。</p>
+<p>第二类坑是 memory accounting。draft tree 会增加一次 verification 的 token 数，target KV cache 也会临时承载候选路径。即使最终只提交 accepted prefix，中间 verification 的显存和 kernel 时间仍是真实成本。长上下文服务里，PagedAttention、prefix cache、speculative tree 和 batch scheduler 会互相影响。</p>
+<p>第三类坑是训练域。论文使用公开对话和 benchmark 说明 scaling 趋势，但企业流量可能包含代码补全、结构化 JSON、检索引用、工具轨迹、数学证明和多语言文本。EAGLE-3 的 training-time test 解决 exposure bias，不自动解决 domain mismatch。更稳的做法是对目标流量采样，按任务桶统计 acceptance，再决定是否补训 draft。</p>
+<p>第四类坑是验证口径。只看单请求 latency 会低估 batch serving 的资源竞争；只看吞吐会掩盖 P95/P99 延迟；只看 accepted length 会忽略 tree construction 和 draft overhead。最终验收至少要同时看：target forward 次数、accepted tokens per verify、draft token cost、GPU memory peak、batch occupancy、P50/P95/P99 latency 和输出一致性。</p>
+<h2 id="最小复现实验应该怎么设计"><a class="markdownIt-Anchor" href="#最小复现实验应该怎么设计"></a> 最小复现实验应该怎么设计</h2>
+<p>复现 EAGLE-3 不必一开始就接完整线上 runtime。更稳的是先做三层小实验。</p>
+<p>第一层是离线 acceptance 实验。固定 target model、prompt 集合、temperature 和 max tokens，比较原始 EAGLE-2、去 feature constraint、加入 fused features、加入 training-time test 后的 average acceptance length。这个实验不追求最高 tokens/s，只验证机制是否按论文方向工作。</p>
+<p>第二层是单请求端到端 latency。把 draft、tree construction、target verification 和 sampling 都放进同一条推理路径，统计每个模块耗时。这里要防止“只测 target 少跑几步”而漏掉 draft overhead。若 acceptance length 提高但端到端 latency 不降，说明 bottleneck 已转移到实现。</p>
+<p>第三层是 batch serving。用真实或合成的请求长度分布测试 batch size 1、8、32、64 等不同并发。记录 throughput、P95 latency、peak KV memory 和 acceptance rate。EAGLE-3 的论文结论可以作为预期方向，但最终上线阈值应来自本地 workload。</p>
+<table>
+<thead>
+<tr>
+<th>实验层级</th>
+<th>必看指标</th>
+<th>失败信号</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>离线 acceptance</td>
+<td>accepted length、acceptance by depth</td>
+<td>training-time test 后深层接受率仍快速下滑</td>
+</tr>
+<tr>
+<td>单请求 latency</td>
+<td>draft time、verify time、total token/s</td>
+<td>draft overhead 超过 target step 节省</td>
+</tr>
+<tr>
+<td>Batch serving</td>
+<td>throughput、P95/P99、peak memory</td>
+<td>高并发下 tree verification 挤占 KV 或 scheduler</td>
+</tr>
+</tbody>
+</table>
+<p>这样设计的好处是能快速定位失败原因：机制没起作用、实现太慢、还是 workload 不适合。它也符合 EAGLE-3 的证据结构：先证明 draft 更会猜，再证明 runtime 真能获益。</p>
+<h2 id="和其他推理优化的组合边界"><a class="markdownIt-Anchor" href="#和其他推理优化的组合边界"></a> 和其他推理优化的组合边界</h2>
+<p>EAGLE-3 属于 decode-side acceleration，主要减少 target LLM 逐 token 前进的次数。它和 quantization、KV cache 压缩、PagedAttention、continuous batching 不是同一层优化。</p>
+<table>
+<thead>
+<tr>
+<th>优化</th>
+<th>作用层</th>
+<th>和 EAGLE-3 的关系</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Weight / activation quantization</td>
+<td>降低每次 forward 的算力和带宽</td>
+<td>target 和 draft 都可能受益，但量化误差会影响 acceptance，需要复测</td>
+</tr>
+<tr>
+<td>KV cache paging / prefix cache</td>
+<td>管理长上下文和多请求 KV</td>
+<td>draft tree 会增加临时候选 token，必须和 KV manager 协同</td>
+</tr>
+<tr>
+<td>Continuous batching</td>
+<td>提高 GPU 批处理利用率</td>
+<td>大 batch 下 target 已接近饱和，EAGLE-3 的边际收益可能下降</td>
+</tr>
+<tr>
+<td>Disaggregated prefill</td>
+<td>分离 prompt 和 decode 资源</td>
+<td>EAGLE-3 主要作用在 decode，prefill-heavy 流量收益有限</td>
+</tr>
+<tr>
+<td>Routing / model cascade</td>
+<td>按请求选不同模型或路径</td>
+<td>可以只给适合请求开启 EAGLE-3，避免全局 overhead</td>
+</tr>
+</tbody>
+</table>
+<p>这个表帮助避免一个常见误解：EAGLE-3 不会自动解决所有推理成本。它最擅长的是“target 每次 decode 很贵，而 draft 能连续猜中多个 token”的区间。若系统已经被 prefill、网络队列、工具调用或 CPU sampling 卡住，EAGLE-3 的接受率再高也不一定改善用户感知延迟。</p>
+<p>从项目取舍看，EAGLE-3 更像“decode path 的二级发动机”，不是新的 target model。它的评估要和容量规划放在一起：多一个 draft 模型意味着更多权重、更多调度路径和更多监控指标；少跑 target decode step 则意味着更低的高价模型调用成本。最终是否值得上线，取决于这两边的账能否在真实流量上闭合。</p>
+<p>一个合格的 EAGLE-3 实验报告最好不要只贴 speedup。它应该写清 target model、draft model、训练数据量、temperature、tree size、prompt/output 长度分布、runtime、batch size 和硬件；还要报告拒绝后的回退逻辑是否保持 target 分布。这样读者才能判断提升来自方法机制、实现优化，还是 benchmark 条件本身。</p>
+<p>如果这些条件没有列清，EAGLE-3 的结论只能作为方向参考，不能直接变成容量规划假设；真正的部署决策还要用本地请求回放验证。尤其是 agent 流量和代码流量，常常混合短回答、工具调用、长 JSON、重试和 stop sequence；它们的 acceptance pattern 可能和 MT-bench 完全不同，所以最好单独分桶统计，而不是把所有请求揉成一个平均 speedup。</p>
 <h2 id="外部精读"><a class="markdownIt-Anchor" href="#外部精读"></a> 外部精读</h2>
 <ul>
 <li><a class="link"   target="_blank" rel="noopener" href="https://arxiv.org/abs/2503.01840" >EAGLE-3 论文<i class="fa-solid fa-arrow-up-right ml-[0.2em] font-light align-text-top text-[0.7em] link-icon"></i></a>：方法、scaling、消融和 runtime 表。</li>
@@ -1173,7 +1297,7 @@
 	<div class="post-toc">
 		<div class="toc-title">On this page</div>
 		<div class="page-title">论文专题讲解：EAGLE-3：为什么 draft model 要在训练时“见过自己犯错”</div>
-		<ol class="nav"><li class="nav-item nav-level-2"><a class="nav-link" href="#%E4%BB%8E-eagle-%E5%88%B0-eagle-3%E6%94%BE%E5%BC%83-feature-regression-%E7%BA%A6%E6%9D%9F"><span class="nav-text"> 从 EAGLE 到 EAGLE-3：放弃 feature regression 约束</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#training-time-test-%E6%98%AF%E4%BB%80%E4%B9%88"><span class="nav-text"> Training-time test 是什么</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#%E5%A4%9A%E5%B1%82-feature-fusion-%E4%B8%BA%E4%BB%80%E4%B9%88%E6%9C%89%E7%94%A8"><span class="nav-text"> 多层 feature fusion 为什么有用</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#%E6%B6%88%E8%9E%8D%E5%AE%9E%E9%AA%8C%E6%80%8E%E4%B9%88%E8%AF%BB"><span class="nav-text"> 消融实验怎么读</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#%E6%8E%A5%E5%8F%97%E7%8E%87%E4%B8%BA%E4%BB%80%E4%B9%88%E6%B2%A1%E6%9C%89%E9%9A%8F%E6%B7%B1%E5%BA%A6%E5%B4%A9%E6%8E%89"><span class="nav-text"> 接受率为什么没有随深度崩掉</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#runtime-%E7%BB%93%E6%9E%9C%E4%B8%8D%E8%83%BD%E5%8F%AA%E7%9C%8B%E5%8D%95%E8%AF%B7%E6%B1%82"><span class="nav-text"> Runtime 结果不能只看单请求</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#%E5%92%8C-eagle-eagle-2-%E7%9A%84%E8%BF%9E%E7%BB%AD%E5%85%B3%E7%B3%BB"><span class="nav-text"> 和 EAGLE、EAGLE-2 的连续关系</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#%E5%A4%96%E9%83%A8%E7%B2%BE%E8%AF%BB"><span class="nav-text"> 外部精读</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#%E9%98%85%E8%AF%BB%E7%BB%93%E8%AE%BA"><span class="nav-text"> 阅读结论</span></a></li></ol>
+		<ol class="nav"><li class="nav-item nav-level-2"><a class="nav-link" href="#%E4%BB%8E-eagle-%E5%88%B0-eagle-3%E6%94%BE%E5%BC%83-feature-regression-%E7%BA%A6%E6%9D%9F"><span class="nav-text"> 从 EAGLE 到 EAGLE-3：放弃 feature regression 约束</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#training-time-test-%E6%98%AF%E4%BB%80%E4%B9%88"><span class="nav-text"> Training-time test 是什么</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#%E5%A4%9A%E5%B1%82-feature-fusion-%E4%B8%BA%E4%BB%80%E4%B9%88%E6%9C%89%E7%94%A8"><span class="nav-text"> 多层 feature fusion 为什么有用</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#%E6%B6%88%E8%9E%8D%E5%AE%9E%E9%AA%8C%E6%80%8E%E4%B9%88%E8%AF%BB"><span class="nav-text"> 消融实验怎么读</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#%E6%8E%A5%E5%8F%97%E7%8E%87%E4%B8%BA%E4%BB%80%E4%B9%88%E6%B2%A1%E6%9C%89%E9%9A%8F%E6%B7%B1%E5%BA%A6%E5%B4%A9%E6%8E%89"><span class="nav-text"> 接受率为什么没有随深度崩掉</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#runtime-%E7%BB%93%E6%9E%9C%E4%B8%8D%E8%83%BD%E5%8F%AA%E7%9C%8B%E5%8D%95%E8%AF%B7%E6%B1%82"><span class="nav-text"> Runtime 结果不能只看单请求</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#%E5%92%8C-eagle-eagle-2-%E7%9A%84%E8%BF%9E%E7%BB%AD%E5%85%B3%E7%B3%BB"><span class="nav-text"> 和 EAGLE、EAGLE-2 的连续关系</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#%E8%AE%AD%E7%BB%83%E5%92%8C%E6%8E%A8%E7%90%86%E6%8E%A5%E5%8F%A3%E8%A6%81%E9%80%90%E9%A1%B9%E5%AF%B9%E9%BD%90"><span class="nav-text"> 训练和推理接口要逐项对齐</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#%E8%AF%81%E6%8D%AE%E9%93%BE%E4%B8%8D%E6%98%AF%E4%B8%80%E5%BC%A0%E9%80%9F%E5%BA%A6%E5%9B%BE%E5%B0%B1%E5%A4%9F%E4%BA%86"><span class="nav-text"> 证据链：不是一张速度图就够了</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#%E9%83%A8%E7%BD%B2%E6%97%B6%E6%9C%80%E5%AE%B9%E6%98%93%E8%B8%A9%E7%9A%84%E5%9D%91"><span class="nav-text"> 部署时最容易踩的坑</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#%E6%9C%80%E5%B0%8F%E5%A4%8D%E7%8E%B0%E5%AE%9E%E9%AA%8C%E5%BA%94%E8%AF%A5%E6%80%8E%E4%B9%88%E8%AE%BE%E8%AE%A1"><span class="nav-text"> 最小复现实验应该怎么设计</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#%E5%92%8C%E5%85%B6%E4%BB%96%E6%8E%A8%E7%90%86%E4%BC%98%E5%8C%96%E7%9A%84%E7%BB%84%E5%90%88%E8%BE%B9%E7%95%8C"><span class="nav-text"> 和其他推理优化的组合边界</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#%E5%A4%96%E9%83%A8%E7%B2%BE%E8%AF%BB"><span class="nav-text"> 外部精读</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#%E9%98%85%E8%AF%BB%E7%BB%93%E8%AE%BA"><span class="nav-text"> 阅读结论</span></a></li></ol>
 
 	</div>
 </div>
@@ -1201,11 +1325,11 @@
                 
                 <p class="post-count space-x-0.5">
                     <span>
-                        547 posts in total
+                        554 posts in total
                     </span>
                     
                         <span>
-                            2132.4k words in total
+                            2191.9k words in total
                         </span>
                     
                 </p>
