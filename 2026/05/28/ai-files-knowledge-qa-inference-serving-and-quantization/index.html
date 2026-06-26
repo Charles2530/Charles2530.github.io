@@ -1,0 +1,1438 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="keywords" content="Charles">
+    
+    
+    <meta name="author" content="Charles">
+    
+    <!-- Completely eliminate flash of wrong theme -->
+    <script>
+        (function() {
+            const THEME_KEY = "REDEFINE-THEME-STATUS";
+            const DARK = "dark", LIGHT = "light";
+            
+            // Get preferred theme
+            function getTheme() {
+                try {
+                    const saved = localStorage.getItem(THEME_KEY);
+                    if (saved) {
+                        const { isDark } = JSON.parse(saved);
+                        return isDark ? DARK : LIGHT;
+                    }
+                } catch (e) {}
+                
+                return matchMedia("(prefers-color-scheme: dark)").matches ? DARK : LIGHT;
+            }
+            
+            // Apply theme to document
+            function applyTheme(theme) {
+                const isDark = theme === DARK;
+                const root = document.documentElement;
+                
+                // Set classes for compatibility
+                root.classList.add(theme);
+                root.classList.remove(isDark ? LIGHT : DARK);
+                root.style.colorScheme = theme;
+            }
+            
+            // Initial application
+            const theme = getTheme();
+            applyTheme(theme);
+            
+            // Listen for system preference changes
+            matchMedia("(prefers-color-scheme: dark)").addEventListener("change", ({ matches }) => {
+                // Only update if using system preference (no localStorage entry)
+                if (!localStorage.getItem(THEME_KEY)) {
+                    applyTheme(matches ? DARK : LIGHT);
+                }
+            });
+            
+            // Set body classes ASAP (before DOMContentLoaded)
+            (function() {
+                const addBodyClass = () => {
+                    const b = document.body;
+                    if (!b) return false;
+                    b.classList.add(theme + "-mode");
+                    return true;
+                };
+
+                // Try immediately
+                if (addBodyClass()) return;
+
+                // Observe until body exists
+                const mo = new MutationObserver(() => {
+                    if (addBodyClass()) mo.disconnect();
+                });
+                mo.observe(document.documentElement, { childList: true, subtree: true });
+            })();
+        })();
+    </script>
+    
+    <!-- preconnect -->
+<!--- Seo Part-->
+    
+    <link rel="canonical" href="https://charles2530.github.io/2026/05/28/ai-files-knowledge-qa-inference-serving-and-quantization/"/>
+    <meta name="robots" content="index,follow">
+    <meta name="googlebot" content="index,follow">
+    <meta name="revisit-after" content="1 days">
+    
+    
+        
+        <meta name="description" content="This is Charles&#39;s Castle.">
+<meta property="og:type" content="article">
+<meta property="og:title" content="知识问答：推理服务与量化 QA">
+<meta property="og:url" content="https://charles2530.github.io/2026/05/28/ai-files-knowledge-qa-inference-serving-and-quantization/index.html">
+<meta property="og:site_name" content="Charles&#39;s Castle">
+<meta property="og:description" content="This is Charles&#39;s Castle.">
+<meta property="og:locale" content="en_US">
+<meta property="og:image" content="https://charles2530.github.io/image/background/logo.jpg">
+<meta property="article:published_time" content="2026-05-28T01:00:00.000Z">
+<meta property="article:modified_time" content="2026-05-28T01:00:00.000Z">
+<meta property="article:author" content="Du Jinyang">
+<meta property="article:tag" content="AI">
+<meta property="article:tag" content="推理">
+<meta property="article:tag" content="数据与评测">
+<meta property="article:tag" content="基础知识">
+<meta property="article:tag" content="量化">
+<meta property="article:tag" content="知识问答">
+<meta name="twitter:card" content="summary">
+<meta name="twitter:image" content="https://charles2530.github.io/image/background/logo.jpg">
+    
+    
+    <!--- Icon Part-->
+    <link rel="icon" type="image/png" href="https://charles2530.github.io/image/background/favicon.png" sizes="192x192">
+    <link rel="apple-touch-icon" sizes="180x180" href="https://charles2530.github.io/image/background/favicon.png">
+    <meta name="theme-color" content="#A31F34">
+    <link rel="shortcut icon" href="https://charles2530.github.io/image/background/favicon.png">
+    <!--- Page Info-->
+    
+    <title>
+        
+            知识问答：推理服务与量化 QA | Charles&#39;s Castle
+        
+    </title>
+
+    
+<link rel="stylesheet" href="/fonts/Chillax/chillax.css">
+
+
+    <!--- Inject Part-->
+    
+        
+            
+    
+            
+    
+            
+                
+                    <link rel="stylesheet" href="/katex/katex.min.css">
+                
+    
+            
+                
+                    <link rel="stylesheet" href="/css/site-polish-v2.css">
+                
+    
+            
+                
+                    <script data-swup-reload-script>
+(function() {
+  function loadBaiduAnalytics() {
+    if (window.__baiduAnalyticsLoaded) return;
+    window.__baiduAnalyticsLoaded = true;
+    window._hmt = window._hmt || [];
+    var hm = document.createElement("script");
+    hm.async = true;
+    hm.src = "https://hm.baidu.com/hm.js?8e0e5f382d14d87cbeadc33a36e71e86";
+    document.head.appendChild(hm);
+  }
+  if ("requestIdleCallback" in window) {
+    requestIdleCallback(loadBaiduAnalytics, { timeout: 3000 });
+  } else {
+    window.addEventListener("load", function() {
+      setTimeout(loadBaiduAnalytics, 1500);
+    });
+  }
+})();
+</script>
+
+                
+    
+
+    
+<link rel="stylesheet" href="/css/style.css">
+
+
+    
+        
+<link rel="stylesheet" href="/css/build/tailwind.css">
+
+    
+
+    
+<link rel="stylesheet" href="/fonts/GeistMono/geist-mono.css">
+
+    
+<link rel="stylesheet" href="/fonts/Geist/geist.css">
+
+    <!--- Font Part-->
+    
+    
+    
+    
+    
+    
+        
+<script src="/js/build/libs/anime.min.js"></script>
+
+    
+
+    <script id="hexo-configurations">
+    window.config = {"hostname":"charles2530.github.io","root":"/","language":"en","path":"search.xml"};
+    window.theme = {"articles":{"style":{"font_size":"16px","line_height":1.5,"image_border_radius":"14px","image_alignment":"center","image_caption":false,"link_icon":true,"delete_mask":false,"title_alignment":"left","headings_top_spacing":{"h1":"5rem","h2":"4rem","h3":"2.8rem","h4":"2.5rem","h5":"2.2rem","h6":"2rem"}},"word_count":{"enable":true,"count":true,"min2read":true},"author_label":{"enable":true,"auto":true,"list":["lol","Neo","God"]},"code_block":{"copy":true,"style":"mac","highlight_theme":{"light":"github","dark":"vs2015"},"font":{"enable":false,"family":null,"url":null}},"toc":{"enable":true,"max_depth":6,"number":false,"expand":true,"init_open":true},"copyright":{"enable":true,"default":"cc_by_nc_sa"},"lazyload":true,"pangu_js":false,"recommendation":{"enable":false,"title":"recommend_articles","limit":3,"mobile_limit":2,"placeholder":"https://charles2530.github.io/image/background/p3.jfif","skip_dirs":[]}},"colors":{"primary":"#A31F34","secondary":"#1890ff","default_mode":"light"},"global":{"fonts":{"chinese":{"enable":false,"family":null,"url":null},"english":{"enable":false,"family":null,"url":null},"title":{"enable":false,"family":null,"url":null}},"content_max_width":"1000px","sidebar_width":"210px","hover":{"shadow":true,"scale":true},"scroll_progress":{"bar":true,"percentage":true},"website_counter":{"url":"https://cn.vercount.one/js","enable":true,"site_pv":true,"site_uv":true,"post_pv":true},"single_page":true,"preloader":{"enable":true,"custom_message":null},"side_tools":{"gear_rotation":true,"auto_expand":false},"open_graph":{"enable":true,"image":"https://charles2530.github.io/image/background/logo.jpg","description":"This is Charles's Castle."},"google_analytics":{"enable":false,"id":null}},"home_banner":{"enable":true,"style":"fixed","image":{"light":"https://charles2530.github.io/image/background/background-light1.jpg","dark":"https://charles2530.github.io/image/background/background-dark1.jpg"},"title":"Charles's Castle","subtitle":{"text":["Happiness is best!","Never give up!","Everyday is a gift!"],"hitokoto":{"enable":false,"show_author":false,"api":"https://v1.hitokoto.cn"},"typing_speed":100,"backing_speed":80,"starting_delay":500,"backing_delay":1500,"loop":true,"smart_backspace":true},"text_color":{"light":"#000000","dark":"#d1d1b6"},"text_style":{"title_size":"3.2rem","subtitle_size":"1.5rem","line_height":1.2},"custom_font":{"enable":false,"family":null,"url":null},"social_links":{"enable":true,"style":"center","links":[{"icon":"fa-brands fa-github","url":"https://github.com/Charles2530/"},{"icon":"fa-brands fa-zhihu","url":"https://www.zhihu.com/people/yang-guang-xiao-zi-55-55"},{"icon":"fa-solid fa-at","url":"mailto:charles2530@163.com"},{"icon":"fa-brands fa-telegram","url":null},{"icon":"/images/custom-icon.svg","url":null}],"qrs":[{"icon":"fa-brands fa-weixin","qr":"https://charles2530.github.io/image/background/Wechat_icon.png"},{"icon":"/images/custom-icon.svg","qr":null}]}},"plugins":{"feed":{"enable":true},"aplayer":{"enable":false,"type":"fixed","audios":[{"name":null,"artist":null,"url":null,"cover":null,"lrc":null}]},"mermaid":{"enable":false,"version":"11.4.1","theme":{"light":"default","dark":"dark"}}},"version":"2.9.0","navbar":{"auto_hide":true,"color":{"left":"#f78736","right":"#367df7","transparency":35},"width":{"home":"1200px","pages":"1000px"},"links":{"Home":{"path":"/","icon":"fa-regular fa-house"},"Categories":{"path":"/categories","icon":"fas fa-bookmark"},"Tags":{"path":"/tags","icon":"fas fa-tags"},"About":{"icon":"fa-regular fa-user","submenus":{"Me":"https://jinyang-du.github.io/","Github":"https://github.com/Charles2530/","Blog":"https://charles2530.github.io","Statistics":"https://tongji.baidu.com/"}}},"search":{"enable":true,"preload":false}},"page_templates":{"friends_column":2,"tags_style":"blur","masonry":{"batch_size":12,"initial_batch_size":24}},"home":{"sidebar":{"enable":true,"position":"left","first_item":"menu","announcement":"This is Charles's Castle","show_on_mobile":true,"links":{"Archives":{"path":"/archives","icon":"fa-regular fa-archive"},"Photos":{"icon":"fa-solid fa-image","path":"/masonry/"},"Essays":{"icon":"fa-solid fa-message-lines","path":"/essay/"},"Friends":{"icon":"fa-solid fa-user-group","path":"/friends/"}}},"article_date_format":"auto","excerpt_length":200,"categories":{"enable":true,"limit":3},"tags":{"enable":true,"limit":3}},"footer":{"runtime":true,"icon":"<i class=\"fa-solid fa-heart fa-beat\" style=\"--fa-animation-duration: 0.5s; color: #f54545\"></i>","start":"2022/12/27 00:00:00","statistics":true,"customize":null,"icp":{"enable":false,"number":null,"url":null}},"footerStart":"2022/12/27 00:00:00","mermaid":{"style":{"light":"default","dark":"dark"}}};
+    window.lang_ago = {"second":"%s seconds ago","minute":"%s minutes ago","hour":"%s hours ago","day":"%s days ago","week":"%s weeks ago","month":"%s months ago","year":"%s years ago"};
+    window.i18n = {"search":"Search...","toc":"On this page","prev":"Prev","next":"Next","prev_posts":"Prev posts","next_posts":"Next posts","page":"Page %d","recent_posts":"Recent Posts","share":"Share","powered_by":"POWERED BY %s","theme":"THEME","rss_feed":"RSS Feed","category":"Category","categories":"Categories","tag":"Tag","tags":"Tags","post":"Post","posts":"Posts","tagcloud":"Tag Cloud","comment":"Comment","comments":"Comments","home":"Home","archive":"Archive","archives":"Archives","top":"TOP","sticky":"Sticky","go-back-home":"Go Back Home","masonry_loading":"Loading photos...","image_viewer":"Image viewer","close":"Close","exif":{"title":"EXIF","cards":{"camera":"Camera","lens":"Lens","exposure":"Exposure","other":"Other"},"fields":{"make":"Brand","model":"Model","date_taken":"Date taken","lens_model":"Lens","focal_length":"Focal length","focus_mode":"Focus mode","shutter":"Shutter","aperture":"Aperture","iso":"ISO","exposure_program":"Exposure program","exposure_compensation":"Exposure compensation","metering_mode":"Metering mode","flash":"Flash","white_balance":"White balance","latitude":"Latitude","longitude":"Longitude","altitude":"Altitude"},"status":{"loading":"Loading...","no_exif":"No EXIF available","library_missing":"EXIF library not loaded","image_source_missing":"Image source unavailable","unavailable":"EXIF unavailable (blocked by CORS or missing metadata)","flag_unavailable":"EXIF unavailable"}},"about":"About","changelog":"Changelog","links":"Links","link":"Link","friends":"Friends","friend":"Friend","timeline":"Timeline","shuoshuo":"Shuoshuo","bookmarks":"Bookmarks","site_uv":"VISITOR COUNT","site_pv":"TOTAL PAGE VIEWS","read_more":"Read more","wordcount":"Words","min2read":"Mins","status":"Status","runtime":"Blog up for","days":"days","hours":"hrs","minutes":"Min","seconds":"Sec","optimized_by":"and Optimized by Evan","rights":"All Rights Reserved","site_posts":"%s posts in total","site_wordcount":"%s words in total","copyright":{"author":"Author","title":"Title","link":"Link","create_time":"Created at","update_time":"Updated at","license_title":"License","license_content":"This work is licensed under %s.","all_rights_reserved":"All Rights Reserved &#169; %s","public_domain":"This work is in the public domain."},"ago":{"second":"%s seconds ago","minute":"%s minutes ago","hour":"%s hours ago","day":"%s days ago","week":"%s weeks ago","month":"%s months ago","year":"%s years ago"},"create_time":"Created","update_time":"Updated","expired":"This post is written %s days ago, and the content may not be up to date."};
+    window.data = {"masonry":true};
+  </script>
+    
+    <!--- Fontawesome Part-->
+    
+<link rel="stylesheet" href="/fontawesome/fontawesome.min.css">
+
+    
+<link rel="stylesheet" href="/fontawesome/brands.min.css">
+
+    
+<link rel="stylesheet" href="/fontawesome/solid.min.css">
+
+    
+<link rel="stylesheet" href="/fontawesome/regular.min.css">
+
+    
+    
+    
+    
+<meta name="generator" content="Hexo 6.3.0"><link rel="alternate" href="/atom.xml" title="Charles's Castle" type="application/atom+xml">
+<link rel="stylesheet" href="/css/prism-tomorrow.css" type="text/css"></head>
+
+
+<body>
+	<div class="progress-bar-container">
+	
+	<span class="scroll-progress-bar"></span>
+	
+
+	
+	<span class="pjax-progress-bar"></span>
+	<!--        <span class="swup-progress-icon">-->
+	<!--            <i class="fa-solid fa-circle-notch fa-spin"></i>-->
+	<!--        </span>-->
+	
+</div>
+
+<style>
+    :root {
+        --preloader-background-color: #fff;
+        --preloader-text-color: #000;
+    }
+
+    @media (prefers-color-scheme: dark) {
+        :root {
+            --preloader-background-color: #202124;
+            --preloader-text-color: #fff;
+        }
+    }
+
+    @media (prefers-color-scheme: light) {
+        :root {
+            --preloader-background-color: #fff;
+            --preloader-text-color: #000;
+        }
+    }
+
+    @media (max-width: 600px) {
+        .ml13 {
+            font-size: 2.6rem !important; /* Adjust this value as needed */
+        }
+    }
+
+    .preloader {
+        display: flex;
+        flex-direction: column;
+        gap: 1rem; /* Tailwind 'gap-4' is 1rem */
+        align-items: center;
+        justify-content: center;
+        position: fixed;
+        padding: 12px;
+        top: 0;
+        right: 0;
+        bottom: 0;
+        left: 0;
+        width: 100vw;
+        height: 100vh; /* 'h-screen' is 100% of the viewport height */
+        background-color: var(--preloader-background-color);
+        z-index: 1100; /* 'z-[1100]' sets the z-index */
+        transition: opacity 0.2s ease-in-out;
+    }
+
+    .ml13 {
+        font-size: 3.2rem;
+        /* text-transform: uppercase; */
+        color: var(--preloader-text-color);
+        letter-spacing: -1px;
+        font-weight: 500;
+        font-family: 'Chillax-Variable', sans-serif;
+        text-align: center;
+    }
+
+    .ml13 .word {
+        display: inline-flex;
+        flex-wrap: wrap;
+        white-space: nowrap;
+    }
+
+    .ml13 .letter {
+        display: inline-block;
+        line-height: 1em;
+    }
+</style>
+
+<div class="preloader">
+    <h2 class="ml13">
+        Charles&#39;s Castle
+    </h2>
+    <script>
+        var textWrapper = document.querySelector('.ml13');
+        // Split text into words
+        var words = textWrapper.textContent.trim().split(' ');
+
+        // Clear the existing content
+        textWrapper.innerHTML = '';
+
+        // Wrap each word and its letters in spans
+        words.forEach(function(word) {
+            var wordSpan = document.createElement('span');
+            wordSpan.classList.add('word');
+            wordSpan.innerHTML = word.replace(/\S/g, "<span class='letter'>$&</span>");
+            textWrapper.appendChild(wordSpan);
+            textWrapper.appendChild(document.createTextNode(' ')); // Add space between words
+        });
+
+        var animation = anime.timeline({ loop: true })
+            .add({
+                targets: '.ml13 .letter',
+                translateY: [20, 0],
+                translateZ: 0,
+                opacity: [0, 1],
+                filter: ['blur(5px)', 'blur(0px)'],
+                easing: "easeOutExpo",
+                duration: 1200,
+                delay: (el, i) => 300 + 20 * i,
+            })
+            .add({
+                targets: '.ml13 .letter',
+                translateY: [0, -20],
+                opacity: [1, 0],
+                filter: ['blur(0px)', 'blur(5px)'],
+                easing: "easeInExpo",
+                duration: 1000,
+                delay: (el, i) => 15 * i,
+                complete: function() {
+                    hidePreloader();
+                }
+            }, '-=700');
+
+
+        let themeStatus = JSON.parse(localStorage.getItem('REDEFINE-THEME-STATUS'))?.isDark;
+
+        // If the theme status is not found in local storage, check the preferred color scheme
+        if (themeStatus === undefined || themeStatus === null) {
+            if (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) {
+                themeStatus = 'dark';
+            } else {
+                themeStatus = 'light';
+            }
+        }
+
+        // Now you can use the themeStatus variable in your code
+        if (themeStatus) {
+            document.documentElement.style.setProperty('--preloader-background-color', '#202124');
+            document.documentElement.style.setProperty('--preloader-text-color', '#fff');
+        } else {
+            document.documentElement.style.setProperty('--preloader-background-color', '#fff');
+            document.documentElement.style.setProperty('--preloader-text-color', '#000');
+        }
+
+        window.addEventListener('load', function () {
+            setTimeout(hidePreloader, 5000); // Call hidePreloader after 5000 milliseconds if not already called by animation
+        });
+
+        function hidePreloader() {
+            var preloader = document.querySelector('.preloader');
+            preloader.style.opacity = '0';
+            setTimeout(function () {
+                preloader.style.display = 'none';
+            }, 200);
+        }
+    </script>
+</div>
+
+<main class="page-container" id="swup">
+
+	
+
+	<div class="main-content-container flex flex-col justify-between min-h-dvh">
+		<div class="main-content-header">
+			<header class="navbar-container px-6 md:px-12">
+    <div class="navbar-content transition-navbar ">
+        <div class="left">
+            
+                <a class="logo-image h-8 w-8 sm:w-10 sm:h-10 mr-3" href="/">
+                    <img src="https://charles2530.github.io/image/background/logo.jpg" class="w-full h-full rounded-xs">
+                </a>
+            
+            <a class="logo-title" href="/">
+                
+                Charles&#39;s Castle
+                
+            </a>
+        </div>
+
+        <div class="right">
+            <!-- PC -->
+            <div class="desktop">
+                <ul class="navbar-list">
+                    
+                        
+                            
+
+                            <li class="navbar-item">
+                                <!-- Menu -->
+                                <a class=""
+                                   href="/"
+                                        >
+                                    <i class="fa-regular fa-house fa-fw"></i>
+                                    HOME
+                                    
+                                </a>
+
+                                <!-- Submenu -->
+                                
+                            </li>
+                    
+                        
+                            
+
+                            <li class="navbar-item">
+                                <!-- Menu -->
+                                <a class=""
+                                   href="/categories"
+                                        >
+                                    <i class="fas fa-bookmark fa-fw"></i>
+                                    CATEGORIES
+                                    
+                                </a>
+
+                                <!-- Submenu -->
+                                
+                            </li>
+                    
+                        
+                            
+
+                            <li class="navbar-item">
+                                <!-- Menu -->
+                                <a class=""
+                                   href="/tags"
+                                        >
+                                    <i class="fas fa-tags fa-fw"></i>
+                                    TAGS
+                                    
+                                </a>
+
+                                <!-- Submenu -->
+                                
+                            </li>
+                    
+                        
+                            
+
+                            <li class="navbar-item">
+                                <!-- Menu -->
+                                <a class="has-dropdown"
+                                   href="#"
+                                        onClick=&#34;return false;&#34;>
+                                    <i class="fa-regular fa-user fa-fw"></i>
+                                    ABOUT
+                                    <i class="fa-solid fa-chevron-down fa-fw"></i>
+                                </a>
+
+                                <!-- Submenu -->
+                                
+                                    <ul class="sub-menu">
+                                        
+                                            <li>
+                                                <a target="_blank" rel="noopener" href="https://jinyang-du.github.io/">
+                                                    ME
+                                                </a>
+                                            </li>
+                                        
+                                            <li>
+                                                <a target="_blank" rel="noopener" href="https://github.com/Charles2530/">
+                                                    GITHUB
+                                                </a>
+                                            </li>
+                                        
+                                            <li>
+                                                <a href="https://charles2530.github.io">
+                                                    BLOG
+                                                </a>
+                                            </li>
+                                        
+                                            <li>
+                                                <a target="_blank" rel="noopener" href="https://tongji.baidu.com/">
+                                                    STATISTICS
+                                                </a>
+                                            </li>
+                                        
+                                    </ul>
+                                
+                            </li>
+                    
+                    
+                        <li class="navbar-item search search-popup-trigger">
+                            <i class="fa-solid fa-magnifying-glass"></i>
+                        </li>
+                    
+                </ul>
+            </div>
+            <!-- Mobile -->
+            <div class="mobile">
+                
+                    <div class="icon-item search search-popup-trigger"><i class="fa-solid fa-magnifying-glass"></i>
+                    </div>
+                
+                <div class="icon-item navbar-bar">
+                    <div class="navbar-bar-middle"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Mobile sheet -->
+    <div class="navbar-drawer h-dvh w-full absolute top-0 left-0 bg-background-color flex flex-col justify-between">
+        <ul class="drawer-navbar-list flex flex-col px-4 justify-center items-start">
+            
+                
+                    
+
+                    <li class="drawer-navbar-item text-base my-1.5 flex flex-col w-full">
+                        
+                        <a class="py-1.5 px-2 flex flex-row items-center justify-between gap-1 hover:!text-primary active:!text-primary text-2xl font-semibold group border-b border-border-color hover:border-primary w-full "
+                           href="/"
+                        >
+                            <span>
+                                HOME
+                            </span>
+                            
+                                <i class="fa-regular fa-house fa-sm fa-fw"></i>
+                            
+                        </a>
+                        
+
+                        
+                    </li>
+            
+                
+                    
+
+                    <li class="drawer-navbar-item text-base my-1.5 flex flex-col w-full">
+                        
+                        <a class="py-1.5 px-2 flex flex-row items-center justify-between gap-1 hover:!text-primary active:!text-primary text-2xl font-semibold group border-b border-border-color hover:border-primary w-full "
+                           href="/categories"
+                        >
+                            <span>
+                                CATEGORIES
+                            </span>
+                            
+                                <i class="fas fa-bookmark fa-sm fa-fw"></i>
+                            
+                        </a>
+                        
+
+                        
+                    </li>
+            
+                
+                    
+
+                    <li class="drawer-navbar-item text-base my-1.5 flex flex-col w-full">
+                        
+                        <a class="py-1.5 px-2 flex flex-row items-center justify-between gap-1 hover:!text-primary active:!text-primary text-2xl font-semibold group border-b border-border-color hover:border-primary w-full "
+                           href="/tags"
+                        >
+                            <span>
+                                TAGS
+                            </span>
+                            
+                                <i class="fas fa-tags fa-sm fa-fw"></i>
+                            
+                        </a>
+                        
+
+                        
+                    </li>
+            
+                
+                    
+
+                    <li class="drawer-navbar-item-sub text-base my-1.5 flex flex-col w-full">
+                        
+                        <div class="py-1.5 px-2 flex flex-row items-center justify-between gap-1 hover:!text-primary active:!text-primary cursor-pointer text-2xl font-semibold group border-b border-border-color hover:border-primary w-full "
+                             navbar-data-toggle="submenu-About"
+                        >
+                            <span>
+                                ABOUT
+                            </span>
+                            
+                                <i class="fa-solid fa-chevron-right fa-sm fa-fw transition-all"></i>
+                            
+                        </div>
+                        
+
+                        
+                            <div class="flex-col items-start px-2 py-2 hidden" data-target="submenu-About">
+                                
+                                    <div class="drawer-navbar-item text-base flex flex-col justify-center items-start hover:underline active:underline hover:underline-offset-1 rounded-3xl">
+                                        <a class=" text-third-text-color text-xl"
+                                           target="_blank" rel="noopener" href="https://jinyang-du.github.io/">ME</a>
+                                    </div>
+                                
+                                    <div class="drawer-navbar-item text-base flex flex-col justify-center items-start hover:underline active:underline hover:underline-offset-1 rounded-3xl">
+                                        <a class=" text-third-text-color text-xl"
+                                           target="_blank" rel="noopener" href="https://github.com/Charles2530/">GITHUB</a>
+                                    </div>
+                                
+                                    <div class="drawer-navbar-item text-base flex flex-col justify-center items-start hover:underline active:underline hover:underline-offset-1 rounded-3xl">
+                                        <a class=" text-third-text-color text-xl"
+                                           href="https://charles2530.github.io">BLOG</a>
+                                    </div>
+                                
+                                    <div class="drawer-navbar-item text-base flex flex-col justify-center items-start hover:underline active:underline hover:underline-offset-1 rounded-3xl">
+                                        <a class=" text-third-text-color text-xl"
+                                           target="_blank" rel="noopener" href="https://tongji.baidu.com/">STATISTICS</a>
+                                    </div>
+                                
+                            </div>
+                        
+                    </li>
+            
+
+            
+            
+                
+                    
+                    <li class="drawer-navbar-item text-base my-1.5 flex flex-col w-full">
+                        <a class="py-1.5 px-2 flex flex-row items-center justify-between gap-1 hover:!text-primary active:!text-primary text-2xl font-semibold group border-b border-border-color hover:border-primary w-full active"
+                           href="/archives"
+                        >
+                            <span>Archives</span>
+                            <i class="fa-regular fa-archive fa-sm fa-fw"></i>
+                        </a>
+                    </li>
+                
+                    
+                    <li class="drawer-navbar-item text-base my-1.5 flex flex-col w-full">
+                        <a class="py-1.5 px-2 flex flex-row items-center justify-between gap-1 hover:!text-primary active:!text-primary text-2xl font-semibold group border-b border-border-color hover:border-primary w-full active"
+                           href="/masonry/"
+                        >
+                            <span>Photos</span>
+                            <i class="fa-solid fa-image fa-sm fa-fw"></i>
+                        </a>
+                    </li>
+                
+                    
+                    <li class="drawer-navbar-item text-base my-1.5 flex flex-col w-full">
+                        <a class="py-1.5 px-2 flex flex-row items-center justify-between gap-1 hover:!text-primary active:!text-primary text-2xl font-semibold group border-b border-border-color hover:border-primary w-full active"
+                           href="/essay/"
+                        >
+                            <span>Essays</span>
+                            <i class="fa-solid fa-message-lines fa-sm fa-fw"></i>
+                        </a>
+                    </li>
+                
+                    
+                    <li class="drawer-navbar-item text-base my-1.5 flex flex-col w-full">
+                        <a class="py-1.5 px-2 flex flex-row items-center justify-between gap-1 hover:!text-primary active:!text-primary text-2xl font-semibold group border-b border-border-color hover:border-primary w-full active"
+                           href="/friends/"
+                        >
+                            <span>Friends</span>
+                            <i class="fa-solid fa-user-group fa-sm fa-fw"></i>
+                        </a>
+                    </li>
+                
+            
+        </ul>
+
+        <div class="statistics flex justify-around my-2.5">
+    <a class="item tag-count-item flex flex-col justify-center items-center w-20" href="/tags">
+        <div class="number text-2xl sm:text-xl text-second-text-color font-semibold">47</div>
+        <div class="label text-third-text-color text-sm">Tags</div>
+    </a>
+    <a class="item tag-count-item flex flex-col justify-center items-center w-20" href="/categories">
+        <div class="number text-2xl sm:text-xl text-second-text-color font-semibold">95</div>
+        <div class="label text-third-text-color text-sm">Categories</div>
+    </a>
+    <a class="item tag-count-item flex flex-col justify-center items-center w-20" href="/archives">
+        <div class="number text-2xl sm:text-xl text-second-text-color font-semibold">558</div>
+        <div class="label text-third-text-color text-sm">Posts</div>
+    </a>
+</div>
+    </div>
+
+    <div class="window-mask"></div>
+
+</header>
+
+
+		</div>
+
+		<div class="main-content-body transition-fade-up">
+			
+
+			<div class="main-content">
+				<div class="post-page-container flex relative justify-between box-border w-full h-full">
+	<div class="article-content-container">
+
+		<div class="article-title relative w-full">
+			
+			
+			
+			<img src="https://charles2530.github.io/image/background/background-light1.jpg" alt="知识问答：推理服务与量化 QA" class="w-full h-60 sm:h-72 md:h-80 object-cover sm:rounded-t-large dark:brightness-75" />
+			
+			<div class="w-full flex items-center absolute bottom-0 justify-start">
+				<h1 class="article-title-cover text-center mx-6 my-6 text-second-text-color bg-background-color-transparent px-4 py-3 text-3xl sm:text-4xl md:text-5xl font-semibold backdrop-blur-lg rounded-xl border border-border-color ">知识问答：推理服务与量化 QA</h1>
+			</div>
+			
+		</div>
+
+		
+		<div class="article-header flex flex-row gap-2 items-center px-2 sm:px-6 md:px-8">
+			<div class="avatar w-[46px] h-[46px] shrink-0 rounded-medium border border-border-color p-px">
+				<img src="https://charles2530.github.io/image/background/logo2.jpg">
+			</div>
+			<div class="info flex flex-col justify-between">
+				<div class="author flex items-center">
+					<span class="name text-default-text-color text-lg font-semibold">Charles</span>
+					
+					<span class="author-label ml-1.5 text-xs px-2 py-0.5 rounded-small text-third-text-color border border-shadow-color-1">Lv8</span>
+					
+				</div>
+				<div class="meta-info">
+					<div class="article-meta-info">
+    <span class="article-date article-meta-item">
+        <i class="fa-regular fa-pen-fancy"></i>&nbsp;
+        <span class="desktop">2026-05-28 09:00</span>
+        <span class="mobile">2026-05-28 09:00</span>
+        <span class="hover-info">Created</span>
+    </span>
+    
+        <span class="article-date article-meta-item">
+            <i class="fa-regular fa-wrench"></i>&nbsp;
+            <span class="desktop">2026-05-28 09:00</span>
+            <span class="mobile">2026-05-28 09:00</span>
+            <span class="hover-info">Updated</span>
+        </span>
+    
+
+    
+        <span class="article-categories article-meta-item">
+            <i class="fa-regular fa-folders"></i>&nbsp;
+            <ul>
+                
+                
+                    
+                        
+                        <li>
+                            <a href="/categories/AI/">AI</a>&nbsp;
+                        </li>
+                    
+                    
+                
+                    
+                        
+                            <li>></li>
+                        
+                        <li>
+                            <a href="/categories/AI/%E7%9F%A5%E8%AF%86%E9%97%AE%E7%AD%94/">知识问答</a>&nbsp;
+                        </li>
+                    
+                    
+                
+            </ul>
+        </span>
+    
+    
+        <span class="article-tags article-meta-item">
+            <i class="fa-regular fa-tags"></i>&nbsp;
+            <ul>
+                
+                    <li>
+                        <a href="/tags/AI/">AI</a>&nbsp;
+                    </li>
+                
+                    <li>
+                        | <a href="/tags/%E6%8E%A8%E7%90%86/">推理</a>&nbsp;
+                    </li>
+                
+                    <li>
+                        | <a href="/tags/%E6%95%B0%E6%8D%AE%E4%B8%8E%E8%AF%84%E6%B5%8B/">数据与评测</a>&nbsp;
+                    </li>
+                
+                    <li>
+                        | <a href="/tags/%E5%9F%BA%E7%A1%80%E7%9F%A5%E8%AF%86/">基础知识</a>&nbsp;
+                    </li>
+                
+                    <li>
+                        | <a href="/tags/%E9%87%8F%E5%8C%96/">量化</a>&nbsp;
+                    </li>
+                
+                    <li>
+                        | <a href="/tags/%E7%9F%A5%E8%AF%86%E9%97%AE%E7%AD%94/">知识问答</a>&nbsp;
+                    </li>
+                
+            </ul>
+        </span>
+    
+
+    
+    
+        <span class="article-wordcount article-meta-item">
+            <i class="fa-regular fa-typewriter"></i>&nbsp;<span>4.4k Words</span>
+        </span>
+    
+    
+        <span class="article-min2read article-meta-item">
+            <i class="fa-regular fa-clock"></i>&nbsp;<span>16 Mins</span>
+        </span>
+    
+    
+        <span class="article-pv article-meta-item">
+            <i class="fa-regular fa-eye"></i>&nbsp;<span id="busuanzi_value_page_pv"></span>
+        </span>
+    
+</div>
+
+				</div>
+			</div>
+		</div>
+		
+
+		
+
+
+		<div class="article-content markdown-body px-2 sm:px-6 md:px-8 pb-8">
+			<p>这一页回答 LLM 推理、服务系统、KV cache、batching、投机解码、运行时和量化中的高频问题。面试时要把 prefill、decode、显存、吞吐、尾延迟和质量回归分开讲。</p>
+<h2 id="推理基础与服务指标"><a class="markdownIt-Anchor" href="#推理基础与服务指标"></a> 推理基础与服务指标</h2>
+<h3 id="q训练和推理为什么要分开看"><a class="markdownIt-Anchor" href="#q训练和推理为什么要分开看"></a> Q：训练和推理为什么要分开看？</h3>
+<p><strong>面试回答。</strong> 训练的目标是把参数学出来，核心瓶颈是数据、loss、优化器、反向传播、通信和收敛稳定性；推理的目标是把已训练模型低延迟、高吞吐、低成本地服务出去，核心瓶颈是 KV cache、batch 调度、内存带宽、尾延迟和质量回归。很多训练阶段有效的技术，到了在线推理未必划算。</p>
+<p><strong>追问展开。</strong> 面试里最好举例：activation checkpointing 训练省显存但推理没反向传播；KV cache 推理很关键但训练 teacher forcing 时不是同一个瓶颈；量化推理省显存但训练低精度要更谨慎。<br />
+<strong>易错点 / 边界。</strong> 不能拿训练吞吐、离线 benchmark 或单条 demo 直接代表在线服务能力。<br />
+<strong>继续读。</strong> <a href="/2026/05/11/ai-files-inference-serving-systems/">推理服务系统</a> / 训练与推理系统来源台账</p>
+<h3 id="qttft-tpot-吞吐和-p99-分别看什么"><a class="markdownIt-Anchor" href="#qttft-tpot-吞吐和-p99-分别看什么"></a> Q：TTFT、TPOT、吞吐和 P99 分别看什么？</h3>
+<p><strong>面试回答。</strong> TTFT 是 Time To First Token，反映用户等首字的时间，常受 prefill 和排队影响；TPOT 是 Time Per Output Token，反映 decode 速度；吞吐看单位时间处理多少 token 或请求；P99 看最慢 1% 请求的体验。一个服务要同时看平均值和尾部，否则容易牺牲少数用户体验换平均吞吐。</p>
+<p><strong>追问展开。</strong> 面试中可以把指标和阶段绑定：长 prompt 影响 TTFT，长输出影响 TPOT，总并发影响吞吐，调度和资源争用影响 P95/P99。<br />
+<strong>易错点 / 边界。</strong> 指标必须带 workload：prompt 长度、输出长度、batch、模型、硬件、量化方式和并发量都要说明。<br />
+<strong>继续读。</strong> <a href="/2026/05/11/ai-files-inference-cost-modeling-and-slo-design/">成本建模与 SLO 设计</a> / <a href="/2026/05/11/ai-files-inference-observability-and-online-evaluation/">观测与在线评估</a></p>
+<h3 id="qprefill-和-decode-的瓶颈为什么不同"><a class="markdownIt-Anchor" href="#qprefill-和-decode-的瓶颈为什么不同"></a> Q：prefill 和 decode 的瓶颈为什么不同？</h3>
+<p><strong>面试回答。</strong> Prefill 对整段 prompt 做前向计算，attention 和 MLP 都可以大块矩阵化，通常更 compute-bound；decode 每次只生成一个新 token，但要读取所有历史 KV，常常更 memory-bandwidth-bound。可以简化理解为：prefill 在“算大矩阵”，decode 在“反复读缓存”。</p>
+<p><strong>追问展开。</strong> 长 prompt 场景中 prefill 可能主导 TTFT；长回答和多轮对话中 decode 的 KV 读取和调度可能主导成本。PD 分离、chunked prefill、continuous batching 都是在围绕这两个阶段做资源匹配。<br />
+<strong>易错点 / 边界。</strong> 不同模型结构和服务流量会改变瓶颈；不要只用单条请求的 profiler 推断生产系统。<br />
+<strong>继续读。</strong> <a href="/2026/05/11/ai-files-inference-gpu-kernels-batching-and-memory-systems/">GPU kernels、batching 与内存系统</a> / <a href="/2026/05/11/ai-files-inference-serving-runtimes-vllm-sglang-and-tensorrt-llm/">推理运行时</a></p>
+<h3 id="qkv-cache-为什么能加速自回归解码"><a class="markdownIt-Anchor" href="#qkv-cache-为什么能加速自回归解码"></a> Q：KV cache 为什么能加速自回归解码？</h3>
+<p><strong>面试回答。</strong> 自回归生成第 <span class="katex"><span class="katex-mathml"><math><semantics><mrow><mi>t</mi></mrow><annotation encoding="application/x-tex">t</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.61508em;vertical-align:0em;"></span><span class="mord mathdefault">t</span></span></span></span> 个 token 时，前 <span class="katex"><span class="katex-mathml"><math><semantics><mrow><mi>t</mi><mo>−</mo><mn>1</mn></mrow><annotation encoding="application/x-tex">t-1</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.69841em;vertical-align:-0.08333em;"></span><span class="mord mathdefault">t</span><span class="mspace" style="margin-right:0.2222222222222222em;"></span><span class="mbin">−</span><span class="mspace" style="margin-right:0.2222222222222222em;"></span></span><span class="base"><span class="strut" style="height:0.64444em;vertical-align:0em;"></span><span class="mord">1</span></span></span></span> 个 token 的 K/V 已经计算过。如果不缓存，每一步都要重新跑整个前缀；有了 KV cache，只需要为新 token 计算 Q/K/V，并用新 Q 去 attend 历史 K/V。这样把重复计算变成缓存读取。</p>
+<p><span class="katex-display"><span class="katex"><span class="katex-mathml"><math><semantics><mrow><mtext>KV size</mtext><mo>∝</mo><mi>L</mi><mo>×</mo><mi>B</mi><mo>×</mo><mi>S</mi><mo>×</mo><msub><mi>H</mi><mrow><mi>k</mi><mi>v</mi></mrow></msub><mo>×</mo><msub><mi>d</mi><mi>h</mi></msub><mo>×</mo><mn>2</mn></mrow><annotation encoding="application/x-tex">\text{KV size} \propto L \times B \times S \times H_{kv} \times d_h \times 2
+</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.68333em;vertical-align:0em;"></span><span class="mord text"><span class="mord">KV size</span></span><span class="mspace" style="margin-right:0.2777777777777778em;"></span><span class="mrel">∝</span><span class="mspace" style="margin-right:0.2777777777777778em;"></span></span><span class="base"><span class="strut" style="height:0.76666em;vertical-align:-0.08333em;"></span><span class="mord mathdefault">L</span><span class="mspace" style="margin-right:0.2222222222222222em;"></span><span class="mbin">×</span><span class="mspace" style="margin-right:0.2222222222222222em;"></span></span><span class="base"><span class="strut" style="height:0.76666em;vertical-align:-0.08333em;"></span><span class="mord mathdefault" style="margin-right:0.05017em;">B</span><span class="mspace" style="margin-right:0.2222222222222222em;"></span><span class="mbin">×</span><span class="mspace" style="margin-right:0.2222222222222222em;"></span></span><span class="base"><span class="strut" style="height:0.76666em;vertical-align:-0.08333em;"></span><span class="mord mathdefault" style="margin-right:0.05764em;">S</span><span class="mspace" style="margin-right:0.2222222222222222em;"></span><span class="mbin">×</span><span class="mspace" style="margin-right:0.2222222222222222em;"></span></span><span class="base"><span class="strut" style="height:0.83333em;vertical-align:-0.15em;"></span><span class="mord"><span class="mord mathdefault" style="margin-right:0.08125em;">H</span><span class="msupsub"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height:0.33610799999999996em;"><span style="top:-2.5500000000000003em;margin-left:-0.08125em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mtight"><span class="mord mathdefault mtight" style="margin-right:0.03148em;">k</span><span class="mord mathdefault mtight" style="margin-right:0.03588em;">v</span></span></span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height:0.15em;"><span></span></span></span></span></span></span><span class="mspace" style="margin-right:0.2222222222222222em;"></span><span class="mbin">×</span><span class="mspace" style="margin-right:0.2222222222222222em;"></span></span><span class="base"><span class="strut" style="height:0.84444em;vertical-align:-0.15em;"></span><span class="mord"><span class="mord mathdefault">d</span><span class="msupsub"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height:0.33610799999999996em;"><span style="top:-2.5500000000000003em;margin-left:0em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mathdefault mtight">h</span></span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height:0.15em;"><span></span></span></span></span></span></span><span class="mspace" style="margin-right:0.2222222222222222em;"></span><span class="mbin">×</span><span class="mspace" style="margin-right:0.2222222222222222em;"></span></span><span class="base"><span class="strut" style="height:0.64444em;vertical-align:0em;"></span><span class="mord">2</span></span></span></span></span></p>
+<p>其中 <span class="katex"><span class="katex-mathml"><math><semantics><mrow><mi>L</mi></mrow><annotation encoding="application/x-tex">L</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.68333em;vertical-align:0em;"></span><span class="mord mathdefault">L</span></span></span></span> 是层数，<span class="katex"><span class="katex-mathml"><math><semantics><mrow><mi>B</mi></mrow><annotation encoding="application/x-tex">B</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.68333em;vertical-align:0em;"></span><span class="mord mathdefault" style="margin-right:0.05017em;">B</span></span></span></span> 是 batch，<span class="katex"><span class="katex-mathml"><math><semantics><mrow><mi>S</mi></mrow><annotation encoding="application/x-tex">S</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.68333em;vertical-align:0em;"></span><span class="mord mathdefault" style="margin-right:0.05764em;">S</span></span></span></span> 是上下文长度，<span class="katex"><span class="katex-mathml"><math><semantics><mrow><msub><mi>H</mi><mrow><mi>k</mi><mi>v</mi></mrow></msub></mrow><annotation encoding="application/x-tex">H_{kv}</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.83333em;vertical-align:-0.15em;"></span><span class="mord"><span class="mord mathdefault" style="margin-right:0.08125em;">H</span><span class="msupsub"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height:0.33610799999999996em;"><span style="top:-2.5500000000000003em;margin-left:-0.08125em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mtight"><span class="mord mathdefault mtight" style="margin-right:0.03148em;">k</span><span class="mord mathdefault mtight" style="margin-right:0.03588em;">v</span></span></span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height:0.15em;"><span></span></span></span></span></span></span></span></span></span> 是 KV heads。<br />
+<strong>追问展开。</strong> KV cache 是推理服务的核心资产：它决定最大 batch、最大上下文、显存占用和调度策略。MHA/MQA/GQA 的区别也直接体现在 <span class="katex"><span class="katex-mathml"><math><semantics><mrow><msub><mi>H</mi><mrow><mi>k</mi><mi>v</mi></mrow></msub></mrow><annotation encoding="application/x-tex">H_{kv}</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.83333em;vertical-align:-0.15em;"></span><span class="mord"><span class="mord mathdefault" style="margin-right:0.08125em;">H</span><span class="msupsub"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height:0.33610799999999996em;"><span style="top:-2.5500000000000003em;margin-left:-0.08125em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mtight"><span class="mord mathdefault mtight" style="margin-right:0.03148em;">k</span><span class="mord mathdefault mtight" style="margin-right:0.03588em;">v</span></span></span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height:0.15em;"><span></span></span></span></span></span></span></span></span></span> 上。<br />
+<strong>易错点 / 边界。</strong> KV cache 加速计算但吃显存；长上下文下它可能成为主要成本。<br />
+<strong>继续读。</strong> <a href="/2026/05/11/ai-files-inference-caching-routing-and-speculative/">KV、缓存与投机解码</a> / <a href="/2026/05/11/ai-files-inference-context-compression-kv-eviction-and-memory-hierarchies/">上下文压缩、KV 驱逐与记忆层级</a></p>
+<h3 id="q连续批处理为什么适合-llm-服务"><a class="markdownIt-Anchor" href="#q连续批处理为什么适合-llm-服务"></a> Q：连续批处理为什么适合 LLM 服务？</h3>
+<p><strong>面试回答。</strong> LLM 请求长度和生成长度差异很大，静态 batch 会被最长请求拖住，短请求结束后 GPU slot 不能及时补新请求。Continuous batching 在每个 decode step 动态加入和移除请求，让 GPU 尽量保持有活可做，提高吞吐和资源利用。</p>
+<p><strong>追问展开。</strong> 面试时可以说它把“请求级 batch”变成“token-step 级调度”。配合 KV block 管理、优先级队列和 prefix cache，可以更好处理真实流量。<br />
+<strong>易错点 / 边界。</strong> 更高吞吐可能带来排队和尾延迟问题；调度策略要服务 SLO，而不是只最大化 tokens/s。<br />
+<strong>继续读。</strong> <a href="/2026/05/11/ai-files-inference-serving-runtimes-vllm-sglang-and-tensorrt-llm/">推理运行时</a> / <a href="/2026/05/11/ai-files-inference-serving-systems/">推理服务系统</a></p>
+<h2 id="kv-管理与运行时"><a class="markdownIt-Anchor" href="#kv-管理与运行时"></a> KV 管理与运行时</h2>
+<h3 id="qpagedattention-的核心思想是什么"><a class="markdownIt-Anchor" href="#qpagedattention-的核心思想是什么"></a> Q：PagedAttention 的核心思想是什么？</h3>
+<p><strong>面试回答。</strong> PagedAttention 把 KV cache 切成固定大小的 block，用 block table 管理逻辑 token 位置到物理 KV block 的映射，类似操作系统虚拟内存。这样可以减少连续大块分配带来的碎片，支持动态 batch、共享前缀和 copy-on-write。</p>
+<p><strong>追问展开。</strong> 没有分页时，不同请求长度差异会造成 KV 显存浪费；分页后，物理块可以非连续，调度器只需要维护映射关系。vLLM 的高吞吐核心之一就是把 KV cache 当成可管理的内存系统。<br />
+<strong>易错点 / 边界。</strong> PagedAttention 解决的是 KV 内存和调度效率，不直接提升模型质量。<br />
+<strong>继续读。</strong> <a href="/2026/05/11/ai-files-paper-deep-dives-inference-vllm-pagedattention/">vLLM / PagedAttention：KV cache 分页管理</a> / <a class="link"   target="_blank" rel="noopener" href="https://vllm.ai/blog/2023-06-20-vllm" >vLLM 官方博客<i class="fa-solid fa-arrow-up-right ml-[0.2em] font-light align-text-top text-[0.7em] link-icon"></i></a></p>
+<h3 id="qvllm-sglang-和-tensorrt-llm-怎么区分"><a class="markdownIt-Anchor" href="#qvllm-sglang-和-tensorrt-llm-怎么区分"></a> Q：vLLM、SGLang 和 TensorRT-LLM 怎么区分？</h3>
+<p><strong>面试回答。</strong> vLLM 更强调通用 LLM serving、高吞吐调度、PagedAttention 和 OpenAI-compatible API；SGLang 更强调结构化 LLM 程序、prefix cache、RadixAttention 和复杂 agent/RAG 执行；TensorRT-LLM 更贴近 NVIDIA 生态，强调图优化、kernel、量化和生产部署性能。</p>
+<p><strong>追问展开。</strong> 面试选型可以按问题回答：如果要快速搭通用高吞吐服务，vLLM 常见；如果有大量共享前缀、结构化生成和 agent workflow，SGLang 值得看；如果深度绑定 NVIDIA 部署、追求极致优化，TensorRT-LLM 更合适。<br />
+<strong>易错点 / 边界。</strong> 运行时选择不是静态答案，要看模型、硬件、并发、量化、结构化输出、团队能力和生态兼容。<br />
+<strong>继续读。</strong> <a href="/2026/05/11/ai-files-inference-serving-runtimes-vllm-sglang-and-tensorrt-llm/">推理运行时</a> / <a class="link"   target="_blank" rel="noopener" href="https://docs.sglang.io/" >SGLang documentation<i class="fa-solid fa-arrow-up-right ml-[0.2em] font-light align-text-top text-[0.7em] link-icon"></i></a></p>
+<h3 id="qprefix-cache-和-radixattention-解决什么"><a class="markdownIt-Anchor" href="#qprefix-cache-和-radixattention-解决什么"></a> Q：prefix cache 和 RadixAttention 解决什么？</h3>
+<p><strong>面试回答。</strong> 多轮对话、系统 prompt、RAG 模板和 agent 工具说明经常重复。如果每个请求都重新 prefill 这些公共前缀，会浪费大量计算。Prefix cache 复用共享前缀的 KV；RadixAttention 用前缀树组织不同请求共享的 token 前缀。</p>
+<p><strong>追问展开。</strong> 可以把它类比成“上下文 memoization”：相同前缀只算一次，后续请求从缓存接着 decode 或继续 prefill。对固定系统提示、few-shot 示例和多轮会话尤其有效。<br />
+<strong>易错点 / 边界。</strong> 前缀复用依赖 prompt 规范化和重复率；隐私隔离、缓存失效、版本更新和动态拼接都要处理。<br />
+<strong>继续读。</strong> <a href="/2026/05/11/ai-files-inference-rag-agents-and-long-context-systems/">RAG、Agent 与长上下文系统</a> / <a class="link"   target="_blank" rel="noopener" href="https://arxiv.org/abs/2312.07104" >SGLang 论文<i class="fa-solid fa-arrow-up-right ml-[0.2em] font-light align-text-top text-[0.7em] link-icon"></i></a></p>
+<h3 id="qpd-分离为什么会出现"><a class="markdownIt-Anchor" href="#qpd-分离为什么会出现"></a> Q：PD 分离为什么会出现？</h3>
+<p><strong>面试回答。</strong> Prefill 和 decode 的资源画像不同：prefill 更像大矩阵计算，decode 更像高频小步调度和 KV 读取。PD 分离把 prefill 和 decode 放到不同资源池或服务节点，让两类阶段分别优化，并通过 KV 传输或共享机制衔接。</p>
+<p><strong>追问展开。</strong> 面试时可以说：长 prompt、高并发、低 TTFT 要求会推动 prefill 独立扩容；长输出、高 decode 并发会推动 decode 池优化。PD 分离是大规模服务架构问题，不只是模型推理技巧。<br />
+<strong>易错点 / 边界。</strong> 分离会引入 KV 传输、网络延迟、调度复杂度和故障恢复成本；中小规模服务未必需要。<br />
+<strong>继续读。</strong> <a href="/2026/05/11/ai-files-inference-disaggregated-prefill-kv-services-and-capacity-ops/">分离式 prefill、KV 服务与容量运维</a> / <a href="/2026/05/11/ai-files-inference-serving-systems/">推理服务系统</a></p>
+<h3 id="qmoe-模型推理为什么不只是少算专家"><a class="markdownIt-Anchor" href="#qmoe-模型推理为什么不只是少算专家"></a> Q：MoE 模型推理为什么不只是“少算专家”？</h3>
+<p><strong>面试回答。</strong> MoE 每个 token 只激活 top-k 专家，理论上减少单 token 计算，但推理系统要处理 router、专家并行、all-to-all 通信和专家负载均衡。真实服务中，不同请求 token 会路由到不同专家，导致负载和通信非常动态。</p>
+<p><strong>追问展开。</strong> 面试可以补：MoE 参数量大但激活参数少，适合扩容量；但 serving 时专家分布不均会造成某些 GPU 热点，batch 内 token routing 也会影响 kernel 和网络效率。<br />
+<strong>易错点 / 边界。</strong> MoE 的系统收益依赖硬件拓扑、batch、token 分布和实现；不是所有场景都比 dense 模型划算。<br />
+<strong>继续读。</strong> <a href="/2026/05/11/ai-files-inference-moe-routing-and-multi-model-serving/">MoE 路由与多模型服务</a> / <a href="/2026/05/11/ai-files-foundations-moe-and-large-model-architecture-basics/">MoE 与大模型架构</a></p>
+<h2 id="投机解码与长上下文"><a class="markdownIt-Anchor" href="#投机解码与长上下文"></a> 投机解码与长上下文</h2>
+<h3 id="qspeculative-decoding-为什么能加速"><a class="markdownIt-Anchor" href="#qspeculative-decoding-为什么能加速"></a> Q：Speculative decoding 为什么能加速？</h3>
+<p><strong>面试回答。</strong> 投机解码让便宜的 draft model 先生成多个候选 token，再让昂贵的 target model 一次性验证。若 target 接受多个 token，就减少了 target model 的逐 token 调用次数。核心收益来自：draft 足够便宜、候选接受率足够高、验证能并行。</p>
+<p><strong>追问展开。</strong> 可以把速度收益粗略理解成 target 每次前向能推进多个 token，而不是一个 token。关键指标是 acceptance rate；如果 draft 经常猜错，额外 draft 成本会抵消收益。<br />
+<strong>易错点 / 边界。</strong> 它优化延迟/吞吐，不提升 target model 本身质量；采样一致性和接受规则也要保证输出分布正确。<br />
+<strong>继续读。</strong> <a href="/2026/05/11/ai-files-inference-caching-routing-and-speculative/">KV、缓存与投机解码</a> / <a href="/2026/05/11/ai-files-paper-deep-dives-inference-eagle/">EAGLE：为什么 draft 不一定要是小模型</a></p>
+<h3 id="qeagle-系列和普通小模型-draft-有什么不同"><a class="markdownIt-Anchor" href="#qeagle-系列和普通小模型-draft-有什么不同"></a> Q：EAGLE 系列和普通小模型 draft 有什么不同？</h3>
+<p><strong>面试回答。</strong> 普通 speculative decoding 往往用一个小语言模型预测 draft token；EAGLE 路线更强调利用 target model 的 hidden states 或更贴近 target 分布的特征来生成 draft。它不是简单“小模型猜，大模型验”，而是在提高 draft 质量和接受率。</p>
+<p><strong>追问展开。</strong> EAGLE-2 关注动态 draft tree，根据不同位置和置信度调整候选；EAGLE-3 关注训练时让 draft 见到自己的错误，减少训练-推理错配。<br />
+<strong>易错点 / 边界。</strong> EAGLE 的证据主要是系统吞吐/延迟收益，不能写成模型能力提升。<br />
+<strong>继续读。</strong> <a href="/2026/05/11/ai-files-paper-deep-dives-inference-eagle-2/">EAGLE-2：动态 Draft Tree</a> / <a href="/2026/05/11/ai-files-paper-deep-dives-inference-eagle-3/">EAGLE-3：训练时见过自己犯错</a></p>
+<h3 id="q长上下文推理为什么贵"><a class="markdownIt-Anchor" href="#q长上下文推理为什么贵"></a> Q：长上下文推理为什么贵？</h3>
+<p><strong>面试回答。</strong> 长上下文带来两类成本：prefill 阶段要处理更长的 prompt，attention 计算和内存读写增长；decode 阶段要保存并读取更长的 KV cache。上下文越长，TTFT、显存、KV 带宽和调度复杂度都会上升。</p>
+<p><strong>追问展开。</strong> 面试回答可以分层：位置编码解决“能否表示长距离”，attention/kernel 解决“能否高效计算”，KV 管理解决“能否服务化”，评测解决“是否真的用到远处信息”。<br />
+<strong>易错点 / 边界。</strong> 长窗口不是长记忆；needle 测试通过也不代表复杂多跳推理、长期一致性或 agent 记忆可靠。<br />
+<strong>继续读。</strong> <a href="/2026/05/11/ai-files-inference-context-compression-kv-eviction-and-memory-hierarchies/">上下文压缩、KV 驱逐与记忆层级</a> / <a href="/2026/05/11/ai-files-operators-long-context-and-flashattention-evolution/">FlashAttention 与长上下文</a></p>
+<h3 id="qkv-压缩或驱逐为什么可能伤害质量"><a class="markdownIt-Anchor" href="#qkv-压缩或驱逐为什么可能伤害质量"></a> Q：KV 压缩或驱逐为什么可能伤害质量？</h3>
+<p><strong>面试回答。</strong> KV cache 存的是每层历史 token 的 key/value 表示，后续 token 会通过 attention 读取它们。压缩、合并、量化或驱逐都会改变模型可访问的历史信息，因此可能伤害长程依赖、引用一致性、工具状态和安全边界。</p>
+<p><strong>追问展开。</strong> 评估时不能只看显存下降或 tokens/s 上升，还要看长文问答、代码补全、多轮对话、RAG 引用和特定任务成功率。<br />
+<strong>易错点 / 边界。</strong> 系统吞吐证据只能说明成本下降，不能证明语义保真或决策可靠。<br />
+<strong>继续读。</strong> <a href="/2026/05/11/ai-files-inference-context-compression-kv-eviction-and-memory-hierarchies/">上下文压缩、KV 驱逐与记忆层级</a> / <a href="/2026/05/11/ai-files-paper-deep-dives-inference-kvslimmer/">KVSlimmer：非对称 KV 合并</a></p>
+<h2 id="量化与部署"><a class="markdownIt-Anchor" href="#量化与部署"></a> 量化与部署</h2>
+<h3 id="qptq-qat-gptq-awq-smoothquant-怎么分"><a class="markdownIt-Anchor" href="#qptq-qat-gptq-awq-smoothquant-怎么分"></a> Q：PTQ、QAT、GPTQ、AWQ、SmoothQuant 怎么分？</h3>
+<p><strong>面试回答。</strong> PTQ 是训练后量化，不重新完整训练模型；QAT 在训练中模拟量化误差，让模型适应低精度。GPTQ 是权重量化方法，用近似二阶信息减少量化误差；AWQ 保护少量重要权重通道；SmoothQuant 把激活离群值的量化难点平滑迁移到权重侧。</p>
+<p><strong>追问展开。</strong> 可以按“量化对象”组织：weight-only 主要压权重，activation quantization 要处理激活离群值，KV quantization 则影响长上下文缓存。按“是否训练”组织：PTQ 便宜，QAT 成本高但可能质量更稳。<br />
+<strong>易错点 / 边界。</strong> 方法名不是部署结论；硬件 kernel、运行时支持、校准数据和任务回归同样决定效果。<br />
+<strong>继续读。</strong> <a href="/2026/05/11/ai-files-quantization-ptq-gptq-awq-smoothquant/">PTQ / GPTQ / AWQ / SmoothQuant</a> / <a href="/2026/05/11/ai-files-quantization-quantization-runtimes-and-frameworks/">量化运行时与框架</a></p>
+<h3 id="q为什么量化不一定显著降准确率"><a class="markdownIt-Anchor" href="#q为什么量化不一定显著降准确率"></a> Q：为什么量化不一定显著降准确率？</h3>
+<p><strong>面试回答。</strong> 大模型参数有冗余，许多权重的小幅扰动不会显著改变输出分布；好的量化方法会保护敏感通道或用校准数据估计 scale。以均匀量化为例，一个浮点值可以近似成：</p>
+<p><span class="katex-display"><span class="katex"><span class="katex-mathml"><math><semantics><mrow><msub><mi>x</mi><mi>q</mi></msub><mo>=</mo><mi mathvariant="normal">round</mi><mo>⁡</mo><mrow><mo fence="true">(</mo><mfrac><mi>x</mi><mi>s</mi></mfrac><mo fence="true">)</mo></mrow><mo separator="true">,</mo><mspace width="1em"/><mover accent="true"><mi>x</mi><mo>^</mo></mover><mo>=</mo><mi>s</mi><msub><mi>x</mi><mi>q</mi></msub></mrow><annotation encoding="application/x-tex">x_q=\operatorname{round}\left(\frac{x}{s}\right),\quad \hat{x}=s x_q
+</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.716668em;vertical-align:-0.286108em;"></span><span class="mord"><span class="mord mathdefault">x</span><span class="msupsub"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height:0.15139200000000003em;"><span style="top:-2.5500000000000003em;margin-left:0em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mathdefault mtight" style="margin-right:0.03588em;">q</span></span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height:0.286108em;"><span></span></span></span></span></span></span><span class="mspace" style="margin-right:0.2777777777777778em;"></span><span class="mrel">=</span><span class="mspace" style="margin-right:0.2777777777777778em;"></span></span><span class="base"><span class="strut" style="height:1.8359999999999999em;vertical-align:-0.686em;"></span><span class="mop"><span class="mord mathrm">r</span><span class="mord mathrm">o</span><span class="mord mathrm">u</span><span class="mord mathrm">n</span><span class="mord mathrm">d</span></span><span class="mspace" style="margin-right:0.16666666666666666em;"></span><span class="minner"><span class="mopen delimcenter" style="top:0em;"><span class="delimsizing size2">(</span></span><span class="mord"><span class="mopen nulldelimiter"></span><span class="mfrac"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height:1.10756em;"><span style="top:-2.314em;"><span class="pstrut" style="height:3em;"></span><span class="mord"><span class="mord mathdefault">s</span></span></span><span style="top:-3.23em;"><span class="pstrut" style="height:3em;"></span><span class="frac-line" style="border-bottom-width:0.04em;"></span></span><span style="top:-3.677em;"><span class="pstrut" style="height:3em;"></span><span class="mord"><span class="mord mathdefault">x</span></span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height:0.686em;"><span></span></span></span></span></span><span class="mclose nulldelimiter"></span></span><span class="mclose delimcenter" style="top:0em;"><span class="delimsizing size2">)</span></span></span><span class="mspace" style="margin-right:0.16666666666666666em;"></span><span class="mpunct">,</span><span class="mspace" style="margin-right:0.16666666666666666em;"></span><span class="mspace" style="margin-right:1em;"></span><span class="mord accent"><span class="vlist-t"><span class="vlist-r"><span class="vlist" style="height:0.69444em;"><span style="top:-3em;"><span class="pstrut" style="height:3em;"></span><span class="mord"><span class="mord mathdefault">x</span></span></span><span style="top:-3em;"><span class="pstrut" style="height:3em;"></span><span class="accent-body" style="left:-0.22222em;">^</span></span></span></span></span></span><span class="mspace" style="margin-right:0.2777777777777778em;"></span><span class="mrel">=</span><span class="mspace" style="margin-right:0.2777777777777778em;"></span></span><span class="base"><span class="strut" style="height:0.716668em;vertical-align:-0.286108em;"></span><span class="mord mathdefault">s</span><span class="mord"><span class="mord mathdefault">x</span><span class="msupsub"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height:0.15139200000000003em;"><span style="top:-2.5500000000000003em;margin-left:0em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mathdefault mtight" style="margin-right:0.03588em;">q</span></span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height:0.286108em;"><span></span></span></span></span></span></span></span></span></span></span></p>
+<p>其中 <span class="katex"><span class="katex-mathml"><math><semantics><mrow><mi>s</mi></mrow><annotation encoding="application/x-tex">s</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.43056em;vertical-align:0em;"></span><span class="mord mathdefault">s</span></span></span></span> 是 scale。<br />
+<strong>追问展开。</strong> GPTQ、AWQ、SmoothQuant 的差异就在于如何选择补偿、保护或迁移量化误差。面试回答要说清“量化误差不是平均重要，少数通道很关键”。<br />
+<strong>易错点 / 边界。</strong> 数学、代码、长上下文、少数语言和安全场景可能对量化更敏感；必须单独评估。<br />
+<strong>继续读。</strong> <a href="/2026/05/11/ai-files-quantization-evaluation-and-deployment-checklist/">量化评估与部署检查清单</a> / <a href="/2026/05/11/ai-files-paper-deep-dives-inference-low-bit-llm-survey/">低比特 LLM Survey</a></p>
+<h3 id="qweight-only-quantization-和-wa-quantization-有什么区别"><a class="markdownIt-Anchor" href="#qweight-only-quantization-和-wa-quantization-有什么区别"></a> Q：weight-only quantization 和 W&amp;A quantization 有什么区别？</h3>
+<p><strong>面试回答。</strong> Weight-only 只量化权重，主要减少权重显存和权重读取带宽，常用于 LLM 推理；W&amp;A 同时量化权重和激活，潜在加速更大，但需要处理激活离群值、动态 scale 和高效低精度 kernel。后者更难，但如果硬件支持好，收益更完整。</p>
+<p><strong>追问展开。</strong> Decode 阶段除了权重读取，还要读 KV cache；所以 weight-only 可能不能解决所有瓶颈。Prefill 阶段大矩阵计算多，W&amp;A 或 FP8 路径可能更重要。<br />
+<strong>易错点 / 边界。</strong> 量化对象要和瓶颈匹配；只看模型大小下降不代表端到端延迟下降。<br />
+<strong>继续读。</strong> <a href="/2026/05/11/ai-files-quantization-ptq-gptq-awq-smoothquant/">PTQ / GPTQ / AWQ / SmoothQuant</a> / <a href="/2026/05/11/ai-files-quantization-fp8-and-mixed-precision-serving/">FP8 与混合精度推理</a></p>
+<h3 id="qfp8-和-int8-是一回事吗"><a class="markdownIt-Anchor" href="#qfp8-和-int8-是一回事吗"></a> Q：FP8 和 INT8 是一回事吗？</h3>
+<p><strong>面试回答。</strong> 不是。INT8 是整数定点表示，通常依赖 scale 和 zero-point 把浮点范围映射到整数；FP8 是 8-bit 浮点格式，保留符号、指数和尾数，动态范围和精度分配方式不同。FP8 更贴近浮点计算路径，常用于特定硬件上的训练或推理矩阵乘。</p>
+<p><strong>追问展开。</strong> INT8 常见于推理量化，尤其权重或激活；FP8 更依赖硬件 Tensor Core、scale 管理和累加精度。面试时要强调“bit 数相同，不代表数值行为相同”。<br />
+<strong>易错点 / 边界。</strong> FP8 是否更快取决于硬件、kernel、shape、累加精度和运行时支持。<br />
+<strong>继续读。</strong> <a href="/2026/05/11/ai-files-quantization-fp8-and-mixed-precision-serving/">FP8 与混合精度推理</a> / <a href="/2026/05/11/ai-files-training-low-bit-training-and-numerics/">低比特训练与数值格式</a></p>
+<h3 id="qkv-cache-也能量化吗"><a class="markdownIt-Anchor" href="#qkv-cache-也能量化吗"></a> Q：KV cache 也能量化吗？</h3>
+<p><strong>面试回答。</strong> 可以。KV cache 量化把历史 K/V 用更低比特存储，直接降低长上下文和大 batch decode 的显存占用。但 KV 是后续每一步 attention 的输入，误差会反复影响生成，所以要比单纯权重量化更谨慎。</p>
+<p><strong>追问展开。</strong> 面试时可以说：KV 量化适合长上下文服务，但要测长文问答、引用一致性、多轮对话、代码和安全场景。还要考虑 per-token/per-channel scale、分层量化和 cache eviction 配合。<br />
+<strong>易错点 / 边界。</strong> KV 显存下降不等于输出质量不变；尤其长程依赖任务可能更敏感。<br />
+<strong>继续读。</strong> <a href="/2026/05/11/ai-files-quantization-qat-kernels-and-kv-cache/">QAT、kernels 与 KV cache</a> / <a href="/2026/05/11/ai-files-inference-context-compression-kv-eviction-and-memory-hierarchies/">上下文压缩、KV 驱逐与记忆层级</a></p>
+<h3 id="q量化上线前最少要验什么"><a class="markdownIt-Anchor" href="#q量化上线前最少要验什么"></a> Q：量化上线前最少要验什么？</h3>
+<p><strong>面试回答。</strong> 至少要验三类：质量、性能和稳定性。质量包括通用 benchmark、业务评测、长上下文、结构化输出和安全样本；性能包括 TTFT、TPOT、吞吐、显存和 P99；稳定性包括不同 batch、不同长度、不同硬件、fallback 和错误样本。</p>
+<p><strong>追问展开。</strong> 还要记录校准集、量化参数、runtime 版本、kernel 版本和硬件。量化是模型和系统共同变更，不能只改权重文件就上线。<br />
+<strong>易错点 / 边界。</strong> 平均分数不掉不代表所有任务不掉；低频高价值场景要单独看。<br />
+<strong>继续读。</strong> <a href="/2026/05/11/ai-files-quantization-evaluation-and-deployment-checklist/">量化评估与部署检查清单</a> / <a href="/2026/05/11/ai-files-inference-observability-and-online-evaluation/">观测与在线评估</a></p>
+<h3 id="q推理优化的最终指标应该是什么"><a class="markdownIt-Anchor" href="#q推理优化的最终指标应该是什么"></a> Q：推理优化的最终指标应该是什么？</h3>
+<p><strong>面试回答。</strong> 最终要看满足质量门槛下的成本、延迟和稳定性，而不是单点 tokens/s。比较稳的口径是 cost per successful answer、P95/P99 latency、错误率、fallback rate、GPU 利用、显存余量和质量回归。</p>
+<p><strong>追问展开。</strong> 面试里可以用一句话收束：系统优化只有在“不降低关键质量和安全”的前提下才算收益。Microbenchmark、kernel speedup、平均吞吐都是中间证据。<br />
+<strong>易错点 / 边界。</strong> 如果更快导致幻觉、格式错误、安全拒答异常或尾延迟恶化，就不能说整体更好。<br />
+<strong>继续读。</strong> <a href="/2026/05/11/ai-files-inference-cost-modeling-and-slo-design/">成本建模与 SLO 设计</a> / <a href="/2026/05/11/ai-files-references-site-judgement-principles/">证据判断原则</a></p>
+
+		</div>
+
+		
+		<div class="post-copyright-info w-full my-8 px-2 sm:px-6 md:px-8">
+			<div class="article-copyright-info-container">
+    <ul>
+        <li><strong>Title:</strong> 知识问答：推理服务与量化 QA</li>
+        <li><strong>Author:</strong> Charles</li>
+        <li><strong>Created at
+                :</strong> 2026-05-28 09:00:00</li>
+        
+            <li>
+                <strong>Updated at
+                    :</strong> 2026-05-28 09:00:00
+            </li>
+        
+        <li>
+            <strong>Link:</strong> https://charles2530.github.io/2026/05/28/ai-files-knowledge-qa-inference-serving-and-quantization/
+        </li>
+        <li>
+            <strong>
+                License:
+            </strong>
+            
+
+            
+                This work is licensed under <a class="license" target="_blank" rel="noopener" href="https://creativecommons.org/licenses/by-nc-sa/4.0">CC BY-NC-SA 4.0</a>.
+            
+        </li>
+    </ul>
+</div>
+
+		</div>
+		
+
+		
+		<ul class="post-tags-box text-lg mt-1.5 flex-wrap justify-center flex md:hidden">
+			
+			<li class="tag-item mx-0.5">
+				<a href="/tags/AI/">#AI</a>&nbsp;
+			</li>
+			
+			<li class="tag-item mx-0.5">
+				<a href="/tags/%E6%8E%A8%E7%90%86/">#推理</a>&nbsp;
+			</li>
+			
+			<li class="tag-item mx-0.5">
+				<a href="/tags/%E6%95%B0%E6%8D%AE%E4%B8%8E%E8%AF%84%E6%B5%8B/">#数据与评测</a>&nbsp;
+			</li>
+			
+			<li class="tag-item mx-0.5">
+				<a href="/tags/%E5%9F%BA%E7%A1%80%E7%9F%A5%E8%AF%86/">#基础知识</a>&nbsp;
+			</li>
+			
+			<li class="tag-item mx-0.5">
+				<a href="/tags/%E9%87%8F%E5%8C%96/">#量化</a>&nbsp;
+			</li>
+			
+			<li class="tag-item mx-0.5">
+				<a href="/tags/%E7%9F%A5%E8%AF%86%E9%97%AE%E7%AD%94/">#知识问答</a>&nbsp;
+			</li>
+			
+		</ul>
+		
+
+		
+
+		
+		<div class="article-nav my-8 flex justify-between items-center px-2 sm:px-6 md:px-8">
+			
+			<div class="article-prev border-border-color shadow-redefine-flat shadow-shadow-color-2 rounded-medium px-4 py-2 hover:shadow-redefine-flat-hover hover:shadow-shadow-color-2">
+				<a class="prev" rel="prev" href="/2026/05/30/ai-files-knowledge-qa-operators-and-performance/">
+					<span class="left arrow-icon flex justify-center items-center">
+						<i class="fa-solid fa-chevron-left"></i>
+					</span>
+					<span class="title flex justify-center items-center">
+						<span class="post-nav-title-item truncate max-w-48">知识问答：算子与性能 QA</span>
+						<span class="post-nav-item">Prev posts</span>
+					</span>
+				</a>
+			</div>
+			
+			
+			<div class="article-next border-border-color shadow-redefine-flat shadow-shadow-color-2 rounded-medium px-4 py-2 hover:shadow-redefine-flat-hover hover:shadow-shadow-color-2">
+				<a class="next" rel="next" href="/2026/05/26/ai-files-knowledge-qa-foundations-and-transformer/">
+					<span class="title flex justify-center items-center">
+						<span class="post-nav-title-item truncate max-w-48">知识问答：基础与 Transformer QA</span>
+						<span class="post-nav-item">Next posts</span>
+					</span>
+					<span class="right arrow-icon flex justify-center items-center">
+						<i class="fa-solid fa-chevron-right"></i>
+					</span>
+				</a>
+			</div>
+			
+		</div>
+		
+
+
+		
+		<div class="comment-container px-2 sm:px-6 md:px-8 pb-8">
+			<div class="comments-container mt-10 w-full ">
+    <div id="comment-anchor" class="w-full h-2.5"></div>
+    <div class="comment-area-title w-full my-1.5 md:my-2.5 text-xl md:text-3xl font-bold">
+        Comments
+    </div>
+    
+
+        
+            
+    <div id="gitalk-container"></div>
+    <script data-swup-reload-script
+            src="https://cdnjs.cloudflare.com/ajax/libs/gitalk/1.8.0/gitalk.min.js"></script>
+    <script data-swup-reload-script>
+        (function() {
+            const startPath = location.pathname;
+            const startTime = Date.now();
+            const retryDelay = 200;
+            const retryLimit = 5000;
+
+            const runGitalk = () => {
+                if (location.pathname !== startPath) {
+                    return;
+                }
+
+                const container = document.getElementById('gitalk-container');
+                if (!container || typeof Gitalk === 'undefined') {
+                    if (Date.now() - startTime < retryLimit) {
+                        setTimeout(runGitalk, retryDelay);
+                    }
+                    return;
+                }
+
+                container.innerHTML = '';
+
+                let pageKey = decodeURI(location.pathname);
+                const maxLength = 50;
+                if (pageKey.length > maxLength) {
+                    pageKey = pageKey.substring(0, maxLength - 3) + '...';
+                }
+
+                try {
+                    new Gitalk({
+                        clientID: '8083299a8ee2aaf23879',
+                        clientSecret: 'a8161e81d4872181e884fdb69f7be24916b6a9d0',
+                        repo: 'Charles2530.github.io',
+                        owner: 'Charles2530',
+                        admin: ['Charles2530'],
+                        id: pageKey,
+                        language: 'en',
+                        proxy: 'https://github.com/login/oauth/access_token'
+                    }).render(container);
+                } catch (e) {
+                    window.Gitalk = null;
+                }
+            };
+
+            runGitalk();
+        })();
+    </script>
+
+
+
+        
+    
+</div>
+
+		</div>
+		
+	</div>
+
+	
+	<div class="toc-content-container">
+		<div class="post-toc-wrap">
+	<div class="post-toc">
+		<div class="toc-title">On this page</div>
+		<div class="page-title">知识问答：推理服务与量化 QA</div>
+		<ol class="nav"><li class="nav-item nav-level-2"><a class="nav-link" href="#%E6%8E%A8%E7%90%86%E5%9F%BA%E7%A1%80%E4%B8%8E%E6%9C%8D%E5%8A%A1%E6%8C%87%E6%A0%87"><span class="nav-text"> 推理基础与服务指标</span></a><ol class="nav-child"><li class="nav-item nav-level-3"><a class="nav-link" href="#q%E8%AE%AD%E7%BB%83%E5%92%8C%E6%8E%A8%E7%90%86%E4%B8%BA%E4%BB%80%E4%B9%88%E8%A6%81%E5%88%86%E5%BC%80%E7%9C%8B"><span class="nav-text"> Q：训练和推理为什么要分开看？</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#qttft-tpot-%E5%90%9E%E5%90%90%E5%92%8C-p99-%E5%88%86%E5%88%AB%E7%9C%8B%E4%BB%80%E4%B9%88"><span class="nav-text"> Q：TTFT、TPOT、吞吐和 P99 分别看什么？</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#qprefill-%E5%92%8C-decode-%E7%9A%84%E7%93%B6%E9%A2%88%E4%B8%BA%E4%BB%80%E4%B9%88%E4%B8%8D%E5%90%8C"><span class="nav-text"> Q：prefill 和 decode 的瓶颈为什么不同？</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#qkv-cache-%E4%B8%BA%E4%BB%80%E4%B9%88%E8%83%BD%E5%8A%A0%E9%80%9F%E8%87%AA%E5%9B%9E%E5%BD%92%E8%A7%A3%E7%A0%81"><span class="nav-text"> Q：KV cache 为什么能加速自回归解码？</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#q%E8%BF%9E%E7%BB%AD%E6%89%B9%E5%A4%84%E7%90%86%E4%B8%BA%E4%BB%80%E4%B9%88%E9%80%82%E5%90%88-llm-%E6%9C%8D%E5%8A%A1"><span class="nav-text"> Q：连续批处理为什么适合 LLM 服务？</span></a></li></ol></li><li class="nav-item nav-level-2"><a class="nav-link" href="#kv-%E7%AE%A1%E7%90%86%E4%B8%8E%E8%BF%90%E8%A1%8C%E6%97%B6"><span class="nav-text"> KV 管理与运行时</span></a><ol class="nav-child"><li class="nav-item nav-level-3"><a class="nav-link" href="#qpagedattention-%E7%9A%84%E6%A0%B8%E5%BF%83%E6%80%9D%E6%83%B3%E6%98%AF%E4%BB%80%E4%B9%88"><span class="nav-text"> Q：PagedAttention 的核心思想是什么？</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#qvllm-sglang-%E5%92%8C-tensorrt-llm-%E6%80%8E%E4%B9%88%E5%8C%BA%E5%88%86"><span class="nav-text"> Q：vLLM、SGLang 和 TensorRT-LLM 怎么区分？</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#qprefix-cache-%E5%92%8C-radixattention-%E8%A7%A3%E5%86%B3%E4%BB%80%E4%B9%88"><span class="nav-text"> Q：prefix cache 和 RadixAttention 解决什么？</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#qpd-%E5%88%86%E7%A6%BB%E4%B8%BA%E4%BB%80%E4%B9%88%E4%BC%9A%E5%87%BA%E7%8E%B0"><span class="nav-text"> Q：PD 分离为什么会出现？</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#qmoe-%E6%A8%A1%E5%9E%8B%E6%8E%A8%E7%90%86%E4%B8%BA%E4%BB%80%E4%B9%88%E4%B8%8D%E5%8F%AA%E6%98%AF%E5%B0%91%E7%AE%97%E4%B8%93%E5%AE%B6"><span class="nav-text"> Q：MoE 模型推理为什么不只是“少算专家”？</span></a></li></ol></li><li class="nav-item nav-level-2"><a class="nav-link" href="#%E6%8A%95%E6%9C%BA%E8%A7%A3%E7%A0%81%E4%B8%8E%E9%95%BF%E4%B8%8A%E4%B8%8B%E6%96%87"><span class="nav-text"> 投机解码与长上下文</span></a><ol class="nav-child"><li class="nav-item nav-level-3"><a class="nav-link" href="#qspeculative-decoding-%E4%B8%BA%E4%BB%80%E4%B9%88%E8%83%BD%E5%8A%A0%E9%80%9F"><span class="nav-text"> Q：Speculative decoding 为什么能加速？</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#qeagle-%E7%B3%BB%E5%88%97%E5%92%8C%E6%99%AE%E9%80%9A%E5%B0%8F%E6%A8%A1%E5%9E%8B-draft-%E6%9C%89%E4%BB%80%E4%B9%88%E4%B8%8D%E5%90%8C"><span class="nav-text"> Q：EAGLE 系列和普通小模型 draft 有什么不同？</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#q%E9%95%BF%E4%B8%8A%E4%B8%8B%E6%96%87%E6%8E%A8%E7%90%86%E4%B8%BA%E4%BB%80%E4%B9%88%E8%B4%B5"><span class="nav-text"> Q：长上下文推理为什么贵？</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#qkv-%E5%8E%8B%E7%BC%A9%E6%88%96%E9%A9%B1%E9%80%90%E4%B8%BA%E4%BB%80%E4%B9%88%E5%8F%AF%E8%83%BD%E4%BC%A4%E5%AE%B3%E8%B4%A8%E9%87%8F"><span class="nav-text"> Q：KV 压缩或驱逐为什么可能伤害质量？</span></a></li></ol></li><li class="nav-item nav-level-2"><a class="nav-link" href="#%E9%87%8F%E5%8C%96%E4%B8%8E%E9%83%A8%E7%BD%B2"><span class="nav-text"> 量化与部署</span></a><ol class="nav-child"><li class="nav-item nav-level-3"><a class="nav-link" href="#qptq-qat-gptq-awq-smoothquant-%E6%80%8E%E4%B9%88%E5%88%86"><span class="nav-text"> Q：PTQ、QAT、GPTQ、AWQ、SmoothQuant 怎么分？</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#q%E4%B8%BA%E4%BB%80%E4%B9%88%E9%87%8F%E5%8C%96%E4%B8%8D%E4%B8%80%E5%AE%9A%E6%98%BE%E8%91%97%E9%99%8D%E5%87%86%E7%A1%AE%E7%8E%87"><span class="nav-text"> Q：为什么量化不一定显著降准确率？</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#qweight-only-quantization-%E5%92%8C-wa-quantization-%E6%9C%89%E4%BB%80%E4%B9%88%E5%8C%BA%E5%88%AB"><span class="nav-text"> Q：weight-only quantization 和 W&amp;A quantization 有什么区别？</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#qfp8-%E5%92%8C-int8-%E6%98%AF%E4%B8%80%E5%9B%9E%E4%BA%8B%E5%90%97"><span class="nav-text"> Q：FP8 和 INT8 是一回事吗？</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#qkv-cache-%E4%B9%9F%E8%83%BD%E9%87%8F%E5%8C%96%E5%90%97"><span class="nav-text"> Q：KV cache 也能量化吗？</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#q%E9%87%8F%E5%8C%96%E4%B8%8A%E7%BA%BF%E5%89%8D%E6%9C%80%E5%B0%91%E8%A6%81%E9%AA%8C%E4%BB%80%E4%B9%88"><span class="nav-text"> Q：量化上线前最少要验什么？</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#q%E6%8E%A8%E7%90%86%E4%BC%98%E5%8C%96%E7%9A%84%E6%9C%80%E7%BB%88%E6%8C%87%E6%A0%87%E5%BA%94%E8%AF%A5%E6%98%AF%E4%BB%80%E4%B9%88"><span class="nav-text"> Q：推理优化的最终指标应该是什么？</span></a></li></ol></li></ol>
+
+	</div>
+</div>
+	</div>
+	
+</div>
+
+			</div>
+
+			
+		</div>
+
+		<div class="main-content-footer">
+			<footer class="footer mt-5 py-5 h-auto text-base text-third-text-color relative border-t-2 border-t-border-color">
+    <div class="info-container py-3 text-center">
+        
+        <div class="text-center">
+            &copy;
+            
+              <span>2022</span>
+              -
+            
+            2026&nbsp;&nbsp;<i class="fa-solid fa-heart fa-beat" style="--fa-animation-duration: 0.5s; color: #f54545"></i>&nbsp;&nbsp;<a href="/">Charles</a>
+            
+                
+                <p class="post-count space-x-0.5">
+                    <span>
+                        558 posts in total
+                    </span>
+                    
+                        <span>
+                            2222.4k words in total
+                        </span>
+                    
+                </p>
+            
+        </div>
+        
+            <script data-swup-reload-script src="https://cn.vercount.one/js"></script>
+            <div class="relative text-center lg:absolute lg:right-[20px] lg:top-1/2 lg:-translate-y-1/2 lg:text-right">
+                
+                    <span id="busuanzi_container_site_uv" class="lg:!block">
+                        <span class="text-sm">VISITOR COUNT</span>
+                        <span id="busuanzi_value_site_uv"></span>
+                    </span>
+                
+                
+                    <span id="busuanzi_container_site_pv" class="lg:!block">
+                        <span class="text-sm">TOTAL PAGE VIEWS</span>
+                        <span id="busuanzi_value_site_pv"></span>
+                    </span>
+                
+            </div>
+        
+        <div class="relative text-center lg:absolute lg:left-[20px] lg:top-1/2 lg:-translate-y-1/2 lg:text-left">
+            <span class="lg:block text-sm">POWERED BY <?xml version="1.0" encoding="utf-8"?><!DOCTYPE svg PUBLIC "-//W3C//DTD SVG 1.1//EN" "http://www.w3.org/Graphics/SVG/1.1/DTD/svg11.dtd"><svg class="relative top-[2px] inline-block align-baseline" version="1.1" id="圖層_1" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" x="0px" y="0px" width="1rem" height="1rem" viewBox="0 0 512 512" enable-background="new 0 0 512 512" xml:space="preserve"><path fill="#0E83CD" d="M256.4,25.8l-200,115.5L56,371.5l199.6,114.7l200-115.5l0.4-230.2L256.4,25.8z M349,354.6l-18.4,10.7l-18.6-11V275H200v79.6l-18.4,10.7l-18.6-11v-197l18.5-10.6l18.5,10.8V237h112v-79.6l18.5-10.6l18.5,10.8V354.6z"/></svg><a target="_blank" class="text-base" href="https://hexo.io">Hexo</a></span>
+            <span class="text-sm lg:block">THEME&nbsp;<a class="text-base" target="_blank" href="https://github.com/EvanNotFound/hexo-theme-redefine">Redefine v2.9.0</a></span>
+        </div>
+        
+        
+            <div>
+                Blog up for <span class="odometer" id="runtime_days" ></span> days <span class="odometer" id="runtime_hours"></span> hrs <span class="odometer" id="runtime_minutes"></span> Min <span class="odometer" id="runtime_seconds"></span> Sec
+            </div>
+        
+        
+            <script data-swup-reload-script>
+                try {
+                    function odometer_init() {
+                    const elements = document.querySelectorAll('.odometer');
+                    elements.forEach(el => {
+                        new Odometer({
+                            el,
+                            format: '( ddd).dd',
+                            duration: 200
+                        });
+                    });
+                    }
+                    odometer_init();
+                } catch (error) {}
+            </script>
+        
+        
+            
+                
+        
+                
+        
+                
+
+                    
+                        <script data-swup-reload-script type="text/javascript" src="/js/love.js"></script>
+                    
+        
+        
+    </div>  
+</footer>
+		</div>
+	</div>
+
+	
+	<div class="post-tools">
+		<div class="post-tools-container">
+	<ul class="article-tools-list">
+		<!-- TOC aside toggle -->
+		
+		<li class="right-bottom-tools page-aside-toggle">
+			<i class="fa-regular fa-outdent"></i>
+		</li>
+		
+
+		<!-- go comment -->
+		
+		<li class="go-comment">
+			<i class="fa-regular fa-comments"></i>
+		</li>
+		
+	</ul>
+</div>
+	</div>
+	
+
+	<div class="right-side-tools-container">
+		<div class="side-tools-container">
+	<ul class="hidden-tools-list">
+		<li class="right-bottom-tools tool-font-adjust-plus flex justify-center items-center">
+			<i class="fa-regular fa-magnifying-glass-plus"></i>
+		</li>
+
+		<li class="right-bottom-tools tool-font-adjust-minus flex justify-center items-center">
+			<i class="fa-regular fa-magnifying-glass-minus"></i>
+		</li>
+
+		<li class="right-bottom-tools tool-dark-light-toggle flex justify-center items-center">
+			<i class="fa-regular fa-moon"></i>
+		</li>
+
+		<!-- rss -->
+		
+		<li class="right-bottom-tools rss flex justify-center items-center">
+			<a class="flex justify-center items-center" href="/atom.xml" target="_blank">
+				<i class="fa-regular fa-rss"></i>
+			</a>
+		</li>
+		
+
+		
+
+		<li class="right-bottom-tools tool-scroll-to-bottom flex justify-center items-center">
+			<i class="fa-regular fa-arrow-down"></i>
+		</li>
+	</ul>
+
+	<ul class="visible-tools-list">
+		<li class="right-bottom-tools toggle-tools-list flex justify-center items-center">
+			<i class="fa-regular fa-cog fa-spin"></i>
+		</li>
+		
+		<li class="right-bottom-tools tool-scroll-to-top flex justify-center items-center">
+			<i class="arrow-up fas fa-arrow-up"></i>
+			<span class="percent"></span>
+		</li>
+		
+		
+	</ul>
+</div>
+	</div>
+
+	<div class="image-viewer-container" role="dialog" aria-modal="true" aria-label="Image viewer">
+	<button class="image-viewer-close" type="button" aria-label="Close">
+		<i class="fa-solid fa-xmark"></i>
+	</button>
+	<button class="image-viewer-prev" type="button" aria-label="Prev">
+		<i class="fa-solid fa-chevron-left"></i>
+	</button>
+	<div class="image-viewer-frame">
+		<img src="" alt="">
+	</div>
+	<div class="image-viewer-exif-panel hidden absolute left-1/2 bottom-20 -translate-x-1/2 w-[min(92vw,420px)] max-h-[60vh] overflow-hidden rounded-2xl bg-background-color-transparent-80 p-4 text-left shadow-redefine-flat backdrop-blur-md" role="dialog" aria-label="EXIF" aria-hidden="true">
+		<div class="flex items-center justify-between mb-3">
+			<span class="text-sm font-semibold text-first-text-color">EXIF</span>
+			<button class="image-viewer-exif-close flex h-8 w-8 items-center justify-center rounded-full bg-background-color-transparent-80 text-first-text-color transition hover:bg-background-color-transparent-40" type="button" aria-label="Close">
+				<i class="fa-solid fa-xmark text-[0.65rem]"></i>
+			</button>
+		</div>
+		<div class="image-viewer-exif-cards grid grid-cols-1 sm:grid-cols-2 gap-3 max-h-[50vh] overflow-y-auto pr-1 scrollbar-hide"></div>
+		<template class="image-viewer-exif-card-template">
+			<div class="rounded-lg bg-background-color-transparent-40 px-3 py-2">
+				<div class="image-viewer-exif-card-header flex items-center gap-2 mb-1">
+					<i class="image-viewer-exif-card-icon fa-solid fa-circle-info text-xs text-third-text-color"></i>
+					<div class="image-viewer-exif-card-title text-xs font-semibold text-first-text-color"></div>
+				</div>
+				<div class="image-viewer-exif-card-items flex flex-col gap-1"></div>
+			</div>
+		</template>
+	</div>
+	<button class="image-viewer-exif-toggle flex items-center gap-2 hidden absolute left-1/2 bottom-6 -translate-x-1/2 rounded-full border border-border-color bg-background-color-transparent-80 px-4 py-2 text-first-text-color backdrop-blur-md transition hover:bg-background-color-transparent-40" type="button" aria-label="EXIF" aria-expanded="false">
+		<i class="fa-solid fa-circle-info text-xs"></i>
+		<span class="text-xs font-semibold uppercase tracking-wider">EXIF</span>
+	</button>
+	<button class="image-viewer-next" type="button" aria-label="Next">
+		<i class="fa-solid fa-chevron-right"></i>
+	</button>
+</div>
+
+
+	
+	<div class="search-pop-overlay">
+	<div class="popup search-popup">
+		<div class="search-header">
+			<span class="search-input-field-pre">
+				<i class="fa-solid fa-keyboard"></i>
+			</span>
+			<div class="search-input-container">
+				<input autocomplete="off" autocorrect="off" autocapitalize="off" placeholder="Search..." spellcheck="false" type="search" class="search-input">
+			</div>
+			<span class="popup-btn-close">
+				<i class="fa-solid fa-times"></i>
+			</span>
+		</div>
+		<div id="search-result">
+			<div id="no-result">
+				<i class="fa-solid fa-spinner fa-spin-pulse fa-5x fa-fw"></i>
+			</div>
+		</div>
+	</div>
+</div>
+	
+
+</main>
+
+
+
+<script src="/js/build/libs/Swup.min.js"></script>
+
+<script src="/js/build/libs/SwupSlideTheme.min.js"></script>
+
+<script src="/js/build/libs/SwupScriptsPlugin.min.js"></script>
+
+<script src="/js/build/libs/SwupProgressPlugin.min.js"></script>
+
+<script src="/js/build/libs/SwupScrollPlugin.min.js"></script>
+
+<script src="/js/build/libs/SwupPreloadPlugin.min.js"></script>
+
+<script>
+    window.swup = new Swup({
+        plugins: [
+            new SwupScriptsPlugin({
+                optin: true,
+            }),
+            new SwupProgressPlugin(),
+            new SwupScrollPlugin({
+                offset: 80,
+            }),
+            new SwupSlideTheme({
+                mainElement: ".main-content-body",
+            }),
+            new SwupPreloadPlugin(),
+        ],
+        containers: ["#swup"],
+    });
+
+    window.dispatchEvent(
+        new CustomEvent("redefine:swup:ready", {
+            detail: {
+                swup: window.swup,
+            },
+        }),
+    );
+</script>
+
+
+
+
+	
+<script src="/js/build/main.js" type="module"></script>
+
+
+
+    
+<script src="/js/build/libs/odometer.min.js"></script>
+
+    
+<link rel="stylesheet" href="/assets/odometer-theme-minimal.css">
+
+
+
+
+
+
+
+  
+<script src="/js/build/libs/Typed.min.js"></script>
+<script src="/js/build/libs/minimasonry.min.js" data-swup-reload-script=""></script>
+
+
+
+
+<script src="/js/build/libs/moment-with-locales.min.js" data-swup-reload-script=""></script>
+
+
+
+	
+</body>
+
+</html>
