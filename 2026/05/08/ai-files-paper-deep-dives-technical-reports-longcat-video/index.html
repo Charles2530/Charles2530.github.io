@@ -1,0 +1,2202 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="keywords" content="Charles">
+    
+    
+    <meta name="author" content="Charles">
+    
+    <!-- Completely eliminate flash of wrong theme -->
+    <script>
+        (function() {
+            const THEME_KEY = "REDEFINE-THEME-STATUS";
+            const DARK = "dark", LIGHT = "light";
+            
+            // Get preferred theme
+            function getTheme() {
+                try {
+                    const saved = localStorage.getItem(THEME_KEY);
+                    if (saved) {
+                        const { isDark } = JSON.parse(saved);
+                        return isDark ? DARK : LIGHT;
+                    }
+                } catch (e) {}
+                
+                return matchMedia("(prefers-color-scheme: dark)").matches ? DARK : LIGHT;
+            }
+            
+            // Apply theme to document
+            function applyTheme(theme) {
+                const isDark = theme === DARK;
+                const root = document.documentElement;
+                
+                // Set classes for compatibility
+                root.classList.add(theme);
+                root.classList.remove(isDark ? LIGHT : DARK);
+                root.style.colorScheme = theme;
+            }
+            
+            // Initial application
+            const theme = getTheme();
+            applyTheme(theme);
+            
+            // Listen for system preference changes
+            matchMedia("(prefers-color-scheme: dark)").addEventListener("change", ({ matches }) => {
+                // Only update if using system preference (no localStorage entry)
+                if (!localStorage.getItem(THEME_KEY)) {
+                    applyTheme(matches ? DARK : LIGHT);
+                }
+            });
+            
+            // Set body classes ASAP (before DOMContentLoaded)
+            (function() {
+                const addBodyClass = () => {
+                    const b = document.body;
+                    if (!b) return false;
+                    b.classList.add(theme + "-mode");
+                    return true;
+                };
+
+                // Try immediately
+                if (addBodyClass()) return;
+
+                // Observe until body exists
+                const mo = new MutationObserver(() => {
+                    if (addBodyClass()) mo.disconnect();
+                });
+                mo.observe(document.documentElement, { childList: true, subtree: true });
+            })();
+        })();
+    </script>
+    
+    <!-- preconnect -->
+<!--- Seo Part-->
+    
+    <link rel="canonical" href="https://charles2530.github.io/2026/05/08/ai-files-paper-deep-dives-technical-reports-longcat-video/"/>
+    <meta name="robots" content="index,follow">
+    <meta name="googlebot" content="index,follow">
+    <meta name="revisit-after" content="1 days">
+    
+    
+        
+        <meta name="description" content="This is Charles&#39;s Castle.">
+<meta property="og:type" content="article">
+<meta property="og:title" content="论文专题讲解：LongCat-Video：长视频生成、GRPO 与高效推理">
+<meta property="og:url" content="https://charles2530.github.io/2026/05/08/ai-files-paper-deep-dives-technical-reports-longcat-video/index.html">
+<meta property="og:site_name" content="Charles&#39;s Castle">
+<meta property="og:description" content="This is Charles&#39;s Castle.">
+<meta property="og:locale" content="en_US">
+<meta property="og:image" content="https://charles2530.github.io/image/background/logo.jpg">
+<meta property="article:published_time" content="2026-05-08T01:00:00.000Z">
+<meta property="article:modified_time" content="2026-05-08T01:00:00.000Z">
+<meta property="article:author" content="Du Jinyang">
+<meta property="article:tag" content="AI">
+<meta property="article:tag" content="论文专题">
+<meta property="article:tag" content="强化学习">
+<meta property="article:tag" content="技术报告">
+<meta name="twitter:card" content="summary">
+<meta name="twitter:image" content="https://charles2530.github.io/image/background/logo.jpg">
+    
+    
+    <!--- Icon Part-->
+    <link rel="icon" type="image/png" href="https://charles2530.github.io/image/background/favicon.png" sizes="192x192">
+    <link rel="apple-touch-icon" sizes="180x180" href="https://charles2530.github.io/image/background/favicon.png">
+    <meta name="theme-color" content="#A31F34">
+    <link rel="shortcut icon" href="https://charles2530.github.io/image/background/favicon.png">
+    <!--- Page Info-->
+    
+    <title>
+        
+            论文专题讲解：LongCat-Video：长视频生成、GRPO 与高效推理 | Charles&#39;s Castle
+        
+    </title>
+
+    
+<link rel="stylesheet" href="/fonts/Chillax/chillax.css">
+
+
+    <!--- Inject Part-->
+    
+        
+            
+    
+            
+    
+            
+                
+                    <link rel="stylesheet" href="/katex/katex.min.css">
+                
+    
+            
+                
+                    <link rel="stylesheet" href="/css/site-polish-v2.css">
+                
+    
+            
+                
+                    <script data-swup-reload-script>
+(function() {
+  function loadBaiduAnalytics() {
+    if (window.__baiduAnalyticsLoaded) return;
+    window.__baiduAnalyticsLoaded = true;
+    window._hmt = window._hmt || [];
+    var hm = document.createElement("script");
+    hm.async = true;
+    hm.src = "https://hm.baidu.com/hm.js?8e0e5f382d14d87cbeadc33a36e71e86";
+    document.head.appendChild(hm);
+  }
+  if ("requestIdleCallback" in window) {
+    requestIdleCallback(loadBaiduAnalytics, { timeout: 3000 });
+  } else {
+    window.addEventListener("load", function() {
+      setTimeout(loadBaiduAnalytics, 1500);
+    });
+  }
+})();
+</script>
+
+                
+    
+
+    
+<link rel="stylesheet" href="/css/style.css">
+
+
+    
+        
+<link rel="stylesheet" href="/css/build/tailwind.css">
+
+    
+
+    
+<link rel="stylesheet" href="/fonts/GeistMono/geist-mono.css">
+
+    
+<link rel="stylesheet" href="/fonts/Geist/geist.css">
+
+    <!--- Font Part-->
+    
+    
+    
+    
+    
+    
+        
+<script src="/js/build/libs/anime.min.js"></script>
+
+    
+
+    <script id="hexo-configurations">
+    window.config = {"hostname":"charles2530.github.io","root":"/","language":"en","path":"search.xml"};
+    window.theme = {"articles":{"style":{"font_size":"16px","line_height":1.5,"image_border_radius":"14px","image_alignment":"center","image_caption":false,"link_icon":true,"delete_mask":false,"title_alignment":"left","headings_top_spacing":{"h1":"5rem","h2":"4rem","h3":"2.8rem","h4":"2.5rem","h5":"2.2rem","h6":"2rem"}},"word_count":{"enable":true,"count":true,"min2read":true},"author_label":{"enable":true,"auto":true,"list":["lol","Neo","God"]},"code_block":{"copy":true,"style":"mac","highlight_theme":{"light":"github","dark":"vs2015"},"font":{"enable":false,"family":null,"url":null}},"toc":{"enable":true,"max_depth":6,"number":false,"expand":true,"init_open":true},"copyright":{"enable":true,"default":"cc_by_nc_sa"},"lazyload":true,"pangu_js":false,"recommendation":{"enable":false,"title":"recommend_articles","limit":3,"mobile_limit":2,"placeholder":"https://charles2530.github.io/image/background/p3.jfif","skip_dirs":[]}},"colors":{"primary":"#A31F34","secondary":"#1890ff","default_mode":"light"},"global":{"fonts":{"chinese":{"enable":false,"family":null,"url":null},"english":{"enable":false,"family":null,"url":null},"title":{"enable":false,"family":null,"url":null}},"content_max_width":"1000px","sidebar_width":"210px","hover":{"shadow":true,"scale":true},"scroll_progress":{"bar":true,"percentage":true},"website_counter":{"url":"https://cn.vercount.one/js","enable":true,"site_pv":true,"site_uv":true,"post_pv":true},"single_page":true,"preloader":{"enable":true,"custom_message":null},"side_tools":{"gear_rotation":true,"auto_expand":false},"open_graph":{"enable":true,"image":"https://charles2530.github.io/image/background/logo.jpg","description":"This is Charles's Castle."},"google_analytics":{"enable":false,"id":null}},"home_banner":{"enable":true,"style":"fixed","image":{"light":"https://charles2530.github.io/image/background/background-light1.jpg","dark":"https://charles2530.github.io/image/background/background-dark1.jpg"},"title":"Charles's Castle","subtitle":{"text":["Happiness is best!","Never give up!","Everyday is a gift!"],"hitokoto":{"enable":false,"show_author":false,"api":"https://v1.hitokoto.cn"},"typing_speed":100,"backing_speed":80,"starting_delay":500,"backing_delay":1500,"loop":true,"smart_backspace":true},"text_color":{"light":"#000000","dark":"#d1d1b6"},"text_style":{"title_size":"3.2rem","subtitle_size":"1.5rem","line_height":1.2},"custom_font":{"enable":false,"family":null,"url":null},"social_links":{"enable":true,"style":"center","links":[{"icon":"fa-brands fa-github","url":"https://github.com/Charles2530/"},{"icon":"fa-brands fa-zhihu","url":"https://www.zhihu.com/people/yang-guang-xiao-zi-55-55"},{"icon":"fa-solid fa-at","url":"mailto:charles2530@163.com"},{"icon":"fa-brands fa-telegram","url":null},{"icon":"/images/custom-icon.svg","url":null}],"qrs":[{"icon":"fa-brands fa-weixin","qr":"https://charles2530.github.io/image/background/Wechat_icon.png"},{"icon":"/images/custom-icon.svg","qr":null}]}},"plugins":{"feed":{"enable":true},"aplayer":{"enable":false,"type":"fixed","audios":[{"name":null,"artist":null,"url":null,"cover":null,"lrc":null}]},"mermaid":{"enable":false,"version":"11.4.1","theme":{"light":"default","dark":"dark"}}},"version":"2.9.0","navbar":{"auto_hide":true,"color":{"left":"#f78736","right":"#367df7","transparency":35},"width":{"home":"1200px","pages":"1000px"},"links":{"Home":{"path":"/","icon":"fa-regular fa-house"},"Categories":{"path":"/categories","icon":"fas fa-bookmark"},"Tags":{"path":"/tags","icon":"fas fa-tags"},"About":{"icon":"fa-regular fa-user","submenus":{"Me":"https://jinyang-du.github.io/","Github":"https://github.com/Charles2530/","Blog":"https://charles2530.github.io","Statistics":"https://tongji.baidu.com/"}}},"search":{"enable":true,"preload":false}},"page_templates":{"friends_column":2,"tags_style":"blur","masonry":{"batch_size":12,"initial_batch_size":24}},"home":{"sidebar":{"enable":true,"position":"left","first_item":"menu","announcement":"This is Charles's Castle","show_on_mobile":true,"links":{"Archives":{"path":"/archives","icon":"fa-regular fa-archive"},"Photos":{"icon":"fa-solid fa-image","path":"/masonry/"},"Essays":{"icon":"fa-solid fa-message-lines","path":"/essay/"},"Friends":{"icon":"fa-solid fa-user-group","path":"/friends/"}}},"article_date_format":"auto","excerpt_length":200,"categories":{"enable":true,"limit":3},"tags":{"enable":true,"limit":3}},"footer":{"runtime":true,"icon":"<i class=\"fa-solid fa-heart fa-beat\" style=\"--fa-animation-duration: 0.5s; color: #f54545\"></i>","start":"2022/12/27 00:00:00","statistics":true,"customize":null,"icp":{"enable":false,"number":null,"url":null}},"footerStart":"2022/12/27 00:00:00","mermaid":{"style":{"light":"default","dark":"dark"}}};
+    window.lang_ago = {"second":"%s seconds ago","minute":"%s minutes ago","hour":"%s hours ago","day":"%s days ago","week":"%s weeks ago","month":"%s months ago","year":"%s years ago"};
+    window.i18n = {"search":"Search...","toc":"On this page","prev":"Prev","next":"Next","prev_posts":"Prev posts","next_posts":"Next posts","page":"Page %d","recent_posts":"Recent Posts","share":"Share","powered_by":"POWERED BY %s","theme":"THEME","rss_feed":"RSS Feed","category":"Category","categories":"Categories","tag":"Tag","tags":"Tags","post":"Post","posts":"Posts","tagcloud":"Tag Cloud","comment":"Comment","comments":"Comments","home":"Home","archive":"Archive","archives":"Archives","top":"TOP","sticky":"Sticky","go-back-home":"Go Back Home","masonry_loading":"Loading photos...","image_viewer":"Image viewer","close":"Close","exif":{"title":"EXIF","cards":{"camera":"Camera","lens":"Lens","exposure":"Exposure","other":"Other"},"fields":{"make":"Brand","model":"Model","date_taken":"Date taken","lens_model":"Lens","focal_length":"Focal length","focus_mode":"Focus mode","shutter":"Shutter","aperture":"Aperture","iso":"ISO","exposure_program":"Exposure program","exposure_compensation":"Exposure compensation","metering_mode":"Metering mode","flash":"Flash","white_balance":"White balance","latitude":"Latitude","longitude":"Longitude","altitude":"Altitude"},"status":{"loading":"Loading...","no_exif":"No EXIF available","library_missing":"EXIF library not loaded","image_source_missing":"Image source unavailable","unavailable":"EXIF unavailable (blocked by CORS or missing metadata)","flag_unavailable":"EXIF unavailable"}},"about":"About","changelog":"Changelog","links":"Links","link":"Link","friends":"Friends","friend":"Friend","timeline":"Timeline","shuoshuo":"Shuoshuo","bookmarks":"Bookmarks","site_uv":"VISITOR COUNT","site_pv":"TOTAL PAGE VIEWS","read_more":"Read more","wordcount":"Words","min2read":"Mins","status":"Status","runtime":"Blog up for","days":"days","hours":"hrs","minutes":"Min","seconds":"Sec","optimized_by":"and Optimized by Evan","rights":"All Rights Reserved","site_posts":"%s posts in total","site_wordcount":"%s words in total","copyright":{"author":"Author","title":"Title","link":"Link","create_time":"Created at","update_time":"Updated at","license_title":"License","license_content":"This work is licensed under %s.","all_rights_reserved":"All Rights Reserved &#169; %s","public_domain":"This work is in the public domain."},"ago":{"second":"%s seconds ago","minute":"%s minutes ago","hour":"%s hours ago","day":"%s days ago","week":"%s weeks ago","month":"%s months ago","year":"%s years ago"},"create_time":"Created","update_time":"Updated","expired":"This post is written %s days ago, and the content may not be up to date."};
+    window.data = {"masonry":true};
+  </script>
+    
+    <!--- Fontawesome Part-->
+    
+<link rel="stylesheet" href="/fontawesome/fontawesome.min.css">
+
+    
+<link rel="stylesheet" href="/fontawesome/brands.min.css">
+
+    
+<link rel="stylesheet" href="/fontawesome/solid.min.css">
+
+    
+<link rel="stylesheet" href="/fontawesome/regular.min.css">
+
+    
+    
+    
+    
+<meta name="generator" content="Hexo 6.3.0"><link rel="alternate" href="/atom.xml" title="Charles's Castle" type="application/atom+xml">
+<link rel="stylesheet" href="/css/prism-tomorrow.css" type="text/css"></head>
+
+
+<body>
+	<div class="progress-bar-container">
+	
+	<span class="scroll-progress-bar"></span>
+	
+
+	
+	<span class="pjax-progress-bar"></span>
+	<!--        <span class="swup-progress-icon">-->
+	<!--            <i class="fa-solid fa-circle-notch fa-spin"></i>-->
+	<!--        </span>-->
+	
+</div>
+
+<style>
+    :root {
+        --preloader-background-color: #fff;
+        --preloader-text-color: #000;
+    }
+
+    @media (prefers-color-scheme: dark) {
+        :root {
+            --preloader-background-color: #202124;
+            --preloader-text-color: #fff;
+        }
+    }
+
+    @media (prefers-color-scheme: light) {
+        :root {
+            --preloader-background-color: #fff;
+            --preloader-text-color: #000;
+        }
+    }
+
+    @media (max-width: 600px) {
+        .ml13 {
+            font-size: 2.6rem !important; /* Adjust this value as needed */
+        }
+    }
+
+    .preloader {
+        display: flex;
+        flex-direction: column;
+        gap: 1rem; /* Tailwind 'gap-4' is 1rem */
+        align-items: center;
+        justify-content: center;
+        position: fixed;
+        padding: 12px;
+        top: 0;
+        right: 0;
+        bottom: 0;
+        left: 0;
+        width: 100vw;
+        height: 100vh; /* 'h-screen' is 100% of the viewport height */
+        background-color: var(--preloader-background-color);
+        z-index: 1100; /* 'z-[1100]' sets the z-index */
+        transition: opacity 0.2s ease-in-out;
+    }
+
+    .ml13 {
+        font-size: 3.2rem;
+        /* text-transform: uppercase; */
+        color: var(--preloader-text-color);
+        letter-spacing: -1px;
+        font-weight: 500;
+        font-family: 'Chillax-Variable', sans-serif;
+        text-align: center;
+    }
+
+    .ml13 .word {
+        display: inline-flex;
+        flex-wrap: wrap;
+        white-space: nowrap;
+    }
+
+    .ml13 .letter {
+        display: inline-block;
+        line-height: 1em;
+    }
+</style>
+
+<div class="preloader">
+    <h2 class="ml13">
+        Charles&#39;s Castle
+    </h2>
+    <script>
+        var textWrapper = document.querySelector('.ml13');
+        // Split text into words
+        var words = textWrapper.textContent.trim().split(' ');
+
+        // Clear the existing content
+        textWrapper.innerHTML = '';
+
+        // Wrap each word and its letters in spans
+        words.forEach(function(word) {
+            var wordSpan = document.createElement('span');
+            wordSpan.classList.add('word');
+            wordSpan.innerHTML = word.replace(/\S/g, "<span class='letter'>$&</span>");
+            textWrapper.appendChild(wordSpan);
+            textWrapper.appendChild(document.createTextNode(' ')); // Add space between words
+        });
+
+        var animation = anime.timeline({ loop: true })
+            .add({
+                targets: '.ml13 .letter',
+                translateY: [20, 0],
+                translateZ: 0,
+                opacity: [0, 1],
+                filter: ['blur(5px)', 'blur(0px)'],
+                easing: "easeOutExpo",
+                duration: 1200,
+                delay: (el, i) => 300 + 20 * i,
+            })
+            .add({
+                targets: '.ml13 .letter',
+                translateY: [0, -20],
+                opacity: [1, 0],
+                filter: ['blur(0px)', 'blur(5px)'],
+                easing: "easeInExpo",
+                duration: 1000,
+                delay: (el, i) => 15 * i,
+                complete: function() {
+                    hidePreloader();
+                }
+            }, '-=700');
+
+
+        let themeStatus = JSON.parse(localStorage.getItem('REDEFINE-THEME-STATUS'))?.isDark;
+
+        // If the theme status is not found in local storage, check the preferred color scheme
+        if (themeStatus === undefined || themeStatus === null) {
+            if (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) {
+                themeStatus = 'dark';
+            } else {
+                themeStatus = 'light';
+            }
+        }
+
+        // Now you can use the themeStatus variable in your code
+        if (themeStatus) {
+            document.documentElement.style.setProperty('--preloader-background-color', '#202124');
+            document.documentElement.style.setProperty('--preloader-text-color', '#fff');
+        } else {
+            document.documentElement.style.setProperty('--preloader-background-color', '#fff');
+            document.documentElement.style.setProperty('--preloader-text-color', '#000');
+        }
+
+        window.addEventListener('load', function () {
+            setTimeout(hidePreloader, 5000); // Call hidePreloader after 5000 milliseconds if not already called by animation
+        });
+
+        function hidePreloader() {
+            var preloader = document.querySelector('.preloader');
+            preloader.style.opacity = '0';
+            setTimeout(function () {
+                preloader.style.display = 'none';
+            }, 200);
+        }
+    </script>
+</div>
+
+<main class="page-container" id="swup">
+
+	
+
+	<div class="main-content-container flex flex-col justify-between min-h-dvh">
+		<div class="main-content-header">
+			<header class="navbar-container px-6 md:px-12">
+    <div class="navbar-content transition-navbar ">
+        <div class="left">
+            
+                <a class="logo-image h-8 w-8 sm:w-10 sm:h-10 mr-3" href="/">
+                    <img src="https://charles2530.github.io/image/background/logo.jpg" class="w-full h-full rounded-xs">
+                </a>
+            
+            <a class="logo-title" href="/">
+                
+                Charles&#39;s Castle
+                
+            </a>
+        </div>
+
+        <div class="right">
+            <!-- PC -->
+            <div class="desktop">
+                <ul class="navbar-list">
+                    
+                        
+                            
+
+                            <li class="navbar-item">
+                                <!-- Menu -->
+                                <a class=""
+                                   href="/"
+                                        >
+                                    <i class="fa-regular fa-house fa-fw"></i>
+                                    HOME
+                                    
+                                </a>
+
+                                <!-- Submenu -->
+                                
+                            </li>
+                    
+                        
+                            
+
+                            <li class="navbar-item">
+                                <!-- Menu -->
+                                <a class=""
+                                   href="/categories"
+                                        >
+                                    <i class="fas fa-bookmark fa-fw"></i>
+                                    CATEGORIES
+                                    
+                                </a>
+
+                                <!-- Submenu -->
+                                
+                            </li>
+                    
+                        
+                            
+
+                            <li class="navbar-item">
+                                <!-- Menu -->
+                                <a class=""
+                                   href="/tags"
+                                        >
+                                    <i class="fas fa-tags fa-fw"></i>
+                                    TAGS
+                                    
+                                </a>
+
+                                <!-- Submenu -->
+                                
+                            </li>
+                    
+                        
+                            
+
+                            <li class="navbar-item">
+                                <!-- Menu -->
+                                <a class="has-dropdown"
+                                   href="#"
+                                        onClick=&#34;return false;&#34;>
+                                    <i class="fa-regular fa-user fa-fw"></i>
+                                    ABOUT
+                                    <i class="fa-solid fa-chevron-down fa-fw"></i>
+                                </a>
+
+                                <!-- Submenu -->
+                                
+                                    <ul class="sub-menu">
+                                        
+                                            <li>
+                                                <a target="_blank" rel="noopener" href="https://jinyang-du.github.io/">
+                                                    ME
+                                                </a>
+                                            </li>
+                                        
+                                            <li>
+                                                <a target="_blank" rel="noopener" href="https://github.com/Charles2530/">
+                                                    GITHUB
+                                                </a>
+                                            </li>
+                                        
+                                            <li>
+                                                <a href="https://charles2530.github.io">
+                                                    BLOG
+                                                </a>
+                                            </li>
+                                        
+                                            <li>
+                                                <a target="_blank" rel="noopener" href="https://tongji.baidu.com/">
+                                                    STATISTICS
+                                                </a>
+                                            </li>
+                                        
+                                    </ul>
+                                
+                            </li>
+                    
+                    
+                        <li class="navbar-item search search-popup-trigger">
+                            <i class="fa-solid fa-magnifying-glass"></i>
+                        </li>
+                    
+                </ul>
+            </div>
+            <!-- Mobile -->
+            <div class="mobile">
+                
+                    <div class="icon-item search search-popup-trigger"><i class="fa-solid fa-magnifying-glass"></i>
+                    </div>
+                
+                <div class="icon-item navbar-bar">
+                    <div class="navbar-bar-middle"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Mobile sheet -->
+    <div class="navbar-drawer h-dvh w-full absolute top-0 left-0 bg-background-color flex flex-col justify-between">
+        <ul class="drawer-navbar-list flex flex-col px-4 justify-center items-start">
+            
+                
+                    
+
+                    <li class="drawer-navbar-item text-base my-1.5 flex flex-col w-full">
+                        
+                        <a class="py-1.5 px-2 flex flex-row items-center justify-between gap-1 hover:!text-primary active:!text-primary text-2xl font-semibold group border-b border-border-color hover:border-primary w-full "
+                           href="/"
+                        >
+                            <span>
+                                HOME
+                            </span>
+                            
+                                <i class="fa-regular fa-house fa-sm fa-fw"></i>
+                            
+                        </a>
+                        
+
+                        
+                    </li>
+            
+                
+                    
+
+                    <li class="drawer-navbar-item text-base my-1.5 flex flex-col w-full">
+                        
+                        <a class="py-1.5 px-2 flex flex-row items-center justify-between gap-1 hover:!text-primary active:!text-primary text-2xl font-semibold group border-b border-border-color hover:border-primary w-full "
+                           href="/categories"
+                        >
+                            <span>
+                                CATEGORIES
+                            </span>
+                            
+                                <i class="fas fa-bookmark fa-sm fa-fw"></i>
+                            
+                        </a>
+                        
+
+                        
+                    </li>
+            
+                
+                    
+
+                    <li class="drawer-navbar-item text-base my-1.5 flex flex-col w-full">
+                        
+                        <a class="py-1.5 px-2 flex flex-row items-center justify-between gap-1 hover:!text-primary active:!text-primary text-2xl font-semibold group border-b border-border-color hover:border-primary w-full "
+                           href="/tags"
+                        >
+                            <span>
+                                TAGS
+                            </span>
+                            
+                                <i class="fas fa-tags fa-sm fa-fw"></i>
+                            
+                        </a>
+                        
+
+                        
+                    </li>
+            
+                
+                    
+
+                    <li class="drawer-navbar-item-sub text-base my-1.5 flex flex-col w-full">
+                        
+                        <div class="py-1.5 px-2 flex flex-row items-center justify-between gap-1 hover:!text-primary active:!text-primary cursor-pointer text-2xl font-semibold group border-b border-border-color hover:border-primary w-full "
+                             navbar-data-toggle="submenu-About"
+                        >
+                            <span>
+                                ABOUT
+                            </span>
+                            
+                                <i class="fa-solid fa-chevron-right fa-sm fa-fw transition-all"></i>
+                            
+                        </div>
+                        
+
+                        
+                            <div class="flex-col items-start px-2 py-2 hidden" data-target="submenu-About">
+                                
+                                    <div class="drawer-navbar-item text-base flex flex-col justify-center items-start hover:underline active:underline hover:underline-offset-1 rounded-3xl">
+                                        <a class=" text-third-text-color text-xl"
+                                           target="_blank" rel="noopener" href="https://jinyang-du.github.io/">ME</a>
+                                    </div>
+                                
+                                    <div class="drawer-navbar-item text-base flex flex-col justify-center items-start hover:underline active:underline hover:underline-offset-1 rounded-3xl">
+                                        <a class=" text-third-text-color text-xl"
+                                           target="_blank" rel="noopener" href="https://github.com/Charles2530/">GITHUB</a>
+                                    </div>
+                                
+                                    <div class="drawer-navbar-item text-base flex flex-col justify-center items-start hover:underline active:underline hover:underline-offset-1 rounded-3xl">
+                                        <a class=" text-third-text-color text-xl"
+                                           href="https://charles2530.github.io">BLOG</a>
+                                    </div>
+                                
+                                    <div class="drawer-navbar-item text-base flex flex-col justify-center items-start hover:underline active:underline hover:underline-offset-1 rounded-3xl">
+                                        <a class=" text-third-text-color text-xl"
+                                           target="_blank" rel="noopener" href="https://tongji.baidu.com/">STATISTICS</a>
+                                    </div>
+                                
+                            </div>
+                        
+                    </li>
+            
+
+            
+            
+                
+                    
+                    <li class="drawer-navbar-item text-base my-1.5 flex flex-col w-full">
+                        <a class="py-1.5 px-2 flex flex-row items-center justify-between gap-1 hover:!text-primary active:!text-primary text-2xl font-semibold group border-b border-border-color hover:border-primary w-full active"
+                           href="/archives"
+                        >
+                            <span>Archives</span>
+                            <i class="fa-regular fa-archive fa-sm fa-fw"></i>
+                        </a>
+                    </li>
+                
+                    
+                    <li class="drawer-navbar-item text-base my-1.5 flex flex-col w-full">
+                        <a class="py-1.5 px-2 flex flex-row items-center justify-between gap-1 hover:!text-primary active:!text-primary text-2xl font-semibold group border-b border-border-color hover:border-primary w-full active"
+                           href="/masonry/"
+                        >
+                            <span>Photos</span>
+                            <i class="fa-solid fa-image fa-sm fa-fw"></i>
+                        </a>
+                    </li>
+                
+                    
+                    <li class="drawer-navbar-item text-base my-1.5 flex flex-col w-full">
+                        <a class="py-1.5 px-2 flex flex-row items-center justify-between gap-1 hover:!text-primary active:!text-primary text-2xl font-semibold group border-b border-border-color hover:border-primary w-full active"
+                           href="/essay/"
+                        >
+                            <span>Essays</span>
+                            <i class="fa-solid fa-message-lines fa-sm fa-fw"></i>
+                        </a>
+                    </li>
+                
+                    
+                    <li class="drawer-navbar-item text-base my-1.5 flex flex-col w-full">
+                        <a class="py-1.5 px-2 flex flex-row items-center justify-between gap-1 hover:!text-primary active:!text-primary text-2xl font-semibold group border-b border-border-color hover:border-primary w-full active"
+                           href="/friends/"
+                        >
+                            <span>Friends</span>
+                            <i class="fa-solid fa-user-group fa-sm fa-fw"></i>
+                        </a>
+                    </li>
+                
+            
+        </ul>
+
+        <div class="statistics flex justify-around my-2.5">
+    <a class="item tag-count-item flex flex-col justify-center items-center w-20" href="/tags">
+        <div class="number text-2xl sm:text-xl text-second-text-color font-semibold">47</div>
+        <div class="label text-third-text-color text-sm">Tags</div>
+    </a>
+    <a class="item tag-count-item flex flex-col justify-center items-center w-20" href="/categories">
+        <div class="number text-2xl sm:text-xl text-second-text-color font-semibold">94</div>
+        <div class="label text-third-text-color text-sm">Categories</div>
+    </a>
+    <a class="item tag-count-item flex flex-col justify-center items-center w-20" href="/archives">
+        <div class="number text-2xl sm:text-xl text-second-text-color font-semibold">601</div>
+        <div class="label text-third-text-color text-sm">Posts</div>
+    </a>
+</div>
+    </div>
+
+    <div class="window-mask"></div>
+
+</header>
+
+
+		</div>
+
+		<div class="main-content-body transition-fade-up">
+			
+
+			<div class="main-content">
+				<div class="post-page-container flex relative justify-between box-border w-full h-full">
+	<div class="article-content-container">
+
+		<div class="article-title relative w-full">
+			
+			
+			
+			<img src="https://charles2530.github.io/image/background/p1.jfif" alt="论文专题讲解：LongCat-Video：长视频生成、GRPO 与高效推理" class="w-full h-60 sm:h-72 md:h-80 object-cover sm:rounded-t-large dark:brightness-75" />
+			
+			<div class="w-full flex items-center absolute bottom-0 justify-start">
+				<h1 class="article-title-cover text-center mx-6 my-6 text-second-text-color bg-background-color-transparent px-4 py-3 text-3xl sm:text-4xl md:text-5xl font-semibold backdrop-blur-lg rounded-xl border border-border-color ">论文专题讲解：LongCat-Video：长视频生成、GRPO 与高效推理</h1>
+			</div>
+			
+		</div>
+
+		
+		<div class="article-header flex flex-row gap-2 items-center px-2 sm:px-6 md:px-8">
+			<div class="avatar w-[46px] h-[46px] shrink-0 rounded-medium border border-border-color p-px">
+				<img src="https://charles2530.github.io/image/background/logo2.jpg">
+			</div>
+			<div class="info flex flex-col justify-between">
+				<div class="author flex items-center">
+					<span class="name text-default-text-color text-lg font-semibold">Charles</span>
+					
+					<span class="author-label ml-1.5 text-xs px-2 py-0.5 rounded-small text-third-text-color border border-shadow-color-1">Lv8</span>
+					
+				</div>
+				<div class="meta-info">
+					<div class="article-meta-info">
+    <span class="article-date article-meta-item">
+        <i class="fa-regular fa-pen-fancy"></i>&nbsp;
+        <span class="desktop">2026-05-08 09:00</span>
+        <span class="mobile">2026-05-08 09:00</span>
+        <span class="hover-info">Created</span>
+    </span>
+    
+        <span class="article-date article-meta-item">
+            <i class="fa-regular fa-wrench"></i>&nbsp;
+            <span class="desktop">2026-05-08 09:00</span>
+            <span class="mobile">2026-05-08 09:00</span>
+            <span class="hover-info">Updated</span>
+        </span>
+    
+
+    
+        <span class="article-categories article-meta-item">
+            <i class="fa-regular fa-folders"></i>&nbsp;
+            <ul>
+                
+                
+                    
+                        
+                        <li>
+                            <a href="/categories/AI/">AI</a>&nbsp;
+                        </li>
+                    
+                    
+                
+                    
+                        
+                            <li>></li>
+                        
+                        <li>
+                            <a href="/categories/AI/%E8%AE%BA%E6%96%87%E4%B8%93%E9%A2%98%E8%AE%B2%E8%A7%A3/">论文专题讲解</a>&nbsp;
+                        </li>
+                    
+                    
+                
+            </ul>
+        </span>
+    
+    
+        <span class="article-tags article-meta-item">
+            <i class="fa-regular fa-tags"></i>&nbsp;
+            <ul>
+                
+                    <li>
+                        <a href="/tags/AI/">AI</a>&nbsp;
+                    </li>
+                
+                    <li>
+                        | <a href="/tags/%E8%AE%BA%E6%96%87%E4%B8%93%E9%A2%98/">论文专题</a>&nbsp;
+                    </li>
+                
+                    <li>
+                        | <a href="/tags/%E5%BC%BA%E5%8C%96%E5%AD%A6%E4%B9%A0/">强化学习</a>&nbsp;
+                    </li>
+                
+                    <li>
+                        | <a href="/tags/%E6%8A%80%E6%9C%AF%E6%8A%A5%E5%91%8A/">技术报告</a>&nbsp;
+                    </li>
+                
+            </ul>
+        </span>
+    
+
+    
+    
+        <span class="article-wordcount article-meta-item">
+            <i class="fa-regular fa-typewriter"></i>&nbsp;<span>7.7k Words</span>
+        </span>
+    
+    
+        <span class="article-min2read article-meta-item">
+            <i class="fa-regular fa-clock"></i>&nbsp;<span>32 Mins</span>
+        </span>
+    
+    
+        <span class="article-pv article-meta-item">
+            <i class="fa-regular fa-eye"></i>&nbsp;<span id="busuanzi_value_page_pv"></span>
+        </span>
+    
+</div>
+
+				</div>
+			</div>
+		</div>
+		
+
+		
+
+
+		<div class="article-content markdown-body px-2 sm:px-6 md:px-8 pb-8">
+			<div class="callout callout--titled info mb-4 rounded-small shadow-redefine-flat bg-(--callout-bg-color) p-3 pl-1 relative flex flex-row gap-2"><div role="none" class="rounded-full self-stretch w-0.5 bg-(--callout-primary-color) shrink-0 opacity-60"></div><div class="flex flex-col gap-2"><div class="callout__title flex items-center gap-2 font-semibold tracking-tight">论文信息</div><div class="callout__content markdown-body flex-1 min-w-0"><p><strong>论文题名：</strong> LongCat-Video Technical Report。<br><br />
+<strong>作者：</strong> Meituan LongCat Team、Xunliang Cai、Qilong Huang、Zhuoliang Kang、Hongyu Li、Shijun Liang、Liya Ma、Siyu Ren、Xiaoming Wei、Rixu Xie、Tong Zhang。<br><br />
+<strong>机构：</strong> Meituan LongCat Team。<br><br />
+<strong>时间 / 主题：</strong> 2025-10；技术报告、视频生成、长视频、世界模型。<br><br />
+<strong>arXiv / 官方报告：</strong> arXiv：<a class="link"   target="_blank" rel="noopener" href="https://arxiv.org/abs/2510.22200" >2510.22200<i class="fa-solid fa-arrow-up-right ml-[0.2em] font-light align-text-top text-[0.7em] link-icon"></i></a>。<br><br />
+<strong>GitHub / 项目：</strong> GitHub：<a class="link"   target="_blank" rel="noopener" href="https://github.com/meituan-longcat/LongCat-Video" >github.com/meituan-longcat/LongCat-Video<i class="fa-solid fa-arrow-up-right ml-[0.2em] font-light align-text-top text-[0.7em] link-icon"></i></a>。<br><br />
+<strong>元数据来源与核验口径：</strong> 来源：<a class="link"   target="_blank" rel="noopener" href="https://arxiv.org/abs/2510.22200" >arXiv<i class="fa-solid fa-arrow-up-right ml-[0.2em] font-light align-text-top text-[0.7em] link-icon"></i></a>；<a class="link"   target="_blank" rel="noopener" href="https://github.com/meituan-longcat/LongCat-Video" >GitHub<i class="fa-solid fa-arrow-up-right ml-[0.2em] font-light align-text-top text-[0.7em] link-icon"></i></a>；Checked Date：2026-07-08；Repro Status：Author Code / Model Weights available, independent reproduction not claimed。</p></div></div></div>
+<h2 id="原论文故事线"><a class="markdownIt-Anchor" href="#原论文故事线"></a> 原论文故事线</h2>
+<h3 id="研究背景"><a class="markdownIt-Anchor" href="#研究背景"></a> 研究背景</h3>
+<p>LongCat-Video 处在视频生成模型走向世界模型的过渡位置。过去两年，Sora、Veo、Seedance、Kling、Wan、HunyuanVideo、Step-Video、CogVideoX 等系统把短视频的画质、运动和指令跟随推到很高水平，但真正接近世界模型时，短 clip 还不够。一个可用的世界模拟器至少要长时间保持场景一致、支持连续条件输入，并且能在较低延迟下生成高分辨率视频。</p>
+<p>这篇技术报告的背景问题是：视频模型已经能生成好看的几秒钟，下一步怎样让它变成能生成分钟级、可延续、可交互、可高效推理的视频基础模型。作者把 LongCat-Video 定位为“toward world models”的第一步，而不是直接声称它已经解决了动作条件闭环规划。</p>
+<h3 id="问题challenge"><a class="markdownIt-Anchor" href="#问题challenge"></a> 问题（Challenge）</h3>
+<p>论文要解决的问题是：<strong>如何用一个统一的视频生成模型同时覆盖 Text-to-Video、Image-to-Video 和 Video-Continuation，并让长视频生成和 720p 30fps 推理成本可控。</strong></p>
+<p>挑战来自四个方向。第一，多任务输入形态不同：T2V 没有条件帧，I2V 有一帧，VC 有多帧历史，直接做多个模型会拉高训练和维护成本。第二，长视频容易累积误差，颜色漂移、质量衰减、运动不连续都会破坏“世界还在同一个地方”的感觉。第三，高分辨率高帧率视频 token 数巨大，dense attention 的二次复杂度会让推理成本爆炸。第四，RLHF 用在视频 flow matching 上比语言模型更麻烦，因为最终视频 reward 很难稳定归因到采样过程中的具体 timestep。</p>
+<p>这个问题有价值，是因为世界模型、数字人、具身 AI 和内容生产都需要长时间一致性和高效推理。一个只能离线生成短片的模型，即使画质强，也很难变成 agent 可连续调用的模拟接口。</p>
+<h3 id="finding"><a class="markdownIt-Anchor" href="#finding"></a> Finding</h3>
+<p>作者的 finding 是：<strong>长视频世界模型能力不能只靠更大的 DiT 或更长的训练 clip，而要把所有生成任务统一成 video continuation，再围绕这个统一接口同时设计训练阶段、条件注意力缓存、偏好优化和高分辨率加速。</strong></p>
+<p>这个洞见把问题从“训练一个更强 T2V 模型”翻转成“把不同任务都看成给定条件帧后的未来续写”。T2V 是 0 个条件帧，I2V 是 1 个条件帧，VC 是多个条件帧；统一之后，模型结构、loss、KV cache、长视频预训练和 coarse-to-fine refinement 都可以围绕同一个接口展开。</p>
+<p>也正因为这个 finding，LongCat-Video 的技术路线不是单点创新，而是一个组合：数据管线保证视频和 caption 可用；统一 DiT 接口承接 T2V/I2V/VC；Video-Continuation 预训练让模型原生接触长程续写；multi-reward GRPO 把视觉质量、运动质量和文本对齐一起优化；CFG/CM distillation、coarse-to-fine 和 Block Sparse Attention 把 720p 30fps 推理压到分钟级。</p>
+<h3 id="方法"><a class="markdownIt-Anchor" href="#方法"></a> 方法</h3>
+<p>LongCat-Video 是 13.6B 参数视频生成模型，主干是 single-stream DiT。它使用 WAN2.1 VAE 把视频压到 latent，再用 patchify 进一步压缩；文本侧使用 umT5，支持中英 caption。模型把输入拆成 condition sequence 和 noisy sequence：condition frames 保持无噪声并把 timestep 设为 0，noisy frames 用 flow matching 去噪；loss 不作用在 condition tokens 上。</p>
+<p>训练分为 base model training、RLHF training 和 acceleration training。base 阶段先做 progressive pre-training，再用高质量数据 SFT；RLHF 阶段用 GRPO 和多个 reward model 做偏好优化；acceleration 阶段用 CFG distillation、consistency model distillation 和 refinement expert LoRA，把采样步数、分辨率和帧率成本压下来。高分辨率 refinement 还接入 Block Sparse Attention，减少 attention 计算。</p>
+<h3 id="结论"><a class="markdownIt-Anchor" href="#结论"></a> 结论</h3>
+<p>实验上，作者给出内部 MOS/GSB、人类与自动 judge 混合评测、VBench 2.0、公有/闭源模型对比，以及 T2V/I2V/VC 可视化。核心结论是：LongCat-Video 在 T2V 上与强开源和部分闭源模型竞争，在 VBench 2.0 的 Commonsense 维度领先表中模型，并且通过 distillation + C2F + BSA 把 720p 视频推理显著加速。</p>
+<p>证据边界也要看清。内部 benchmark、judge model、训练数据和大部分偏好评测都是作者体系内完成的；长视频和交互式 continuation 主要靠可视化展示，还不是闭环 agent 任务成功率。它更稳的定位是“高效长视频生成基础模型”，不是已经完全具备反事实动作分叉和物理状态估计的世界模型。</p>
+<h3 id="关键术语"><a class="markdownIt-Anchor" href="#关键术语"></a> 关键术语</h3>
+<ul>
+<li><strong>Video-Continuation（视频续写）</strong>：给定历史条件帧，预测后续视频；LongCat-Video 把 T2V/I2V/VC 都统一到这个接口下。</li>
+<li><strong>Flow Matching（流匹配）</strong>：训练模型预测从噪声到数据的 velocity field，而不是直接预测噪声或 score。</li>
+<li><strong>GRPO（Group Relative Policy Optimization，组相对策略优化）</strong>：用同一 prompt 下多个 sample 的相对 reward 估计优势函数，做偏好优化。</li>
+<li><strong>Multi-Reward RLHF（多奖励人类反馈强化学习）</strong>：同时使用视觉质量、运动质量、文本对齐等奖励，避免单一 reward 被过度优化。</li>
+<li><strong>Coarse-to-Fine Generation（由粗到细生成）</strong>：先生成低分辨率低帧率视频，再通过 refinement expert 提升到高分辨率高帧率。</li>
+<li><strong>Block Sparse Attention（块稀疏注意力）</strong>：把视频 latent 切成 3D block，只对相关 key blocks 计算 attention，降低高分辨率视频计算量。</li>
+<li><strong>Context Parallelism（上下文并行）</strong>：把长序列 token 按上下文维度切到多个设备上，并配合 ring attention 等通信模式训练。</li>
+</ul>
+<h2 id="论文位置"><a class="markdownIt-Anchor" href="#论文位置"></a> 论文位置</h2>
+<p>LongCat-Video 和 LingBot-World 都站在“视频生成通向世界模型”的路线里，但两者的主问题不同。LingBot-World 更关心交互动作、因果 rollout 和实时世界模拟；LongCat-Video 更关心一个开源视频基础模型如何原生支持长视频、续写、多任务和高效 720p 推理。</p>
+<p><img  
+                     lazyload
+                     src="/images/loading.svg"
+                     data-src="/image/ai-notes/images/paper-deep-dives/technical-reports/longcat-video/figure-1-teaser.png"
+                      alt="LongCat-Video teaser 原论文图" 
+                ></p>
+<p><small>图源：<code>LongCat-Video Technical Report</code>，Figure 1。原论文图意：同一个模型覆盖 Text-to-Video、Image-to-Video、long video 和 interactive video continuation，展示任务统一后的输出形态。</small></p>
+<p><strong>Figure 1 怎么读。</strong><br />
+这张图不是模型结构图，而是论文主张的“任务边界图”。上面是从文本直接生成视频，中间是给定首帧后按不同指令生成动作，下面是长时间 continuation 和分段交互式指令。它支撑的是统一任务接口和长视频能力，不直接证明物理闭环规划能力。</p>
+<p>从世界模型角度看，LongCat-Video 的进展在于把视频基础模型推向“持续生成同一世界”的方向。它还没有像机器人世界模型那样显式建模 action、reward 或可规划 state，但它在数据、训练和推理链路上解决了很现实的前置问题：长时间、不漂移、低成本地生成视频未来。</p>
+<h2 id="数据管线"><a class="markdownIt-Anchor" href="#数据管线"></a> 数据管线</h2>
+<p>论文的数据部分强调“可按训练阶段动态组装数据”。原始视频先经过去重、镜头切分、黑边裁剪和压缩封装，再进入多维 metadata 标注。metadata 包括时长、分辨率、帧率、码率、aesthetic score、blur score、text coverage、watermark detection 和 optical-flow-based motion information 等。这样做的意义不是把数据一次性清洗成一个固定集合，而是为不同训练阶段构造不同的数据子集。</p>
+<p><img  
+                     lazyload
+                     src="/images/loading.svg"
+                     data-src="/image/ai-notes/images/paper-deep-dives/technical-reports/longcat-video/figure-2-data-curation-pipeline.png"
+                      alt="LongCat-Video data curation pipeline 原论文图" 
+                ></p>
+<p><small>图源：<code>LongCat-Video Technical Report</code>，Figure 2。原论文图意：数据预处理把原始视频切成一致片段，数据标注阶段生成多维 metadata，使不同训练目标可以灵活抽取数据。</small></p>
+<p><strong>数据图要看 metadata 数据库。</strong><br />
+左侧预处理解决“视频能不能训练”：去重、切镜头、裁黑边、压缩和打包。右侧标注解决“训练时能不能按目标筛”：质量、运动、风格、文本覆盖和水印等属性进入 metadata。对长视频模型来说，这比单纯扩大数据量更关键，因为 progressive pre-training、SFT、RLHF 和 refinement expert 需要的样本分布并不一样。</p>
+<p>caption 也被拆成多路模型协作。论文使用经过微调的 LLaVA-Video 生成基础 video caption，并补充包含丰富 temporal events 的数据与 Tarsier2 标注来增强时间动作描述能力；cinematography 和 visual style 由专门分类器与 Qwen2.5VL 辅助标注；caption augmentation 则通过中英翻译、摘要和随机组合视觉风格/镜头信息增加 caption 多样性。</p>
+<p><img  
+                     lazyload
+                     src="/images/loading.svg"
+                     data-src="/image/ai-notes/images/paper-deep-dives/technical-reports/longcat-video/figure-3-caption-workflow.png"
+                      alt="LongCat-Video caption workflow 原论文图" 
+                ></p>
+<p><small>图源：<code>LongCat-Video Technical Report</code>，Figure 3。原论文图意：caption workflow 把基础视频内容、镜头语言、视觉风格和 augmentation 组合成更丰富的视频文本描述。</small></p>
+<p><strong>caption 图要看 temporal action。</strong><br />
+视频 caption 和图片 caption 的差别在于，视频模型需要知道“发生了什么动作”和“动作如何随时间变化”。论文专门提到 temporal action annotations 对提升时间理解很关键，这也解释了为什么 LongCat-Video 后面能把 VC 当成核心训练任务：如果数据文本只描述静态画面，模型很难学会长时间事件续写。</p>
+<h2 id="模型结构"><a class="markdownIt-Anchor" href="#模型结构"></a> 模型结构</h2>
+<p>LongCat-Video 的主干是标准 DiT，但几个工程选择决定了它适合长视频训练。</p>
+<table>
+<thead>
+<tr>
+<th>Component</th>
+<th>LongCat-Video Design</th>
+<th>Why It Matters</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Backbone</td>
+<td>single-stream DiT</td>
+<td>用统一 transformer 处理视频 latent 和条件</td>
+</tr>
+<tr>
+<td>Self-Attention</td>
+<td>3D self-attention + 3D RoPE</td>
+<td>显式处理时间、高度、宽度位置</td>
+</tr>
+<tr>
+<td>Text Conditioning</td>
+<td>cross-attention with umT5 embeddings</td>
+<td>支持中英 caption 与文本条件</td>
+</tr>
+<tr>
+<td>FFN</td>
+<td>SwiGLU</td>
+<td>大模型常用的 FFN 结构</td>
+</tr>
+<tr>
+<td>Modulation</td>
+<td>AdaLN-Zero + modulation MLP</td>
+<td>稳定 DiT 条件调制</td>
+</tr>
+<tr>
+<td>Normalization</td>
+<td>RMSNorm as QKNorm</td>
+<td>提升 attention / cross-attention 稳定性</td>
+</tr>
+</tbody>
+</table>
+<p>模型规格表保留原论文英文格式：</p>
+<table>
+<thead>
+<tr>
+<th style="text-align:right">Num. of Layers</th>
+<th style="text-align:right">Model Hidden Size</th>
+<th style="text-align:right">FFN Hidden Size</th>
+<th style="text-align:right">Num. of Attn. Heads</th>
+<th style="text-align:right">AdaLN Embedding Size</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align:right">48</td>
+<td style="text-align:right">4096</td>
+<td style="text-align:right">16384</td>
+<td style="text-align:right">32</td>
+<td style="text-align:right">512</td>
+</tr>
+</tbody>
+</table>
+<p>VAE 使用 WAN2.1 VAE，像素到 latent 的时空压缩为 <span class="katex"><span class="katex-mathml"><math><semantics><mrow><mn>4</mn><mo>×</mo><mn>8</mn><mo>×</mo><mn>8</mn></mrow><annotation encoding="application/x-tex">4\times8\times8</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.72777em;vertical-align:-0.08333em;"></span><span class="mord">4</span><span class="mspace" style="margin-right:0.2222222222222222em;"></span><span class="mbin">×</span><span class="mspace" style="margin-right:0.2222222222222222em;"></span></span><span class="base"><span class="strut" style="height:0.72777em;vertical-align:-0.08333em;"></span><span class="mord">8</span><span class="mspace" style="margin-right:0.2222222222222222em;"></span><span class="mbin">×</span><span class="mspace" style="margin-right:0.2222222222222222em;"></span></span><span class="base"><span class="strut" style="height:0.64444em;vertical-align:0em;"></span><span class="mord">8</span></span></span></span>，DiT 内 patchify 再做 <span class="katex"><span class="katex-mathml"><math><semantics><mrow><mn>1</mn><mo>×</mo><mn>2</mn><mo>×</mo><mn>2</mn></mrow><annotation encoding="application/x-tex">1\times2\times2</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.72777em;vertical-align:-0.08333em;"></span><span class="mord">1</span><span class="mspace" style="margin-right:0.2222222222222222em;"></span><span class="mbin">×</span><span class="mspace" style="margin-right:0.2222222222222222em;"></span></span><span class="base"><span class="strut" style="height:0.72777em;vertical-align:-0.08333em;"></span><span class="mord">2</span><span class="mspace" style="margin-right:0.2222222222222222em;"></span><span class="mbin">×</span><span class="mspace" style="margin-right:0.2222222222222222em;"></span></span><span class="base"><span class="strut" style="height:0.64444em;vertical-align:0em;"></span><span class="mord">2</span></span></span></span> 压缩，所以总体压缩达到 <span class="katex"><span class="katex-mathml"><math><semantics><mrow><mn>4</mn><mo>×</mo><mn>16</mn><mo>×</mo><mn>16</mn></mrow><annotation encoding="application/x-tex">4\times16\times16</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.72777em;vertical-align:-0.08333em;"></span><span class="mord">4</span><span class="mspace" style="margin-right:0.2222222222222222em;"></span><span class="mbin">×</span><span class="mspace" style="margin-right:0.2222222222222222em;"></span></span><span class="base"><span class="strut" style="height:0.72777em;vertical-align:-0.08333em;"></span><span class="mord">1</span><span class="mord">6</span><span class="mspace" style="margin-right:0.2222222222222222em;"></span><span class="mbin">×</span><span class="mspace" style="margin-right:0.2222222222222222em;"></span></span><span class="base"><span class="strut" style="height:0.64444em;vertical-align:0em;"></span><span class="mord">1</span><span class="mord">6</span></span></span></span>。这对视频模型很重要：如果不压低 token 数，后面的长视频训练、720p refinement 和 attention 计算都会变得不可承受。</p>
+<h2 id="统一-video-continuation-接口"><a class="markdownIt-Anchor" href="#统一-video-continuation-接口"></a> 统一 Video-Continuation 接口</h2>
+<p>论文最值得吸收的结构设计，是把三类任务统一成 video continuation。</p>
+<table>
+<thead>
+<tr>
+<th>Task</th>
+<th style="text-align:right">Condition Frames</th>
+<th>Model View</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Text-to-Video</td>
+<td style="text-align:right">0</td>
+<td>只根据文本生成 noisy future frames</td>
+</tr>
+<tr>
+<td>Image-to-Video</td>
+<td style="text-align:right">1</td>
+<td>首帧作为 condition sequence，后续帧去噪生成</td>
+</tr>
+<tr>
+<td>Video-Continuation</td>
+<td style="text-align:right">multiple</td>
+<td>多帧历史作为 condition sequence，续写未来</td>
+</tr>
+</tbody>
+</table>
+<p><img  
+                     lazyload
+                     src="/images/loading.svg"
+                     data-src="/image/ai-notes/images/paper-deep-dives/technical-reports/longcat-video/figure-5-unified-architecture.png"
+                      alt="LongCat-Video unified architecture 原论文图" 
+                ></p>
+<p><small>图源：<code>LongCat-Video Technical Report</code>，Figure 5。原论文图意：左侧把 T2V、I2V、VC 表示成不同数量 condition frames；右侧展示 Block Causal Attention，使 condition tokens 不被 noisy tokens 污染。</small></p>
+<p><strong>Figure 5 怎么读。</strong><br />
+输入被拆成 <span class="katex"><span class="katex-mathml"><math><semantics><mrow><msub><mi>X</mi><mtext>cond</mtext></msub></mrow><annotation encoding="application/x-tex">X_\text{cond}</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.83333em;vertical-align:-0.15em;"></span><span class="mord"><span class="mord mathdefault" style="margin-right:0.07847em;">X</span><span class="msupsub"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height:0.33610799999999996em;"><span style="top:-2.5500000000000003em;margin-left:-0.07847em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord text mtight"><span class="mord mtight">cond</span></span></span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height:0.15em;"><span></span></span></span></span></span></span></span></span></span> 和 <span class="katex"><span class="katex-mathml"><math><semantics><mrow><msub><mi>X</mi><mtext>noisy</mtext></msub></mrow><annotation encoding="application/x-tex">X_\text{noisy}</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.969438em;vertical-align:-0.286108em;"></span><span class="mord"><span class="mord mathdefault" style="margin-right:0.07847em;">X</span><span class="msupsub"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height:0.317502em;"><span style="top:-2.5500000000000003em;margin-left:-0.07847em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord text mtight"><span class="mord mtight">noisy</span></span></span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height:0.286108em;"><span></span></span></span></span></span></span></span></span></span>。condition frames 是无噪声条件，timestep 固定为 0；noisy frames 才参与 flow matching 去噪，timestep 从 <span class="katex"><span class="katex-mathml"><math><semantics><mrow><mo stretchy="false">[</mo><mn>0</mn><mo separator="true">,</mo><mn>1</mn><mo stretchy="false">]</mo></mrow><annotation encoding="application/x-tex">[0,1]</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:1em;vertical-align:-0.25em;"></span><span class="mopen">[</span><span class="mord">0</span><span class="mpunct">,</span><span class="mspace" style="margin-right:0.16666666666666666em;"></span><span class="mord">1</span><span class="mclose">]</span></span></span></span> 采样。loss 不算 condition tokens，因为它们是已知历史，不是要预测的目标。</p>
+<p>Block Attention with KVCache 是效率关键。condition tokens 的 self-attention 只依赖自己的 <span class="katex"><span class="katex-mathml"><math><semantics><mrow><msub><mi>Q</mi><mtext>cond</mtext></msub><mo separator="true">,</mo><msub><mi>K</mi><mtext>cond</mtext></msub><mo separator="true">,</mo><msub><mi>V</mi><mtext>cond</mtext></msub></mrow><annotation encoding="application/x-tex">Q_\text{cond},K_\text{cond},V_\text{cond}</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.8777699999999999em;vertical-align:-0.19444em;"></span><span class="mord"><span class="mord mathdefault">Q</span><span class="msupsub"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height:0.33610799999999996em;"><span style="top:-2.5500000000000003em;margin-left:0em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord text mtight"><span class="mord mtight">cond</span></span></span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height:0.15em;"><span></span></span></span></span></span></span><span class="mpunct">,</span><span class="mspace" style="margin-right:0.16666666666666666em;"></span><span class="mord"><span class="mord mathdefault" style="margin-right:0.07153em;">K</span><span class="msupsub"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height:0.33610799999999996em;"><span style="top:-2.5500000000000003em;margin-left:-0.07153em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord text mtight"><span class="mord mtight">cond</span></span></span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height:0.15em;"><span></span></span></span></span></span></span><span class="mpunct">,</span><span class="mspace" style="margin-right:0.16666666666666666em;"></span><span class="mord"><span class="mord mathdefault" style="margin-right:0.22222em;">V</span><span class="msupsub"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height:0.33610799999999996em;"><span style="top:-2.5500000000000003em;margin-left:-0.22222em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord text mtight"><span class="mord mtight">cond</span></span></span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height:0.15em;"><span></span></span></span></span></span></span></span></span></span>，noisy tokens 则可以 attend 到 condition 和 noisy tokens：</p>
+<p><span class="katex-display"><span class="katex"><span class="katex-mathml"><math><semantics><mrow><msub><mi>X</mi><mtext>cond</mtext></msub><mo>=</mo><mrow><mi mathvariant="normal">A</mi><mi mathvariant="normal">t</mi><mi mathvariant="normal">t</mi><mi mathvariant="normal">e</mi><mi mathvariant="normal">n</mi><mi mathvariant="normal">t</mi><mi mathvariant="normal">i</mi><mi mathvariant="normal">o</mi><mi mathvariant="normal">n</mi></mrow><mo stretchy="false">(</mo><msub><mi>Q</mi><mtext>cond</mtext></msub><mo separator="true">,</mo><msub><mi>K</mi><mtext>cond</mtext></msub><mo separator="true">,</mo><msub><mi>V</mi><mtext>cond</mtext></msub><mo stretchy="false">)</mo></mrow><annotation encoding="application/x-tex">X_\text{cond}=\mathrm{Attention}(Q_\text{cond},K_\text{cond},V_\text{cond})
+</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.83333em;vertical-align:-0.15em;"></span><span class="mord"><span class="mord mathdefault" style="margin-right:0.07847em;">X</span><span class="msupsub"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height:0.33610799999999996em;"><span style="top:-2.5500000000000003em;margin-left:-0.07847em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord text mtight"><span class="mord mtight">cond</span></span></span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height:0.15em;"><span></span></span></span></span></span></span><span class="mspace" style="margin-right:0.2777777777777778em;"></span><span class="mrel">=</span><span class="mspace" style="margin-right:0.2777777777777778em;"></span></span><span class="base"><span class="strut" style="height:1em;vertical-align:-0.25em;"></span><span class="mord"><span class="mord mathrm">A</span><span class="mord mathrm">t</span><span class="mord mathrm">t</span><span class="mord mathrm">e</span><span class="mord mathrm">n</span><span class="mord mathrm">t</span><span class="mord mathrm">i</span><span class="mord mathrm">o</span><span class="mord mathrm">n</span></span><span class="mopen">(</span><span class="mord"><span class="mord mathdefault">Q</span><span class="msupsub"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height:0.33610799999999996em;"><span style="top:-2.5500000000000003em;margin-left:0em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord text mtight"><span class="mord mtight">cond</span></span></span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height:0.15em;"><span></span></span></span></span></span></span><span class="mpunct">,</span><span class="mspace" style="margin-right:0.16666666666666666em;"></span><span class="mord"><span class="mord mathdefault" style="margin-right:0.07153em;">K</span><span class="msupsub"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height:0.33610799999999996em;"><span style="top:-2.5500000000000003em;margin-left:-0.07153em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord text mtight"><span class="mord mtight">cond</span></span></span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height:0.15em;"><span></span></span></span></span></span></span><span class="mpunct">,</span><span class="mspace" style="margin-right:0.16666666666666666em;"></span><span class="mord"><span class="mord mathdefault" style="margin-right:0.22222em;">V</span><span class="msupsub"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height:0.33610799999999996em;"><span style="top:-2.5500000000000003em;margin-left:-0.22222em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord text mtight"><span class="mord mtight">cond</span></span></span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height:0.15em;"><span></span></span></span></span></span></span><span class="mclose">)</span></span></span></span></span></p>
+<p><span class="katex-display"><span class="katex"><span class="katex-mathml"><math><semantics><mrow><msub><mi>X</mi><mtext>noisy</mtext></msub><mo>=</mo><mrow><mi mathvariant="normal">A</mi><mi mathvariant="normal">t</mi><mi mathvariant="normal">t</mi><mi mathvariant="normal">e</mi><mi mathvariant="normal">n</mi><mi mathvariant="normal">t</mi><mi mathvariant="normal">i</mi><mi mathvariant="normal">o</mi><mi mathvariant="normal">n</mi></mrow><mo stretchy="false">(</mo><msub><mi>Q</mi><mtext>noisy</mtext></msub><mo separator="true">,</mo><mo stretchy="false">[</mo><msub><mi>K</mi><mtext>cond</mtext></msub><mo separator="true">,</mo><msub><mi>K</mi><mtext>noisy</mtext></msub><mo stretchy="false">]</mo><mo separator="true">,</mo><mo stretchy="false">[</mo><msub><mi>V</mi><mtext>cond</mtext></msub><mo separator="true">,</mo><msub><mi>V</mi><mtext>noisy</mtext></msub><mo stretchy="false">]</mo><mo stretchy="false">)</mo></mrow><annotation encoding="application/x-tex">X_\text{noisy}=\mathrm{Attention}(Q_\text{noisy},[K_\text{cond},K_\text{noisy}],[V_\text{cond},V_\text{noisy}])
+</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.969438em;vertical-align:-0.286108em;"></span><span class="mord"><span class="mord mathdefault" style="margin-right:0.07847em;">X</span><span class="msupsub"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height:0.317502em;"><span style="top:-2.5500000000000003em;margin-left:-0.07847em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord text mtight"><span class="mord mtight">noisy</span></span></span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height:0.286108em;"><span></span></span></span></span></span></span><span class="mspace" style="margin-right:0.2777777777777778em;"></span><span class="mrel">=</span><span class="mspace" style="margin-right:0.2777777777777778em;"></span></span><span class="base"><span class="strut" style="height:1.036108em;vertical-align:-0.286108em;"></span><span class="mord"><span class="mord mathrm">A</span><span class="mord mathrm">t</span><span class="mord mathrm">t</span><span class="mord mathrm">e</span><span class="mord mathrm">n</span><span class="mord mathrm">t</span><span class="mord mathrm">i</span><span class="mord mathrm">o</span><span class="mord mathrm">n</span></span><span class="mopen">(</span><span class="mord"><span class="mord mathdefault">Q</span><span class="msupsub"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height:0.317502em;"><span style="top:-2.5500000000000003em;margin-left:0em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord text mtight"><span class="mord mtight">noisy</span></span></span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height:0.286108em;"><span></span></span></span></span></span></span><span class="mpunct">,</span><span class="mspace" style="margin-right:0.16666666666666666em;"></span><span class="mopen">[</span><span class="mord"><span class="mord mathdefault" style="margin-right:0.07153em;">K</span><span class="msupsub"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height:0.33610799999999996em;"><span style="top:-2.5500000000000003em;margin-left:-0.07153em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord text mtight"><span class="mord mtight">cond</span></span></span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height:0.15em;"><span></span></span></span></span></span></span><span class="mpunct">,</span><span class="mspace" style="margin-right:0.16666666666666666em;"></span><span class="mord"><span class="mord mathdefault" style="margin-right:0.07153em;">K</span><span class="msupsub"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height:0.317502em;"><span style="top:-2.5500000000000003em;margin-left:-0.07153em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord text mtight"><span class="mord mtight">noisy</span></span></span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height:0.286108em;"><span></span></span></span></span></span></span><span class="mclose">]</span><span class="mpunct">,</span><span class="mspace" style="margin-right:0.16666666666666666em;"></span><span class="mopen">[</span><span class="mord"><span class="mord mathdefault" style="margin-right:0.22222em;">V</span><span class="msupsub"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height:0.33610799999999996em;"><span style="top:-2.5500000000000003em;margin-left:-0.22222em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord text mtight"><span class="mord mtight">cond</span></span></span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height:0.15em;"><span></span></span></span></span></span></span><span class="mpunct">,</span><span class="mspace" style="margin-right:0.16666666666666666em;"></span><span class="mord"><span class="mord mathdefault" style="margin-right:0.22222em;">V</span><span class="msupsub"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height:0.317502em;"><span style="top:-2.5500000000000003em;margin-left:-0.22222em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord text mtight"><span class="mord mtight">noisy</span></span></span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height:0.286108em;"><span></span></span></span></span></span></span><span class="mclose">]</span><span class="mclose">)</span></span></span></span></span></p>
+<p>这样 condition token 的 KV 只由输入条件帧决定，可以在采样步骤之间缓存复用。直观上，I2V/VC 的历史条件不需要每个 denoising step 都重新算一遍。这对长视频尤其有用，因为条件帧越多，重复计算越浪费。</p>
+<h2 id="训练路线"><a class="markdownIt-Anchor" href="#训练路线"></a> 训练路线</h2>
+<p>LongCat-Video 的训练链路是：</p>
+<div class="code-container" data-rel="Text"><figure class="iseeu highlight text"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br></pre></td><td class="code"><pre><span class="line">Progressive Pre-training</span><br><span class="line">  -&gt; Supervised Fine-tuning</span><br><span class="line">  -&gt; RLHF training with GRPO LoRA</span><br><span class="line">  -&gt; Acceleration training:</span><br><span class="line">       CFG / CM distillation LoRA</span><br><span class="line">       refinement expert LoRA + BSA</span><br></pre></td></tr></table></figure></div>
+<p><img  
+                     lazyload
+                     src="/images/loading.svg"
+                     data-src="/image/ai-notes/images/paper-deep-dives/technical-reports/longcat-video/figure-6-training-overview.png"
+                      alt="LongCat-Video training overview 原论文图" 
+                ></p>
+<p><small>图源：<code>LongCat-Video Technical Report</code>，Figure 6。原论文图意：base model 先通过 progressive pre-training 和 SFT 得到，再叠加 RLHF LoRA、distillation LoRA 和 refinement expert LoRA。</small></p>
+<p><strong>训练流程图怎么读。</strong><br />
+左侧 base model training 解决“模型会不会生成视频”；右侧 RLHF 和 acceleration training 解决“生成结果是否更符合偏好、推理是否够快”。三个 LoRA 分支的意义在于可叠加和可扩展：偏好优化、少步采样、高分辨率 refinement 不必都改主干权重。</p>
+<h3 id="base-model-training"><a class="markdownIt-Anchor" href="#base-model-training"></a> Base Model Training</h3>
+<p>Flow matching 训练目标是预测从噪声到干净视频 latent 的 velocity。给定干净 latent <span class="katex"><span class="katex-mathml"><math><semantics><mrow><msub><mi>x</mi><mn>0</mn></msub></mrow><annotation encoding="application/x-tex">x_0</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.58056em;vertical-align:-0.15em;"></span><span class="mord"><span class="mord mathdefault">x</span><span class="msupsub"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height:0.30110799999999993em;"><span style="top:-2.5500000000000003em;margin-left:0em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mtight">0</span></span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height:0.15em;"><span></span></span></span></span></span></span></span></span></span>、噪声 <span class="katex"><span class="katex-mathml"><math><semantics><mrow><mi>ϵ</mi></mrow><annotation encoding="application/x-tex">\epsilon</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.43056em;vertical-align:0em;"></span><span class="mord mathdefault">ϵ</span></span></span></span> 和 timestep <span class="katex"><span class="katex-mathml"><math><semantics><mrow><mi>t</mi></mrow><annotation encoding="application/x-tex">t</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.61508em;vertical-align:0em;"></span><span class="mord mathdefault">t</span></span></span></span>，论文使用线性插值：</p>
+<p><span class="katex-display"><span class="katex"><span class="katex-mathml"><math><semantics><mrow><msub><mi>x</mi><mi>t</mi></msub><mo>=</mo><mo stretchy="false">(</mo><mn>1</mn><mo>−</mo><mi>t</mi><mo stretchy="false">)</mo><msub><mi>x</mi><mn>0</mn></msub><mo>+</mo><mi>t</mi><mi>ϵ</mi><mo separator="true">,</mo><mspace width="2em"/><msub><mi>v</mi><mi>t</mi></msub><mo>=</mo><msub><mi>x</mi><mn>0</mn></msub><mo>−</mo><mi>ϵ</mi></mrow><annotation encoding="application/x-tex">x_t=(1-t)x_0+t\epsilon,\qquad v_t=x_0-\epsilon
+</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.58056em;vertical-align:-0.15em;"></span><span class="mord"><span class="mord mathdefault">x</span><span class="msupsub"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height:0.2805559999999999em;"><span style="top:-2.5500000000000003em;margin-left:0em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mathdefault mtight">t</span></span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height:0.15em;"><span></span></span></span></span></span></span><span class="mspace" style="margin-right:0.2777777777777778em;"></span><span class="mrel">=</span><span class="mspace" style="margin-right:0.2777777777777778em;"></span></span><span class="base"><span class="strut" style="height:1em;vertical-align:-0.25em;"></span><span class="mopen">(</span><span class="mord">1</span><span class="mspace" style="margin-right:0.2222222222222222em;"></span><span class="mbin">−</span><span class="mspace" style="margin-right:0.2222222222222222em;"></span></span><span class="base"><span class="strut" style="height:1em;vertical-align:-0.25em;"></span><span class="mord mathdefault">t</span><span class="mclose">)</span><span class="mord"><span class="mord mathdefault">x</span><span class="msupsub"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height:0.30110799999999993em;"><span style="top:-2.5500000000000003em;margin-left:0em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mtight">0</span></span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height:0.15em;"><span></span></span></span></span></span></span><span class="mspace" style="margin-right:0.2222222222222222em;"></span><span class="mbin">+</span><span class="mspace" style="margin-right:0.2222222222222222em;"></span></span><span class="base"><span class="strut" style="height:0.80952em;vertical-align:-0.19444em;"></span><span class="mord mathdefault">t</span><span class="mord mathdefault">ϵ</span><span class="mpunct">,</span><span class="mspace" style="margin-right:0.16666666666666666em;"></span><span class="mspace" style="margin-right:2em;"></span><span class="mord"><span class="mord mathdefault" style="margin-right:0.03588em;">v</span><span class="msupsub"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height:0.2805559999999999em;"><span style="top:-2.5500000000000003em;margin-left:-0.03588em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mathdefault mtight">t</span></span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height:0.15em;"><span></span></span></span></span></span></span><span class="mspace" style="margin-right:0.2777777777777778em;"></span><span class="mrel">=</span><span class="mspace" style="margin-right:0.2777777777777778em;"></span></span><span class="base"><span class="strut" style="height:0.73333em;vertical-align:-0.15em;"></span><span class="mord"><span class="mord mathdefault">x</span><span class="msupsub"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height:0.30110799999999993em;"><span style="top:-2.5500000000000003em;margin-left:0em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mtight">0</span></span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height:0.15em;"><span></span></span></span></span></span></span><span class="mspace" style="margin-right:0.2222222222222222em;"></span><span class="mbin">−</span><span class="mspace" style="margin-right:0.2222222222222222em;"></span></span><span class="base"><span class="strut" style="height:0.43056em;vertical-align:0em;"></span><span class="mord mathdefault">ϵ</span></span></span></span></span></p>
+<p>模型输出 <span class="katex"><span class="katex-mathml"><math><semantics><mrow><msub><mi>v</mi><mrow><mi>p</mi><mi>r</mi><mi>e</mi><mi>d</mi></mrow></msub><mo stretchy="false">(</mo><msub><mi>x</mi><mi>t</mi></msub><mo separator="true">,</mo><mi>c</mi><mo separator="true">,</mo><mi>t</mi><mo separator="true">;</mo><mi>θ</mi><mo stretchy="false">)</mo></mrow><annotation encoding="application/x-tex">v_{pred}(x_t,c,t;\theta)</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:1.036108em;vertical-align:-0.286108em;"></span><span class="mord"><span class="mord mathdefault" style="margin-right:0.03588em;">v</span><span class="msupsub"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height:0.3361079999999999em;"><span style="top:-2.5500000000000003em;margin-left:-0.03588em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mtight"><span class="mord mathdefault mtight">p</span><span class="mord mathdefault mtight" style="margin-right:0.02778em;">r</span><span class="mord mathdefault mtight">e</span><span class="mord mathdefault mtight">d</span></span></span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height:0.286108em;"><span></span></span></span></span></span></span><span class="mopen">(</span><span class="mord"><span class="mord mathdefault">x</span><span class="msupsub"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height:0.2805559999999999em;"><span style="top:-2.5500000000000003em;margin-left:0em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mathdefault mtight">t</span></span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height:0.15em;"><span></span></span></span></span></span></span><span class="mpunct">,</span><span class="mspace" style="margin-right:0.16666666666666666em;"></span><span class="mord mathdefault">c</span><span class="mpunct">,</span><span class="mspace" style="margin-right:0.16666666666666666em;"></span><span class="mord mathdefault">t</span><span class="mpunct">;</span><span class="mspace" style="margin-right:0.16666666666666666em;"></span><span class="mord mathdefault" style="margin-right:0.02778em;">θ</span><span class="mclose">)</span></span></span></span>，用 MSE 拟合真实速度：</p>
+<p><span class="katex-display"><span class="katex"><span class="katex-mathml"><math><semantics><mrow><mi mathvariant="script">L</mi><mo>=</mo><msub><mi mathvariant="double-struck">E</mi><mrow><mi>ϵ</mi><mo separator="true">,</mo><msub><mi>x</mi><mn>0</mn></msub><mo separator="true">,</mo><mi>c</mi><mo separator="true">,</mo><mi>t</mi></mrow></msub><mi mathvariant="normal">∥</mi><msub><mi>v</mi><mrow><mi>p</mi><mi>r</mi><mi>e</mi><mi>d</mi></mrow></msub><mo stretchy="false">(</mo><msub><mi>x</mi><mi>t</mi></msub><mo separator="true">,</mo><mi>c</mi><mo separator="true">,</mo><mi>t</mi><mo separator="true">;</mo><mi>θ</mi><mo stretchy="false">)</mo><mo>−</mo><msub><mi>v</mi><mi>t</mi></msub><msup><mi mathvariant="normal">∥</mi><mn>2</mn></msup></mrow><annotation encoding="application/x-tex">\mathcal{L}=\mathbb{E}_{\epsilon,x_0,c,t}\|v_{pred}(x_t,c,t;\theta)-v_t\|^2
+</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.68333em;vertical-align:0em;"></span><span class="mord"><span class="mord mathcal">L</span></span><span class="mspace" style="margin-right:0.2777777777777778em;"></span><span class="mrel">=</span><span class="mspace" style="margin-right:0.2777777777777778em;"></span></span><span class="base"><span class="strut" style="height:1.036108em;vertical-align:-0.286108em;"></span><span class="mord"><span class="mord"><span class="mord mathbb">E</span></span><span class="msupsub"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height:0.28055599999999997em;"><span style="top:-2.5500000000000003em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mtight"><span class="mord mathdefault mtight">ϵ</span><span class="mpunct mtight">,</span><span class="mord mtight"><span class="mord mathdefault mtight">x</span><span class="msupsub"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height:0.31731428571428577em;"><span style="top:-2.357em;margin-left:0em;margin-right:0.07142857142857144em;"><span class="pstrut" style="height:2.5em;"></span><span class="sizing reset-size3 size1 mtight"><span class="mord mtight">0</span></span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height:0.143em;"><span></span></span></span></span></span></span><span class="mpunct mtight">,</span><span class="mord mathdefault mtight">c</span><span class="mpunct mtight">,</span><span class="mord mathdefault mtight">t</span></span></span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height:0.286108em;"><span></span></span></span></span></span></span><span class="mord">∥</span><span class="mord"><span class="mord mathdefault" style="margin-right:0.03588em;">v</span><span class="msupsub"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height:0.3361079999999999em;"><span style="top:-2.5500000000000003em;margin-left:-0.03588em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mtight"><span class="mord mathdefault mtight">p</span><span class="mord mathdefault mtight" style="margin-right:0.02778em;">r</span><span class="mord mathdefault mtight">e</span><span class="mord mathdefault mtight">d</span></span></span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height:0.286108em;"><span></span></span></span></span></span></span><span class="mopen">(</span><span class="mord"><span class="mord mathdefault">x</span><span class="msupsub"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height:0.2805559999999999em;"><span style="top:-2.5500000000000003em;margin-left:0em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mathdefault mtight">t</span></span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height:0.15em;"><span></span></span></span></span></span></span><span class="mpunct">,</span><span class="mspace" style="margin-right:0.16666666666666666em;"></span><span class="mord mathdefault">c</span><span class="mpunct">,</span><span class="mspace" style="margin-right:0.16666666666666666em;"></span><span class="mord mathdefault">t</span><span class="mpunct">;</span><span class="mspace" style="margin-right:0.16666666666666666em;"></span><span class="mord mathdefault" style="margin-right:0.02778em;">θ</span><span class="mclose">)</span><span class="mspace" style="margin-right:0.2222222222222222em;"></span><span class="mbin">−</span><span class="mspace" style="margin-right:0.2222222222222222em;"></span></span><span class="base"><span class="strut" style="height:1.1141079999999999em;vertical-align:-0.25em;"></span><span class="mord"><span class="mord mathdefault" style="margin-right:0.03588em;">v</span><span class="msupsub"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height:0.2805559999999999em;"><span style="top:-2.5500000000000003em;margin-left:-0.03588em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mathdefault mtight">t</span></span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height:0.15em;"><span></span></span></span></span></span></span><span class="mord"><span class="mord">∥</span><span class="msupsub"><span class="vlist-t"><span class="vlist-r"><span class="vlist" style="height:0.8641079999999999em;"><span style="top:-3.113em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mtight">2</span></span></span></span></span></span></span></span></span></span></span></span></p>
+<p>训练时 timestep 从 uniform distribution 采样，并使用类似 logit-normal 的 loss weighting；对于更高分辨率、更长视频，timestep shift 会随 noise token volume 自适应调整，使高噪声阶段得到更多关注。</p>
+<table>
+<thead>
+<tr>
+<th>Training tasks</th>
+<th>Size bucket</th>
+<th style="text-align:right">Learning rate</th>
+<th style="text-align:right">Iterations</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>T2I</td>
+<td><span class="katex"><span class="katex-mathml"><math><semantics><mrow><mn>256</mn><mi>p</mi></mrow><annotation encoding="application/x-tex">256p</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.8388800000000001em;vertical-align:-0.19444em;"></span><span class="mord">2</span><span class="mord">5</span><span class="mord">6</span><span class="mord mathdefault">p</span></span></span></span></td>
+<td style="text-align:right">1e-4</td>
+<td style="text-align:right">285k</td>
+</tr>
+<tr>
+<td>T2I + T2V</td>
+<td><span class="katex"><span class="katex-mathml"><math><semantics><mrow><mn>256</mn><mi>p</mi><mo>×</mo><mn>93</mn></mrow><annotation encoding="application/x-tex">256p \times 93</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.8388800000000001em;vertical-align:-0.19444em;"></span><span class="mord">2</span><span class="mord">5</span><span class="mord">6</span><span class="mord mathdefault">p</span><span class="mspace" style="margin-right:0.2222222222222222em;"></span><span class="mbin">×</span><span class="mspace" style="margin-right:0.2222222222222222em;"></span></span><span class="base"><span class="strut" style="height:0.64444em;vertical-align:0em;"></span><span class="mord">9</span><span class="mord">3</span></span></span></span> frames</td>
+<td style="text-align:right">1e-4</td>
+<td style="text-align:right">140k</td>
+</tr>
+<tr>
+<td>T2I + T2V + I2V + VC</td>
+<td><span class="katex"><span class="katex-mathml"><math><semantics><mrow><mn>256</mn><mi>p</mi><mo>×</mo><mn>93</mn></mrow><annotation encoding="application/x-tex">256p \times 93</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.8388800000000001em;vertical-align:-0.19444em;"></span><span class="mord">2</span><span class="mord">5</span><span class="mord">6</span><span class="mord mathdefault">p</span><span class="mspace" style="margin-right:0.2222222222222222em;"></span><span class="mbin">×</span><span class="mspace" style="margin-right:0.2222222222222222em;"></span></span><span class="base"><span class="strut" style="height:0.64444em;vertical-align:0em;"></span><span class="mord">9</span><span class="mord">3</span></span></span></span> frames</td>
+<td style="text-align:right">5e-5</td>
+<td style="text-align:right">164k</td>
+</tr>
+<tr>
+<td>T2I + T2V + I2V + VC</td>
+<td><span class="katex"><span class="katex-mathml"><math><semantics><mrow><mn>480</mn><mi>p</mi><mo>×</mo><mn>93</mn></mrow><annotation encoding="application/x-tex">480p \times 93</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.8388800000000001em;vertical-align:-0.19444em;"></span><span class="mord">4</span><span class="mord">8</span><span class="mord">0</span><span class="mord mathdefault">p</span><span class="mspace" style="margin-right:0.2222222222222222em;"></span><span class="mbin">×</span><span class="mspace" style="margin-right:0.2222222222222222em;"></span></span><span class="base"><span class="strut" style="height:0.64444em;vertical-align:0em;"></span><span class="mord">9</span><span class="mord">3</span></span></span></span> frames</td>
+<td style="text-align:right">5e-5</td>
+<td style="text-align:right">36k</td>
+</tr>
+<tr>
+<td>T2I + T2V + I2V + VC</td>
+<td><span class="katex"><span class="katex-mathml"><math><semantics><mrow><mn>480</mn><mi>p</mi><mo>+</mo><mn>720</mn><mi>p</mi><mo>×</mo><mn>93</mn></mrow><annotation encoding="application/x-tex">480p + 720p \times 93</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.8388800000000001em;vertical-align:-0.19444em;"></span><span class="mord">4</span><span class="mord">8</span><span class="mord">0</span><span class="mord mathdefault">p</span><span class="mspace" style="margin-right:0.2222222222222222em;"></span><span class="mbin">+</span><span class="mspace" style="margin-right:0.2222222222222222em;"></span></span><span class="base"><span class="strut" style="height:0.8388800000000001em;vertical-align:-0.19444em;"></span><span class="mord">7</span><span class="mord">2</span><span class="mord">0</span><span class="mord mathdefault">p</span><span class="mspace" style="margin-right:0.2222222222222222em;"></span><span class="mbin">×</span><span class="mspace" style="margin-right:0.2222222222222222em;"></span></span><span class="base"><span class="strut" style="height:0.64444em;vertical-align:0em;"></span><span class="mord">9</span><span class="mord">3</span></span></span></span> frames</td>
+<td style="text-align:right">2e-5</td>
+<td style="text-align:right">53k</td>
+</tr>
+</tbody>
+</table>
+<p>这个表的重点是 curriculum。先用低分辨率图像学语义和视觉表征，再进入视频运动，再把 T2I/T2V/I2V/VC 混合起来，最后提高分辨率。VC 任务中，作者还对条件帧加入 per-frame independent noise levels，目的之一是增强对 color drift 的鲁棒性。</p>
+<p>SFT 阶段使用更高质量筛选数据，按 aesthetic、video quality、motion quality 等过滤，并按 caption embedding 空间密度的反比分布选样，缓解类别密度过高导致的偏置。</p>
+<table>
+<thead>
+<tr>
+<th>Training Tasks</th>
+<th>Size Bucket</th>
+<th style="text-align:right">Learning rate</th>
+<th style="text-align:right">Iterations</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>T2I + T2V + I2V + VC</td>
+<td><span class="katex"><span class="katex-mathml"><math><semantics><mrow><mn>480</mn><mi>p</mi><mo>+</mo><mn>720</mn><mi>p</mi><mo>×</mo><mn>93</mn></mrow><annotation encoding="application/x-tex">480p + 720p \times 93</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.8388800000000001em;vertical-align:-0.19444em;"></span><span class="mord">4</span><span class="mord">8</span><span class="mord">0</span><span class="mord mathdefault">p</span><span class="mspace" style="margin-right:0.2222222222222222em;"></span><span class="mbin">+</span><span class="mspace" style="margin-right:0.2222222222222222em;"></span></span><span class="base"><span class="strut" style="height:0.8388800000000001em;vertical-align:-0.19444em;"></span><span class="mord">7</span><span class="mord">2</span><span class="mord">0</span><span class="mord mathdefault">p</span><span class="mspace" style="margin-right:0.2222222222222222em;"></span><span class="mbin">×</span><span class="mspace" style="margin-right:0.2222222222222222em;"></span></span><span class="base"><span class="strut" style="height:0.64444em;vertical-align:0em;"></span><span class="mord">9</span><span class="mord">3</span></span></span></span> frames</td>
+<td style="text-align:right">1e-5</td>
+<td style="text-align:right">7.5k</td>
+</tr>
+</tbody>
+</table>
+<h3 id="rlhf-training"><a class="markdownIt-Anchor" href="#rlhf-training"></a> RLHF Training</h3>
+<p>LongCat-Video 的 RLHF 用 GRPO，但它不是直接照搬语言模型的 GRPO。论文的关键观察是，在 flow matching 模型中，GRPO 可以被看作 stochastic noise search，用相对 advantage 和 SDE 采样中的噪声项来近似 reward 对 velocity field 的梯度。</p>
+<p>作者做了几项稳定化：</p>
+<ol>
+<li>固定同一 prompt group 的 initial noise，并只在一个 critical timestep 注入 SDE 随机性，其他 timestep 使用 ODE sampling；</li>
+<li>对高噪声处的 diffusion term 做截断，阈值 <span class="katex"><span class="katex-mathml"><math><semantics><mrow><mi>τ</mi><mo>=</mo><mn>0.45</mn></mrow><annotation encoding="application/x-tex">\tau=0.45</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.43056em;vertical-align:0em;"></span><span class="mord mathdefault" style="margin-right:0.1132em;">τ</span><span class="mspace" style="margin-right:0.2777777777777778em;"></span><span class="mrel">=</span><span class="mspace" style="margin-right:0.2777777777777778em;"></span></span><span class="base"><span class="strut" style="height:0.64444em;vertical-align:0em;"></span><span class="mord">0</span><span class="mord">.</span><span class="mord">4</span><span class="mord">5</span></span></span></span>；</li>
+<li>对 policy loss 和 KL loss 做 timestep-dependent reweighting，抵消高噪声和小 step size 造成的梯度缩放；</li>
+<li>用跨 group 的最大标准差 <span class="katex"><span class="katex-mathml"><math><semantics><mrow><msub><mi>σ</mi><mi>max</mi><mo>⁡</mo></msub></mrow><annotation encoding="application/x-tex">\sigma_{\max}</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.58056em;vertical-align:-0.15em;"></span><span class="mord"><span class="mord mathdefault" style="margin-right:0.03588em;">σ</span><span class="msupsub"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height:0.151392em;"><span style="top:-2.151392em;margin-left:-0.03588em;margin-right:0.05em;"><span class="pstrut" style="height:2.301392em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mtight"><span class="mop mtight">max</span></span></span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height:0.15em;"><span></span></span></span></span></span></span></span></span></span> 归一化 advantage，降低小方差 group 的不可靠放大。</li>
+</ol>
+<p><img  
+                     lazyload
+                     src="/images/loading.svg"
+                     data-src="/image/ai-notes/images/paper-deep-dives/technical-reports/longcat-video/figure-7-grpo-quality.png"
+                      alt="LongCat-Video GRPO 原论文图" 
+                ></p>
+<p><small>图源：<code>LongCat-Video Technical Report</code>，Figure 6。原论文图意：展示 GRPO 后视频生成质量提升的视觉对比。</small></p>
+<p><strong>GRPO 图怎么读。</strong><br />
+这张图支撑的是“偏好优化能改善生成质量”的定性 claim，但真正的机制在后面的 loss 和 reward 设计。视频 RLHF 容易出现 reward 归因不稳、reward hacking 和单一指标过拟合；LongCat-Video 的方法重点是让 GRPO 在 flow matching 采样路径上更稳定。</p>
+<p>RLHF 训练规格如下：</p>
+<table>
+<thead>
+<tr>
+<th>Training tasks</th>
+<th>Size bucket</th>
+<th style="text-align:right">Group size</th>
+<th style="text-align:right">Prompts per step</th>
+<th style="text-align:right">Sampling steps</th>
+<th>SDE steps range</th>
+<th style="text-align:right">Learning rate</th>
+<th style="text-align:right">Iterations</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>T2V</td>
+<td><span class="katex"><span class="katex-mathml"><math><semantics><mrow><mn>480</mn><mi>p</mi><mo>+</mo><mn>720</mn><mi>p</mi><mo>×</mo><mn>93</mn></mrow><annotation encoding="application/x-tex">480p + 720p \times 93</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.8388800000000001em;vertical-align:-0.19444em;"></span><span class="mord">4</span><span class="mord">8</span><span class="mord">0</span><span class="mord mathdefault">p</span><span class="mspace" style="margin-right:0.2222222222222222em;"></span><span class="mbin">+</span><span class="mspace" style="margin-right:0.2222222222222222em;"></span></span><span class="base"><span class="strut" style="height:0.8388800000000001em;vertical-align:-0.19444em;"></span><span class="mord">7</span><span class="mord">2</span><span class="mord">0</span><span class="mord mathdefault">p</span><span class="mspace" style="margin-right:0.2222222222222222em;"></span><span class="mbin">×</span><span class="mspace" style="margin-right:0.2222222222222222em;"></span></span><span class="base"><span class="strut" style="height:0.64444em;vertical-align:0em;"></span><span class="mord">9</span><span class="mord">3</span></span></span></span> frames</td>
+<td style="text-align:right">4</td>
+<td style="text-align:right">64</td>
+<td style="text-align:right">16</td>
+<td>[0, 6]</td>
+<td style="text-align:right">1e-4</td>
+<td style="text-align:right">0.5k</td>
+</tr>
+</tbody>
+</table>
+<p>Appendix 还给出更具体的 GRPO 设置：</p>
+<table>
+<thead>
+<tr>
+<th>Parameter</th>
+<th>Value</th>
+<th>Parameter</th>
+<th>Value</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Group size</td>
+<td>4</td>
+<td># Sampling steps</td>
+<td>16</td>
+</tr>
+<tr>
+<td>Prompts per update</td>
+<td>64</td>
+<td>Timeshift</td>
+<td>12</td>
+</tr>
+<tr>
+<td>SDE steps range</td>
+<td>[0, 6]</td>
+<td>CFG</td>
+<td>4</td>
+</tr>
+<tr>
+<td>Online training</td>
+<td>True</td>
+<td>Learning rate</td>
+<td>1e-4</td>
+</tr>
+<tr>
+<td>Policy loss weight</td>
+<td>1</td>
+<td>LoRA dim</td>
+<td>128</td>
+</tr>
+<tr>
+<td>KL loss weight</td>
+<td>3e-4</td>
+<td>LoRA alpha</td>
+<td>64</td>
+</tr>
+<tr>
+<td>HPSv3-general reward weight</td>
+<td>1</td>
+<td>LoRA layers</td>
+<td>Linear layers in all Self-Attention, Cross-Attention, FFN layers</td>
+</tr>
+<tr>
+<td>HPSv3-percentile reward weight</td>
+<td>1</td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>MQ reward weight</td>
+<td>1</td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>TA reward weight</td>
+<td>1</td>
+<td></td>
+<td></td>
+</tr>
+</tbody>
+</table>
+<p>multi-reward 由三类 reward 组成：</p>
+<table>
+<thead>
+<tr>
+<th>Reward</th>
+<th>Implementation</th>
+<th>Purpose</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Visual Quality (VQ)</td>
+<td>HPSv3-general + HPSv3-percentile</td>
+<td>同时约束画质和文本-视频一致性</td>
+</tr>
+<tr>
+<td>Motion Quality (MQ)</td>
+<td>VideoAlign-based model, grayscale input</td>
+<td>聚焦运动合理性，减少颜色偏好干扰</td>
+</tr>
+<tr>
+<td>Text-Video Alignment (TA)</td>
+<td>VideoAlign-based model, RGB input</td>
+<td>评估 prompt 与视频内容匹配</td>
+</tr>
+</tbody>
+</table>
+<p><img  
+                     lazyload
+                     src="/images/loading.svg"
+                     data-src="/image/ai-notes/images/paper-deep-dives/technical-reports/longcat-video/figure-8-grpo-reward-curves.jpg"
+                      alt="LongCat-Video GRPO reward curves 原论文图" 
+                ></p>
+<p><small>图源：<code>LongCat-Video Technical Report</code>，Figure 9。原论文图意：multi-reward GRPO 训练中的多个 reward 曲线。</small></p>
+<p><img  
+                     lazyload
+                     src="/images/loading.svg"
+                     data-src="/image/ai-notes/images/paper-deep-dives/technical-reports/longcat-video/figure-9-reward-hacking.png"
+                      alt="LongCat-Video reward hacking 原论文图" 
+                ></p>
+<p><small>图源：<code>LongCat-Video Technical Report</code>，Figure 10。原论文图意：单一 reward 容易出现 reward hacking，多 reward 通过相互约束缓解单项指标过拟合。</small></p>
+<p><strong>reward 曲线和 hacking 图怎么读。</strong><br />
+这两张图说明 multi-reward 的价值不只是“指标更多”。单独优化视觉 reward，模型可能倾向静态、高质感但运动不足的视频；引入 motion reward 后，运动质量会反向约束这种静态倾向。它支撑的是多目标偏好优化的必要性，但不能证明 reward model 本身没有偏差，因为 VQ/MQ/TA 仍依赖作者选择和训练的内部评估器。</p>
+<h3 id="acceleration-training"><a class="markdownIt-Anchor" href="#acceleration-training"></a> Acceleration Training</h3>
+<p>Acceleration training 包含两层：少步采样和高分辨率 refinement。</p>
+<table>
+<thead>
+<tr>
+<th>Stage</th>
+<th>Training Tasks</th>
+<th>Size Bucket</th>
+<th style="text-align:right">Learning rate</th>
+<th style="text-align:right">Iterations</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>CFG distillation</td>
+<td>T2I + T2V + I2V + VC</td>
+<td><span class="katex"><span class="katex-mathml"><math><semantics><mrow><mn>480</mn><mi>p</mi><mo>+</mo><mn>720</mn><mi>p</mi><mo>×</mo><mn>93</mn></mrow><annotation encoding="application/x-tex">480p + 720p \times 93</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.8388800000000001em;vertical-align:-0.19444em;"></span><span class="mord">4</span><span class="mord">8</span><span class="mord">0</span><span class="mord mathdefault">p</span><span class="mspace" style="margin-right:0.2222222222222222em;"></span><span class="mbin">+</span><span class="mspace" style="margin-right:0.2222222222222222em;"></span></span><span class="base"><span class="strut" style="height:0.8388800000000001em;vertical-align:-0.19444em;"></span><span class="mord">7</span><span class="mord">2</span><span class="mord">0</span><span class="mord mathdefault">p</span><span class="mspace" style="margin-right:0.2222222222222222em;"></span><span class="mbin">×</span><span class="mspace" style="margin-right:0.2222222222222222em;"></span></span><span class="base"><span class="strut" style="height:0.64444em;vertical-align:0em;"></span><span class="mord">9</span><span class="mord">3</span></span></span></span> frames</td>
+<td style="text-align:right">5e-5</td>
+<td style="text-align:right">2k</td>
+</tr>
+<tr>
+<td>CM distillation</td>
+<td>T2I + T2V + I2V + VC</td>
+<td><span class="katex"><span class="katex-mathml"><math><semantics><mrow><mn>480</mn><mi>p</mi><mo>+</mo><mn>720</mn><mi>p</mi><mo>×</mo><mn>93</mn></mrow><annotation encoding="application/x-tex">480p + 720p \times 93</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.8388800000000001em;vertical-align:-0.19444em;"></span><span class="mord">4</span><span class="mord">8</span><span class="mord">0</span><span class="mord mathdefault">p</span><span class="mspace" style="margin-right:0.2222222222222222em;"></span><span class="mbin">+</span><span class="mspace" style="margin-right:0.2222222222222222em;"></span></span><span class="base"><span class="strut" style="height:0.8388800000000001em;vertical-align:-0.19444em;"></span><span class="mord">7</span><span class="mord">2</span><span class="mord">0</span><span class="mord mathdefault">p</span><span class="mspace" style="margin-right:0.2222222222222222em;"></span><span class="mbin">×</span><span class="mspace" style="margin-right:0.2222222222222222em;"></span></span><span class="base"><span class="strut" style="height:0.64444em;vertical-align:0em;"></span><span class="mord">9</span><span class="mord">3</span></span></span></span> frames</td>
+<td style="text-align:right">5e-5</td>
+<td style="text-align:right">3k</td>
+</tr>
+</tbody>
+</table>
+<p>CFG distillation 用 CFG-Zero 把默认 guidance strength 4.0 的负向 prompt 行为蒸馏进去；CM distillation 让模型 16 steps 的生成质量接近 50+ steps。这里的重点是推理路径，而不是新建一个小模型：作者用 LoRA 训练，方便和 RLHF LoRA、refinement expert LoRA 叠加。</p>
+<p>refinement expert 负责 coarse-to-fine 的第二阶段。训练先用 full attention，loss 稳定后切到 BSA；数据用 GLCM 过滤出纹理丰富样本，并施加 degradation 操作训练细节恢复能力。</p>
+<table>
+<thead>
+<tr>
+<th>Training Stage</th>
+<th>Sparsity</th>
+<th style="text-align:right"><span class="katex"><span class="katex-mathml"><math><semantics><mrow><msub><mi>t</mi><mrow><mi>t</mi><mi>h</mi><mi>r</mi><mi>e</mi><mi>s</mi><mi>h</mi></mrow></msub></mrow><annotation encoding="application/x-tex">t_{thresh}</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.76508em;vertical-align:-0.15em;"></span><span class="mord"><span class="mord mathdefault">t</span><span class="msupsub"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height:0.33610799999999996em;"><span style="top:-2.5500000000000003em;margin-left:0em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mtight"><span class="mord mathdefault mtight">t</span><span class="mord mathdefault mtight">h</span><span class="mord mathdefault mtight" style="margin-right:0.02778em;">r</span><span class="mord mathdefault mtight">e</span><span class="mord mathdefault mtight">s</span><span class="mord mathdefault mtight">h</span></span></span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height:0.15em;"><span></span></span></span></span></span></span></span></span></span></th>
+<th>Size bucket</th>
+<th style="text-align:right">Learning rate</th>
+<th style="text-align:right">Iterations</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Full Attention</td>
+<td>-</td>
+<td style="text-align:right">0.5</td>
+<td><span class="katex"><span class="katex-mathml"><math><semantics><mrow><mn>720</mn><mi>p</mi><mo>×</mo><mn>93</mn><mtext> </mtext><mi>o</mi><mi>r</mi><mtext> </mtext><mn>189</mn></mrow><annotation encoding="application/x-tex">720p \times 93~or~189</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.8388800000000001em;vertical-align:-0.19444em;"></span><span class="mord">7</span><span class="mord">2</span><span class="mord">0</span><span class="mord mathdefault">p</span><span class="mspace" style="margin-right:0.2222222222222222em;"></span><span class="mbin">×</span><span class="mspace" style="margin-right:0.2222222222222222em;"></span></span><span class="base"><span class="strut" style="height:0.64444em;vertical-align:0em;"></span><span class="mord">9</span><span class="mord">3</span><span class="mspace nobreak"> </span><span class="mord mathdefault">o</span><span class="mord mathdefault" style="margin-right:0.02778em;">r</span><span class="mspace nobreak"> </span><span class="mord">1</span><span class="mord">8</span><span class="mord">9</span></span></span></span> frames</td>
+<td style="text-align:right">5e-5</td>
+<td style="text-align:right">500</td>
+</tr>
+<tr>
+<td>Sparse Attention</td>
+<td>93.75%</td>
+<td style="text-align:right">0.5</td>
+<td><span class="katex"><span class="katex-mathml"><math><semantics><mrow><mn>720</mn><mi>p</mi><mo>×</mo><mn>93</mn><mtext> </mtext><mi>o</mi><mi>r</mi><mtext> </mtext><mn>189</mn></mrow><annotation encoding="application/x-tex">720p \times 93~or~189</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.8388800000000001em;vertical-align:-0.19444em;"></span><span class="mord">7</span><span class="mord">2</span><span class="mord">0</span><span class="mord mathdefault">p</span><span class="mspace" style="margin-right:0.2222222222222222em;"></span><span class="mbin">×</span><span class="mspace" style="margin-right:0.2222222222222222em;"></span></span><span class="base"><span class="strut" style="height:0.64444em;vertical-align:0em;"></span><span class="mord">9</span><span class="mord">3</span><span class="mspace nobreak"> </span><span class="mord mathdefault">o</span><span class="mord mathdefault" style="margin-right:0.02778em;">r</span><span class="mspace nobreak"> </span><span class="mord">1</span><span class="mord">8</span><span class="mord">9</span></span></span></span> frames</td>
+<td style="text-align:right">5e-5</td>
+<td style="text-align:right">500</td>
+</tr>
+</tbody>
+</table>
+<h2 id="高效推理c2f-与-bsa"><a class="markdownIt-Anchor" href="#高效推理c2f-与-bsa"></a> 高效推理：C2F 与 BSA</h2>
+<p>长视频高分辨率推理的关键矛盾是 token 数。LongCat-Video 先生成 <span class="katex"><span class="katex-mathml"><math><semantics><mrow><mn>480</mn><mi>p</mi><mo separator="true">,</mo><mn>15</mn><mi>f</mi><mi>p</mi><mi>s</mi></mrow><annotation encoding="application/x-tex">480p,15fps</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.8888799999999999em;vertical-align:-0.19444em;"></span><span class="mord">4</span><span class="mord">8</span><span class="mord">0</span><span class="mord mathdefault">p</span><span class="mpunct">,</span><span class="mspace" style="margin-right:0.16666666666666666em;"></span><span class="mord">1</span><span class="mord">5</span><span class="mord mathdefault" style="margin-right:0.10764em;">f</span><span class="mord mathdefault">p</span><span class="mord mathdefault">s</span></span></span></span>，再通过 trilinear interpolation 升到 <span class="katex"><span class="katex-mathml"><math><semantics><mrow><mn>720</mn><mi>p</mi><mo separator="true">,</mo><mn>30</mn><mi>f</mi><mi>p</mi><mi>s</mi></mrow><annotation encoding="application/x-tex">720p,30fps</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.8888799999999999em;vertical-align:-0.19444em;"></span><span class="mord">7</span><span class="mord">2</span><span class="mord">0</span><span class="mord mathdefault">p</span><span class="mpunct">,</span><span class="mspace" style="margin-right:0.16666666666666666em;"></span><span class="mord">3</span><span class="mord">0</span><span class="mord mathdefault" style="margin-right:0.10764em;">f</span><span class="mord mathdefault">p</span><span class="mord mathdefault">s</span></span></span></span>，最后用 refinement expert 去噪修细节。</p>
+<p><img  
+                     lazyload
+                     src="/images/loading.svg"
+                     data-src="/image/ai-notes/images/paper-deep-dives/technical-reports/longcat-video/figure-11-coarse-to-fine-quality.png"
+                      alt="LongCat-Video coarse-to-fine quality 原论文图" 
+                ></p>
+<p><small>图源：<code>LongCat-Video Technical Report</code>，Figure 11。原论文图意：比较 native 480p、native 720p 与 coarse-to-fine 720p，显示 C2F 能补细节并修正局部失真。</small></p>
+<p><img  
+                     lazyload
+                     src="/images/loading.svg"
+                     data-src="/image/ai-notes/images/paper-deep-dives/technical-reports/longcat-video/figure-12-coarse-to-fine-process.png"
+                      alt="LongCat-Video coarse-to-fine process 原论文图" 
+                ></p>
+<p><small>图源：<code>LongCat-Video Technical Report</code>，Figure 12。原论文图意：展示 T2V、I2V 和 VC 的 coarse-to-fine 两阶段流程，条件任务在 refinement 阶段保留高分辨率条件帧。</small></p>
+<p><strong>C2F 图怎么读。</strong><br />
+第一张图看质量：C2F 不只是加速，也能恢复纹理、纠正局部失真。第二张图看接口：T2V 的 refinement 只处理低清生成结果，I2V/VC 还要把高分辨率 condition frames 拼回 refinement 输入，避免条件信息被低分辨率下采样损伤。</p>
+<p>refinement flow matching 学的是从上采样低清视频分布到高清真实视频分布的变换。论文设置 <span class="katex"><span class="katex-mathml"><math><semantics><mrow><msub><mi>t</mi><mrow><mi>t</mi><mi>h</mi><mi>r</mi><mi>e</mi><mi>s</mi><mi>h</mi></mrow></msub><mo>=</mo><mn>0.5</mn></mrow><annotation encoding="application/x-tex">t_{thresh}=0.5</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.76508em;vertical-align:-0.15em;"></span><span class="mord"><span class="mord mathdefault">t</span><span class="msupsub"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height:0.33610799999999996em;"><span style="top:-2.5500000000000003em;margin-left:0em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mtight"><span class="mord mathdefault mtight">t</span><span class="mord mathdefault mtight">h</span><span class="mord mathdefault mtight" style="margin-right:0.02778em;">r</span><span class="mord mathdefault mtight">e</span><span class="mord mathdefault mtight">s</span><span class="mord mathdefault mtight">h</span></span></span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height:0.15em;"><span></span></span></span></span></span></span><span class="mspace" style="margin-right:0.2777777777777778em;"></span><span class="mrel">=</span><span class="mspace" style="margin-right:0.2777777777777778em;"></span></span><span class="base"><span class="strut" style="height:0.64444em;vertical-align:0em;"></span><span class="mord">0</span><span class="mord">.</span><span class="mord">5</span></span></span></span>，refinement 阶段只需 5 sampling steps。作者报告，相比 native <span class="katex"><span class="katex-mathml"><math><semantics><mrow><mn>720</mn><mi>p</mi><mo separator="true">,</mo><mn>15</mn><mi>f</mi><mi>p</mi><mi>s</mi></mrow><annotation encoding="application/x-tex">720p,15fps</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.8888799999999999em;vertical-align:-0.19444em;"></span><span class="mord">7</span><span class="mord">2</span><span class="mord">0</span><span class="mord mathdefault">p</span><span class="mpunct">,</span><span class="mspace" style="margin-right:0.16666666666666666em;"></span><span class="mord">1</span><span class="mord">5</span><span class="mord mathdefault" style="margin-right:0.10764em;">f</span><span class="mord mathdefault">p</span><span class="mord mathdefault">s</span></span></span></span>，尽管输出帧率翻倍，<span class="katex"><span class="katex-mathml"><math><semantics><mrow><mn>720</mn><mi>p</mi><mo separator="true">,</mo><mn>30</mn><mi>f</mi><mi>p</mi><mi>s</mi></mrow><annotation encoding="application/x-tex">720p,30fps</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.8888799999999999em;vertical-align:-0.19444em;"></span><span class="mord">7</span><span class="mord">2</span><span class="mord">0</span><span class="mord mathdefault">p</span><span class="mpunct">,</span><span class="mspace" style="margin-right:0.16666666666666666em;"></span><span class="mord">3</span><span class="mord">0</span><span class="mord mathdefault" style="margin-right:0.10764em;">f</span><span class="mord mathdefault">p</span><span class="mord mathdefault">s</span></span></span></span> 生成仍可获得 10.1x 加速。</p>
+<p>速度表保留原论文英文格式：</p>
+<table>
+<thead>
+<tr>
+<th>Variant</th>
+<th>LCM</th>
+<th>C2F</th>
+<th>BSA</th>
+<th>Sampling Steps</th>
+<th style="text-align:right">Latency</th>
+<th style="text-align:right">Speedup</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><span class="katex"><span class="katex-mathml"><math><semantics><mrow><mn>480</mn><mi>p</mi><mo>×</mo><mn>93</mn></mrow><annotation encoding="application/x-tex">480p \times 93</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.8388800000000001em;vertical-align:-0.19444em;"></span><span class="mord">4</span><span class="mord">8</span><span class="mord">0</span><span class="mord mathdefault">p</span><span class="mspace" style="margin-right:0.2222222222222222em;"></span><span class="mbin">×</span><span class="mspace" style="margin-right:0.2222222222222222em;"></span></span><span class="base"><span class="strut" style="height:0.64444em;vertical-align:0em;"></span><span class="mord">9</span><span class="mord">3</span></span></span></span> frames</td>
+<td>✗</td>
+<td>✗</td>
+<td>✗</td>
+<td>50</td>
+<td style="text-align:right">341.5s</td>
+<td style="text-align:right">-</td>
+</tr>
+<tr>
+<td><span class="katex"><span class="katex-mathml"><math><semantics><mrow><mn>480</mn><mi>p</mi><mo>×</mo><mn>93</mn></mrow><annotation encoding="application/x-tex">480p \times 93</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.8388800000000001em;vertical-align:-0.19444em;"></span><span class="mord">4</span><span class="mord">8</span><span class="mord">0</span><span class="mord mathdefault">p</span><span class="mspace" style="margin-right:0.2222222222222222em;"></span><span class="mbin">×</span><span class="mspace" style="margin-right:0.2222222222222222em;"></span></span><span class="base"><span class="strut" style="height:0.64444em;vertical-align:0em;"></span><span class="mord">9</span><span class="mord">3</span></span></span></span> frames</td>
+<td>✓</td>
+<td>✗</td>
+<td>✗</td>
+<td>16</td>
+<td style="text-align:right">61.3s</td>
+<td style="text-align:right">-</td>
+</tr>
+<tr>
+<td><span class="katex"><span class="katex-mathml"><math><semantics><mrow><mn>720</mn><mi>p</mi><mo>×</mo><mn>93</mn></mrow><annotation encoding="application/x-tex">720p \times 93</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.8388800000000001em;vertical-align:-0.19444em;"></span><span class="mord">7</span><span class="mord">2</span><span class="mord">0</span><span class="mord mathdefault">p</span><span class="mspace" style="margin-right:0.2222222222222222em;"></span><span class="mbin">×</span><span class="mspace" style="margin-right:0.2222222222222222em;"></span></span><span class="base"><span class="strut" style="height:0.64444em;vertical-align:0em;"></span><span class="mord">9</span><span class="mord">3</span></span></span></span> frames</td>
+<td>✗</td>
+<td>✗</td>
+<td>✗</td>
+<td>50</td>
+<td style="text-align:right">1429.5s</td>
+<td style="text-align:right">1.0x</td>
+</tr>
+<tr>
+<td><span class="katex"><span class="katex-mathml"><math><semantics><mrow><mn>720</mn><mi>p</mi><mo>×</mo><mn>93</mn></mrow><annotation encoding="application/x-tex">720p \times 93</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.8388800000000001em;vertical-align:-0.19444em;"></span><span class="mord">7</span><span class="mord">2</span><span class="mord">0</span><span class="mord mathdefault">p</span><span class="mspace" style="margin-right:0.2222222222222222em;"></span><span class="mbin">×</span><span class="mspace" style="margin-right:0.2222222222222222em;"></span></span><span class="base"><span class="strut" style="height:0.64444em;vertical-align:0em;"></span><span class="mord">9</span><span class="mord">3</span></span></span></span> frames</td>
+<td>✓</td>
+<td>✗</td>
+<td>✗</td>
+<td>16</td>
+<td style="text-align:right">244.6s</td>
+<td style="text-align:right">5.8x</td>
+</tr>
+<tr>
+<td><span class="katex"><span class="katex-mathml"><math><semantics><mrow><mn>480</mn><mi>p</mi><mo>×</mo><mn>93</mn></mrow><annotation encoding="application/x-tex">480p \times 93</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.8388800000000001em;vertical-align:-0.19444em;"></span><span class="mord">4</span><span class="mord">8</span><span class="mord">0</span><span class="mord mathdefault">p</span><span class="mspace" style="margin-right:0.2222222222222222em;"></span><span class="mbin">×</span><span class="mspace" style="margin-right:0.2222222222222222em;"></span></span><span class="base"><span class="strut" style="height:0.64444em;vertical-align:0em;"></span><span class="mord">9</span><span class="mord">3</span></span></span></span> frames <span class="katex"><span class="katex-mathml"><math><semantics><mrow><mo>→</mo></mrow><annotation encoding="application/x-tex">\rightarrow</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.36687em;vertical-align:0em;"></span><span class="mrel">→</span></span></span></span> <span class="katex"><span class="katex-mathml"><math><semantics><mrow><mn>720</mn><mi>p</mi><mo>×</mo><mn>93</mn></mrow><annotation encoding="application/x-tex">720p \times 93</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.8388800000000001em;vertical-align:-0.19444em;"></span><span class="mord">7</span><span class="mord">2</span><span class="mord">0</span><span class="mord mathdefault">p</span><span class="mspace" style="margin-right:0.2222222222222222em;"></span><span class="mbin">×</span><span class="mspace" style="margin-right:0.2222222222222222em;"></span></span><span class="base"><span class="strut" style="height:0.64444em;vertical-align:0em;"></span><span class="mord">9</span><span class="mord">3</span></span></span></span> frames</td>
+<td>✓</td>
+<td>✓</td>
+<td>✗</td>
+<td>16/5</td>
+<td style="text-align:right">135.3s</td>
+<td style="text-align:right">10.6x</td>
+</tr>
+<tr>
+<td><span class="katex"><span class="katex-mathml"><math><semantics><mrow><mn>480</mn><mi>p</mi><mo>×</mo><mn>93</mn></mrow><annotation encoding="application/x-tex">480p \times 93</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.8388800000000001em;vertical-align:-0.19444em;"></span><span class="mord">4</span><span class="mord">8</span><span class="mord">0</span><span class="mord mathdefault">p</span><span class="mspace" style="margin-right:0.2222222222222222em;"></span><span class="mbin">×</span><span class="mspace" style="margin-right:0.2222222222222222em;"></span></span><span class="base"><span class="strut" style="height:0.64444em;vertical-align:0em;"></span><span class="mord">9</span><span class="mord">3</span></span></span></span> frames <span class="katex"><span class="katex-mathml"><math><semantics><mrow><mo>→</mo></mrow><annotation encoding="application/x-tex">\rightarrow</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.36687em;vertical-align:0em;"></span><span class="mrel">→</span></span></span></span> <span class="katex"><span class="katex-mathml"><math><semantics><mrow><mn>720</mn><mi>p</mi><mo>×</mo><mn>189</mn></mrow><annotation encoding="application/x-tex">720p \times 189</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.8388800000000001em;vertical-align:-0.19444em;"></span><span class="mord">7</span><span class="mord">2</span><span class="mord">0</span><span class="mord mathdefault">p</span><span class="mspace" style="margin-right:0.2222222222222222em;"></span><span class="mbin">×</span><span class="mspace" style="margin-right:0.2222222222222222em;"></span></span><span class="base"><span class="strut" style="height:0.64444em;vertical-align:0em;"></span><span class="mord">1</span><span class="mord">8</span><span class="mord">9</span></span></span></span> frames</td>
+<td>✓</td>
+<td>✓</td>
+<td>✗</td>
+<td>16/5</td>
+<td style="text-align:right">302.9s</td>
+<td style="text-align:right">4.7x</td>
+</tr>
+<tr>
+<td><span class="katex"><span class="katex-mathml"><math><semantics><mrow><mn>480</mn><mi>p</mi><mo>×</mo><mn>93</mn></mrow><annotation encoding="application/x-tex">480p \times 93</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.8388800000000001em;vertical-align:-0.19444em;"></span><span class="mord">4</span><span class="mord">8</span><span class="mord">0</span><span class="mord mathdefault">p</span><span class="mspace" style="margin-right:0.2222222222222222em;"></span><span class="mbin">×</span><span class="mspace" style="margin-right:0.2222222222222222em;"></span></span><span class="base"><span class="strut" style="height:0.64444em;vertical-align:0em;"></span><span class="mord">9</span><span class="mord">3</span></span></span></span> frames <span class="katex"><span class="katex-mathml"><math><semantics><mrow><mo>→</mo></mrow><annotation encoding="application/x-tex">\rightarrow</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.36687em;vertical-align:0em;"></span><span class="mrel">→</span></span></span></span> <span class="katex"><span class="katex-mathml"><math><semantics><mrow><mn>720</mn><mi>p</mi><mo>×</mo><mn>93</mn></mrow><annotation encoding="application/x-tex">720p \times 93</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.8388800000000001em;vertical-align:-0.19444em;"></span><span class="mord">7</span><span class="mord">2</span><span class="mord">0</span><span class="mord mathdefault">p</span><span class="mspace" style="margin-right:0.2222222222222222em;"></span><span class="mbin">×</span><span class="mspace" style="margin-right:0.2222222222222222em;"></span></span><span class="base"><span class="strut" style="height:0.64444em;vertical-align:0em;"></span><span class="mord">9</span><span class="mord">3</span></span></span></span> frames</td>
+<td>✓</td>
+<td>✓</td>
+<td>✓</td>
+<td>16/5</td>
+<td style="text-align:right"><strong>116.5s</strong></td>
+<td style="text-align:right"><strong>12.3x</strong></td>
+</tr>
+<tr>
+<td><span class="katex"><span class="katex-mathml"><math><semantics><mrow><mn>480</mn><mi>p</mi><mo>×</mo><mn>93</mn></mrow><annotation encoding="application/x-tex">480p \times 93</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.8388800000000001em;vertical-align:-0.19444em;"></span><span class="mord">4</span><span class="mord">8</span><span class="mord">0</span><span class="mord mathdefault">p</span><span class="mspace" style="margin-right:0.2222222222222222em;"></span><span class="mbin">×</span><span class="mspace" style="margin-right:0.2222222222222222em;"></span></span><span class="base"><span class="strut" style="height:0.64444em;vertical-align:0em;"></span><span class="mord">9</span><span class="mord">3</span></span></span></span> frames <span class="katex"><span class="katex-mathml"><math><semantics><mrow><mo>→</mo></mrow><annotation encoding="application/x-tex">\rightarrow</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.36687em;vertical-align:0em;"></span><span class="mrel">→</span></span></span></span> <span class="katex"><span class="katex-mathml"><math><semantics><mrow><mn>720</mn><mi>p</mi><mo>×</mo><mn>189</mn></mrow><annotation encoding="application/x-tex">720p \times 189</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.8388800000000001em;vertical-align:-0.19444em;"></span><span class="mord">7</span><span class="mord">2</span><span class="mord">0</span><span class="mord mathdefault">p</span><span class="mspace" style="margin-right:0.2222222222222222em;"></span><span class="mbin">×</span><span class="mspace" style="margin-right:0.2222222222222222em;"></span></span><span class="base"><span class="strut" style="height:0.64444em;vertical-align:0em;"></span><span class="mord">1</span><span class="mord">8</span><span class="mord">9</span></span></span></span> frames</td>
+<td>✓</td>
+<td>✓</td>
+<td>✓</td>
+<td>16/5</td>
+<td style="text-align:right"><strong>142.0s</strong></td>
+<td style="text-align:right"><strong>10.1x</strong></td>
+</tr>
+</tbody>
+</table>
+<p><small>表源：<code>LongCat-Video Technical Report</code>，Table 6。原论文表注口径：测试在单张 H800 GPU 上使用 FlashAttention3。</small></p>
+<p><strong>速度表读数边界。</strong><br />
+这个表能证明 C2F、少步采样和 BSA 的组合显著降低单卡推理时间，但不能直接外推到所有部署环境。真实服务延迟还取决于 batch、显存、编译、I/O、VAE decode、视频编码和多请求调度。它仍然是非常有用的系统证据，因为 baseline、采样步数、分辨率和硬件都写得比较清楚。</p>
+<p>Block Sparse Attention 的做法是把 <span class="katex"><span class="katex-mathml"><math><semantics><mrow><mi>T</mi><mo>×</mo><mi>H</mi><mo>×</mo><mi>W</mi></mrow><annotation encoding="application/x-tex">T\times H\times W</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.76666em;vertical-align:-0.08333em;"></span><span class="mord mathdefault" style="margin-right:0.13889em;">T</span><span class="mspace" style="margin-right:0.2222222222222222em;"></span><span class="mbin">×</span><span class="mspace" style="margin-right:0.2222222222222222em;"></span></span><span class="base"><span class="strut" style="height:0.76666em;vertical-align:-0.08333em;"></span><span class="mord mathdefault" style="margin-right:0.08125em;">H</span><span class="mspace" style="margin-right:0.2222222222222222em;"></span><span class="mbin">×</span><span class="mspace" style="margin-right:0.2222222222222222em;"></span></span><span class="base"><span class="strut" style="height:0.68333em;vertical-align:0em;"></span><span class="mord mathdefault" style="margin-right:0.13889em;">W</span></span></span></span> 视频 latent 切成 3D blocks，对 query block 和 key block 做平均池化后计算 block-level score，每个 query block 只选 top-<span class="katex"><span class="katex-mathml"><math><semantics><mrow><mi>r</mi></mrow><annotation encoding="application/x-tex">r</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.43056em;vertical-align:0em;"></span><span class="mord mathdefault" style="margin-right:0.02778em;">r</span></span></span></span> key blocks，再在这些 key blocks 内做标准 attention。</p>
+<p><img  
+                     lazyload
+                     src="/images/loading.svg"
+                     data-src="/image/ai-notes/images/paper-deep-dives/technical-reports/longcat-video/figure-13-block-sparse-attention.png"
+                      alt="LongCat-Video Block Sparse Attention 原论文图" 
+                ></p>
+<p><small>图源：<code>LongCat-Video Technical Report</code>，Figure 13。原论文图意：对 query block 和 key blocks 计算 block-level score，选 top-r key blocks，再只在选中块内计算 attention。</small></p>
+<p><strong>BSA 图怎么读。</strong><br />
+稀疏性不是固定局部窗口，而是用 pooled attention score 动态选块。这样利用了视频 latent 的冗余：高分辨率视频中不是每个 token 都需要 attend 到所有位置。Appendix 给出的实现细节包括：Triton 实现 forward/backward，支持 single-GPU 和 context-parallel；3D block size 设为 <span class="katex"><span class="katex-mathml"><math><semantics><mrow><mi>t</mi><mo>=</mo><mi>h</mi><mo>=</mo><mi>w</mi><mo>=</mo><mn>4</mn></mrow><annotation encoding="application/x-tex">t=h=w=4</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.61508em;vertical-align:0em;"></span><span class="mord mathdefault">t</span><span class="mspace" style="margin-right:0.2777777777777778em;"></span><span class="mrel">=</span><span class="mspace" style="margin-right:0.2777777777777778em;"></span></span><span class="base"><span class="strut" style="height:0.69444em;vertical-align:0em;"></span><span class="mord mathdefault">h</span><span class="mspace" style="margin-right:0.2777777777777778em;"></span><span class="mrel">=</span><span class="mspace" style="margin-right:0.2777777777777778em;"></span></span><span class="base"><span class="strut" style="height:0.43056em;vertical-align:0em;"></span><span class="mord mathdefault" style="margin-right:0.02691em;">w</span><span class="mspace" style="margin-right:0.2777777777777778em;"></span><span class="mrel">=</span><span class="mspace" style="margin-right:0.2777777777777778em;"></span></span><span class="base"><span class="strut" style="height:0.64444em;vertical-align:0em;"></span><span class="mord">4</span></span></span></span>；distillation 阶段 <span class="katex"><span class="katex-mathml"><math><semantics><mrow><mi>r</mi><mo>=</mo><mfrac><mn>1</mn><mn>8</mn></mfrac><msub><mi>N</mi><mi>k</mi></msub></mrow><annotation encoding="application/x-tex">r=\frac{1}{8}N_k</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.43056em;vertical-align:0em;"></span><span class="mord mathdefault" style="margin-right:0.02778em;">r</span><span class="mspace" style="margin-right:0.2777777777777778em;"></span><span class="mrel">=</span><span class="mspace" style="margin-right:0.2777777777777778em;"></span></span><span class="base"><span class="strut" style="height:1.190108em;vertical-align:-0.345em;"></span><span class="mord"><span class="mopen nulldelimiter"></span><span class="mfrac"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height:0.845108em;"><span style="top:-2.6550000000000002em;"><span class="pstrut" style="height:3em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mtight"><span class="mord mtight">8</span></span></span></span><span style="top:-3.23em;"><span class="pstrut" style="height:3em;"></span><span class="frac-line" style="border-bottom-width:0.04em;"></span></span><span style="top:-3.394em;"><span class="pstrut" style="height:3em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mtight"><span class="mord mtight">1</span></span></span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height:0.345em;"><span></span></span></span></span></span><span class="mclose nulldelimiter"></span></span><span class="mord"><span class="mord mathdefault" style="margin-right:0.10903em;">N</span><span class="msupsub"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height:0.33610799999999996em;"><span style="top:-2.5500000000000003em;margin-left:-0.10903em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mathdefault mtight" style="margin-right:0.03148em;">k</span></span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height:0.15em;"><span></span></span></span></span></span></span></span></span></span>，refinement expert 阶段 <span class="katex"><span class="katex-mathml"><math><semantics><mrow><mi>r</mi><mo>=</mo><mfrac><mn>1</mn><mn>16</mn></mfrac><msub><mi>N</mi><mi>k</mi></msub></mrow><annotation encoding="application/x-tex">r=\frac{1}{16}N_k</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.43056em;vertical-align:0em;"></span><span class="mord mathdefault" style="margin-right:0.02778em;">r</span><span class="mspace" style="margin-right:0.2777777777777778em;"></span><span class="mrel">=</span><span class="mspace" style="margin-right:0.2777777777777778em;"></span></span><span class="base"><span class="strut" style="height:1.190108em;vertical-align:-0.345em;"></span><span class="mord"><span class="mopen nulldelimiter"></span><span class="mfrac"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height:0.845108em;"><span style="top:-2.6550000000000002em;"><span class="pstrut" style="height:3em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mtight"><span class="mord mtight">1</span><span class="mord mtight">6</span></span></span></span><span style="top:-3.23em;"><span class="pstrut" style="height:3em;"></span><span class="frac-line" style="border-bottom-width:0.04em;"></span></span><span style="top:-3.394em;"><span class="pstrut" style="height:3em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mtight"><span class="mord mtight">1</span></span></span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height:0.345em;"><span></span></span></span></span></span><span class="mclose nulldelimiter"></span></span><span class="mord"><span class="mord mathdefault" style="margin-right:0.10903em;">N</span><span class="msupsub"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height:0.33610799999999996em;"><span style="top:-2.5500000000000003em;margin-left:-0.10903em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mathdefault mtight" style="margin-right:0.03148em;">k</span></span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height:0.15em;"><span></span></span></span></span></span></span></span></span></span>。作者还实现了 ring block sparse attention，使 context parallelism 下的通信和 attention 计算可以重叠。</p>
+<h2 id="训练基础设施"><a class="markdownIt-Anchor" href="#训练基础设施"></a> 训练基础设施</h2>
+<p>报告披露的训练系统包括 DeepSpeed-Zero2、Context Parallelism、Ring Attention 和 Activation Checkpointing。混合分辨率训练使用 bucket-based strategy，把相近分辨率样本分到同一 bucket 以提升 batch 计算效率。作者还用 cache 机制消除不同 rank 上 VAE 操作带来的 computation bubbles。</p>
+<table>
+<thead>
+<tr>
+<th>Infrastructure Mechanism</th>
+<th>Role</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>DeepSpeed-Zero2</td>
+<td>切分优化器状态，支撑 13B 级训练</td>
+</tr>
+<tr>
+<td>Context Parallelism</td>
+<td>处理长视频 token 序列</td>
+</tr>
+<tr>
+<td>Ring Attention</td>
+<td>在上下文并行中重叠通信和注意力计算</td>
+</tr>
+<tr>
+<td>Activation Checkpointing</td>
+<td>降低 activation memory</td>
+</tr>
+<tr>
+<td>Mixed-resolution buckets</td>
+<td>让相似分辨率样本一起训练，减少 padding / shape 浪费</td>
+</tr>
+<tr>
+<td>VAE cache mechanism</td>
+<td>降低跨 rank VAE 计算造成的 bubble</td>
+</tr>
+</tbody>
+</table>
+<p>作者报告训练 MFU 为 33% 到 38%。这个数字说明系统优化已经进入训练效率核心，但它不是单独模块的消融结果，不能把 MFU 提升归因给某一个机制。</p>
+<h2 id="实验与结论"><a class="markdownIt-Anchor" href="#实验与结论"></a> 实验与结论</h2>
+<p>论文评测分为内部 benchmark、公有 VBench 2.0 和可视化结果。</p>
+<p>内部 benchmark 共 1,628 个样本，其中 T2V 1,228 个，包含 500 个人类评测样本和 728 个自动评测样本；I2V 400 个样本。T2V 评估 Text-Alignment、Visual quality、Motion quality 和 Overall quality；I2V 额外加入 Image-Alignment。MOS 使用 5 分制，GSB 做 pairwise preference；人类评测与自动评测按 2:1 加权。每个视频由 3 名标注者独立评分，分歧大时再加入 2 名标注者。自动评测使用内部训练的 vision-language judge，作者报告其与人类评分在各维度相关性超过 0.92。</p>
+<p><img  
+                     lazyload
+                     src="/images/loading.svg"
+                     data-src="/image/ai-notes/images/paper-deep-dives/technical-reports/longcat-video/figure-14-t2v-mos.png"
+                      alt="LongCat-Video T2V MOS 原论文图" 
+                ></p>
+<p><small>图源：<code>LongCat-Video Technical Report</code>，Figure 14。原论文图意：在内部 T2V MOS benchmark 上比较 Veo3、PixVerse-V5、Wan2.2-T2V-A14B 和 LongCat-Video。</small></p>
+<p><img  
+                     lazyload
+                     src="/images/loading.svg"
+                     data-src="/image/ai-notes/images/paper-deep-dives/technical-reports/longcat-video/figure-15-t2v-gsb.png"
+                      alt="LongCat-Video T2V GSB 原论文图" 
+                ></p>
+<p><small>图源：<code>LongCat-Video Technical Report</code>，Figure 15。原论文图意：在内部 T2V GSB preference 评测中做 pairwise 对比。</small></p>
+<p><strong>T2V 图怎么读。</strong><br />
+MOS 图强调 LongCat-Video 在 visual quality 和 overall quality 上比较强；GSB 图显示它与 PixVerse-V5 在 overall quality 上接近，并相对 Wan2.2-T2V-A14B 有优势。注意这些是内部 benchmark，且部分评分来自内部 judge，因此更适合作为官方报告证据，而不是独立复现结论。</p>
+<p>I2V 结果更能体现边界：LongCat-Video 的 Visual Quality 为 3.27，但 Image-Alignment 为 4.04、Motion Quality 为 3.59，低于部分对照模型；Overall Quality 为 3.17，低于 Seedance 1.0 的 3.35。这个结果说明它在视觉细节上强，但从参考图保持、运动质量和整体感知看仍有改进空间。</p>
+<p><img  
+                     lazyload
+                     src="/images/loading.svg"
+                     data-src="/image/ai-notes/images/paper-deep-dives/technical-reports/longcat-video/figure-16-i2v-mos.png"
+                      alt="LongCat-Video I2V MOS 原论文图" 
+                ></p>
+<p><small>图源：<code>LongCat-Video Technical Report</code>，Figure 16。原论文图意：在内部 I2V MOS benchmark 上比较 Seedance 1.0、Hailuo-2、Wan2.2-I2V-A14B 和 LongCat-Video。</small></p>
+<p>公有 VBench 2.0 表保留原论文英文格式：</p>
+<table>
+<thead>
+<tr>
+<th>Model name</th>
+<th>Accessibility</th>
+<th>Evaluation Date</th>
+<th style="text-align:right">Creativity↑</th>
+<th style="text-align:right">Commonsense↑</th>
+<th style="text-align:right">Controllability↑</th>
+<th style="text-align:right">Human Fidelity↑</th>
+<th style="text-align:right">Physics↑</th>
+<th style="text-align:right">Total Score↑</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>HunyuanVideo</td>
+<td>Open Source</td>
+<td>2025-03</td>
+<td style="text-align:right">41.84%</td>
+<td style="text-align:right">63.44%</td>
+<td style="text-align:right">28.60%</td>
+<td style="text-align:right">82.41%</td>
+<td style="text-align:right">60.20%</td>
+<td style="text-align:right">55.30%</td>
+</tr>
+<tr>
+<td>Wan2.1</td>
+<td>Open Source</td>
+<td>2025-03</td>
+<td style="text-align:right">55.25%</td>
+<td style="text-align:right">63.98%</td>
+<td style="text-align:right">37.32%</td>
+<td style="text-align:right">81.60%</td>
+<td style="text-align:right">62.84%</td>
+<td style="text-align:right">60.20%</td>
+</tr>
+<tr>
+<td>Sora-480p</td>
+<td>Proprietary</td>
+<td>2025-03</td>
+<td style="text-align:right">60.57%</td>
+<td style="text-align:right">64.32%</td>
+<td style="text-align:right">22.09%</td>
+<td style="text-align:right">87.72%</td>
+<td style="text-align:right">57.18%</td>
+<td style="text-align:right">58.38%</td>
+</tr>
+<tr>
+<td>Kling1.6</td>
+<td>Proprietary</td>
+<td>2025-03</td>
+<td style="text-align:right">48.58%</td>
+<td style="text-align:right">65.45%</td>
+<td style="text-align:right">33.05%</td>
+<td style="text-align:right">83.56%</td>
+<td style="text-align:right">64.35%</td>
+<td style="text-align:right">59.00%</td>
+</tr>
+<tr>
+<td>Vidu Q1</td>
+<td>Proprietary</td>
+<td>2025-04</td>
+<td style="text-align:right">56.54%</td>
+<td style="text-align:right">65.98%</td>
+<td style="text-align:right">38.13%</td>
+<td style="text-align:right">81.24%</td>
+<td style="text-align:right">71.63%</td>
+<td style="text-align:right">62.70%</td>
+</tr>
+<tr>
+<td>Seedance 1.0 Pro</td>
+<td>Proprietary</td>
+<td>2025-06</td>
+<td style="text-align:right">53.04%</td>
+<td style="text-align:right">64.31%</td>
+<td style="text-align:right">39.84%</td>
+<td style="text-align:right">77.06%</td>
+<td style="text-align:right">64.81%</td>
+<td style="text-align:right">59.81%</td>
+</tr>
+<tr>
+<td>Veo3</td>
+<td>Proprietary</td>
+<td>2025-09</td>
+<td style="text-align:right">60.85%</td>
+<td style="text-align:right">69.48%</td>
+<td style="text-align:right">47.04%</td>
+<td style="text-align:right">86.88%</td>
+<td style="text-align:right">69.35%</td>
+<td style="text-align:right">66.72%</td>
+</tr>
+<tr>
+<td>LongCat-Video</td>
+<td>Open Source</td>
+<td>2025-10</td>
+<td style="text-align:right">54.73%</td>
+<td style="text-align:right">70.94%</td>
+<td style="text-align:right">44.79%</td>
+<td style="text-align:right">80.20%</td>
+<td style="text-align:right">59.92%</td>
+<td style="text-align:right">62.11%</td>
+</tr>
+</tbody>
+</table>
+<p><small>表源：<code>LongCat-Video Technical Report</code>，Table 7。原论文表意：LongCat-Video 在 VBench 2.0 总分为 62.11%，低于 Veo3 与 Vidu Q1，高于表中其他开源模型；Commonsense 维度为 70.94%，是表内最高。</small></p>
+<p><strong>VBench 表怎么读。</strong><br />
+最该看的不是“总分第二梯队”，而是维度结构。LongCat-Video 的 Commonsense 很高，Controllability 也接近 Veo3，但 Physics 只有 59.92%，低于 Vidu Q1、Veo3、Seedance 和 Wan2.1。这说明它的世界模型相关能力更像“常识和长视频一致性有进步”，还不能简单等同于物理仿真更强。</p>
+<p><img  
+                     lazyload
+                     src="/images/loading.svg"
+                     data-src="/image/ai-notes/images/paper-deep-dives/technical-reports/longcat-video/figure-17-long-video-examples.png"
+                      alt="LongCat-Video long video examples 原论文图" 
+                ></p>
+<p><small>图源：<code>LongCat-Video Technical Report</code>，Figure 19。原论文图意：Video-Continuation 支持分钟级长视频，也支持每段 changing instructions 的交互式续写。</small></p>
+<p><strong>长视频图怎么读。</strong><br />
+这张图支持的是 qualitative long video / interactive continuation 展示。它能说明系统可以连续生成同一主题下的多个片段，但不等于证明状态变量、物理关系或动作后果在长期闭环中可用于规划。读它时要把“视觉连续性”和“可控世界状态”分开。</p>
+<h2 id="消融与诊断读法"><a class="markdownIt-Anchor" href="#消融与诊断读法"></a> 消融与诊断读法</h2>
+<p>LongCat-Video 的诊断证据分散在 GRPO、速度表和 I2V 边界里。</p>
+<table>
+<thead>
+<tr>
+<th>Diagnostic</th>
+<th>对应证据</th>
+<th>支撑的结论</th>
+<th>不能证明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Policy / KL reweighting ablation</td>
+<td>GRPO ablation figure</td>
+<td>flow matching GRPO 需要处理 timestep 和 step size 导致的梯度缩放</td>
+<td>不能证明所有视频 RLHF 都适用同一 reweighting</td>
+</tr>
+<tr>
+<td>Max group std ablation</td>
+<td>GRPO ablation figure</td>
+<td>小方差 group 会放大奖励误差，用全局最大标准差更稳</td>
+<td>不能消除 reward model 本身偏差</td>
+</tr>
+<tr>
+<td>Reward hacking figure</td>
+<td>single reward vs multi reward</td>
+<td>多 reward 能抑制单一指标过拟合</td>
+<td>不能证明 reward 组合权重最优</td>
+</tr>
+<tr>
+<td>Speed comparison</td>
+<td>Table 6</td>
+<td>LCM/C2F/BSA 组合能显著降低单卡 H800 延迟</td>
+<td>不能外推到多用户服务延迟</td>
+</tr>
+<tr>
+<td>I2V MOS</td>
+<td>Figure 16</td>
+<td>LongCat-Video 视觉质量强，但 image alignment / motion quality 仍有短板</td>
+<td>不能只看 T2V 结论外推到 I2V</td>
+</tr>
+<tr>
+<td>VBench 2.0 dimensions</td>
+<td>Table 7</td>
+<td>Commonsense 维度突出，总分强于多款开源模型</td>
+<td>不能说明真实物理仿真或闭环控制能力</td>
+</tr>
+</tbody>
+</table>
+<p>如果要把它作为后续项目 baseline，最值得补的评测是固定历史视频、系统改变后续 instruction 或控制输入，测未来分叉是否符合预期；再把生成视频接入 agent 或规划器，看任务指标是否真实提升。</p>
+<h2 id="主要贡献"><a class="markdownIt-Anchor" href="#主要贡献"></a> 主要贡献</h2>
+<ol>
+<li>提出 13.6B LongCat-Video，并公开代码和权重入口，覆盖 T2V、I2V 和 VC。</li>
+<li>把多任务视频生成统一成 video continuation，用 condition frames 数量区分任务。</li>
+<li>在预训练阶段原生加入 Video-Continuation，服务分钟级长视频和交互式续写。</li>
+<li>将 GRPO 适配到 flow matching 视频模型，提出固定 stochastic timestep、truncated noise schedule、policy/KL reweighting、max group std 和 multi-reward 训练。</li>
+<li>用 CFG/CM distillation、coarse-to-fine refinement 和 Block Sparse Attention 提升 720p 30fps 推理效率。</li>
+<li>开源 Block Sparse Attention forward/backward 和 context-parallel 变体，为高分辨率视频训练提供可复用算子路径。</li>
+</ol>
+<h2 id="局限与风险"><a class="markdownIt-Anchor" href="#局限与风险"></a> 局限与风险</h2>
+<ol>
+<li><strong>世界模型 claim 仍是方向性定位</strong>：论文说它是 toward world models 的第一步，但没有证明闭环规划、动作因果或反事实状态分叉。</li>
+<li><strong>内部 benchmark 权重较高</strong>：MOS/GSB、自动 judge、部分数据 taxonomy 和 reward model 都在作者内部体系中完成。</li>
+<li><strong>数据规模和数据混合细节不完整</strong>：报告讲了 pipeline 和 training stages，但没有完整披露训练数据总量、来源比例和过滤阈值。</li>
+<li><strong>RLHF reward 仍可能有偏差</strong>：multi-reward 能缓解单一 reward hacking，但不能保证 VQ/MQ/TA reward 与真实人类偏好或物理正确性一致。</li>
+<li><strong>I2V 并非全面领先</strong>：报告自己的 I2V MOS 显示，LongCat-Video 在 image alignment 和 motion quality 上落后部分对照模型。</li>
+<li><strong>速度结果依赖硬件与实现</strong>：Table 6 是单 H800 + FlashAttention3 设置，部署侧还需考虑 VAE、视频编码、batching 和服务调度。</li>
+<li><strong>长视频展示主要是 qualitative</strong>：分钟级可视化很有价值，但还需要漂移率、对象一致性、指令分段遵循和失败案例统计。</li>
+</ol>
+<h2 id="对项目的启发"><a class="markdownIt-Anchor" href="#对项目的启发"></a> 对项目的启发</h2>
+<p>LongCat-Video 最值得迁移的不是某一个 benchmark 分数，而是它的工程分层。</p>
+<table>
+<thead>
+<tr>
+<th>层</th>
+<th>可复用经验</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>任务接口</td>
+<td>把 T2V/I2V/VC 统一成 condition frames + noisy future frames，降低多任务复杂度</td>
+</tr>
+<tr>
+<td>数据</td>
+<td>用 metadata database 支撑不同训练阶段抽样，而不是只维护一个静态数据集</td>
+</tr>
+<tr>
+<td>训练</td>
+<td>progressive curriculum 从图像、短视频、多任务到高分辨率长视频逐步扩展</td>
+</tr>
+<tr>
+<td>偏好优化</td>
+<td>video RLHF 要处理 reward 归因、timestep reweighting 和 multi-reward hacking</td>
+</tr>
+<tr>
+<td>推理</td>
+<td>高分辨率视频应同时做少步化、C2F 和 sparse attention，不要只靠更快硬件</td>
+</tr>
+<tr>
+<td>系统</td>
+<td>context parallel + ring attention + activation checkpointing 是长视频训练的基础设施，不是后期优化项</td>
+</tr>
+</tbody>
+</table>
+<p>对本站主线来说，它可以接到 <a href="/2026/05/11/ai-files-diffusion-video-and-multimodal-diffusion/">视频与多模态扩散</a>、<a href="/2026/05/11/ai-files-diffusion-inference/">扩散采样与推理加速</a>、<a href="/2026/05/11/ai-files-world-models-efficient-training-roadmap/">世界模型高效训练技术路线图</a> 和 <a href="/2026/05/11/ai-files-vlm-vlm-vla-for-efficient-world-model-training/">VLM/VLA 与世界模型高效训练接口</a>。</p>
+<h2 id="阅读结论"><a class="markdownIt-Anchor" href="#阅读结论"></a> 阅读结论</h2>
+<p>LongCat-Video 是一份很适合学习“视频基础模型工程化”的技术报告：它把数据、统一任务接口、flow matching 训练、GRPO 后训练、少步蒸馏、C2F refinement、BSA 和训练基础设施串成了一条完整路线。它的成熟度高于纯概念论文，因为有代码、权重、图表和系统指标；但它的世界模型证据仍应保守解读。最可复用的是 video continuation 统一接口和高效推理组合，最不能外推的是闭环物理世界模型能力。下一步最需要的证据，是反事实续写、长时漂移统计、reward model 独立校验和真实 agent / planner 接入后的任务收益。</p>
+<h2 id="外部精读"><a class="markdownIt-Anchor" href="#外部精读"></a> 外部精读</h2>
+<ol>
+<li><a class="link"   target="_blank" rel="noopener" href="https://arxiv.org/abs/2510.22200" >LongCat-Video Technical Report<i class="fa-solid fa-arrow-up-right ml-[0.2em] font-light align-text-top text-[0.7em] link-icon"></i></a>：原论文；重点读 Data、Unified Model、GRPO、Training 和 Efficient Video Generation。</li>
+<li><a class="link"   target="_blank" rel="noopener" href="https://github.com/meituan-longcat/LongCat-Video" >LongCat-Video GitHub<i class="fa-solid fa-arrow-up-right ml-[0.2em] font-light align-text-top text-[0.7em] link-icon"></i></a>：官方代码、推理脚本、模型下载和 Block Sparse Attention 入口。</li>
+<li><a class="link"   target="_blank" rel="noopener" href="https://github.com/Wan-Video/Wan2.1" >Wan2.1<i class="fa-solid fa-arrow-up-right ml-[0.2em] font-light align-text-top text-[0.7em] link-icon"></i></a>：LongCat-Video 使用 WAN2.1 VAE，可对照视频 latent 表示和开源视频生成接口。</li>
+<li><a class="link"   target="_blank" rel="noopener" href="https://arxiv.org/abs/2407.01392" >Diffusion Forcing<i class="fa-solid fa-arrow-up-right ml-[0.2em] font-light align-text-top text-[0.7em] link-icon"></i></a>：理解为什么 per-frame independent noise levels 和 video continuation 对长视频生成有帮助。</li>
+</ol>
+
+		</div>
+
+		
+		<div class="post-copyright-info w-full my-8 px-2 sm:px-6 md:px-8">
+			<div class="article-copyright-info-container">
+    <ul>
+        <li><strong>Title:</strong> 论文专题讲解：LongCat-Video：长视频生成、GRPO 与高效推理</li>
+        <li><strong>Author:</strong> Charles</li>
+        <li><strong>Created at
+                :</strong> 2026-05-08 09:00:00</li>
+        
+            <li>
+                <strong>Updated at
+                    :</strong> 2026-05-08 09:00:00
+            </li>
+        
+        <li>
+            <strong>Link:</strong> https://charles2530.github.io/2026/05/08/ai-files-paper-deep-dives-technical-reports-longcat-video/
+        </li>
+        <li>
+            <strong>
+                License:
+            </strong>
+            
+
+            
+                This work is licensed under <a class="license" target="_blank" rel="noopener" href="https://creativecommons.org/licenses/by-nc-sa/4.0">CC BY-NC-SA 4.0</a>.
+            
+        </li>
+    </ul>
+</div>
+
+		</div>
+		
+
+		
+		<ul class="post-tags-box text-lg mt-1.5 flex-wrap justify-center flex md:hidden">
+			
+			<li class="tag-item mx-0.5">
+				<a href="/tags/AI/">#AI</a>&nbsp;
+			</li>
+			
+			<li class="tag-item mx-0.5">
+				<a href="/tags/%E8%AE%BA%E6%96%87%E4%B8%93%E9%A2%98/">#论文专题</a>&nbsp;
+			</li>
+			
+			<li class="tag-item mx-0.5">
+				<a href="/tags/%E5%BC%BA%E5%8C%96%E5%AD%A6%E4%B9%A0/">#强化学习</a>&nbsp;
+			</li>
+			
+			<li class="tag-item mx-0.5">
+				<a href="/tags/%E6%8A%80%E6%9C%AF%E6%8A%A5%E5%91%8A/">#技术报告</a>&nbsp;
+			</li>
+			
+		</ul>
+		
+
+		
+
+		
+		<div class="article-nav my-8 flex justify-between items-center px-2 sm:px-6 md:px-8">
+			
+			<div class="article-prev border-border-color shadow-redefine-flat shadow-shadow-color-2 rounded-medium px-4 py-2 hover:shadow-redefine-flat-hover hover:shadow-shadow-color-2">
+				<a class="prev" rel="prev" href="/2026/05/10/ai-files-paper-deep-dives-embodied-ai-dm05/">
+					<span class="left arrow-icon flex justify-center items-center">
+						<i class="fa-solid fa-chevron-left"></i>
+					</span>
+					<span class="title flex justify-center items-center">
+						<span class="post-nav-title-item truncate max-w-48">论文专题讲解：DM0.5：开放世界具身基础模型</span>
+						<span class="post-nav-item">Prev posts</span>
+					</span>
+				</a>
+			</div>
+			
+			
+			<div class="article-next border-border-color shadow-redefine-flat shadow-shadow-color-2 rounded-medium px-4 py-2 hover:shadow-redefine-flat-hover hover:shadow-shadow-color-2">
+				<a class="next" rel="next" href="/2026/05/07/ai-files-paper-deep-dives-world-models-muzero/">
+					<span class="title flex justify-center items-center">
+						<span class="post-nav-title-item truncate max-w-48">论文专题讲解：MuZero：只预测对规划有用的世界模型</span>
+						<span class="post-nav-item">Next posts</span>
+					</span>
+					<span class="right arrow-icon flex justify-center items-center">
+						<i class="fa-solid fa-chevron-right"></i>
+					</span>
+				</a>
+			</div>
+			
+		</div>
+		
+
+
+		
+		<div class="comment-container px-2 sm:px-6 md:px-8 pb-8">
+			<div class="comments-container mt-10 w-full ">
+    <div id="comment-anchor" class="w-full h-2.5"></div>
+    <div class="comment-area-title w-full my-1.5 md:my-2.5 text-xl md:text-3xl font-bold">
+        Comments
+    </div>
+    
+
+        
+            
+    <div id="gitalk-container"></div>
+    <script data-swup-reload-script
+            src="https://cdnjs.cloudflare.com/ajax/libs/gitalk/1.8.0/gitalk.min.js"></script>
+    <script data-swup-reload-script>
+        (function() {
+            const startPath = location.pathname;
+            const startTime = Date.now();
+            const retryDelay = 200;
+            const retryLimit = 5000;
+
+            const runGitalk = () => {
+                if (location.pathname !== startPath) {
+                    return;
+                }
+
+                const container = document.getElementById('gitalk-container');
+                if (!container || typeof Gitalk === 'undefined') {
+                    if (Date.now() - startTime < retryLimit) {
+                        setTimeout(runGitalk, retryDelay);
+                    }
+                    return;
+                }
+
+                container.innerHTML = '';
+
+                let pageKey = decodeURI(location.pathname);
+                const maxLength = 50;
+                if (pageKey.length > maxLength) {
+                    pageKey = pageKey.substring(0, maxLength - 3) + '...';
+                }
+
+                try {
+                    new Gitalk({
+                        clientID: '8083299a8ee2aaf23879',
+                        clientSecret: 'a8161e81d4872181e884fdb69f7be24916b6a9d0',
+                        repo: 'Charles2530.github.io',
+                        owner: 'Charles2530',
+                        admin: ['Charles2530'],
+                        id: pageKey,
+                        language: 'en',
+                        proxy: 'https://github.com/login/oauth/access_token'
+                    }).render(container);
+                } catch (e) {
+                    window.Gitalk = null;
+                }
+            };
+
+            runGitalk();
+        })();
+    </script>
+
+
+
+        
+    
+</div>
+
+		</div>
+		
+	</div>
+
+	
+	<div class="toc-content-container">
+		<div class="post-toc-wrap">
+	<div class="post-toc">
+		<div class="toc-title">On this page</div>
+		<div class="page-title">论文专题讲解：LongCat-Video：长视频生成、GRPO 与高效推理</div>
+		<ol class="nav"><li class="nav-item nav-level-2"><a class="nav-link" href="#%E5%8E%9F%E8%AE%BA%E6%96%87%E6%95%85%E4%BA%8B%E7%BA%BF"><span class="nav-text"> 原论文故事线</span></a><ol class="nav-child"><li class="nav-item nav-level-3"><a class="nav-link" href="#%E7%A0%94%E7%A9%B6%E8%83%8C%E6%99%AF"><span class="nav-text"> 研究背景</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#%E9%97%AE%E9%A2%98challenge"><span class="nav-text"> 问题（Challenge）</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#finding"><span class="nav-text"> Finding</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#%E6%96%B9%E6%B3%95"><span class="nav-text"> 方法</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#%E7%BB%93%E8%AE%BA"><span class="nav-text"> 结论</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#%E5%85%B3%E9%94%AE%E6%9C%AF%E8%AF%AD"><span class="nav-text"> 关键术语</span></a></li></ol></li><li class="nav-item nav-level-2"><a class="nav-link" href="#%E8%AE%BA%E6%96%87%E4%BD%8D%E7%BD%AE"><span class="nav-text"> 论文位置</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#%E6%95%B0%E6%8D%AE%E7%AE%A1%E7%BA%BF"><span class="nav-text"> 数据管线</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#%E6%A8%A1%E5%9E%8B%E7%BB%93%E6%9E%84"><span class="nav-text"> 模型结构</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#%E7%BB%9F%E4%B8%80-video-continuation-%E6%8E%A5%E5%8F%A3"><span class="nav-text"> 统一 Video-Continuation 接口</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#%E8%AE%AD%E7%BB%83%E8%B7%AF%E7%BA%BF"><span class="nav-text"> 训练路线</span></a><ol class="nav-child"><li class="nav-item nav-level-3"><a class="nav-link" href="#base-model-training"><span class="nav-text"> Base Model Training</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#rlhf-training"><span class="nav-text"> RLHF Training</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#acceleration-training"><span class="nav-text"> Acceleration Training</span></a></li></ol></li><li class="nav-item nav-level-2"><a class="nav-link" href="#%E9%AB%98%E6%95%88%E6%8E%A8%E7%90%86c2f-%E4%B8%8E-bsa"><span class="nav-text"> 高效推理：C2F 与 BSA</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#%E8%AE%AD%E7%BB%83%E5%9F%BA%E7%A1%80%E8%AE%BE%E6%96%BD"><span class="nav-text"> 训练基础设施</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#%E5%AE%9E%E9%AA%8C%E4%B8%8E%E7%BB%93%E8%AE%BA"><span class="nav-text"> 实验与结论</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#%E6%B6%88%E8%9E%8D%E4%B8%8E%E8%AF%8A%E6%96%AD%E8%AF%BB%E6%B3%95"><span class="nav-text"> 消融与诊断读法</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#%E4%B8%BB%E8%A6%81%E8%B4%A1%E7%8C%AE"><span class="nav-text"> 主要贡献</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#%E5%B1%80%E9%99%90%E4%B8%8E%E9%A3%8E%E9%99%A9"><span class="nav-text"> 局限与风险</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#%E5%AF%B9%E9%A1%B9%E7%9B%AE%E7%9A%84%E5%90%AF%E5%8F%91"><span class="nav-text"> 对项目的启发</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#%E9%98%85%E8%AF%BB%E7%BB%93%E8%AE%BA"><span class="nav-text"> 阅读结论</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#%E5%A4%96%E9%83%A8%E7%B2%BE%E8%AF%BB"><span class="nav-text"> 外部精读</span></a></li></ol>
+
+	</div>
+</div>
+	</div>
+	
+</div>
+
+			</div>
+
+			
+		</div>
+
+		<div class="main-content-footer">
+			<footer class="footer mt-5 py-5 h-auto text-base text-third-text-color relative border-t-2 border-t-border-color">
+    <div class="info-container py-3 text-center">
+        
+        <div class="text-center">
+            &copy;
+            
+              <span>2022</span>
+              -
+            
+            2026&nbsp;&nbsp;<i class="fa-solid fa-heart fa-beat" style="--fa-animation-duration: 0.5s; color: #f54545"></i>&nbsp;&nbsp;<a href="/">Charles</a>
+            
+                
+                <p class="post-count space-x-0.5">
+                    <span>
+                        601 posts in total
+                    </span>
+                    
+                        <span>
+                            2422.2k words in total
+                        </span>
+                    
+                </p>
+            
+        </div>
+        
+            <script data-swup-reload-script src="https://cn.vercount.one/js"></script>
+            <div class="relative text-center lg:absolute lg:right-[20px] lg:top-1/2 lg:-translate-y-1/2 lg:text-right">
+                
+                    <span id="busuanzi_container_site_uv" class="lg:!block">
+                        <span class="text-sm">VISITOR COUNT</span>
+                        <span id="busuanzi_value_site_uv"></span>
+                    </span>
+                
+                
+                    <span id="busuanzi_container_site_pv" class="lg:!block">
+                        <span class="text-sm">TOTAL PAGE VIEWS</span>
+                        <span id="busuanzi_value_site_pv"></span>
+                    </span>
+                
+            </div>
+        
+        <div class="relative text-center lg:absolute lg:left-[20px] lg:top-1/2 lg:-translate-y-1/2 lg:text-left">
+            <span class="lg:block text-sm">POWERED BY <?xml version="1.0" encoding="utf-8"?><!DOCTYPE svg PUBLIC "-//W3C//DTD SVG 1.1//EN" "http://www.w3.org/Graphics/SVG/1.1/DTD/svg11.dtd"><svg class="relative top-[2px] inline-block align-baseline" version="1.1" id="圖層_1" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" x="0px" y="0px" width="1rem" height="1rem" viewBox="0 0 512 512" enable-background="new 0 0 512 512" xml:space="preserve"><path fill="#0E83CD" d="M256.4,25.8l-200,115.5L56,371.5l199.6,114.7l200-115.5l0.4-230.2L256.4,25.8z M349,354.6l-18.4,10.7l-18.6-11V275H200v79.6l-18.4,10.7l-18.6-11v-197l18.5-10.6l18.5,10.8V237h112v-79.6l18.5-10.6l18.5,10.8V354.6z"/></svg><a target="_blank" class="text-base" href="https://hexo.io">Hexo</a></span>
+            <span class="text-sm lg:block">THEME&nbsp;<a class="text-base" target="_blank" href="https://github.com/EvanNotFound/hexo-theme-redefine">Redefine v2.9.0</a></span>
+        </div>
+        
+        
+            <div>
+                Blog up for <span class="odometer" id="runtime_days" ></span> days <span class="odometer" id="runtime_hours"></span> hrs <span class="odometer" id="runtime_minutes"></span> Min <span class="odometer" id="runtime_seconds"></span> Sec
+            </div>
+        
+        
+            <script data-swup-reload-script>
+                try {
+                    function odometer_init() {
+                    const elements = document.querySelectorAll('.odometer');
+                    elements.forEach(el => {
+                        new Odometer({
+                            el,
+                            format: '( ddd).dd',
+                            duration: 200
+                        });
+                    });
+                    }
+                    odometer_init();
+                } catch (error) {}
+            </script>
+        
+        
+            
+                
+        
+                
+        
+                
+
+                    
+                        <script data-swup-reload-script type="text/javascript" src="/js/love.js"></script>
+                    
+        
+        
+    </div>  
+</footer>
+		</div>
+	</div>
+
+	
+	<div class="post-tools">
+		<div class="post-tools-container">
+	<ul class="article-tools-list">
+		<!-- TOC aside toggle -->
+		
+		<li class="right-bottom-tools page-aside-toggle">
+			<i class="fa-regular fa-outdent"></i>
+		</li>
+		
+
+		<!-- go comment -->
+		
+		<li class="go-comment">
+			<i class="fa-regular fa-comments"></i>
+		</li>
+		
+	</ul>
+</div>
+	</div>
+	
+
+	<div class="right-side-tools-container">
+		<div class="side-tools-container">
+	<ul class="hidden-tools-list">
+		<li class="right-bottom-tools tool-font-adjust-plus flex justify-center items-center">
+			<i class="fa-regular fa-magnifying-glass-plus"></i>
+		</li>
+
+		<li class="right-bottom-tools tool-font-adjust-minus flex justify-center items-center">
+			<i class="fa-regular fa-magnifying-glass-minus"></i>
+		</li>
+
+		<li class="right-bottom-tools tool-dark-light-toggle flex justify-center items-center">
+			<i class="fa-regular fa-moon"></i>
+		</li>
+
+		<!-- rss -->
+		
+		<li class="right-bottom-tools rss flex justify-center items-center">
+			<a class="flex justify-center items-center" href="/atom.xml" target="_blank">
+				<i class="fa-regular fa-rss"></i>
+			</a>
+		</li>
+		
+
+		
+
+		<li class="right-bottom-tools tool-scroll-to-bottom flex justify-center items-center">
+			<i class="fa-regular fa-arrow-down"></i>
+		</li>
+	</ul>
+
+	<ul class="visible-tools-list">
+		<li class="right-bottom-tools toggle-tools-list flex justify-center items-center">
+			<i class="fa-regular fa-cog fa-spin"></i>
+		</li>
+		
+		<li class="right-bottom-tools tool-scroll-to-top flex justify-center items-center">
+			<i class="arrow-up fas fa-arrow-up"></i>
+			<span class="percent"></span>
+		</li>
+		
+		
+	</ul>
+</div>
+	</div>
+
+	<div class="image-viewer-container" role="dialog" aria-modal="true" aria-label="Image viewer">
+	<button class="image-viewer-close" type="button" aria-label="Close">
+		<i class="fa-solid fa-xmark"></i>
+	</button>
+	<button class="image-viewer-prev" type="button" aria-label="Prev">
+		<i class="fa-solid fa-chevron-left"></i>
+	</button>
+	<div class="image-viewer-frame">
+		<img src="" alt="">
+	</div>
+	<div class="image-viewer-exif-panel hidden absolute left-1/2 bottom-20 -translate-x-1/2 w-[min(92vw,420px)] max-h-[60vh] overflow-hidden rounded-2xl bg-background-color-transparent-80 p-4 text-left shadow-redefine-flat backdrop-blur-md" role="dialog" aria-label="EXIF" aria-hidden="true">
+		<div class="flex items-center justify-between mb-3">
+			<span class="text-sm font-semibold text-first-text-color">EXIF</span>
+			<button class="image-viewer-exif-close flex h-8 w-8 items-center justify-center rounded-full bg-background-color-transparent-80 text-first-text-color transition hover:bg-background-color-transparent-40" type="button" aria-label="Close">
+				<i class="fa-solid fa-xmark text-[0.65rem]"></i>
+			</button>
+		</div>
+		<div class="image-viewer-exif-cards grid grid-cols-1 sm:grid-cols-2 gap-3 max-h-[50vh] overflow-y-auto pr-1 scrollbar-hide"></div>
+		<template class="image-viewer-exif-card-template">
+			<div class="rounded-lg bg-background-color-transparent-40 px-3 py-2">
+				<div class="image-viewer-exif-card-header flex items-center gap-2 mb-1">
+					<i class="image-viewer-exif-card-icon fa-solid fa-circle-info text-xs text-third-text-color"></i>
+					<div class="image-viewer-exif-card-title text-xs font-semibold text-first-text-color"></div>
+				</div>
+				<div class="image-viewer-exif-card-items flex flex-col gap-1"></div>
+			</div>
+		</template>
+	</div>
+	<button class="image-viewer-exif-toggle flex items-center gap-2 hidden absolute left-1/2 bottom-6 -translate-x-1/2 rounded-full border border-border-color bg-background-color-transparent-80 px-4 py-2 text-first-text-color backdrop-blur-md transition hover:bg-background-color-transparent-40" type="button" aria-label="EXIF" aria-expanded="false">
+		<i class="fa-solid fa-circle-info text-xs"></i>
+		<span class="text-xs font-semibold uppercase tracking-wider">EXIF</span>
+	</button>
+	<button class="image-viewer-next" type="button" aria-label="Next">
+		<i class="fa-solid fa-chevron-right"></i>
+	</button>
+</div>
+
+
+	
+	<div class="search-pop-overlay">
+	<div class="popup search-popup">
+		<div class="search-header">
+			<span class="search-input-field-pre">
+				<i class="fa-solid fa-keyboard"></i>
+			</span>
+			<div class="search-input-container">
+				<input autocomplete="off" autocorrect="off" autocapitalize="off" placeholder="Search..." spellcheck="false" type="search" class="search-input">
+			</div>
+			<span class="popup-btn-close">
+				<i class="fa-solid fa-times"></i>
+			</span>
+		</div>
+		<div id="search-result">
+			<div id="no-result">
+				<i class="fa-solid fa-spinner fa-spin-pulse fa-5x fa-fw"></i>
+			</div>
+		</div>
+	</div>
+</div>
+	
+
+</main>
+
+
+
+<script src="/js/build/libs/Swup.min.js"></script>
+
+<script src="/js/build/libs/SwupSlideTheme.min.js"></script>
+
+<script src="/js/build/libs/SwupScriptsPlugin.min.js"></script>
+
+<script src="/js/build/libs/SwupProgressPlugin.min.js"></script>
+
+<script src="/js/build/libs/SwupScrollPlugin.min.js"></script>
+
+<script src="/js/build/libs/SwupPreloadPlugin.min.js"></script>
+
+<script>
+    window.swup = new Swup({
+        plugins: [
+            new SwupScriptsPlugin({
+                optin: true,
+            }),
+            new SwupProgressPlugin(),
+            new SwupScrollPlugin({
+                offset: 80,
+            }),
+            new SwupSlideTheme({
+                mainElement: ".main-content-body",
+            }),
+            new SwupPreloadPlugin(),
+        ],
+        containers: ["#swup"],
+    });
+
+    window.dispatchEvent(
+        new CustomEvent("redefine:swup:ready", {
+            detail: {
+                swup: window.swup,
+            },
+        }),
+    );
+</script>
+
+
+
+
+	
+<script src="/js/build/main.js" type="module"></script>
+
+
+
+    
+<script src="/js/build/libs/odometer.min.js"></script>
+
+    
+<link rel="stylesheet" href="/assets/odometer-theme-minimal.css">
+
+
+
+
+
+
+
+  
+<script src="/js/build/libs/Typed.min.js"></script>
+<script src="/js/build/libs/minimasonry.min.js" data-swup-reload-script=""></script>
+
+
+
+
+<script src="/js/build/libs/moment-with-locales.min.js" data-swup-reload-script=""></script>
+
+
+
+	
+</body>
+
+</html>

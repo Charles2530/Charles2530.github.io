@@ -1,0 +1,1896 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="keywords" content="Charles">
+    
+    
+    <meta name="author" content="Charles">
+    
+    <!-- Completely eliminate flash of wrong theme -->
+    <script>
+        (function() {
+            const THEME_KEY = "REDEFINE-THEME-STATUS";
+            const DARK = "dark", LIGHT = "light";
+            
+            // Get preferred theme
+            function getTheme() {
+                try {
+                    const saved = localStorage.getItem(THEME_KEY);
+                    if (saved) {
+                        const { isDark } = JSON.parse(saved);
+                        return isDark ? DARK : LIGHT;
+                    }
+                } catch (e) {}
+                
+                return matchMedia("(prefers-color-scheme: dark)").matches ? DARK : LIGHT;
+            }
+            
+            // Apply theme to document
+            function applyTheme(theme) {
+                const isDark = theme === DARK;
+                const root = document.documentElement;
+                
+                // Set classes for compatibility
+                root.classList.add(theme);
+                root.classList.remove(isDark ? LIGHT : DARK);
+                root.style.colorScheme = theme;
+            }
+            
+            // Initial application
+            const theme = getTheme();
+            applyTheme(theme);
+            
+            // Listen for system preference changes
+            matchMedia("(prefers-color-scheme: dark)").addEventListener("change", ({ matches }) => {
+                // Only update if using system preference (no localStorage entry)
+                if (!localStorage.getItem(THEME_KEY)) {
+                    applyTheme(matches ? DARK : LIGHT);
+                }
+            });
+            
+            // Set body classes ASAP (before DOMContentLoaded)
+            (function() {
+                const addBodyClass = () => {
+                    const b = document.body;
+                    if (!b) return false;
+                    b.classList.add(theme + "-mode");
+                    return true;
+                };
+
+                // Try immediately
+                if (addBodyClass()) return;
+
+                // Observe until body exists
+                const mo = new MutationObserver(() => {
+                    if (addBodyClass()) mo.disconnect();
+                });
+                mo.observe(document.documentElement, { childList: true, subtree: true });
+            })();
+        })();
+    </script>
+    
+    <!-- preconnect -->
+<!--- Seo Part-->
+    
+    <link rel="canonical" href="https://charles2530.github.io/2025/09/08/ai-files-paper-deep-dives-embodied-ai-depth-anything-v2/"/>
+    <meta name="robots" content="index,follow">
+    <meta name="googlebot" content="index,follow">
+    <meta name="revisit-after" content="1 days">
+    
+    
+        
+        <meta name="description" content="This is Charles&#39;s Castle.">
+<meta property="og:type" content="article">
+<meta property="og:title" content="论文专题讲解：Depth Anything V2：单目深度的数据配方">
+<meta property="og:url" content="https://charles2530.github.io/2025/09/08/ai-files-paper-deep-dives-embodied-ai-depth-anything-v2/index.html">
+<meta property="og:site_name" content="Charles&#39;s Castle">
+<meta property="og:description" content="This is Charles&#39;s Castle.">
+<meta property="og:locale" content="en_US">
+<meta property="og:image" content="https://charles2530.github.io/image/background/logo.jpg">
+<meta property="article:published_time" content="2025-09-08T01:00:00.000Z">
+<meta property="article:modified_time" content="2025-09-08T01:00:00.000Z">
+<meta property="article:author" content="Du Jinyang">
+<meta property="article:tag" content="AI">
+<meta property="article:tag" content="具身智能">
+<meta property="article:tag" content="数据与评测">
+<meta property="article:tag" content="论文专题">
+<meta name="twitter:card" content="summary">
+<meta name="twitter:image" content="https://charles2530.github.io/image/background/logo.jpg">
+    
+    
+    <!--- Icon Part-->
+    <link rel="icon" type="image/png" href="https://charles2530.github.io/image/background/favicon.png" sizes="192x192">
+    <link rel="apple-touch-icon" sizes="180x180" href="https://charles2530.github.io/image/background/favicon.png">
+    <meta name="theme-color" content="#A31F34">
+    <link rel="shortcut icon" href="https://charles2530.github.io/image/background/favicon.png">
+    <!--- Page Info-->
+    
+    <title>
+        
+            论文专题讲解：Depth Anything V2：单目深度的数据配方 | Charles&#39;s Castle
+        
+    </title>
+
+    
+<link rel="stylesheet" href="/fonts/Chillax/chillax.css">
+
+
+    <!--- Inject Part-->
+    
+        
+            
+    
+            
+    
+            
+                
+                    <link rel="stylesheet" href="/katex/katex.min.css">
+                
+    
+            
+                
+                    <link rel="stylesheet" href="/css/site-polish-v2.css">
+                
+    
+            
+                
+                    <script data-swup-reload-script>
+(function() {
+  function loadBaiduAnalytics() {
+    if (window.__baiduAnalyticsLoaded) return;
+    window.__baiduAnalyticsLoaded = true;
+    window._hmt = window._hmt || [];
+    var hm = document.createElement("script");
+    hm.async = true;
+    hm.src = "https://hm.baidu.com/hm.js?8e0e5f382d14d87cbeadc33a36e71e86";
+    document.head.appendChild(hm);
+  }
+  if ("requestIdleCallback" in window) {
+    requestIdleCallback(loadBaiduAnalytics, { timeout: 3000 });
+  } else {
+    window.addEventListener("load", function() {
+      setTimeout(loadBaiduAnalytics, 1500);
+    });
+  }
+})();
+</script>
+
+                
+    
+
+    
+<link rel="stylesheet" href="/css/style.css">
+
+
+    
+        
+<link rel="stylesheet" href="/css/build/tailwind.css">
+
+    
+
+    
+<link rel="stylesheet" href="/fonts/GeistMono/geist-mono.css">
+
+    
+<link rel="stylesheet" href="/fonts/Geist/geist.css">
+
+    <!--- Font Part-->
+    
+    
+    
+    
+    
+    
+        
+<script src="/js/build/libs/anime.min.js"></script>
+
+    
+
+    <script id="hexo-configurations">
+    window.config = {"hostname":"charles2530.github.io","root":"/","language":"en","path":"search.xml"};
+    window.theme = {"articles":{"style":{"font_size":"16px","line_height":1.5,"image_border_radius":"14px","image_alignment":"center","image_caption":false,"link_icon":true,"delete_mask":false,"title_alignment":"left","headings_top_spacing":{"h1":"5rem","h2":"4rem","h3":"2.8rem","h4":"2.5rem","h5":"2.2rem","h6":"2rem"}},"word_count":{"enable":true,"count":true,"min2read":true},"author_label":{"enable":true,"auto":true,"list":["lol","Neo","God"]},"code_block":{"copy":true,"style":"mac","highlight_theme":{"light":"github","dark":"vs2015"},"font":{"enable":false,"family":null,"url":null}},"toc":{"enable":true,"max_depth":6,"number":false,"expand":true,"init_open":true},"copyright":{"enable":true,"default":"cc_by_nc_sa"},"lazyload":true,"pangu_js":false,"recommendation":{"enable":false,"title":"recommend_articles","limit":3,"mobile_limit":2,"placeholder":"https://charles2530.github.io/image/background/p3.jfif","skip_dirs":[]}},"colors":{"primary":"#A31F34","secondary":"#1890ff","default_mode":"light"},"global":{"fonts":{"chinese":{"enable":false,"family":null,"url":null},"english":{"enable":false,"family":null,"url":null},"title":{"enable":false,"family":null,"url":null}},"content_max_width":"1000px","sidebar_width":"210px","hover":{"shadow":true,"scale":true},"scroll_progress":{"bar":true,"percentage":true},"website_counter":{"url":"https://cn.vercount.one/js","enable":true,"site_pv":true,"site_uv":true,"post_pv":true},"single_page":true,"preloader":{"enable":true,"custom_message":null},"side_tools":{"gear_rotation":true,"auto_expand":false},"open_graph":{"enable":true,"image":"https://charles2530.github.io/image/background/logo.jpg","description":"This is Charles's Castle."},"google_analytics":{"enable":false,"id":null}},"home_banner":{"enable":true,"style":"fixed","image":{"light":"https://charles2530.github.io/image/background/background-light1.jpg","dark":"https://charles2530.github.io/image/background/background-dark1.jpg"},"title":"Charles's Castle","subtitle":{"text":["Happiness is best!","Never give up!","Everyday is a gift!"],"hitokoto":{"enable":false,"show_author":false,"api":"https://v1.hitokoto.cn"},"typing_speed":100,"backing_speed":80,"starting_delay":500,"backing_delay":1500,"loop":true,"smart_backspace":true},"text_color":{"light":"#000000","dark":"#d1d1b6"},"text_style":{"title_size":"3.2rem","subtitle_size":"1.5rem","line_height":1.2},"custom_font":{"enable":false,"family":null,"url":null},"social_links":{"enable":true,"style":"center","links":[{"icon":"fa-brands fa-github","url":"https://github.com/Charles2530/"},{"icon":"fa-brands fa-zhihu","url":"https://www.zhihu.com/people/yang-guang-xiao-zi-55-55"},{"icon":"fa-solid fa-at","url":"mailto:charles2530@163.com"},{"icon":"fa-brands fa-telegram","url":null},{"icon":"/images/custom-icon.svg","url":null}],"qrs":[{"icon":"fa-brands fa-weixin","qr":"https://charles2530.github.io/image/background/Wechat_icon.png"},{"icon":"/images/custom-icon.svg","qr":null}]}},"plugins":{"feed":{"enable":true},"aplayer":{"enable":false,"type":"fixed","audios":[{"name":null,"artist":null,"url":null,"cover":null,"lrc":null}]},"mermaid":{"enable":false,"version":"11.4.1","theme":{"light":"default","dark":"dark"}}},"version":"2.9.0","navbar":{"auto_hide":true,"color":{"left":"#f78736","right":"#367df7","transparency":35},"width":{"home":"1200px","pages":"1000px"},"links":{"Home":{"path":"/","icon":"fa-regular fa-house"},"Categories":{"path":"/categories","icon":"fas fa-bookmark"},"Tags":{"path":"/tags","icon":"fas fa-tags"},"About":{"icon":"fa-regular fa-user","submenus":{"Me":"https://jinyang-du.github.io/","Github":"https://github.com/Charles2530/","Blog":"https://charles2530.github.io","Statistics":"https://tongji.baidu.com/"}}},"search":{"enable":true,"preload":false}},"page_templates":{"friends_column":2,"tags_style":"blur","masonry":{"batch_size":12,"initial_batch_size":24}},"home":{"sidebar":{"enable":true,"position":"left","first_item":"menu","announcement":"This is Charles's Castle","show_on_mobile":true,"links":{"Archives":{"path":"/archives","icon":"fa-regular fa-archive"},"Photos":{"icon":"fa-solid fa-image","path":"/masonry/"},"Essays":{"icon":"fa-solid fa-message-lines","path":"/essay/"},"Friends":{"icon":"fa-solid fa-user-group","path":"/friends/"}}},"article_date_format":"auto","excerpt_length":200,"categories":{"enable":true,"limit":3},"tags":{"enable":true,"limit":3}},"footer":{"runtime":true,"icon":"<i class=\"fa-solid fa-heart fa-beat\" style=\"--fa-animation-duration: 0.5s; color: #f54545\"></i>","start":"2022/12/27 00:00:00","statistics":true,"customize":null,"icp":{"enable":false,"number":null,"url":null}},"footerStart":"2022/12/27 00:00:00","mermaid":{"style":{"light":"default","dark":"dark"}}};
+    window.lang_ago = {"second":"%s seconds ago","minute":"%s minutes ago","hour":"%s hours ago","day":"%s days ago","week":"%s weeks ago","month":"%s months ago","year":"%s years ago"};
+    window.i18n = {"search":"Search...","toc":"On this page","prev":"Prev","next":"Next","prev_posts":"Prev posts","next_posts":"Next posts","page":"Page %d","recent_posts":"Recent Posts","share":"Share","powered_by":"POWERED BY %s","theme":"THEME","rss_feed":"RSS Feed","category":"Category","categories":"Categories","tag":"Tag","tags":"Tags","post":"Post","posts":"Posts","tagcloud":"Tag Cloud","comment":"Comment","comments":"Comments","home":"Home","archive":"Archive","archives":"Archives","top":"TOP","sticky":"Sticky","go-back-home":"Go Back Home","masonry_loading":"Loading photos...","image_viewer":"Image viewer","close":"Close","exif":{"title":"EXIF","cards":{"camera":"Camera","lens":"Lens","exposure":"Exposure","other":"Other"},"fields":{"make":"Brand","model":"Model","date_taken":"Date taken","lens_model":"Lens","focal_length":"Focal length","focus_mode":"Focus mode","shutter":"Shutter","aperture":"Aperture","iso":"ISO","exposure_program":"Exposure program","exposure_compensation":"Exposure compensation","metering_mode":"Metering mode","flash":"Flash","white_balance":"White balance","latitude":"Latitude","longitude":"Longitude","altitude":"Altitude"},"status":{"loading":"Loading...","no_exif":"No EXIF available","library_missing":"EXIF library not loaded","image_source_missing":"Image source unavailable","unavailable":"EXIF unavailable (blocked by CORS or missing metadata)","flag_unavailable":"EXIF unavailable"}},"about":"About","changelog":"Changelog","links":"Links","link":"Link","friends":"Friends","friend":"Friend","timeline":"Timeline","shuoshuo":"Shuoshuo","bookmarks":"Bookmarks","site_uv":"VISITOR COUNT","site_pv":"TOTAL PAGE VIEWS","read_more":"Read more","wordcount":"Words","min2read":"Mins","status":"Status","runtime":"Blog up for","days":"days","hours":"hrs","minutes":"Min","seconds":"Sec","optimized_by":"and Optimized by Evan","rights":"All Rights Reserved","site_posts":"%s posts in total","site_wordcount":"%s words in total","copyright":{"author":"Author","title":"Title","link":"Link","create_time":"Created at","update_time":"Updated at","license_title":"License","license_content":"This work is licensed under %s.","all_rights_reserved":"All Rights Reserved &#169; %s","public_domain":"This work is in the public domain."},"ago":{"second":"%s seconds ago","minute":"%s minutes ago","hour":"%s hours ago","day":"%s days ago","week":"%s weeks ago","month":"%s months ago","year":"%s years ago"},"create_time":"Created","update_time":"Updated","expired":"This post is written %s days ago, and the content may not be up to date."};
+    window.data = {"masonry":true};
+  </script>
+    
+    <!--- Fontawesome Part-->
+    
+<link rel="stylesheet" href="/fontawesome/fontawesome.min.css">
+
+    
+<link rel="stylesheet" href="/fontawesome/brands.min.css">
+
+    
+<link rel="stylesheet" href="/fontawesome/solid.min.css">
+
+    
+<link rel="stylesheet" href="/fontawesome/regular.min.css">
+
+    
+    
+    
+    
+<meta name="generator" content="Hexo 6.3.0"><link rel="alternate" href="/atom.xml" title="Charles's Castle" type="application/atom+xml">
+<link rel="stylesheet" href="/css/prism-tomorrow.css" type="text/css"></head>
+
+
+<body>
+	<div class="progress-bar-container">
+	
+	<span class="scroll-progress-bar"></span>
+	
+
+	
+	<span class="pjax-progress-bar"></span>
+	<!--        <span class="swup-progress-icon">-->
+	<!--            <i class="fa-solid fa-circle-notch fa-spin"></i>-->
+	<!--        </span>-->
+	
+</div>
+
+<style>
+    :root {
+        --preloader-background-color: #fff;
+        --preloader-text-color: #000;
+    }
+
+    @media (prefers-color-scheme: dark) {
+        :root {
+            --preloader-background-color: #202124;
+            --preloader-text-color: #fff;
+        }
+    }
+
+    @media (prefers-color-scheme: light) {
+        :root {
+            --preloader-background-color: #fff;
+            --preloader-text-color: #000;
+        }
+    }
+
+    @media (max-width: 600px) {
+        .ml13 {
+            font-size: 2.6rem !important; /* Adjust this value as needed */
+        }
+    }
+
+    .preloader {
+        display: flex;
+        flex-direction: column;
+        gap: 1rem; /* Tailwind 'gap-4' is 1rem */
+        align-items: center;
+        justify-content: center;
+        position: fixed;
+        padding: 12px;
+        top: 0;
+        right: 0;
+        bottom: 0;
+        left: 0;
+        width: 100vw;
+        height: 100vh; /* 'h-screen' is 100% of the viewport height */
+        background-color: var(--preloader-background-color);
+        z-index: 1100; /* 'z-[1100]' sets the z-index */
+        transition: opacity 0.2s ease-in-out;
+    }
+
+    .ml13 {
+        font-size: 3.2rem;
+        /* text-transform: uppercase; */
+        color: var(--preloader-text-color);
+        letter-spacing: -1px;
+        font-weight: 500;
+        font-family: 'Chillax-Variable', sans-serif;
+        text-align: center;
+    }
+
+    .ml13 .word {
+        display: inline-flex;
+        flex-wrap: wrap;
+        white-space: nowrap;
+    }
+
+    .ml13 .letter {
+        display: inline-block;
+        line-height: 1em;
+    }
+</style>
+
+<div class="preloader">
+    <h2 class="ml13">
+        Charles&#39;s Castle
+    </h2>
+    <script>
+        var textWrapper = document.querySelector('.ml13');
+        // Split text into words
+        var words = textWrapper.textContent.trim().split(' ');
+
+        // Clear the existing content
+        textWrapper.innerHTML = '';
+
+        // Wrap each word and its letters in spans
+        words.forEach(function(word) {
+            var wordSpan = document.createElement('span');
+            wordSpan.classList.add('word');
+            wordSpan.innerHTML = word.replace(/\S/g, "<span class='letter'>$&</span>");
+            textWrapper.appendChild(wordSpan);
+            textWrapper.appendChild(document.createTextNode(' ')); // Add space between words
+        });
+
+        var animation = anime.timeline({ loop: true })
+            .add({
+                targets: '.ml13 .letter',
+                translateY: [20, 0],
+                translateZ: 0,
+                opacity: [0, 1],
+                filter: ['blur(5px)', 'blur(0px)'],
+                easing: "easeOutExpo",
+                duration: 1200,
+                delay: (el, i) => 300 + 20 * i,
+            })
+            .add({
+                targets: '.ml13 .letter',
+                translateY: [0, -20],
+                opacity: [1, 0],
+                filter: ['blur(0px)', 'blur(5px)'],
+                easing: "easeInExpo",
+                duration: 1000,
+                delay: (el, i) => 15 * i,
+                complete: function() {
+                    hidePreloader();
+                }
+            }, '-=700');
+
+
+        let themeStatus = JSON.parse(localStorage.getItem('REDEFINE-THEME-STATUS'))?.isDark;
+
+        // If the theme status is not found in local storage, check the preferred color scheme
+        if (themeStatus === undefined || themeStatus === null) {
+            if (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) {
+                themeStatus = 'dark';
+            } else {
+                themeStatus = 'light';
+            }
+        }
+
+        // Now you can use the themeStatus variable in your code
+        if (themeStatus) {
+            document.documentElement.style.setProperty('--preloader-background-color', '#202124');
+            document.documentElement.style.setProperty('--preloader-text-color', '#fff');
+        } else {
+            document.documentElement.style.setProperty('--preloader-background-color', '#fff');
+            document.documentElement.style.setProperty('--preloader-text-color', '#000');
+        }
+
+        window.addEventListener('load', function () {
+            setTimeout(hidePreloader, 5000); // Call hidePreloader after 5000 milliseconds if not already called by animation
+        });
+
+        function hidePreloader() {
+            var preloader = document.querySelector('.preloader');
+            preloader.style.opacity = '0';
+            setTimeout(function () {
+                preloader.style.display = 'none';
+            }, 200);
+        }
+    </script>
+</div>
+
+<main class="page-container" id="swup">
+
+	
+
+	<div class="main-content-container flex flex-col justify-between min-h-dvh">
+		<div class="main-content-header">
+			<header class="navbar-container px-6 md:px-12">
+    <div class="navbar-content transition-navbar ">
+        <div class="left">
+            
+                <a class="logo-image h-8 w-8 sm:w-10 sm:h-10 mr-3" href="/">
+                    <img src="https://charles2530.github.io/image/background/logo.jpg" class="w-full h-full rounded-xs">
+                </a>
+            
+            <a class="logo-title" href="/">
+                
+                Charles&#39;s Castle
+                
+            </a>
+        </div>
+
+        <div class="right">
+            <!-- PC -->
+            <div class="desktop">
+                <ul class="navbar-list">
+                    
+                        
+                            
+
+                            <li class="navbar-item">
+                                <!-- Menu -->
+                                <a class=""
+                                   href="/"
+                                        >
+                                    <i class="fa-regular fa-house fa-fw"></i>
+                                    HOME
+                                    
+                                </a>
+
+                                <!-- Submenu -->
+                                
+                            </li>
+                    
+                        
+                            
+
+                            <li class="navbar-item">
+                                <!-- Menu -->
+                                <a class=""
+                                   href="/categories"
+                                        >
+                                    <i class="fas fa-bookmark fa-fw"></i>
+                                    CATEGORIES
+                                    
+                                </a>
+
+                                <!-- Submenu -->
+                                
+                            </li>
+                    
+                        
+                            
+
+                            <li class="navbar-item">
+                                <!-- Menu -->
+                                <a class=""
+                                   href="/tags"
+                                        >
+                                    <i class="fas fa-tags fa-fw"></i>
+                                    TAGS
+                                    
+                                </a>
+
+                                <!-- Submenu -->
+                                
+                            </li>
+                    
+                        
+                            
+
+                            <li class="navbar-item">
+                                <!-- Menu -->
+                                <a class="has-dropdown"
+                                   href="#"
+                                        onClick=&#34;return false;&#34;>
+                                    <i class="fa-regular fa-user fa-fw"></i>
+                                    ABOUT
+                                    <i class="fa-solid fa-chevron-down fa-fw"></i>
+                                </a>
+
+                                <!-- Submenu -->
+                                
+                                    <ul class="sub-menu">
+                                        
+                                            <li>
+                                                <a target="_blank" rel="noopener" href="https://jinyang-du.github.io/">
+                                                    ME
+                                                </a>
+                                            </li>
+                                        
+                                            <li>
+                                                <a target="_blank" rel="noopener" href="https://github.com/Charles2530/">
+                                                    GITHUB
+                                                </a>
+                                            </li>
+                                        
+                                            <li>
+                                                <a href="https://charles2530.github.io">
+                                                    BLOG
+                                                </a>
+                                            </li>
+                                        
+                                            <li>
+                                                <a target="_blank" rel="noopener" href="https://tongji.baidu.com/">
+                                                    STATISTICS
+                                                </a>
+                                            </li>
+                                        
+                                    </ul>
+                                
+                            </li>
+                    
+                    
+                        <li class="navbar-item search search-popup-trigger">
+                            <i class="fa-solid fa-magnifying-glass"></i>
+                        </li>
+                    
+                </ul>
+            </div>
+            <!-- Mobile -->
+            <div class="mobile">
+                
+                    <div class="icon-item search search-popup-trigger"><i class="fa-solid fa-magnifying-glass"></i>
+                    </div>
+                
+                <div class="icon-item navbar-bar">
+                    <div class="navbar-bar-middle"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Mobile sheet -->
+    <div class="navbar-drawer h-dvh w-full absolute top-0 left-0 bg-background-color flex flex-col justify-between">
+        <ul class="drawer-navbar-list flex flex-col px-4 justify-center items-start">
+            
+                
+                    
+
+                    <li class="drawer-navbar-item text-base my-1.5 flex flex-col w-full">
+                        
+                        <a class="py-1.5 px-2 flex flex-row items-center justify-between gap-1 hover:!text-primary active:!text-primary text-2xl font-semibold group border-b border-border-color hover:border-primary w-full "
+                           href="/"
+                        >
+                            <span>
+                                HOME
+                            </span>
+                            
+                                <i class="fa-regular fa-house fa-sm fa-fw"></i>
+                            
+                        </a>
+                        
+
+                        
+                    </li>
+            
+                
+                    
+
+                    <li class="drawer-navbar-item text-base my-1.5 flex flex-col w-full">
+                        
+                        <a class="py-1.5 px-2 flex flex-row items-center justify-between gap-1 hover:!text-primary active:!text-primary text-2xl font-semibold group border-b border-border-color hover:border-primary w-full "
+                           href="/categories"
+                        >
+                            <span>
+                                CATEGORIES
+                            </span>
+                            
+                                <i class="fas fa-bookmark fa-sm fa-fw"></i>
+                            
+                        </a>
+                        
+
+                        
+                    </li>
+            
+                
+                    
+
+                    <li class="drawer-navbar-item text-base my-1.5 flex flex-col w-full">
+                        
+                        <a class="py-1.5 px-2 flex flex-row items-center justify-between gap-1 hover:!text-primary active:!text-primary text-2xl font-semibold group border-b border-border-color hover:border-primary w-full "
+                           href="/tags"
+                        >
+                            <span>
+                                TAGS
+                            </span>
+                            
+                                <i class="fas fa-tags fa-sm fa-fw"></i>
+                            
+                        </a>
+                        
+
+                        
+                    </li>
+            
+                
+                    
+
+                    <li class="drawer-navbar-item-sub text-base my-1.5 flex flex-col w-full">
+                        
+                        <div class="py-1.5 px-2 flex flex-row items-center justify-between gap-1 hover:!text-primary active:!text-primary cursor-pointer text-2xl font-semibold group border-b border-border-color hover:border-primary w-full "
+                             navbar-data-toggle="submenu-About"
+                        >
+                            <span>
+                                ABOUT
+                            </span>
+                            
+                                <i class="fa-solid fa-chevron-right fa-sm fa-fw transition-all"></i>
+                            
+                        </div>
+                        
+
+                        
+                            <div class="flex-col items-start px-2 py-2 hidden" data-target="submenu-About">
+                                
+                                    <div class="drawer-navbar-item text-base flex flex-col justify-center items-start hover:underline active:underline hover:underline-offset-1 rounded-3xl">
+                                        <a class=" text-third-text-color text-xl"
+                                           target="_blank" rel="noopener" href="https://jinyang-du.github.io/">ME</a>
+                                    </div>
+                                
+                                    <div class="drawer-navbar-item text-base flex flex-col justify-center items-start hover:underline active:underline hover:underline-offset-1 rounded-3xl">
+                                        <a class=" text-third-text-color text-xl"
+                                           target="_blank" rel="noopener" href="https://github.com/Charles2530/">GITHUB</a>
+                                    </div>
+                                
+                                    <div class="drawer-navbar-item text-base flex flex-col justify-center items-start hover:underline active:underline hover:underline-offset-1 rounded-3xl">
+                                        <a class=" text-third-text-color text-xl"
+                                           href="https://charles2530.github.io">BLOG</a>
+                                    </div>
+                                
+                                    <div class="drawer-navbar-item text-base flex flex-col justify-center items-start hover:underline active:underline hover:underline-offset-1 rounded-3xl">
+                                        <a class=" text-third-text-color text-xl"
+                                           target="_blank" rel="noopener" href="https://tongji.baidu.com/">STATISTICS</a>
+                                    </div>
+                                
+                            </div>
+                        
+                    </li>
+            
+
+            
+            
+                
+                    
+                    <li class="drawer-navbar-item text-base my-1.5 flex flex-col w-full">
+                        <a class="py-1.5 px-2 flex flex-row items-center justify-between gap-1 hover:!text-primary active:!text-primary text-2xl font-semibold group border-b border-border-color hover:border-primary w-full active"
+                           href="/archives"
+                        >
+                            <span>Archives</span>
+                            <i class="fa-regular fa-archive fa-sm fa-fw"></i>
+                        </a>
+                    </li>
+                
+                    
+                    <li class="drawer-navbar-item text-base my-1.5 flex flex-col w-full">
+                        <a class="py-1.5 px-2 flex flex-row items-center justify-between gap-1 hover:!text-primary active:!text-primary text-2xl font-semibold group border-b border-border-color hover:border-primary w-full active"
+                           href="/masonry/"
+                        >
+                            <span>Photos</span>
+                            <i class="fa-solid fa-image fa-sm fa-fw"></i>
+                        </a>
+                    </li>
+                
+                    
+                    <li class="drawer-navbar-item text-base my-1.5 flex flex-col w-full">
+                        <a class="py-1.5 px-2 flex flex-row items-center justify-between gap-1 hover:!text-primary active:!text-primary text-2xl font-semibold group border-b border-border-color hover:border-primary w-full active"
+                           href="/essay/"
+                        >
+                            <span>Essays</span>
+                            <i class="fa-solid fa-message-lines fa-sm fa-fw"></i>
+                        </a>
+                    </li>
+                
+                    
+                    <li class="drawer-navbar-item text-base my-1.5 flex flex-col w-full">
+                        <a class="py-1.5 px-2 flex flex-row items-center justify-between gap-1 hover:!text-primary active:!text-primary text-2xl font-semibold group border-b border-border-color hover:border-primary w-full active"
+                           href="/friends/"
+                        >
+                            <span>Friends</span>
+                            <i class="fa-solid fa-user-group fa-sm fa-fw"></i>
+                        </a>
+                    </li>
+                
+            
+        </ul>
+
+        <div class="statistics flex justify-around my-2.5">
+    <a class="item tag-count-item flex flex-col justify-center items-center w-20" href="/tags">
+        <div class="number text-2xl sm:text-xl text-second-text-color font-semibold">47</div>
+        <div class="label text-third-text-color text-sm">Tags</div>
+    </a>
+    <a class="item tag-count-item flex flex-col justify-center items-center w-20" href="/categories">
+        <div class="number text-2xl sm:text-xl text-second-text-color font-semibold">94</div>
+        <div class="label text-third-text-color text-sm">Categories</div>
+    </a>
+    <a class="item tag-count-item flex flex-col justify-center items-center w-20" href="/archives">
+        <div class="number text-2xl sm:text-xl text-second-text-color font-semibold">601</div>
+        <div class="label text-third-text-color text-sm">Posts</div>
+    </a>
+</div>
+    </div>
+
+    <div class="window-mask"></div>
+
+</header>
+
+
+		</div>
+
+		<div class="main-content-body transition-fade-up">
+			
+
+			<div class="main-content">
+				<div class="post-page-container flex relative justify-between box-border w-full h-full">
+	<div class="article-content-container">
+
+		<div class="article-title relative w-full">
+			
+			
+			
+			<img src="https://charles2530.github.io/image/background/p1.jpg" alt="论文专题讲解：Depth Anything V2：单目深度的数据配方" class="w-full h-60 sm:h-72 md:h-80 object-cover sm:rounded-t-large dark:brightness-75" />
+			
+			<div class="w-full flex items-center absolute bottom-0 justify-start">
+				<h1 class="article-title-cover text-center mx-6 my-6 text-second-text-color bg-background-color-transparent px-4 py-3 text-3xl sm:text-4xl md:text-5xl font-semibold backdrop-blur-lg rounded-xl border border-border-color ">论文专题讲解：Depth Anything V2：单目深度的数据配方</h1>
+			</div>
+			
+		</div>
+
+		
+		<div class="article-header flex flex-row gap-2 items-center px-2 sm:px-6 md:px-8">
+			<div class="avatar w-[46px] h-[46px] shrink-0 rounded-medium border border-border-color p-px">
+				<img src="https://charles2530.github.io/image/background/logo2.jpg">
+			</div>
+			<div class="info flex flex-col justify-between">
+				<div class="author flex items-center">
+					<span class="name text-default-text-color text-lg font-semibold">Charles</span>
+					
+					<span class="author-label ml-1.5 text-xs px-2 py-0.5 rounded-small text-third-text-color border border-shadow-color-1">Lv8</span>
+					
+				</div>
+				<div class="meta-info">
+					<div class="article-meta-info">
+    <span class="article-date article-meta-item">
+        <i class="fa-regular fa-pen-fancy"></i>&nbsp;
+        <span class="desktop">2025-09-08 09:00</span>
+        <span class="mobile">2025-09-08 09:00</span>
+        <span class="hover-info">Created</span>
+    </span>
+    
+        <span class="article-date article-meta-item">
+            <i class="fa-regular fa-wrench"></i>&nbsp;
+            <span class="desktop">2025-09-08 09:00</span>
+            <span class="mobile">2025-09-08 09:00</span>
+            <span class="hover-info">Updated</span>
+        </span>
+    
+
+    
+        <span class="article-categories article-meta-item">
+            <i class="fa-regular fa-folders"></i>&nbsp;
+            <ul>
+                
+                
+                    
+                        
+                        <li>
+                            <a href="/categories/AI/">AI</a>&nbsp;
+                        </li>
+                    
+                    
+                
+                    
+                        
+                            <li>></li>
+                        
+                        <li>
+                            <a href="/categories/AI/%E8%AE%BA%E6%96%87%E4%B8%93%E9%A2%98%E8%AE%B2%E8%A7%A3/">论文专题讲解</a>&nbsp;
+                        </li>
+                    
+                    
+                
+            </ul>
+        </span>
+    
+    
+        <span class="article-tags article-meta-item">
+            <i class="fa-regular fa-tags"></i>&nbsp;
+            <ul>
+                
+                    <li>
+                        <a href="/tags/AI/">AI</a>&nbsp;
+                    </li>
+                
+                    <li>
+                        | <a href="/tags/%E5%85%B7%E8%BA%AB%E6%99%BA%E8%83%BD/">具身智能</a>&nbsp;
+                    </li>
+                
+                    <li>
+                        | <a href="/tags/%E6%95%B0%E6%8D%AE%E4%B8%8E%E8%AF%84%E6%B5%8B/">数据与评测</a>&nbsp;
+                    </li>
+                
+                    <li>
+                        | <a href="/tags/%E8%AE%BA%E6%96%87%E4%B8%93%E9%A2%98/">论文专题</a>&nbsp;
+                    </li>
+                
+            </ul>
+        </span>
+    
+
+    
+    
+        <span class="article-wordcount article-meta-item">
+            <i class="fa-regular fa-typewriter"></i>&nbsp;<span>6.4k Words</span>
+        </span>
+    
+    
+        <span class="article-min2read article-meta-item">
+            <i class="fa-regular fa-clock"></i>&nbsp;<span>24 Mins</span>
+        </span>
+    
+    
+        <span class="article-pv article-meta-item">
+            <i class="fa-regular fa-eye"></i>&nbsp;<span id="busuanzi_value_page_pv"></span>
+        </span>
+    
+</div>
+
+				</div>
+			</div>
+		</div>
+		
+
+		
+
+
+		<div class="article-content markdown-body px-2 sm:px-6 md:px-8 pb-8">
+			<div class="callout callout--titled info mb-4 rounded-small shadow-redefine-flat bg-(--callout-bg-color) p-3 pl-1 relative flex flex-row gap-2"><div role="none" class="rounded-full self-stretch w-0.5 bg-(--callout-primary-color) shrink-0 opacity-60"></div><div class="flex flex-col gap-2"><div class="callout__title flex items-center gap-2 font-semibold tracking-tight">论文信息</div><div class="callout__content markdown-body flex-1 min-w-0"><p><strong>论文题名：</strong> Depth Anything V2。<br><br />
+<strong>作者：</strong> Lihe Yang、Bingyi Kang、Zilong Huang、Zhen Zhao、Xiaogang Xu、Jiashi Feng、Hengshuang Zhao。<br><br />
+<strong>机构：</strong> 未在公开元数据中稳定解析；以 arXiv/PDF 或官方页 affiliation block 为准。<br><br />
+<strong>时间 / 主题：</strong> 2024-06；具身智能。<br><br />
+<strong>arXiv / 官方报告：</strong> arXiv：<a class="link"   target="_blank" rel="noopener" href="https://arxiv.org/abs/2406.09414" >2406.09414<i class="fa-solid fa-arrow-up-right ml-[0.2em] font-light align-text-top text-[0.7em] link-icon"></i></a>；官方材料：<a class="link"   target="_blank" rel="noopener" href="https://depth-anything-v2.github.io/" >depth-anything-v2.github.io/<i class="fa-solid fa-arrow-up-right ml-[0.2em] font-light align-text-top text-[0.7em] link-icon"></i></a>。<br><br />
+<strong>GitHub / 项目：</strong> GitHub：<a class="link"   target="_blank" rel="noopener" href="https://github.com/DepthAnything/Depth-Anything-V2" >github.com/DepthAnything/Depth-Anything-V2<i class="fa-solid fa-arrow-up-right ml-[0.2em] font-light align-text-top text-[0.7em] link-icon"></i></a>；项目页：<a class="link"   target="_blank" rel="noopener" href="https://depth-anything-v2.github.io/" >depth-anything-v2.github.io/<i class="fa-solid fa-arrow-up-right ml-[0.2em] font-light align-text-top text-[0.7em] link-icon"></i></a>。<br><br />
+<strong>元数据来源与核验口径：</strong> 来源：<a class="link"   target="_blank" rel="noopener" href="https://arxiv.org/abs/2406.09414" >arXiv<i class="fa-solid fa-arrow-up-right ml-[0.2em] font-light align-text-top text-[0.7em] link-icon"></i></a>；<a class="link"   target="_blank" rel="noopener" href="https://github.com/DepthAnything/Depth-Anything-V2" >GitHub API / repo<i class="fa-solid fa-arrow-up-right ml-[0.2em] font-light align-text-top text-[0.7em] link-icon"></i></a>；<a class="link"   target="_blank" rel="noopener" href="https://depth-anything-v2.github.io/" >官方 / 项目材料<i class="fa-solid fa-arrow-up-right ml-[0.2em] font-light align-text-top text-[0.7em] link-icon"></i></a>；Checked Date：2026-06-04；Repro Status：Paper / official materials reviewed, independent reproduction not claimed。</p></div></div></div>
+<h2 id="原论文故事线"><a class="markdownIt-Anchor" href="#原论文故事线"></a> 原论文故事线</h2>
+<h3 id="研究背景"><a class="markdownIt-Anchor" href="#研究背景"></a> 研究背景</h3>
+<p>Depth Anything V2 仍然属于 monocular depth estimation，但它不是单纯换一个网络结构，而是重新审视单目深度基础模型的数据来源。DA1 已经证明，大规模无标注图像配合 teacher-student 和 DINOv2 语义先验，可以显著提升开放域深度泛化。与此同时，Marigold、Geowizard 等 diffusion depth model 展示了更强细节，但推理更慢；传统 discriminative depth model 高效，却容易在透明、反光、薄结构和边界上变粗。</p>
+<p>对具身智能来说，深度模型不是视觉 demo，而是抓取、导航、避障和数据质检的几何底座。错误的边界、缺失的透明物体或过平滑的薄结构，都会传递到动作规划里。DA2 的背景判断是：要让高效 discriminative model 拥有接近 diffusion model 的细节，关键可能不在 fancy architecture，而在训练标签是否足够干净、细致、覆盖真实分布。</p>
+<h3 id="问题challenge"><a class="markdownIt-Anchor" href="#问题challenge"></a> 问题（Challenge）</h3>
+<p>论文要解决的问题是：<strong>如何训练一个既高效又细节丰富、开放域泛化强的单目深度模型。</strong> 这个问题有挑战性，是因为真实深度标签并不天然可靠。RGB-D sensor 对透明/反光表面会缺失，stereo matching 对低纹理区域不稳，SfM/COLMAP 对动态物体和 outlier 敏感，很多真实数据的 depth map 在边界和薄结构上反而粗糙。</p>
+<p>只用 synthetic depth 可以得到完整干净的几何标签，但合成图像有 domain gap；只用真实图像可以覆盖真实分布，但标签噪声会教坏模型；只用大模型则部署成本高。DA2 要同时解决标签质量、真实分布覆盖和模型效率三件事。</p>
+<h3 id="finding"><a class="markdownIt-Anchor" href="#finding"></a> Finding</h3>
+<p>作者的 finding 是：<strong>单目深度基础模型的细节瓶颈主要来自监督信号质量，而不是缺少复杂模型结构；高精度 synthetic depth 可以训练出强 teacher，再用 teacher 伪标大规模真实图像，把“干净几何”和“真实分布”分阶段结合。</strong> 这个洞见反转了“真实深度标签一定更真实、更好”的直觉。</p>
+<p>这个 finding 能解决挑战，是因为 synthetic data 负责提供边界、薄结构、透明/反光等区域的干净深度，真实无标注图像负责提供开放世界覆盖。teacher 先从合成标签中学到细粒度几何，再为 62M 真实图像生成 pseudo labels，student 则在真实视觉分布上学习这些更干净的深度目标。这样，DA2 不必让噪声真实标签直接支配训练，也不必把模型锁在合成域。</p>
+<h3 id="方法"><a class="markdownIt-Anchor" href="#方法"></a> 方法</h3>
+<p>DA2 的训练流程分为三步。第一，用 595K 高质量 synthetic images 及其精确深度标签训练最大的 DINOv2-G + DPT teacher。第二，用这个 teacher 给约 62M 真实无标注图像生成 pseudo depth labels。第三，用这些伪标真实图训练不同规模的 student，包括 Small/Base/Large 等可部署模型。</p>
+<p>模型结构保持简单，主要是 DINOv2 encoder 加 DPT decoder。训练目标使用 scale-shift-invariant depth loss，使不同来源数据的尺度和偏移可以被对齐；同时使用 gradient matching loss 强化边界和细粒度几何。论文还训练 metric depth 版本，在 NYUv2、KITTI 等带尺度数据上微调，让基础相对深度能力迁移到米制深度估计。</p>
+<h3 id="结论"><a class="markdownIt-Anchor" href="#结论"></a> 结论</h3>
+<p>实验表明，DA2 在作者提出的 DA-2K 相对深度 benchmark 上显著优于 DA1、MiDaS 和多种 diffusion-based depth model，同时推理速度远快于 Marigold/DepthFM 等生成式方法。论文强调 DA2 在透明、反光、薄结构和高分辨率边界上明显更好；在 Transparent Surface Challenge 上，DA2 zero-shot 得分达到 83.6%，而 MiDaS 和 DA1 明显更低。DA2 还展示了不同模型尺寸的速度/精度权衡，并通过 metric depth fine-tuning 刷新 NYUv2、KITTI 等设置下的结果。</p>
+<p>消融实验支撑了数据配方判断：只用真实噪声标签会伤害细节，只用 synthetic 又有 domain gap；大 teacher 对 synthetic-to-real transfer 很关键；gradient matching loss 能改善 fine-grained predictions；pseudo-labeled real images 是把模型带回真实分布的关键。边界是基础 DA2 输出仍是 affine-invariant / relative depth，不天然给出绝对尺度，真实机器人应用仍需标定、传感器融合和安全控制。</p>
+<h3 id="关键术语"><a class="markdownIt-Anchor" href="#关键术语"></a> 关键术语</h3>
+<ul>
+<li><strong>Monocular Depth Estimation, MDE（单目深度估计）</strong>：从单张 RGB 图像预测每个像素的深度或相对深度。</li>
+<li><strong>Synthetic Depth Labels（合成深度标签）</strong>：由渲染或仿真生成的深度真值，视觉分布可能不真实，但几何标签更干净完整。</li>
+<li><strong>Pseudo Labels（伪标签）</strong>：teacher model 为无标注真实图像生成的训练目标。</li>
+<li><strong>Scale-Shift-Invariant Loss（尺度-偏移不变损失）</strong>：比较深度形状前先对齐尺度和偏移，适合相对深度学习。</li>
+<li><strong>Gradient Matching Loss（梯度匹配损失）</strong>：约束深度图局部梯度，使边界和薄结构更清晰。</li>
+<li><strong>Metric Depth（米制深度）</strong>：带真实物理尺度的深度，通常需要额外有尺度数据微调。</li>
+</ul>
+<p>Depth Anything V2 放在具身智能专题里，不是因为它直接输出机器人动作，而是因为它补了机器人闭环里最基础的视觉状态：<strong>从普通 RGB 图像得到更细、更稳、更开放域的深度先验</strong>。抓取、导航、避障、重建、VLA 状态编码和仿真数据质检，都需要这层几何信号。</p>
+<p>DA2 的核心贡献很朴素：它几乎没有靠新奇结构取胜，而是把单目深度训练的数据链路重新排了一遍：</p>
+<div class="code-container" data-rel="Text"><figure class="iseeu highlight text"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br></pre></td><td class="code"><pre><span class="line">precise synthetic labels</span><br><span class="line">  -&gt; train the largest DINOv2-G teacher</span><br><span class="line">  -&gt; pseudo-label 62M real images</span><br><span class="line">  -&gt; train smaller and deployable students on pseudo-labeled real images</span><br></pre></td></tr></table></figure></div>
+<p>这条路线解释了为什么 DA2 能同时接近 diffusion depth model 的细节、保持 discriminative depth model 的效率，并比 <a href="/2026/05/11/ai-files-paper-deep-dives-embodied-ai-depth-anything/">DA1</a> 更能处理透明、反光、复杂布局和薄结构。</p>
+<h2 id="它的效率贡献是什么"><a class="markdownIt-Anchor" href="#它的效率贡献是什么"></a> 它的效率贡献是什么</h2>
+<table>
+<thead>
+<tr>
+<th>维度</th>
+<th>贡献</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>节省的成本</td>
+<td>不是依赖大规模人工深度标注，而是用 595K 高质量合成深度训练 teacher，再把 62M 真实无标注图像转成 pseudo labels；学生模型从 24.8M 到 335.3M 可部署</td>
+</tr>
+<tr>
+<td>核心机制</td>
+<td>synthetic teacher、label-level distillation、pseudo-labeled real images、DINOv2 + DPT、scale-shift-invariant / gradient matching loss</td>
+</tr>
+<tr>
+<td>对具身主线的意义</td>
+<td>给 VLA、几何规划、资产重建和数据质检提供单目深度底座；也是 <a href="/2026/05/11/ai-files-paper-deep-dives-embodied-ai-depth-anything-3/">Depth Anything 3</a> 继续扩展到任意视角几何的重要前置</td>
+</tr>
+<tr>
+<td>主要风险</td>
+<td>基础模型输出仍是 affine-invariant inverse depth，不天然拥有绝对尺度；metric depth 需要额外 fine-tune；单目估深度不能替代标定、RGB-D、力控和安全层</td>
+</tr>
+<tr>
+<td>应接到本站哪里</td>
+<td><a href="/2026/05/11/ai-files-paper-deep-dives-embodied-ai-depth-anything/">Depth Anything</a>、<a href="/2026/05/11/ai-files-embodied-ai-cameras-depth-and-robot-vision/">相机、深度与机器人视觉</a>、<a href="/2026/05/11/ai-files-embodied-ai-asset-perception-grasp-and-trajectory-pipeline/">资产到轨迹：感知、抓取与数据管线</a>、<a href="/2026/05/11/ai-files-paper-deep-dives-embodied-ai-depth-anything-3/">Depth Anything 3</a></td>
+</tr>
+</tbody>
+</table>
+<h2 id="论文位置"><a class="markdownIt-Anchor" href="#论文位置"></a> 论文位置</h2>
+<p>DA2 回答的是一个很具体的问题：<strong>单目深度模型到底是因为 discriminative architecture 不够强才缺细节，还是因为训练标签本身太粗、太噪？</strong></p>
+<p>论文的判断是后者。<a href="/2026/05/11/ai-files-paper-deep-dives-embodied-ai-depth-anything/">DA1</a>、MiDaS、Metric3D 这类 discriminative depth 模型通常很快、泛化好，但在透明物体、反光表面、薄结构和边界细节上容易糊。Marigold、Geowizard 这类基于 Stable Diffusion 的 depth model 细节更强，但推理重、速度慢，也不一定在复杂真实场景里更稳。</p>
+<p>DA2 的目标是把这两边的优点合起来：</p>
+<ul>
+<li>保留 DINOv2 + DPT 这类 discriminative model 的效率和开放域泛化；</li>
+<li>用高精度 synthetic depth 把薄结构、边界、透明和反光监督补上；</li>
+<li>用大规模真实无标注图像把 synthetic-to-real 的 domain gap 补上；</li>
+<li>用 teacher-student 方式把 1.3B teacher 的能力迁移到小模型。</li>
+</ul>
+<p><img  
+                     lazyload
+                     src="/images/loading.svg"
+                     data-src="/image/ai-notes/images/paper-deep-dives/embodied-ai/depth-anything-v2/figure-1-teaser.png"
+                      alt="Depth Anything V2 teaser 原论文图" 
+                ></p>
+<p><small>图源：<code>Depth Anything V2</code>，Figure 1。原论文图意：DA2 相比 DA1 有更细的结构和更强鲁棒性；相比 SD-based depth model，在效率、参数量和精度上更适合实际使用。</small></p>
+<p><strong>DA2 teaser 先读数据配方带来的深度细节。</strong><br />
+<strong>输入输出</strong>：输入是真实/合成图像、伪标签和深度监督，输出是更稳的单目深度模型。<br />
+<strong>效率机制</strong>：通过数据配方和伪标签质量控制改善深度泛化。<br />
+<strong>对主线意义</strong>：它帮助世界模型获得更稳几何观测，但不负责动作后果。<br />
+<strong>不能证明什么</strong>：深度 benchmark 不能替代机器人闭环和接触失败回放。</p>
+<h2 id="为什么真实深度标签反而会伤模型"><a class="markdownIt-Anchor" href="#为什么真实深度标签反而会伤模型"></a> 为什么真实深度标签反而会伤模型</h2>
+<p>这篇论文最值得记住的第一点，是它把“真实标注数据更多一定更好”这个直觉拆掉了。</p>
+<p>真实深度标签常来自 RGB-D sensor、stereo matching、SfM / COLMAP、LiDAR 或其他重建管线。这些数据当然有价值，但它们在单目深度基础模型训练里有几个明显问题：</p>
+<table>
+<thead>
+<tr>
+<th>Source of real depth</th>
+<th>Typical noise</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Depth sensor</td>
+<td>transparent / reflective surfaces are missing or wrong</td>
+</tr>
+<tr>
+<td>Stereo matching</td>
+<td>low-texture or repetitive patterns are unstable</td>
+</tr>
+<tr>
+<td>SfM / COLMAP</td>
+<td>dynamic objects and outliers can break geometry</td>
+</tr>
+<tr>
+<td>Dataset post-processing</td>
+<td>ignored masks and sparse maps remove fine structures</td>
+</tr>
+</tbody>
+</table>
+<p>对机器人来说，这些问题不是学术细枝末节。玻璃杯、镜面、电器屏幕、细杆、网格、透明包装、桌面边缘，恰恰是抓取、避障和放置里最容易出错的区域。如果训练标签在这些区域本来就是空洞或错误的，模型学到的就会是“看起来合理但几何上不可靠”的深度。</p>
+<p>DA2 的关键观察是：<strong>合成图像的视觉分布不如真实图像自然，但它的深度标签可以是真正完整、干净、边界精确的。</strong></p>
+<p><img  
+                     lazyload
+                     src="/images/loading.svg"
+                     data-src="/image/ai-notes/images/paper-deep-dives/embodied-ai/depth-anything-v2/figure-4-real-synthetic-labels.png"
+                      alt="Real and synthetic depth labels 原论文图" 
+                ></p>
+<p><small>图源：<code>Depth Anything V2</code>，Figure 4。原论文图意：真实深度标签经常粗糙或缺失细节，而 synthetic depth 能保留薄结构、边界和透明/反光物体的真实几何；用 synthetic labels 训练出的模型也更容易保住细粒度预测。</small></p>
+<p>这不是说 synthetic data 单独就够。论文紧接着指出 synthetic data 有两个硬伤：分布偏移和场景覆盖不足。图像风格太干净、布局太规整、类别太有限，导致小模型直接从 synthetic transfer 到真实图像时会崩。</p>
+<p><img  
+                     lazyload
+                     src="/images/loading.svg"
+                     data-src="/image/ai-notes/images/paper-deep-dives/embodied-ai/depth-anything-v2/figure-5-encoder-transfer.png"
+                      alt="Synthetic-to-real transfer 原论文图" 
+                ></p>
+<p><small>图源：<code>Depth Anything V2</code>，Figure 5。原论文图意：只在 synthetic images 上训练后，只有 DINOv2-G 能较好迁移到真实图像；较小模型和其他 encoder 容易出现明显泛化问题。</small></p>
+<p>即使用 DINOv2-G 这个最大 teacher，只靠 synthetic 训练也不稳。论文展示了 sky 和 human head 的失败案例：teacher 在 synthetic training set 覆盖不到的真实模式上仍会犯错。</p>
+<p><img  
+                     lazyload
+                     src="/images/loading.svg"
+                     data-src="/image/ai-notes/images/paper-deep-dives/embodied-ai/depth-anything-v2/figure-6-synthetic-only-failure.png"
+                      alt="DINOv2-G synthetic-only failure 原论文图" 
+                ></p>
+<p><small>图源：<code>Depth Anything V2</code>，Figure 6。原论文图意：只用 synthetic images 训练的 DINOv2-G teacher 仍可能在真实天空、人像等分布覆盖不足的区域失败。</small></p>
+<p>所以 DA2 的方案不是“synthetic 替代 real”，而是更精细的三段式分工：</p>
+<ol>
+<li>synthetic labels 用来训练最强 teacher，保证几何监督干净；</li>
+<li>unlabeled real images 用来覆盖真实视觉分布；</li>
+<li>teacher 给真实图像打 pseudo labels，学生只学习这批更真实、更细的 pseudo-labeled real images。</li>
+</ol>
+<h2 id="训练总路线"><a class="markdownIt-Anchor" href="#训练总路线"></a> 训练总路线</h2>
+<p>DA2 的 Figure 7 可以看成整篇论文的工程路线图。</p>
+<p><img  
+                     lazyload
+                     src="/images/loading.svg"
+                     data-src="/image/ai-notes/images/paper-deep-dives/embodied-ai/depth-anything-v2/figure-7-training-pipeline.png"
+                      alt="Depth Anything V2 training pipeline 原论文图" 
+                ></p>
+<p><small>图源：<code>Depth Anything V2</code>，Figure 7。原论文图意：先用 precise synthetic images 训练最大 teacher，再用 teacher 给 unlabeled real images 生成 pseudo labels，最后用 pseudo-labeled real images 训练 student models。</small></p>
+<p><strong>训练 pipeline 要看 synthetic teacher 到 pseudo-real student。</strong><br />
+左侧 synthetic images 的优点是 <code>highly precise</code>，缺点是 <code>distribution shift</code> 和 <code>limited diversity</code>。中间 unlabeled real images 的作用是引入真实世界分布。右侧 pseudo-labeled real images 同时拥有真实图像分布和 teacher 生成的细粒度深度标签，所以更适合作为学生模型的最终训练数据。</p>
+<p>关键点是学生阶段不是把 synthetic 和 pseudo-real 简单混起来。论文的 ablation 显示，对 ViT-S / ViT-B 这类小模型，<strong>只用 pseudo-labeled real images</strong> 反而略好。这说明 teacher 已经把 synthetic 的干净几何知识转译到了真实图像上，学生再直接学习真实分布更有效。</p>
+<h2 id="训练数据"><a class="markdownIt-Anchor" href="#训练数据"></a> 训练数据</h2>
+<p>Table 7 is redrawn below with the original English fields.</p>
+<table>
+<thead>
+<tr>
+<th>Dataset</th>
+<th>Indoor</th>
+<th>Outdoor</th>
+<th># Images</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Precise Synthetic Images (595K)</strong></td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>BlendedMVS</td>
+<td>✓</td>
+<td>✓</td>
+<td>115K</td>
+</tr>
+<tr>
+<td>Hypersim</td>
+<td>✓</td>
+<td></td>
+<td>60K</td>
+</tr>
+<tr>
+<td>IRS</td>
+<td>✓</td>
+<td></td>
+<td>103K</td>
+</tr>
+<tr>
+<td>TartanAir</td>
+<td>✓</td>
+<td>✓</td>
+<td>306K</td>
+</tr>
+<tr>
+<td>VKITTI 2</td>
+<td></td>
+<td>✓</td>
+<td>20K</td>
+</tr>
+<tr>
+<td><strong>Pseudo-labeled Real Images (62M)</strong></td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>BDD100K</td>
+<td></td>
+<td>✓</td>
+<td>8.2M</td>
+</tr>
+<tr>
+<td>Google Landmarks</td>
+<td></td>
+<td>✓</td>
+<td>4.1M</td>
+</tr>
+<tr>
+<td>ImageNet-21K</td>
+<td>✓</td>
+<td>✓</td>
+<td>13.1M</td>
+</tr>
+<tr>
+<td>LSUN</td>
+<td>✓</td>
+<td></td>
+<td>9.8M</td>
+</tr>
+<tr>
+<td>Objects365</td>
+<td>✓</td>
+<td>✓</td>
+<td>1.7M</td>
+</tr>
+<tr>
+<td>Open Images V7</td>
+<td>✓</td>
+<td>✓</td>
+<td>7.8M</td>
+</tr>
+<tr>
+<td>Places365</td>
+<td>✓</td>
+<td>✓</td>
+<td>6.5M</td>
+</tr>
+<tr>
+<td>SA-1B</td>
+<td>✓</td>
+<td>✓</td>
+<td>11.1M</td>
+</tr>
+</tbody>
+</table>
+<p><small>表源：<code>Depth Anything V2</code>，Table 7。原论文表格要点：teacher 阶段使用 5 个高精度 synthetic datasets；student 阶段使用 8 个真实无标注图像源，经 teacher 生成 pseudo depth 后训练。</small></p>
+<p>这里有两个很有工程味的选择。</p>
+<p>第一，DA2 不对数据集做复杂重平衡，而是直接 concatenate training datasets。这个选择看起来粗糙，但它强调了作者真正依赖的是“标签质量 + 总体覆盖 + DINOv2 预训练先验”，不是复杂 sampling policy。</p>
+<p>第二，论文在 appendix 里专门分析了 unlabeled data 的必要性。只用单一 SA-1B 训练更多轮，不能替代多来源 62M 图像。原因很直接：单一数据源的循环次数不能补足场景多样性。对具身系统也一样，重复采很多相似桌面轨迹，不能替代厨房、仓库、户外、透明物体、拥挤遮挡和失败恢复的覆盖。</p>
+<h2 id="模型结构没有花活但分工清楚"><a class="markdownIt-Anchor" href="#模型结构没有花活但分工清楚"></a> 模型结构：没有花活，但分工清楚</h2>
+<p>DA2 结构上延续 <a href="/2026/05/11/ai-files-paper-deep-dives-embodied-ai-depth-anything/">Depth Anything V1</a>：DINOv2 encoder + DPT depth decoder。</p>
+<table>
+<thead>
+<tr>
+<th>Component</th>
+<th>DA2 choice</th>
+<th>Why it matters</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Encoder</td>
+<td>DINOv2 ViT-S / B / L / G</td>
+<td>继承大规模视觉预训练的开放域语义和几何先验</td>
+</tr>
+<tr>
+<td>Decoder</td>
+<td>DPT</td>
+<td>把 ViT 多尺度特征重组为 dense depth map</td>
+</tr>
+<tr>
+<td>Output</td>
+<td>affine-invariant inverse depth</td>
+<td>更适合跨数据集相对深度训练，但不直接给绝对尺度</td>
+</tr>
+<tr>
+<td>Model scales</td>
+<td>24.8M, 97.5M, 335.3M, 1.3B</td>
+<td>从部署小模型到最大 teacher 覆盖不同成本区间</td>
+</tr>
+</tbody>
+</table>
+<p>官方仓库发布的相对深度模型包括：</p>
+<table>
+<thead>
+<tr>
+<th>Model</th>
+<th>Params</th>
+<th>Role</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Depth-Anything-V2-Small</td>
+<td>24.8M</td>
+<td>实时、移动端或轻量感知候选</td>
+</tr>
+<tr>
+<td>Depth-Anything-V2-Base</td>
+<td>97.5M</td>
+<td>质量和成本折中</td>
+</tr>
+<tr>
+<td>Depth-Anything-V2-Large</td>
+<td>335.3M</td>
+<td>常用高质量推理基线</td>
+</tr>
+<tr>
+<td>Depth-Anything-V2-Giant</td>
+<td>1.3B</td>
+<td>论文 teacher / 最强模型尺度</td>
+</tr>
+</tbody>
+</table>
+<p>对机器人应用要特别小心 <code>affine-invariant inverse depth</code> 这句话。基础 DA2 更擅长相对深度：哪个更近、边界在哪里、结构如何连续。它不保证“这个点离相机 0.37 米”。如果任务需要绝对距离，仍要接 metric depth fine-tuning、相机标定、多视角几何或真实 depth sensor。</p>
+<h2 id="损失函数和训练细节"><a class="markdownIt-Anchor" href="#损失函数和训练细节"></a> 损失函数和训练细节</h2>
+<p>DA2 的训练细节非常值得看，因为它的收益主要来自数据和目标函数配合，而不是换了一个大模型名。</p>
+<h3 id="1-teacher-stage"><a class="markdownIt-Anchor" href="#1-teacher-stage"></a> 1. Teacher stage</h3>
+<p>teacher 使用 DINOv2-G，纯 synthetic data 训练：</p>
+<table>
+<thead>
+<tr>
+<th>Setting</th>
+<th>Value</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Backbone</td>
+<td>DINOv2-G</td>
+</tr>
+<tr>
+<td>Decoder</td>
+<td>DPT</td>
+</tr>
+<tr>
+<td>Training data</td>
+<td>595K precise synthetic labeled images</td>
+</tr>
+<tr>
+<td>Input resolution</td>
+<td><code>518 x 518</code> after resizing shorter side to <code>518</code> and random crop</td>
+</tr>
+<tr>
+<td>Batch size</td>
+<td><code>64</code></td>
+</tr>
+<tr>
+<td>Iterations</td>
+<td><code>160K</code></td>
+</tr>
+<tr>
+<td>Optimizer</td>
+<td>Adam</td>
+</tr>
+<tr>
+<td>Encoder learning rate</td>
+<td><code>5e-6</code></td>
+</tr>
+<tr>
+<td>Decoder learning rate</td>
+<td><code>5e-5</code></td>
+</tr>
+<tr>
+<td>Dataset sampling</td>
+<td>concatenate datasets, no balancing</td>
+</tr>
+</tbody>
+</table>
+<p>teacher 阶段的目标是“宁可视觉分布不完整，也要深度标签干净”。它用 synthetic depth 教会模型细边界、薄结构、透明和反光这些真实标签经常坏掉的区域。</p>
+<h3 id="2-pseudo-labeling-stage"><a class="markdownIt-Anchor" href="#2-pseudo-labeling-stage"></a> 2. Pseudo-labeling stage</h3>
+<p>teacher 给 62M 真实无标注图像生成 pseudo depth。这个阶段不是普通 feature distillation，而是 label-level distillation：学生看到的是真实图像和 teacher 生成的 dense depth label。</p>
+<p>论文强调这种做法比直接做 feature-level / logit-level distillation 更稳，尤其当 teacher 和 student 尺度差距很大时。直观上，学生不必模仿 teacher 的内部表征，只要学习 teacher 在真实图像上输出的深度结构。</p>
+<p><img  
+                     lazyload
+                     src="/images/loading.svg"
+                     data-src="/image/ai-notes/images/paper-deep-dives/embodied-ai/depth-anything-v2/figure-17-pseudo-labels.png"
+                      alt="Pseudo labels 原论文图" 
+                ></p>
+<p><small>图源：<code>Depth Anything V2</code>，Figure 17。原论文图意：teacher 在 BDD100K、Google Landmarks、ImageNet-21K、LSUN、Objects365、Open Images V7、Places365 和 SA-1B 等不同真实图像源上生成 pseudo depth labels。</small></p>
+<h3 id="3-student-stage"><a class="markdownIt-Anchor" href="#3-student-stage"></a> 3. Student stage</h3>
+<p>student 在 pseudo-labeled real images 上训练：</p>
+<table>
+<thead>
+<tr>
+<th>Setting</th>
+<th>Value</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Student backbones</td>
+<td>DINOv2 ViT-S / ViT-B / ViT-L / ViT-G</td>
+</tr>
+<tr>
+<td>Training data</td>
+<td>pseudo-labeled real images</td>
+</tr>
+<tr>
+<td>Input resolution</td>
+<td><code>518 x 518</code></td>
+</tr>
+<tr>
+<td>Batch size</td>
+<td><code>192</code></td>
+</tr>
+<tr>
+<td>Iterations</td>
+<td><code>480K</code></td>
+</tr>
+<tr>
+<td>Optimizer</td>
+<td>Adam</td>
+</tr>
+<tr>
+<td>Encoder learning rate</td>
+<td><code>5e-6</code></td>
+</tr>
+<tr>
+<td>Decoder learning rate</td>
+<td><code>5e-5</code></td>
+</tr>
+<tr>
+<td>Dataset sampling</td>
+<td>concatenate datasets, no balancing</td>
+</tr>
+<tr>
+<td>Pseudo-label filtering</td>
+<td>ignore top-10% largest-loss regions per pseudo-labeled sample</td>
+</tr>
+</tbody>
+</table>
+<p>忽略每个 pseudo-labeled sample 中 top-10% largest-loss regions 是一个很实用的降噪技巧。teacher 再强也会在某些区域犯错；把这些区域从训练损失里排掉，可以避免学生被 pseudo-label 的局部错误拖偏。</p>
+<h3 id="4-loss-design"><a class="markdownIt-Anchor" href="#4-loss-design"></a> 4. Loss design</h3>
+<p>在 labeled synthetic images 上，DA2 使用两个 MiDaS 系目标：</p>
+<table>
+<thead>
+<tr>
+<th>Loss</th>
+<th>Role</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>L_ssi</code></td>
+<td>scale- and shift-invariant loss，约束相对深度结构</td>
+</tr>
+<tr>
+<td><code>L_gm</code></td>
+<td>gradient matching loss，强调边界、薄结构和局部几何变化</td>
+</tr>
+</tbody>
+</table>
+<p>论文设置 <code>L_ssi : L_gm = 1 : 2</code>。这个比例很关键，因为 DA2 发现 gradient matching loss 只有在 synthetic labels 足够完整、足够细时才真正有用。如果真实 depth map 本身粗糙、稀疏或有 ignored holes，梯度损失只是在强化噪声和缺失。</p>
+<p><img  
+                     lazyload
+                     src="/images/loading.svg"
+                     data-src="/image/ai-notes/images/paper-deep-dives/embodied-ai/depth-anything-v2/figure-10-gradient-matching-loss.png"
+                      alt="Gradient matching loss 原论文图" 
+                ></p>
+<p><small>图源：<code>Depth Anything V2</code>，Figure 10。原论文图意：在 synthetic labels 上提高 gradient matching loss 权重，会让细结构和边界更清晰；论文最终取权重 2.0 作为精度和锐度折中。</small></p>
+<p>在 pseudo-labeled real images 上，论文还沿用 DA1 的 feature alignment loss，用来保留 DINOv2 encoder 里的语义信息。这个设计对具身场景有意义：深度图不只是几何连续面，还要和物体、场景、语义边界对齐，否则 VLA 或 planner 消费时会出现“深度边界和对象边界错位”的问题。</p>
+<h2 id="为什么学生只吃-pseudo-real-反而更好"><a class="markdownIt-Anchor" href="#为什么学生只吃-pseudo-real-反而更好"></a> 为什么学生只吃 pseudo-real 反而更好</h2>
+<p>DA2 的 ablation 很有意思。直觉上，学生训练似乎应该混合 synthetic labeled data 和 pseudo-labeled real data。但论文发现，对 ViT-S 和 ViT-B，去掉 synthetic、只用 pseudo-labeled real images 还略好。</p>
+<p>可以把原因理解成两层。</p>
+<p>第一，synthetic 的价值已经被 teacher 吸收了。teacher 通过 synthetic labels 学到精细深度，再把这些知识翻译到真实图像上。学生直接学 pseudo-real，等于在真实视觉分布里学习 synthetic 几何知识。</p>
+<p>第二，小模型容量有限。让它同时适配 synthetic style 和 real style，可能会浪费容量；只训练在真实图像分布上，反而更符合最终推理环境。</p>
+<p><img  
+                     lazyload
+                     src="/images/loading.svg"
+                     data-src="/image/ai-notes/images/paper-deep-dives/embodied-ai/depth-anything-v2/figure-16-add-unlabeled.png"
+                      alt="Add unlabeled real images 原论文图" 
+                ></p>
+<p><small>图源：<code>Depth Anything V2</code>，Figure 16。原论文图意：ViT-S 只用 synthetic labels 时真实场景泛化不足；加入 pseudo-labeled real images 后，复杂真实图像上的鲁棒性明显提升。</small></p>
+<h2 id="评测为什么-da-2k-很重要"><a class="markdownIt-Anchor" href="#评测为什么-da-2k-很重要"></a> 评测：为什么 DA-2K 很重要</h2>
+<p>DA2 没有只盯传统 NYU-D、KITTI、Sintel、ETH3D、DIODE 这些 benchmark。论文认为这些测试集也存在 label noise、场景单一和分辨率偏低的问题，很难反映模型对透明、反光、薄结构、非真实图像、航拍、水下等开放场景的能力。</p>
+<p>因此作者构建了 DA-2K：1K images、2K relative depth pairs，覆盖 8 类场景。标注方式是稀疏成对比较：给一张图的两个点，判断哪个更近。候选点来自 SAM mask，分歧较大的模型预测会被拿出来给人工标注，标注还会交叉检查。</p>
+<p>Table 3 is redrawn below with the original English fields.</p>
+<table>
+<thead>
+<tr>
+<th>Method</th>
+<th>Marigold</th>
+<th>Geowizard</th>
+<th>DepthFM</th>
+<th>Depth Anything V1</th>
+<th>ViT-S</th>
+<th>ViT-B</th>
+<th>ViT-L</th>
+<th>ViT-G</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Accuracy (%)</td>
+<td>86.8</td>
+<td>88.1</td>
+<td>85.8</td>
+<td>88.5</td>
+<td>95.3</td>
+<td>97.0</td>
+<td>97.1</td>
+<td><strong>97.4</strong></td>
+</tr>
+</tbody>
+</table>
+<p><small>表源：<code>Depth Anything V2</code>，Table 3。原论文表格要点：在 DA-2K 上，即使最小的 DA2 ViT-S 也超过 Marigold、Geowizard、DepthFM 和 DA1；ViT-G 达到 97.4% relative depth accuracy。</small></p>
+<p>这张表的结论不是“所有传统 benchmark 都没用”，而是：当模型已经很强时，旧 benchmark 的噪声和覆盖不足会掩盖真正差异。对具身系统尤其如此，真实部署更关心透明/反光/薄结构/极端场景，而不是只在固定 indoor 或 street 数据集上刷分。</p>
+<h2 id="metric-depth能做但要单独-fine-tune"><a class="markdownIt-Anchor" href="#metric-depth能做但要单独-fine-tune"></a> Metric depth：能做，但要单独 fine-tune</h2>
+<p>DA2 基础模型输出的是 affine-invariant inverse depth，所以它天然更像相对深度 foundation model。为了服务实际应用，论文又把 encoder 转到 metric depth estimation。</p>
+<p>有两条路线：</p>
+<ol>
+<li>按 DA1 / ZoeDepth pipeline，把 DA2 encoder 放进 metric depth model，在 NYU-D、KITTI 等 in-domain data 上训练；</li>
+<li>为了服务 multi-view synthesis 等真实应用，在 Hypersim 和 Virtual KITTI synthetic datasets 上 fine-tune indoor / outdoor metric depth models。</li>
+</ol>
+<p>这对机器人很关键。抓取和避障通常需要绝对尺度；如果只用 DA2 相对深度，系统知道“杯子比桌面近”，但不知道“夹爪还差 3cm 还是 12cm”。要进入控制闭环，就必须把 DA2 和相机内参、标定、多视角、RGB-D 或 metric fine-tuning 接起来。</p>
+<h2 id="和-da1-da3-的关系"><a class="markdownIt-Anchor" href="#和-da1-da3-的关系"></a> 和 DA1、DA3 的关系</h2>
+<p>Depth Anything 系列可以这样串起来：</p>
+<table>
+<thead>
+<tr>
+<th>Version</th>
+<th>What it mainly solves</th>
+<th>What it does not solve</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><a href="/2026/05/11/ai-files-paper-deep-dives-embodied-ai-depth-anything/">Depth Anything / DA1</a></td>
+<td>大规模 unlabeled data + auxiliary supervision 带来的开放域单目深度泛化</td>
+<td>细结构、透明/反光和某些复杂几何仍不够稳</td>
+</tr>
+<tr>
+<td>Depth Anything V2 / DA2</td>
+<td>synthetic teacher + pseudo-labeled real images，让单目深度更细、更稳、更高效</td>
+<td>仍主要是单图相对深度，不直接解决多视角 pose 和 3D 融合</td>
+</tr>
+<tr>
+<td>Depth Anything 3 / DA3</td>
+<td>把 DA/DA2 的单目深度扩展到任意视角 geometry，输出 depth、ray、camera 和可融合 3D 表示</td>
+<td>不直接解决机器人动作、接触动力学和控制安全</td>
+</tr>
+</tbody>
+</table>
+<p>所以 DA2 是 DA3 的重要前置，但二者解决层级不同。DA2 把“单张图的深度估计”做得更稳；DA3 才进一步把多视角相机几何、ray map、点云融合和 3DGS 接口纳入系统。</p>
+<h2 id="对具身智能的启发"><a class="markdownIt-Anchor" href="#对具身智能的启发"></a> 对具身智能的启发</h2>
+<p>DA2 给具身智能的启发，主要不是“拿来就能控制机器人”，而是四条更底层的工程经验。</p>
+<p>第一，<strong>深度数据的标签质量比数量更关键</strong>。真实数据如果标签粗、噪、缺洞，多喂只会把错误模式教给模型。对机器人轨迹也类似：大量干净成功 demo 不一定能教会失败恢复，低质量自动标注可能会系统性污染 policy。</p>
+<p>第二，<strong>synthetic 和 real 应该分工，而不是互相替代</strong>。synthetic 适合提供精确几何和可控长尾；real 适合提供真实分布和场景多样性。DA2 用 teacher 把 synthetic precision 转译到 real distribution，这个思路很适合机器人数据引擎。</p>
+<p>第三，<strong>teacher-student 不一定要蒸馏内部特征</strong>。在 teacher 和 student 差距很大时，label-level distillation 可能更稳。具身数据里也可以借鉴：用强模型或仿真器给真实轨迹补标签，再让轻量策略在真实分布上学习。</p>
+<p>第四，<strong>评测要覆盖任务真正怕的区域</strong>。如果 benchmark 不含透明、反光、薄结构、极端视角和高分辨率场景，那么分数可能无法预测真实部署风险。对 VLA 来说也是一样，不能只测短技能成功率，还要测无效指令、遮挡、失败恢复和长尾物体。</p>
+<h2 id="局限与风险"><a class="markdownIt-Anchor" href="#局限与风险"></a> 局限与风险</h2>
+<p>DA2 的边界也要说清楚。</p>
+<ol>
+<li><strong>相对深度不是绝对测量</strong>：基础 DA2 输出 affine-invariant inverse depth，不能直接当成机器人控制里的厘米级距离。</li>
+<li><strong>单目估计仍受先验影响</strong>：新相机、新尺度物体、新材料、新安装位置都可能带来偏差。</li>
+<li><strong>pseudo labels 仍可能有系统性错误</strong>：top-10% loss filtering 能缓解局部噪声，但不能证明所有 long-tail 都被修正。</li>
+<li><strong>训练成本不低</strong>：62M unlabeled real images 和 480K student iterations 本身就是相当重的数据与计算工程。</li>
+<li><strong>不解决多视角一致性</strong>：点云融合、相机位姿、3D reconstruction 需要 DA3、VGGT、SLAM 或传统几何管线继续补。</li>
+<li><strong>不等于具身策略</strong>：它提供视觉几何状态，不负责任务规划、动作生成、接触控制和安全恢复。</li>
+</ol>
+<h2 id="阅读结论"><a class="markdownIt-Anchor" href="#阅读结论"></a> 阅读结论</h2>
+<p>DA2 最值得记住的一句话是：<strong>单目深度 foundation model 的进步，不只来自更大模型，也来自把“干净几何监督”和“真实世界分布”拆成 teacher-student 数据路线。</strong></p>
+<p>这对具身智能很有用。机器人系统最怕的不是模型不会在 benchmark 上报高分，而是感知状态在真实边界条件下不可信。DA2 提供的经验是：先用 synthetic 获取可控、精确、完整的几何标签，再用真实无标注数据扩展分布，最后把能力蒸馏进可部署模型。这个模式会反复出现在后续 VLA、世界模型、仿真数据引擎和几何底座里。</p>
+<p>读 DA2 时要分清三件事：zero-shot 相对深度说明跨域排序能力，metric depth 才涉及绝对尺度，可视化图只能作为定性证据。synthetic-only failure、add-unlabeled 和 pseudo-label 图共同说明，数据质量比单纯数据量更关键；DA2 的重点是用更干净 teacher 与合成/真实数据配方降低 DA1 的噪声继承。</p>
+<h2 id="外部精读"><a class="markdownIt-Anchor" href="#外部精读"></a> 外部精读</h2>
+<ol>
+<li><a class="link"   target="_blank" rel="noopener" href="https://arxiv.org/abs/2406.09414" >arXiv:2406.09414<i class="fa-solid fa-arrow-up-right ml-[0.2em] font-light align-text-top text-[0.7em] link-icon"></i></a></li>
+<li><a class="link"   target="_blank" rel="noopener" href="https://depth-anything-v2.github.io/" >Depth Anything V2 project page<i class="fa-solid fa-arrow-up-right ml-[0.2em] font-light align-text-top text-[0.7em] link-icon"></i></a></li>
+<li><a class="link"   target="_blank" rel="noopener" href="https://github.com/DepthAnything/Depth-Anything-V2" >DepthAnything/Depth-Anything-V2<i class="fa-solid fa-arrow-up-right ml-[0.2em] font-light align-text-top text-[0.7em] link-icon"></i></a></li>
+<li><a class="link"   target="_blank" rel="noopener" href="https://huggingface.co/datasets/depth-anything/DA-2K" >DA-2K Benchmark<i class="fa-solid fa-arrow-up-right ml-[0.2em] font-light align-text-top text-[0.7em] link-icon"></i></a></li>
+</ol>
+
+		</div>
+
+		
+		<div class="post-copyright-info w-full my-8 px-2 sm:px-6 md:px-8">
+			<div class="article-copyright-info-container">
+    <ul>
+        <li><strong>Title:</strong> 论文专题讲解：Depth Anything V2：单目深度的数据配方</li>
+        <li><strong>Author:</strong> Charles</li>
+        <li><strong>Created at
+                :</strong> 2025-09-08 09:00:00</li>
+        
+            <li>
+                <strong>Updated at
+                    :</strong> 2025-09-08 09:00:00
+            </li>
+        
+        <li>
+            <strong>Link:</strong> https://charles2530.github.io/2025/09/08/ai-files-paper-deep-dives-embodied-ai-depth-anything-v2/
+        </li>
+        <li>
+            <strong>
+                License:
+            </strong>
+            
+
+            
+                This work is licensed under <a class="license" target="_blank" rel="noopener" href="https://creativecommons.org/licenses/by-nc-sa/4.0">CC BY-NC-SA 4.0</a>.
+            
+        </li>
+    </ul>
+</div>
+
+		</div>
+		
+
+		
+		<ul class="post-tags-box text-lg mt-1.5 flex-wrap justify-center flex md:hidden">
+			
+			<li class="tag-item mx-0.5">
+				<a href="/tags/AI/">#AI</a>&nbsp;
+			</li>
+			
+			<li class="tag-item mx-0.5">
+				<a href="/tags/%E5%85%B7%E8%BA%AB%E6%99%BA%E8%83%BD/">#具身智能</a>&nbsp;
+			</li>
+			
+			<li class="tag-item mx-0.5">
+				<a href="/tags/%E6%95%B0%E6%8D%AE%E4%B8%8E%E8%AF%84%E6%B5%8B/">#数据与评测</a>&nbsp;
+			</li>
+			
+			<li class="tag-item mx-0.5">
+				<a href="/tags/%E8%AE%BA%E6%96%87%E4%B8%93%E9%A2%98/">#论文专题</a>&nbsp;
+			</li>
+			
+		</ul>
+		
+
+		
+
+		
+		<div class="article-nav my-8 flex justify-between items-center px-2 sm:px-6 md:px-8">
+			
+			<div class="article-prev border-border-color shadow-redefine-flat shadow-shadow-color-2 rounded-medium px-4 py-2 hover:shadow-redefine-flat-hover hover:shadow-shadow-color-2">
+				<a class="prev" rel="prev" href="/2025/09/09/ai-files-paper-deep-dives-embodied-ai-depth-anything/">
+					<span class="left arrow-icon flex justify-center items-center">
+						<i class="fa-solid fa-chevron-left"></i>
+					</span>
+					<span class="title flex justify-center items-center">
+						<span class="post-nav-title-item truncate max-w-48">论文专题讲解：Depth Anything：无标注图像怎样变成单目深度基础模型</span>
+						<span class="post-nav-item">Prev posts</span>
+					</span>
+				</a>
+			</div>
+			
+			
+			<div class="article-next border-border-color shadow-redefine-flat shadow-shadow-color-2 rounded-medium px-4 py-2 hover:shadow-redefine-flat-hover hover:shadow-shadow-color-2">
+				<a class="next" rel="next" href="/2025/09/06/ai-files-paper-deep-dives-embodied-ai-depth-anything-3/">
+					<span class="title flex justify-center items-center">
+						<span class="post-nav-title-item truncate max-w-48">论文专题讲解：Depth Anything 3：任意视角的 3D 几何底座</span>
+						<span class="post-nav-item">Next posts</span>
+					</span>
+					<span class="right arrow-icon flex justify-center items-center">
+						<i class="fa-solid fa-chevron-right"></i>
+					</span>
+				</a>
+			</div>
+			
+		</div>
+		
+
+
+		
+		<div class="comment-container px-2 sm:px-6 md:px-8 pb-8">
+			<div class="comments-container mt-10 w-full ">
+    <div id="comment-anchor" class="w-full h-2.5"></div>
+    <div class="comment-area-title w-full my-1.5 md:my-2.5 text-xl md:text-3xl font-bold">
+        Comments
+    </div>
+    
+
+        
+            
+    <div id="gitalk-container"></div>
+    <script data-swup-reload-script
+            src="https://cdnjs.cloudflare.com/ajax/libs/gitalk/1.8.0/gitalk.min.js"></script>
+    <script data-swup-reload-script>
+        (function() {
+            const startPath = location.pathname;
+            const startTime = Date.now();
+            const retryDelay = 200;
+            const retryLimit = 5000;
+
+            const runGitalk = () => {
+                if (location.pathname !== startPath) {
+                    return;
+                }
+
+                const container = document.getElementById('gitalk-container');
+                if (!container || typeof Gitalk === 'undefined') {
+                    if (Date.now() - startTime < retryLimit) {
+                        setTimeout(runGitalk, retryDelay);
+                    }
+                    return;
+                }
+
+                container.innerHTML = '';
+
+                let pageKey = decodeURI(location.pathname);
+                const maxLength = 50;
+                if (pageKey.length > maxLength) {
+                    pageKey = pageKey.substring(0, maxLength - 3) + '...';
+                }
+
+                try {
+                    new Gitalk({
+                        clientID: '8083299a8ee2aaf23879',
+                        clientSecret: 'a8161e81d4872181e884fdb69f7be24916b6a9d0',
+                        repo: 'Charles2530.github.io',
+                        owner: 'Charles2530',
+                        admin: ['Charles2530'],
+                        id: pageKey,
+                        language: 'en',
+                        proxy: 'https://github.com/login/oauth/access_token'
+                    }).render(container);
+                } catch (e) {
+                    window.Gitalk = null;
+                }
+            };
+
+            runGitalk();
+        })();
+    </script>
+
+
+
+        
+    
+</div>
+
+		</div>
+		
+	</div>
+
+	
+	<div class="toc-content-container">
+		<div class="post-toc-wrap">
+	<div class="post-toc">
+		<div class="toc-title">On this page</div>
+		<div class="page-title">论文专题讲解：Depth Anything V2：单目深度的数据配方</div>
+		<ol class="nav"><li class="nav-item nav-level-2"><a class="nav-link" href="#%E5%8E%9F%E8%AE%BA%E6%96%87%E6%95%85%E4%BA%8B%E7%BA%BF"><span class="nav-text"> 原论文故事线</span></a><ol class="nav-child"><li class="nav-item nav-level-3"><a class="nav-link" href="#%E7%A0%94%E7%A9%B6%E8%83%8C%E6%99%AF"><span class="nav-text"> 研究背景</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#%E9%97%AE%E9%A2%98challenge"><span class="nav-text"> 问题（Challenge）</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#finding"><span class="nav-text"> Finding</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#%E6%96%B9%E6%B3%95"><span class="nav-text"> 方法</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#%E7%BB%93%E8%AE%BA"><span class="nav-text"> 结论</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#%E5%85%B3%E9%94%AE%E6%9C%AF%E8%AF%AD"><span class="nav-text"> 关键术语</span></a></li></ol></li><li class="nav-item nav-level-2"><a class="nav-link" href="#%E5%AE%83%E7%9A%84%E6%95%88%E7%8E%87%E8%B4%A1%E7%8C%AE%E6%98%AF%E4%BB%80%E4%B9%88"><span class="nav-text"> 它的效率贡献是什么</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#%E8%AE%BA%E6%96%87%E4%BD%8D%E7%BD%AE"><span class="nav-text"> 论文位置</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#%E4%B8%BA%E4%BB%80%E4%B9%88%E7%9C%9F%E5%AE%9E%E6%B7%B1%E5%BA%A6%E6%A0%87%E7%AD%BE%E5%8F%8D%E8%80%8C%E4%BC%9A%E4%BC%A4%E6%A8%A1%E5%9E%8B"><span class="nav-text"> 为什么真实深度标签反而会伤模型</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#%E8%AE%AD%E7%BB%83%E6%80%BB%E8%B7%AF%E7%BA%BF"><span class="nav-text"> 训练总路线</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#%E8%AE%AD%E7%BB%83%E6%95%B0%E6%8D%AE"><span class="nav-text"> 训练数据</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#%E6%A8%A1%E5%9E%8B%E7%BB%93%E6%9E%84%E6%B2%A1%E6%9C%89%E8%8A%B1%E6%B4%BB%E4%BD%86%E5%88%86%E5%B7%A5%E6%B8%85%E6%A5%9A"><span class="nav-text"> 模型结构：没有花活，但分工清楚</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#%E6%8D%9F%E5%A4%B1%E5%87%BD%E6%95%B0%E5%92%8C%E8%AE%AD%E7%BB%83%E7%BB%86%E8%8A%82"><span class="nav-text"> 损失函数和训练细节</span></a><ol class="nav-child"><li class="nav-item nav-level-3"><a class="nav-link" href="#1-teacher-stage"><span class="nav-text"> 1. Teacher stage</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#2-pseudo-labeling-stage"><span class="nav-text"> 2. Pseudo-labeling stage</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#3-student-stage"><span class="nav-text"> 3. Student stage</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#4-loss-design"><span class="nav-text"> 4. Loss design</span></a></li></ol></li><li class="nav-item nav-level-2"><a class="nav-link" href="#%E4%B8%BA%E4%BB%80%E4%B9%88%E5%AD%A6%E7%94%9F%E5%8F%AA%E5%90%83-pseudo-real-%E5%8F%8D%E8%80%8C%E6%9B%B4%E5%A5%BD"><span class="nav-text"> 为什么学生只吃 pseudo-real 反而更好</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#%E8%AF%84%E6%B5%8B%E4%B8%BA%E4%BB%80%E4%B9%88-da-2k-%E5%BE%88%E9%87%8D%E8%A6%81"><span class="nav-text"> 评测：为什么 DA-2K 很重要</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#metric-depth%E8%83%BD%E5%81%9A%E4%BD%86%E8%A6%81%E5%8D%95%E7%8B%AC-fine-tune"><span class="nav-text"> Metric depth：能做，但要单独 fine-tune</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#%E5%92%8C-da1-da3-%E7%9A%84%E5%85%B3%E7%B3%BB"><span class="nav-text"> 和 DA1、DA3 的关系</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#%E5%AF%B9%E5%85%B7%E8%BA%AB%E6%99%BA%E8%83%BD%E7%9A%84%E5%90%AF%E5%8F%91"><span class="nav-text"> 对具身智能的启发</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#%E5%B1%80%E9%99%90%E4%B8%8E%E9%A3%8E%E9%99%A9"><span class="nav-text"> 局限与风险</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#%E9%98%85%E8%AF%BB%E7%BB%93%E8%AE%BA"><span class="nav-text"> 阅读结论</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#%E5%A4%96%E9%83%A8%E7%B2%BE%E8%AF%BB"><span class="nav-text"> 外部精读</span></a></li></ol>
+
+	</div>
+</div>
+	</div>
+	
+</div>
+
+			</div>
+
+			
+		</div>
+
+		<div class="main-content-footer">
+			<footer class="footer mt-5 py-5 h-auto text-base text-third-text-color relative border-t-2 border-t-border-color">
+    <div class="info-container py-3 text-center">
+        
+        <div class="text-center">
+            &copy;
+            
+              <span>2022</span>
+              -
+            
+            2026&nbsp;&nbsp;<i class="fa-solid fa-heart fa-beat" style="--fa-animation-duration: 0.5s; color: #f54545"></i>&nbsp;&nbsp;<a href="/">Charles</a>
+            
+                
+                <p class="post-count space-x-0.5">
+                    <span>
+                        601 posts in total
+                    </span>
+                    
+                        <span>
+                            2422.2k words in total
+                        </span>
+                    
+                </p>
+            
+        </div>
+        
+            <script data-swup-reload-script src="https://cn.vercount.one/js"></script>
+            <div class="relative text-center lg:absolute lg:right-[20px] lg:top-1/2 lg:-translate-y-1/2 lg:text-right">
+                
+                    <span id="busuanzi_container_site_uv" class="lg:!block">
+                        <span class="text-sm">VISITOR COUNT</span>
+                        <span id="busuanzi_value_site_uv"></span>
+                    </span>
+                
+                
+                    <span id="busuanzi_container_site_pv" class="lg:!block">
+                        <span class="text-sm">TOTAL PAGE VIEWS</span>
+                        <span id="busuanzi_value_site_pv"></span>
+                    </span>
+                
+            </div>
+        
+        <div class="relative text-center lg:absolute lg:left-[20px] lg:top-1/2 lg:-translate-y-1/2 lg:text-left">
+            <span class="lg:block text-sm">POWERED BY <?xml version="1.0" encoding="utf-8"?><!DOCTYPE svg PUBLIC "-//W3C//DTD SVG 1.1//EN" "http://www.w3.org/Graphics/SVG/1.1/DTD/svg11.dtd"><svg class="relative top-[2px] inline-block align-baseline" version="1.1" id="圖層_1" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" x="0px" y="0px" width="1rem" height="1rem" viewBox="0 0 512 512" enable-background="new 0 0 512 512" xml:space="preserve"><path fill="#0E83CD" d="M256.4,25.8l-200,115.5L56,371.5l199.6,114.7l200-115.5l0.4-230.2L256.4,25.8z M349,354.6l-18.4,10.7l-18.6-11V275H200v79.6l-18.4,10.7l-18.6-11v-197l18.5-10.6l18.5,10.8V237h112v-79.6l18.5-10.6l18.5,10.8V354.6z"/></svg><a target="_blank" class="text-base" href="https://hexo.io">Hexo</a></span>
+            <span class="text-sm lg:block">THEME&nbsp;<a class="text-base" target="_blank" href="https://github.com/EvanNotFound/hexo-theme-redefine">Redefine v2.9.0</a></span>
+        </div>
+        
+        
+            <div>
+                Blog up for <span class="odometer" id="runtime_days" ></span> days <span class="odometer" id="runtime_hours"></span> hrs <span class="odometer" id="runtime_minutes"></span> Min <span class="odometer" id="runtime_seconds"></span> Sec
+            </div>
+        
+        
+            <script data-swup-reload-script>
+                try {
+                    function odometer_init() {
+                    const elements = document.querySelectorAll('.odometer');
+                    elements.forEach(el => {
+                        new Odometer({
+                            el,
+                            format: '( ddd).dd',
+                            duration: 200
+                        });
+                    });
+                    }
+                    odometer_init();
+                } catch (error) {}
+            </script>
+        
+        
+            
+                
+        
+                
+        
+                
+
+                    
+                        <script data-swup-reload-script type="text/javascript" src="/js/love.js"></script>
+                    
+        
+        
+    </div>  
+</footer>
+		</div>
+	</div>
+
+	
+	<div class="post-tools">
+		<div class="post-tools-container">
+	<ul class="article-tools-list">
+		<!-- TOC aside toggle -->
+		
+		<li class="right-bottom-tools page-aside-toggle">
+			<i class="fa-regular fa-outdent"></i>
+		</li>
+		
+
+		<!-- go comment -->
+		
+		<li class="go-comment">
+			<i class="fa-regular fa-comments"></i>
+		</li>
+		
+	</ul>
+</div>
+	</div>
+	
+
+	<div class="right-side-tools-container">
+		<div class="side-tools-container">
+	<ul class="hidden-tools-list">
+		<li class="right-bottom-tools tool-font-adjust-plus flex justify-center items-center">
+			<i class="fa-regular fa-magnifying-glass-plus"></i>
+		</li>
+
+		<li class="right-bottom-tools tool-font-adjust-minus flex justify-center items-center">
+			<i class="fa-regular fa-magnifying-glass-minus"></i>
+		</li>
+
+		<li class="right-bottom-tools tool-dark-light-toggle flex justify-center items-center">
+			<i class="fa-regular fa-moon"></i>
+		</li>
+
+		<!-- rss -->
+		
+		<li class="right-bottom-tools rss flex justify-center items-center">
+			<a class="flex justify-center items-center" href="/atom.xml" target="_blank">
+				<i class="fa-regular fa-rss"></i>
+			</a>
+		</li>
+		
+
+		
+
+		<li class="right-bottom-tools tool-scroll-to-bottom flex justify-center items-center">
+			<i class="fa-regular fa-arrow-down"></i>
+		</li>
+	</ul>
+
+	<ul class="visible-tools-list">
+		<li class="right-bottom-tools toggle-tools-list flex justify-center items-center">
+			<i class="fa-regular fa-cog fa-spin"></i>
+		</li>
+		
+		<li class="right-bottom-tools tool-scroll-to-top flex justify-center items-center">
+			<i class="arrow-up fas fa-arrow-up"></i>
+			<span class="percent"></span>
+		</li>
+		
+		
+	</ul>
+</div>
+	</div>
+
+	<div class="image-viewer-container" role="dialog" aria-modal="true" aria-label="Image viewer">
+	<button class="image-viewer-close" type="button" aria-label="Close">
+		<i class="fa-solid fa-xmark"></i>
+	</button>
+	<button class="image-viewer-prev" type="button" aria-label="Prev">
+		<i class="fa-solid fa-chevron-left"></i>
+	</button>
+	<div class="image-viewer-frame">
+		<img src="" alt="">
+	</div>
+	<div class="image-viewer-exif-panel hidden absolute left-1/2 bottom-20 -translate-x-1/2 w-[min(92vw,420px)] max-h-[60vh] overflow-hidden rounded-2xl bg-background-color-transparent-80 p-4 text-left shadow-redefine-flat backdrop-blur-md" role="dialog" aria-label="EXIF" aria-hidden="true">
+		<div class="flex items-center justify-between mb-3">
+			<span class="text-sm font-semibold text-first-text-color">EXIF</span>
+			<button class="image-viewer-exif-close flex h-8 w-8 items-center justify-center rounded-full bg-background-color-transparent-80 text-first-text-color transition hover:bg-background-color-transparent-40" type="button" aria-label="Close">
+				<i class="fa-solid fa-xmark text-[0.65rem]"></i>
+			</button>
+		</div>
+		<div class="image-viewer-exif-cards grid grid-cols-1 sm:grid-cols-2 gap-3 max-h-[50vh] overflow-y-auto pr-1 scrollbar-hide"></div>
+		<template class="image-viewer-exif-card-template">
+			<div class="rounded-lg bg-background-color-transparent-40 px-3 py-2">
+				<div class="image-viewer-exif-card-header flex items-center gap-2 mb-1">
+					<i class="image-viewer-exif-card-icon fa-solid fa-circle-info text-xs text-third-text-color"></i>
+					<div class="image-viewer-exif-card-title text-xs font-semibold text-first-text-color"></div>
+				</div>
+				<div class="image-viewer-exif-card-items flex flex-col gap-1"></div>
+			</div>
+		</template>
+	</div>
+	<button class="image-viewer-exif-toggle flex items-center gap-2 hidden absolute left-1/2 bottom-6 -translate-x-1/2 rounded-full border border-border-color bg-background-color-transparent-80 px-4 py-2 text-first-text-color backdrop-blur-md transition hover:bg-background-color-transparent-40" type="button" aria-label="EXIF" aria-expanded="false">
+		<i class="fa-solid fa-circle-info text-xs"></i>
+		<span class="text-xs font-semibold uppercase tracking-wider">EXIF</span>
+	</button>
+	<button class="image-viewer-next" type="button" aria-label="Next">
+		<i class="fa-solid fa-chevron-right"></i>
+	</button>
+</div>
+
+
+	
+	<div class="search-pop-overlay">
+	<div class="popup search-popup">
+		<div class="search-header">
+			<span class="search-input-field-pre">
+				<i class="fa-solid fa-keyboard"></i>
+			</span>
+			<div class="search-input-container">
+				<input autocomplete="off" autocorrect="off" autocapitalize="off" placeholder="Search..." spellcheck="false" type="search" class="search-input">
+			</div>
+			<span class="popup-btn-close">
+				<i class="fa-solid fa-times"></i>
+			</span>
+		</div>
+		<div id="search-result">
+			<div id="no-result">
+				<i class="fa-solid fa-spinner fa-spin-pulse fa-5x fa-fw"></i>
+			</div>
+		</div>
+	</div>
+</div>
+	
+
+</main>
+
+
+
+<script src="/js/build/libs/Swup.min.js"></script>
+
+<script src="/js/build/libs/SwupSlideTheme.min.js"></script>
+
+<script src="/js/build/libs/SwupScriptsPlugin.min.js"></script>
+
+<script src="/js/build/libs/SwupProgressPlugin.min.js"></script>
+
+<script src="/js/build/libs/SwupScrollPlugin.min.js"></script>
+
+<script src="/js/build/libs/SwupPreloadPlugin.min.js"></script>
+
+<script>
+    window.swup = new Swup({
+        plugins: [
+            new SwupScriptsPlugin({
+                optin: true,
+            }),
+            new SwupProgressPlugin(),
+            new SwupScrollPlugin({
+                offset: 80,
+            }),
+            new SwupSlideTheme({
+                mainElement: ".main-content-body",
+            }),
+            new SwupPreloadPlugin(),
+        ],
+        containers: ["#swup"],
+    });
+
+    window.dispatchEvent(
+        new CustomEvent("redefine:swup:ready", {
+            detail: {
+                swup: window.swup,
+            },
+        }),
+    );
+</script>
+
+
+
+
+	
+<script src="/js/build/main.js" type="module"></script>
+
+
+
+    
+<script src="/js/build/libs/odometer.min.js"></script>
+
+    
+<link rel="stylesheet" href="/assets/odometer-theme-minimal.css">
+
+
+
+
+
+
+
+  
+<script src="/js/build/libs/Typed.min.js"></script>
+<script src="/js/build/libs/minimasonry.min.js" data-swup-reload-script=""></script>
+
+
+
+
+<script src="/js/build/libs/moment-with-locales.min.js" data-swup-reload-script=""></script>
+
+
+
+	
+</body>
+
+</html>

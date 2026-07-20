@@ -1,0 +1,1756 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="keywords" content="Charles">
+    
+    
+    <meta name="author" content="Charles">
+    
+    <!-- Completely eliminate flash of wrong theme -->
+    <script>
+        (function() {
+            const THEME_KEY = "REDEFINE-THEME-STATUS";
+            const DARK = "dark", LIGHT = "light";
+            
+            // Get preferred theme
+            function getTheme() {
+                try {
+                    const saved = localStorage.getItem(THEME_KEY);
+                    if (saved) {
+                        const { isDark } = JSON.parse(saved);
+                        return isDark ? DARK : LIGHT;
+                    }
+                } catch (e) {}
+                
+                return matchMedia("(prefers-color-scheme: dark)").matches ? DARK : LIGHT;
+            }
+            
+            // Apply theme to document
+            function applyTheme(theme) {
+                const isDark = theme === DARK;
+                const root = document.documentElement;
+                
+                // Set classes for compatibility
+                root.classList.add(theme);
+                root.classList.remove(isDark ? LIGHT : DARK);
+                root.style.colorScheme = theme;
+            }
+            
+            // Initial application
+            const theme = getTheme();
+            applyTheme(theme);
+            
+            // Listen for system preference changes
+            matchMedia("(prefers-color-scheme: dark)").addEventListener("change", ({ matches }) => {
+                // Only update if using system preference (no localStorage entry)
+                if (!localStorage.getItem(THEME_KEY)) {
+                    applyTheme(matches ? DARK : LIGHT);
+                }
+            });
+            
+            // Set body classes ASAP (before DOMContentLoaded)
+            (function() {
+                const addBodyClass = () => {
+                    const b = document.body;
+                    if (!b) return false;
+                    b.classList.add(theme + "-mode");
+                    return true;
+                };
+
+                // Try immediately
+                if (addBodyClass()) return;
+
+                // Observe until body exists
+                const mo = new MutationObserver(() => {
+                    if (addBodyClass()) mo.disconnect();
+                });
+                mo.observe(document.documentElement, { childList: true, subtree: true });
+            })();
+        })();
+    </script>
+    
+    <!-- preconnect -->
+<!--- Seo Part-->
+    
+    <link rel="canonical" href="https://charles2530.github.io/2026/03/31/ai-files-paper-deep-dives-world-models-emu3-5/"/>
+    <meta name="robots" content="index,follow">
+    <meta name="googlebot" content="index,follow">
+    <meta name="revisit-after" content="1 days">
+    
+    
+        
+        <meta name="description" content="This is Charles&#39;s Castle.">
+<meta property="og:type" content="article">
+<meta property="og:title" content="论文专题讲解：Emu3.5：原生多模态模型如何变成世界学习器">
+<meta property="og:url" content="https://charles2530.github.io/2026/03/31/ai-files-paper-deep-dives-world-models-emu3-5/index.html">
+<meta property="og:site_name" content="Charles&#39;s Castle">
+<meta property="og:description" content="This is Charles&#39;s Castle.">
+<meta property="og:locale" content="en_US">
+<meta property="og:image" content="https://charles2530.github.io/image/background/logo.jpg">
+<meta property="article:published_time" content="2026-03-31T01:00:00.000Z">
+<meta property="article:modified_time" content="2026-03-31T01:00:00.000Z">
+<meta property="article:author" content="Du Jinyang">
+<meta property="article:tag" content="AI">
+<meta property="article:tag" content="世界模型">
+<meta property="article:tag" content="论文专题">
+<meta name="twitter:card" content="summary">
+<meta name="twitter:image" content="https://charles2530.github.io/image/background/logo.jpg">
+    
+    
+    <!--- Icon Part-->
+    <link rel="icon" type="image/png" href="https://charles2530.github.io/image/background/favicon.png" sizes="192x192">
+    <link rel="apple-touch-icon" sizes="180x180" href="https://charles2530.github.io/image/background/favicon.png">
+    <meta name="theme-color" content="#A31F34">
+    <link rel="shortcut icon" href="https://charles2530.github.io/image/background/favicon.png">
+    <!--- Page Info-->
+    
+    <title>
+        
+            论文专题讲解：Emu3.5：原生多模态模型如何变成世界学习器 | Charles&#39;s Castle
+        
+    </title>
+
+    
+<link rel="stylesheet" href="/fonts/Chillax/chillax.css">
+
+
+    <!--- Inject Part-->
+    
+        
+            
+    
+            
+    
+            
+                
+                    <link rel="stylesheet" href="/katex/katex.min.css">
+                
+    
+            
+                
+                    <link rel="stylesheet" href="/css/site-polish-v2.css">
+                
+    
+            
+                
+                    <script data-swup-reload-script>
+(function() {
+  function loadBaiduAnalytics() {
+    if (window.__baiduAnalyticsLoaded) return;
+    window.__baiduAnalyticsLoaded = true;
+    window._hmt = window._hmt || [];
+    var hm = document.createElement("script");
+    hm.async = true;
+    hm.src = "https://hm.baidu.com/hm.js?8e0e5f382d14d87cbeadc33a36e71e86";
+    document.head.appendChild(hm);
+  }
+  if ("requestIdleCallback" in window) {
+    requestIdleCallback(loadBaiduAnalytics, { timeout: 3000 });
+  } else {
+    window.addEventListener("load", function() {
+      setTimeout(loadBaiduAnalytics, 1500);
+    });
+  }
+})();
+</script>
+
+                
+    
+
+    
+<link rel="stylesheet" href="/css/style.css">
+
+
+    
+        
+<link rel="stylesheet" href="/css/build/tailwind.css">
+
+    
+
+    
+<link rel="stylesheet" href="/fonts/GeistMono/geist-mono.css">
+
+    
+<link rel="stylesheet" href="/fonts/Geist/geist.css">
+
+    <!--- Font Part-->
+    
+    
+    
+    
+    
+    
+        
+<script src="/js/build/libs/anime.min.js"></script>
+
+    
+
+    <script id="hexo-configurations">
+    window.config = {"hostname":"charles2530.github.io","root":"/","language":"en","path":"search.xml"};
+    window.theme = {"articles":{"style":{"font_size":"16px","line_height":1.5,"image_border_radius":"14px","image_alignment":"center","image_caption":false,"link_icon":true,"delete_mask":false,"title_alignment":"left","headings_top_spacing":{"h1":"5rem","h2":"4rem","h3":"2.8rem","h4":"2.5rem","h5":"2.2rem","h6":"2rem"}},"word_count":{"enable":true,"count":true,"min2read":true},"author_label":{"enable":true,"auto":true,"list":["lol","Neo","God"]},"code_block":{"copy":true,"style":"mac","highlight_theme":{"light":"github","dark":"vs2015"},"font":{"enable":false,"family":null,"url":null}},"toc":{"enable":true,"max_depth":6,"number":false,"expand":true,"init_open":true},"copyright":{"enable":true,"default":"cc_by_nc_sa"},"lazyload":true,"pangu_js":false,"recommendation":{"enable":false,"title":"recommend_articles","limit":3,"mobile_limit":2,"placeholder":"https://charles2530.github.io/image/background/p3.jfif","skip_dirs":[]}},"colors":{"primary":"#A31F34","secondary":"#1890ff","default_mode":"light"},"global":{"fonts":{"chinese":{"enable":false,"family":null,"url":null},"english":{"enable":false,"family":null,"url":null},"title":{"enable":false,"family":null,"url":null}},"content_max_width":"1000px","sidebar_width":"210px","hover":{"shadow":true,"scale":true},"scroll_progress":{"bar":true,"percentage":true},"website_counter":{"url":"https://cn.vercount.one/js","enable":true,"site_pv":true,"site_uv":true,"post_pv":true},"single_page":true,"preloader":{"enable":true,"custom_message":null},"side_tools":{"gear_rotation":true,"auto_expand":false},"open_graph":{"enable":true,"image":"https://charles2530.github.io/image/background/logo.jpg","description":"This is Charles's Castle."},"google_analytics":{"enable":false,"id":null}},"home_banner":{"enable":true,"style":"fixed","image":{"light":"https://charles2530.github.io/image/background/background-light1.jpg","dark":"https://charles2530.github.io/image/background/background-dark1.jpg"},"title":"Charles's Castle","subtitle":{"text":["Happiness is best!","Never give up!","Everyday is a gift!"],"hitokoto":{"enable":false,"show_author":false,"api":"https://v1.hitokoto.cn"},"typing_speed":100,"backing_speed":80,"starting_delay":500,"backing_delay":1500,"loop":true,"smart_backspace":true},"text_color":{"light":"#000000","dark":"#d1d1b6"},"text_style":{"title_size":"3.2rem","subtitle_size":"1.5rem","line_height":1.2},"custom_font":{"enable":false,"family":null,"url":null},"social_links":{"enable":true,"style":"center","links":[{"icon":"fa-brands fa-github","url":"https://github.com/Charles2530/"},{"icon":"fa-brands fa-zhihu","url":"https://www.zhihu.com/people/yang-guang-xiao-zi-55-55"},{"icon":"fa-solid fa-at","url":"mailto:charles2530@163.com"},{"icon":"fa-brands fa-telegram","url":null},{"icon":"/images/custom-icon.svg","url":null}],"qrs":[{"icon":"fa-brands fa-weixin","qr":"https://charles2530.github.io/image/background/Wechat_icon.png"},{"icon":"/images/custom-icon.svg","qr":null}]}},"plugins":{"feed":{"enable":true},"aplayer":{"enable":false,"type":"fixed","audios":[{"name":null,"artist":null,"url":null,"cover":null,"lrc":null}]},"mermaid":{"enable":false,"version":"11.4.1","theme":{"light":"default","dark":"dark"}}},"version":"2.9.0","navbar":{"auto_hide":true,"color":{"left":"#f78736","right":"#367df7","transparency":35},"width":{"home":"1200px","pages":"1000px"},"links":{"Home":{"path":"/","icon":"fa-regular fa-house"},"Categories":{"path":"/categories","icon":"fas fa-bookmark"},"Tags":{"path":"/tags","icon":"fas fa-tags"},"About":{"icon":"fa-regular fa-user","submenus":{"Me":"https://jinyang-du.github.io/","Github":"https://github.com/Charles2530/","Blog":"https://charles2530.github.io","Statistics":"https://tongji.baidu.com/"}}},"search":{"enable":true,"preload":false}},"page_templates":{"friends_column":2,"tags_style":"blur","masonry":{"batch_size":12,"initial_batch_size":24}},"home":{"sidebar":{"enable":true,"position":"left","first_item":"menu","announcement":"This is Charles's Castle","show_on_mobile":true,"links":{"Archives":{"path":"/archives","icon":"fa-regular fa-archive"},"Photos":{"icon":"fa-solid fa-image","path":"/masonry/"},"Essays":{"icon":"fa-solid fa-message-lines","path":"/essay/"},"Friends":{"icon":"fa-solid fa-user-group","path":"/friends/"}}},"article_date_format":"auto","excerpt_length":200,"categories":{"enable":true,"limit":3},"tags":{"enable":true,"limit":3}},"footer":{"runtime":true,"icon":"<i class=\"fa-solid fa-heart fa-beat\" style=\"--fa-animation-duration: 0.5s; color: #f54545\"></i>","start":"2022/12/27 00:00:00","statistics":true,"customize":null,"icp":{"enable":false,"number":null,"url":null}},"footerStart":"2022/12/27 00:00:00","mermaid":{"style":{"light":"default","dark":"dark"}}};
+    window.lang_ago = {"second":"%s seconds ago","minute":"%s minutes ago","hour":"%s hours ago","day":"%s days ago","week":"%s weeks ago","month":"%s months ago","year":"%s years ago"};
+    window.i18n = {"search":"Search...","toc":"On this page","prev":"Prev","next":"Next","prev_posts":"Prev posts","next_posts":"Next posts","page":"Page %d","recent_posts":"Recent Posts","share":"Share","powered_by":"POWERED BY %s","theme":"THEME","rss_feed":"RSS Feed","category":"Category","categories":"Categories","tag":"Tag","tags":"Tags","post":"Post","posts":"Posts","tagcloud":"Tag Cloud","comment":"Comment","comments":"Comments","home":"Home","archive":"Archive","archives":"Archives","top":"TOP","sticky":"Sticky","go-back-home":"Go Back Home","masonry_loading":"Loading photos...","image_viewer":"Image viewer","close":"Close","exif":{"title":"EXIF","cards":{"camera":"Camera","lens":"Lens","exposure":"Exposure","other":"Other"},"fields":{"make":"Brand","model":"Model","date_taken":"Date taken","lens_model":"Lens","focal_length":"Focal length","focus_mode":"Focus mode","shutter":"Shutter","aperture":"Aperture","iso":"ISO","exposure_program":"Exposure program","exposure_compensation":"Exposure compensation","metering_mode":"Metering mode","flash":"Flash","white_balance":"White balance","latitude":"Latitude","longitude":"Longitude","altitude":"Altitude"},"status":{"loading":"Loading...","no_exif":"No EXIF available","library_missing":"EXIF library not loaded","image_source_missing":"Image source unavailable","unavailable":"EXIF unavailable (blocked by CORS or missing metadata)","flag_unavailable":"EXIF unavailable"}},"about":"About","changelog":"Changelog","links":"Links","link":"Link","friends":"Friends","friend":"Friend","timeline":"Timeline","shuoshuo":"Shuoshuo","bookmarks":"Bookmarks","site_uv":"VISITOR COUNT","site_pv":"TOTAL PAGE VIEWS","read_more":"Read more","wordcount":"Words","min2read":"Mins","status":"Status","runtime":"Blog up for","days":"days","hours":"hrs","minutes":"Min","seconds":"Sec","optimized_by":"and Optimized by Evan","rights":"All Rights Reserved","site_posts":"%s posts in total","site_wordcount":"%s words in total","copyright":{"author":"Author","title":"Title","link":"Link","create_time":"Created at","update_time":"Updated at","license_title":"License","license_content":"This work is licensed under %s.","all_rights_reserved":"All Rights Reserved &#169; %s","public_domain":"This work is in the public domain."},"ago":{"second":"%s seconds ago","minute":"%s minutes ago","hour":"%s hours ago","day":"%s days ago","week":"%s weeks ago","month":"%s months ago","year":"%s years ago"},"create_time":"Created","update_time":"Updated","expired":"This post is written %s days ago, and the content may not be up to date."};
+    window.data = {"masonry":true};
+  </script>
+    
+    <!--- Fontawesome Part-->
+    
+<link rel="stylesheet" href="/fontawesome/fontawesome.min.css">
+
+    
+<link rel="stylesheet" href="/fontawesome/brands.min.css">
+
+    
+<link rel="stylesheet" href="/fontawesome/solid.min.css">
+
+    
+<link rel="stylesheet" href="/fontawesome/regular.min.css">
+
+    
+    
+    
+    
+<meta name="generator" content="Hexo 6.3.0"><link rel="alternate" href="/atom.xml" title="Charles's Castle" type="application/atom+xml">
+<link rel="stylesheet" href="/css/prism-tomorrow.css" type="text/css"></head>
+
+
+<body>
+	<div class="progress-bar-container">
+	
+	<span class="scroll-progress-bar"></span>
+	
+
+	
+	<span class="pjax-progress-bar"></span>
+	<!--        <span class="swup-progress-icon">-->
+	<!--            <i class="fa-solid fa-circle-notch fa-spin"></i>-->
+	<!--        </span>-->
+	
+</div>
+
+<style>
+    :root {
+        --preloader-background-color: #fff;
+        --preloader-text-color: #000;
+    }
+
+    @media (prefers-color-scheme: dark) {
+        :root {
+            --preloader-background-color: #202124;
+            --preloader-text-color: #fff;
+        }
+    }
+
+    @media (prefers-color-scheme: light) {
+        :root {
+            --preloader-background-color: #fff;
+            --preloader-text-color: #000;
+        }
+    }
+
+    @media (max-width: 600px) {
+        .ml13 {
+            font-size: 2.6rem !important; /* Adjust this value as needed */
+        }
+    }
+
+    .preloader {
+        display: flex;
+        flex-direction: column;
+        gap: 1rem; /* Tailwind 'gap-4' is 1rem */
+        align-items: center;
+        justify-content: center;
+        position: fixed;
+        padding: 12px;
+        top: 0;
+        right: 0;
+        bottom: 0;
+        left: 0;
+        width: 100vw;
+        height: 100vh; /* 'h-screen' is 100% of the viewport height */
+        background-color: var(--preloader-background-color);
+        z-index: 1100; /* 'z-[1100]' sets the z-index */
+        transition: opacity 0.2s ease-in-out;
+    }
+
+    .ml13 {
+        font-size: 3.2rem;
+        /* text-transform: uppercase; */
+        color: var(--preloader-text-color);
+        letter-spacing: -1px;
+        font-weight: 500;
+        font-family: 'Chillax-Variable', sans-serif;
+        text-align: center;
+    }
+
+    .ml13 .word {
+        display: inline-flex;
+        flex-wrap: wrap;
+        white-space: nowrap;
+    }
+
+    .ml13 .letter {
+        display: inline-block;
+        line-height: 1em;
+    }
+</style>
+
+<div class="preloader">
+    <h2 class="ml13">
+        Charles&#39;s Castle
+    </h2>
+    <script>
+        var textWrapper = document.querySelector('.ml13');
+        // Split text into words
+        var words = textWrapper.textContent.trim().split(' ');
+
+        // Clear the existing content
+        textWrapper.innerHTML = '';
+
+        // Wrap each word and its letters in spans
+        words.forEach(function(word) {
+            var wordSpan = document.createElement('span');
+            wordSpan.classList.add('word');
+            wordSpan.innerHTML = word.replace(/\S/g, "<span class='letter'>$&</span>");
+            textWrapper.appendChild(wordSpan);
+            textWrapper.appendChild(document.createTextNode(' ')); // Add space between words
+        });
+
+        var animation = anime.timeline({ loop: true })
+            .add({
+                targets: '.ml13 .letter',
+                translateY: [20, 0],
+                translateZ: 0,
+                opacity: [0, 1],
+                filter: ['blur(5px)', 'blur(0px)'],
+                easing: "easeOutExpo",
+                duration: 1200,
+                delay: (el, i) => 300 + 20 * i,
+            })
+            .add({
+                targets: '.ml13 .letter',
+                translateY: [0, -20],
+                opacity: [1, 0],
+                filter: ['blur(0px)', 'blur(5px)'],
+                easing: "easeInExpo",
+                duration: 1000,
+                delay: (el, i) => 15 * i,
+                complete: function() {
+                    hidePreloader();
+                }
+            }, '-=700');
+
+
+        let themeStatus = JSON.parse(localStorage.getItem('REDEFINE-THEME-STATUS'))?.isDark;
+
+        // If the theme status is not found in local storage, check the preferred color scheme
+        if (themeStatus === undefined || themeStatus === null) {
+            if (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) {
+                themeStatus = 'dark';
+            } else {
+                themeStatus = 'light';
+            }
+        }
+
+        // Now you can use the themeStatus variable in your code
+        if (themeStatus) {
+            document.documentElement.style.setProperty('--preloader-background-color', '#202124');
+            document.documentElement.style.setProperty('--preloader-text-color', '#fff');
+        } else {
+            document.documentElement.style.setProperty('--preloader-background-color', '#fff');
+            document.documentElement.style.setProperty('--preloader-text-color', '#000');
+        }
+
+        window.addEventListener('load', function () {
+            setTimeout(hidePreloader, 5000); // Call hidePreloader after 5000 milliseconds if not already called by animation
+        });
+
+        function hidePreloader() {
+            var preloader = document.querySelector('.preloader');
+            preloader.style.opacity = '0';
+            setTimeout(function () {
+                preloader.style.display = 'none';
+            }, 200);
+        }
+    </script>
+</div>
+
+<main class="page-container" id="swup">
+
+	
+
+	<div class="main-content-container flex flex-col justify-between min-h-dvh">
+		<div class="main-content-header">
+			<header class="navbar-container px-6 md:px-12">
+    <div class="navbar-content transition-navbar ">
+        <div class="left">
+            
+                <a class="logo-image h-8 w-8 sm:w-10 sm:h-10 mr-3" href="/">
+                    <img src="https://charles2530.github.io/image/background/logo.jpg" class="w-full h-full rounded-xs">
+                </a>
+            
+            <a class="logo-title" href="/">
+                
+                Charles&#39;s Castle
+                
+            </a>
+        </div>
+
+        <div class="right">
+            <!-- PC -->
+            <div class="desktop">
+                <ul class="navbar-list">
+                    
+                        
+                            
+
+                            <li class="navbar-item">
+                                <!-- Menu -->
+                                <a class=""
+                                   href="/"
+                                        >
+                                    <i class="fa-regular fa-house fa-fw"></i>
+                                    HOME
+                                    
+                                </a>
+
+                                <!-- Submenu -->
+                                
+                            </li>
+                    
+                        
+                            
+
+                            <li class="navbar-item">
+                                <!-- Menu -->
+                                <a class=""
+                                   href="/categories"
+                                        >
+                                    <i class="fas fa-bookmark fa-fw"></i>
+                                    CATEGORIES
+                                    
+                                </a>
+
+                                <!-- Submenu -->
+                                
+                            </li>
+                    
+                        
+                            
+
+                            <li class="navbar-item">
+                                <!-- Menu -->
+                                <a class=""
+                                   href="/tags"
+                                        >
+                                    <i class="fas fa-tags fa-fw"></i>
+                                    TAGS
+                                    
+                                </a>
+
+                                <!-- Submenu -->
+                                
+                            </li>
+                    
+                        
+                            
+
+                            <li class="navbar-item">
+                                <!-- Menu -->
+                                <a class="has-dropdown"
+                                   href="#"
+                                        onClick=&#34;return false;&#34;>
+                                    <i class="fa-regular fa-user fa-fw"></i>
+                                    ABOUT
+                                    <i class="fa-solid fa-chevron-down fa-fw"></i>
+                                </a>
+
+                                <!-- Submenu -->
+                                
+                                    <ul class="sub-menu">
+                                        
+                                            <li>
+                                                <a target="_blank" rel="noopener" href="https://jinyang-du.github.io/">
+                                                    ME
+                                                </a>
+                                            </li>
+                                        
+                                            <li>
+                                                <a target="_blank" rel="noopener" href="https://github.com/Charles2530/">
+                                                    GITHUB
+                                                </a>
+                                            </li>
+                                        
+                                            <li>
+                                                <a href="https://charles2530.github.io">
+                                                    BLOG
+                                                </a>
+                                            </li>
+                                        
+                                            <li>
+                                                <a target="_blank" rel="noopener" href="https://tongji.baidu.com/">
+                                                    STATISTICS
+                                                </a>
+                                            </li>
+                                        
+                                    </ul>
+                                
+                            </li>
+                    
+                    
+                        <li class="navbar-item search search-popup-trigger">
+                            <i class="fa-solid fa-magnifying-glass"></i>
+                        </li>
+                    
+                </ul>
+            </div>
+            <!-- Mobile -->
+            <div class="mobile">
+                
+                    <div class="icon-item search search-popup-trigger"><i class="fa-solid fa-magnifying-glass"></i>
+                    </div>
+                
+                <div class="icon-item navbar-bar">
+                    <div class="navbar-bar-middle"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Mobile sheet -->
+    <div class="navbar-drawer h-dvh w-full absolute top-0 left-0 bg-background-color flex flex-col justify-between">
+        <ul class="drawer-navbar-list flex flex-col px-4 justify-center items-start">
+            
+                
+                    
+
+                    <li class="drawer-navbar-item text-base my-1.5 flex flex-col w-full">
+                        
+                        <a class="py-1.5 px-2 flex flex-row items-center justify-between gap-1 hover:!text-primary active:!text-primary text-2xl font-semibold group border-b border-border-color hover:border-primary w-full "
+                           href="/"
+                        >
+                            <span>
+                                HOME
+                            </span>
+                            
+                                <i class="fa-regular fa-house fa-sm fa-fw"></i>
+                            
+                        </a>
+                        
+
+                        
+                    </li>
+            
+                
+                    
+
+                    <li class="drawer-navbar-item text-base my-1.5 flex flex-col w-full">
+                        
+                        <a class="py-1.5 px-2 flex flex-row items-center justify-between gap-1 hover:!text-primary active:!text-primary text-2xl font-semibold group border-b border-border-color hover:border-primary w-full "
+                           href="/categories"
+                        >
+                            <span>
+                                CATEGORIES
+                            </span>
+                            
+                                <i class="fas fa-bookmark fa-sm fa-fw"></i>
+                            
+                        </a>
+                        
+
+                        
+                    </li>
+            
+                
+                    
+
+                    <li class="drawer-navbar-item text-base my-1.5 flex flex-col w-full">
+                        
+                        <a class="py-1.5 px-2 flex flex-row items-center justify-between gap-1 hover:!text-primary active:!text-primary text-2xl font-semibold group border-b border-border-color hover:border-primary w-full "
+                           href="/tags"
+                        >
+                            <span>
+                                TAGS
+                            </span>
+                            
+                                <i class="fas fa-tags fa-sm fa-fw"></i>
+                            
+                        </a>
+                        
+
+                        
+                    </li>
+            
+                
+                    
+
+                    <li class="drawer-navbar-item-sub text-base my-1.5 flex flex-col w-full">
+                        
+                        <div class="py-1.5 px-2 flex flex-row items-center justify-between gap-1 hover:!text-primary active:!text-primary cursor-pointer text-2xl font-semibold group border-b border-border-color hover:border-primary w-full "
+                             navbar-data-toggle="submenu-About"
+                        >
+                            <span>
+                                ABOUT
+                            </span>
+                            
+                                <i class="fa-solid fa-chevron-right fa-sm fa-fw transition-all"></i>
+                            
+                        </div>
+                        
+
+                        
+                            <div class="flex-col items-start px-2 py-2 hidden" data-target="submenu-About">
+                                
+                                    <div class="drawer-navbar-item text-base flex flex-col justify-center items-start hover:underline active:underline hover:underline-offset-1 rounded-3xl">
+                                        <a class=" text-third-text-color text-xl"
+                                           target="_blank" rel="noopener" href="https://jinyang-du.github.io/">ME</a>
+                                    </div>
+                                
+                                    <div class="drawer-navbar-item text-base flex flex-col justify-center items-start hover:underline active:underline hover:underline-offset-1 rounded-3xl">
+                                        <a class=" text-third-text-color text-xl"
+                                           target="_blank" rel="noopener" href="https://github.com/Charles2530/">GITHUB</a>
+                                    </div>
+                                
+                                    <div class="drawer-navbar-item text-base flex flex-col justify-center items-start hover:underline active:underline hover:underline-offset-1 rounded-3xl">
+                                        <a class=" text-third-text-color text-xl"
+                                           href="https://charles2530.github.io">BLOG</a>
+                                    </div>
+                                
+                                    <div class="drawer-navbar-item text-base flex flex-col justify-center items-start hover:underline active:underline hover:underline-offset-1 rounded-3xl">
+                                        <a class=" text-third-text-color text-xl"
+                                           target="_blank" rel="noopener" href="https://tongji.baidu.com/">STATISTICS</a>
+                                    </div>
+                                
+                            </div>
+                        
+                    </li>
+            
+
+            
+            
+                
+                    
+                    <li class="drawer-navbar-item text-base my-1.5 flex flex-col w-full">
+                        <a class="py-1.5 px-2 flex flex-row items-center justify-between gap-1 hover:!text-primary active:!text-primary text-2xl font-semibold group border-b border-border-color hover:border-primary w-full active"
+                           href="/archives"
+                        >
+                            <span>Archives</span>
+                            <i class="fa-regular fa-archive fa-sm fa-fw"></i>
+                        </a>
+                    </li>
+                
+                    
+                    <li class="drawer-navbar-item text-base my-1.5 flex flex-col w-full">
+                        <a class="py-1.5 px-2 flex flex-row items-center justify-between gap-1 hover:!text-primary active:!text-primary text-2xl font-semibold group border-b border-border-color hover:border-primary w-full active"
+                           href="/masonry/"
+                        >
+                            <span>Photos</span>
+                            <i class="fa-solid fa-image fa-sm fa-fw"></i>
+                        </a>
+                    </li>
+                
+                    
+                    <li class="drawer-navbar-item text-base my-1.5 flex flex-col w-full">
+                        <a class="py-1.5 px-2 flex flex-row items-center justify-between gap-1 hover:!text-primary active:!text-primary text-2xl font-semibold group border-b border-border-color hover:border-primary w-full active"
+                           href="/essay/"
+                        >
+                            <span>Essays</span>
+                            <i class="fa-solid fa-message-lines fa-sm fa-fw"></i>
+                        </a>
+                    </li>
+                
+                    
+                    <li class="drawer-navbar-item text-base my-1.5 flex flex-col w-full">
+                        <a class="py-1.5 px-2 flex flex-row items-center justify-between gap-1 hover:!text-primary active:!text-primary text-2xl font-semibold group border-b border-border-color hover:border-primary w-full active"
+                           href="/friends/"
+                        >
+                            <span>Friends</span>
+                            <i class="fa-solid fa-user-group fa-sm fa-fw"></i>
+                        </a>
+                    </li>
+                
+            
+        </ul>
+
+        <div class="statistics flex justify-around my-2.5">
+    <a class="item tag-count-item flex flex-col justify-center items-center w-20" href="/tags">
+        <div class="number text-2xl sm:text-xl text-second-text-color font-semibold">47</div>
+        <div class="label text-third-text-color text-sm">Tags</div>
+    </a>
+    <a class="item tag-count-item flex flex-col justify-center items-center w-20" href="/categories">
+        <div class="number text-2xl sm:text-xl text-second-text-color font-semibold">94</div>
+        <div class="label text-third-text-color text-sm">Categories</div>
+    </a>
+    <a class="item tag-count-item flex flex-col justify-center items-center w-20" href="/archives">
+        <div class="number text-2xl sm:text-xl text-second-text-color font-semibold">601</div>
+        <div class="label text-third-text-color text-sm">Posts</div>
+    </a>
+</div>
+    </div>
+
+    <div class="window-mask"></div>
+
+</header>
+
+
+		</div>
+
+		<div class="main-content-body transition-fade-up">
+			
+
+			<div class="main-content">
+				<div class="post-page-container flex relative justify-between box-border w-full h-full">
+	<div class="article-content-container">
+
+		<div class="article-title relative w-full">
+			
+			
+			
+			<img src="https://charles2530.github.io/image/background/background-light1.jpg" alt="论文专题讲解：Emu3.5：原生多模态模型如何变成世界学习器" class="w-full h-60 sm:h-72 md:h-80 object-cover sm:rounded-t-large dark:brightness-75" />
+			
+			<div class="w-full flex items-center absolute bottom-0 justify-start">
+				<h1 class="article-title-cover text-center mx-6 my-6 text-second-text-color bg-background-color-transparent px-4 py-3 text-3xl sm:text-4xl md:text-5xl font-semibold backdrop-blur-lg rounded-xl border border-border-color ">论文专题讲解：Emu3.5：原生多模态模型如何变成世界学习器</h1>
+			</div>
+			
+		</div>
+
+		
+		<div class="article-header flex flex-row gap-2 items-center px-2 sm:px-6 md:px-8">
+			<div class="avatar w-[46px] h-[46px] shrink-0 rounded-medium border border-border-color p-px">
+				<img src="https://charles2530.github.io/image/background/logo2.jpg">
+			</div>
+			<div class="info flex flex-col justify-between">
+				<div class="author flex items-center">
+					<span class="name text-default-text-color text-lg font-semibold">Charles</span>
+					
+					<span class="author-label ml-1.5 text-xs px-2 py-0.5 rounded-small text-third-text-color border border-shadow-color-1">Lv8</span>
+					
+				</div>
+				<div class="meta-info">
+					<div class="article-meta-info">
+    <span class="article-date article-meta-item">
+        <i class="fa-regular fa-pen-fancy"></i>&nbsp;
+        <span class="desktop">2026-03-31 09:00</span>
+        <span class="mobile">2026-03-31 09:00</span>
+        <span class="hover-info">Created</span>
+    </span>
+    
+        <span class="article-date article-meta-item">
+            <i class="fa-regular fa-wrench"></i>&nbsp;
+            <span class="desktop">2026-03-31 09:00</span>
+            <span class="mobile">2026-03-31 09:00</span>
+            <span class="hover-info">Updated</span>
+        </span>
+    
+
+    
+        <span class="article-categories article-meta-item">
+            <i class="fa-regular fa-folders"></i>&nbsp;
+            <ul>
+                
+                
+                    
+                        
+                        <li>
+                            <a href="/categories/AI/">AI</a>&nbsp;
+                        </li>
+                    
+                    
+                
+                    
+                        
+                            <li>></li>
+                        
+                        <li>
+                            <a href="/categories/AI/%E8%AE%BA%E6%96%87%E4%B8%93%E9%A2%98%E8%AE%B2%E8%A7%A3/">论文专题讲解</a>&nbsp;
+                        </li>
+                    
+                    
+                
+            </ul>
+        </span>
+    
+    
+        <span class="article-tags article-meta-item">
+            <i class="fa-regular fa-tags"></i>&nbsp;
+            <ul>
+                
+                    <li>
+                        <a href="/tags/AI/">AI</a>&nbsp;
+                    </li>
+                
+                    <li>
+                        | <a href="/tags/%E4%B8%96%E7%95%8C%E6%A8%A1%E5%9E%8B/">世界模型</a>&nbsp;
+                    </li>
+                
+                    <li>
+                        | <a href="/tags/%E8%AE%BA%E6%96%87%E4%B8%93%E9%A2%98/">论文专题</a>&nbsp;
+                    </li>
+                
+            </ul>
+        </span>
+    
+
+    
+    
+        <span class="article-wordcount article-meta-item">
+            <i class="fa-regular fa-typewriter"></i>&nbsp;<span>4.9k Words</span>
+        </span>
+    
+    
+        <span class="article-min2read article-meta-item">
+            <i class="fa-regular fa-clock"></i>&nbsp;<span>19 Mins</span>
+        </span>
+    
+    
+        <span class="article-pv article-meta-item">
+            <i class="fa-regular fa-eye"></i>&nbsp;<span id="busuanzi_value_page_pv"></span>
+        </span>
+    
+</div>
+
+				</div>
+			</div>
+		</div>
+		
+
+		
+
+
+		<div class="article-content markdown-body px-2 sm:px-6 md:px-8 pb-8">
+			<div class="callout callout--titled info mb-4 rounded-small shadow-redefine-flat bg-(--callout-bg-color) p-3 pl-1 relative flex flex-row gap-2"><div role="none" class="rounded-full self-stretch w-0.5 bg-(--callout-primary-color) shrink-0 opacity-60"></div><div class="flex flex-col gap-2"><div class="callout__title flex items-center gap-2 font-semibold tracking-tight">论文信息</div><div class="callout__content markdown-body flex-1 min-w-0"><p><strong>论文题名：</strong> Emu3.5: Native Multimodal Models are World Learners。<br><br />
+<strong>作者：</strong> Yufeng Cui、Honghao Chen、Haoge Deng、Xu Huang、Xinghang Li、Jirong Liu、Yang Liu、Zhuoyan Luo、Jinsheng Wang、Wenxuan Wang 等（共 23 人）。<br><br />
+<strong>机构：</strong> 未在公开元数据中稳定解析；以 arXiv/PDF 或官方页 affiliation block 为准。<br><br />
+<strong>时间 / 主题：</strong> 2025-10；世界模型。<br><br />
+<strong>arXiv / 官方报告：</strong> arXiv：<a class="link"   target="_blank" rel="noopener" href="https://arxiv.org/abs/2510.26583" >2510.26583<i class="fa-solid fa-arrow-up-right ml-[0.2em] font-light align-text-top text-[0.7em] link-icon"></i></a>；官方材料：<a class="link"   target="_blank" rel="noopener" href="https://huggingface.co/BAAI/Emu3.5" >huggingface.co/BAAI/Emu3.5<i class="fa-solid fa-arrow-up-right ml-[0.2em] font-light align-text-top text-[0.7em] link-icon"></i></a>。<br><br />
+<strong>GitHub / 项目：</strong> GitHub：<a class="link"   target="_blank" rel="noopener" href="https://github.com/baaivision/Emu3.5" >github.com/baaivision/Emu3.5<i class="fa-solid fa-arrow-up-right ml-[0.2em] font-light align-text-top text-[0.7em] link-icon"></i></a>；项目页：<a class="link"   target="_blank" rel="noopener" href="https://huggingface.co/BAAI/Emu3.5" >huggingface.co/BAAI/Emu3.5<i class="fa-solid fa-arrow-up-right ml-[0.2em] font-light align-text-top text-[0.7em] link-icon"></i></a>。<br><br />
+<strong>元数据来源与核验口径：</strong> 来源：<a class="link"   target="_blank" rel="noopener" href="https://arxiv.org/abs/2510.26583" >arXiv<i class="fa-solid fa-arrow-up-right ml-[0.2em] font-light align-text-top text-[0.7em] link-icon"></i></a>；<a class="link"   target="_blank" rel="noopener" href="https://github.com/baaivision/Emu3.5" >GitHub API / repo<i class="fa-solid fa-arrow-up-right ml-[0.2em] font-light align-text-top text-[0.7em] link-icon"></i></a>；<a class="link"   target="_blank" rel="noopener" href="https://huggingface.co/BAAI/Emu3.5" >官方 / 项目材料<i class="fa-solid fa-arrow-up-right ml-[0.2em] font-light align-text-top text-[0.7em] link-icon"></i></a>；Checked Date：2026-06-15；Repro Status：Paper / official materials reviewed, independent reproduction not claimed。</p></div></div></div>
+<table>
+<thead>
+<tr>
+<th>Checked Date</th>
+<th>Repro Status</th>
+<th>本页证据口径</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>2026-06-02</td>
+<td>Author code / model release reported</td>
+<td>以 arXiv HTML、官方仓库与论文图表为主；world exploration、long-horizon generation、embodied manipulation 按生成式 next-state evidence 解读。</td>
+</tr>
+</tbody>
+</table>
+<h2 id="原论文故事线"><a class="markdownIt-Anchor" href="#原论文故事线"></a> 原论文故事线</h2>
+<h3 id="研究背景"><a class="markdownIt-Anchor" href="#研究背景"></a> 研究背景</h3>
+<p>Emu3.5 属于 native multimodal autoregressive model 路线。这个方向的核心想法是把文本、图像和视频都离散成 token，用同一个 decoder-only Transformer 做 next-token prediction，而不是为理解、图像生成、视频生成和编辑分别搭不同系统。Emu3 先提出“next-token prediction is all you need”的原生多模态路线，Emu3.5 进一步把它扩展到更长视频、世界探索和具身操控式关键帧生成。</p>
+<p>从世界模型角度看，论文关心的不只是图像质量，而是“下一状态预测”：给定一段视觉-语言历史、探索指令或子任务描述，模型能否生成后续视觉状态、文字观察和关键步骤。它把长视频帧、transcript、instruction、subtask、keyframe 等都放进 interleaved vision-language sequence，让模型在统一 token 空间里学习世界状态如何继续发展。</p>
+<h3 id="问题challenge"><a class="markdownIt-Anchor" href="#问题challenge"></a> 问题（Challenge）</h3>
+<p>论文要解决的问题是：<strong>原生多模态 next-token model 能否从大规模交错视觉语言数据中学出可泛化的 world-modeling 能力，并且在视觉输出上保持可用推理效率？</strong> 挑战有两类。能力上，模型要同时覆盖 any-to-image、image editing、long-horizon generation、world exploration 和 embodied manipulation，任务格式差异很大。效率上，图像 token 数量巨大，逐 token 自回归生成一张高分辨率图像会很慢。</p>
+<p>这个问题有价值，因为如果同一模型能用统一目标处理理解、生成和状态预测，就可能成为具身 agent、交互式世界生成和多模态规划的基础模型；但如果推理太慢或只会静态生成，它就很难进入交互场景。</p>
+<h3 id="finding"><a class="markdownIt-Anchor" href="#finding"></a> Finding</h3>
+<p>作者的 finding 是：<strong>把视觉和语言都视为可预测的离散状态序列时，world modeling 可以从 next-token prediction 中自然扩展出来；但视觉 token 的生成方式需要按模态改造，不能在推理阶段完全沿用文本式逐 token 解码。</strong> 这个洞见把“统一训练目标”和“分模态推理机制”分开了。</p>
+<p>这个 finding 解释了 Emu3.5 的两条主线。训练时，统一 next-token prediction 让模型把文本、图像、视频帧和交错任务放进同一状态空间；后训练再用 world exploration、visual guidance、embodied manipulation 等任务把“预测下一视觉状态”显式化。推理时，Discrete Diffusion Adaptation 让视觉 token 从顺序生成转为并行式离散扩散，从而缓解 native AR 模型在图像生成上的速度瓶颈。</p>
+<h3 id="方法"><a class="markdownIt-Anchor" href="#方法"></a> 方法</h3>
+<p>Emu3.5 使用约 34B 参数的 decoder-only Transformer，文本和视觉分别有大规模词表，视觉 tokenizer 把图像离散为 visual tokens。预训练使用超过 10T 级别的多模态 token，覆盖文本、图像、视频、interleaved image-text 和长视频帧；后训练包含 large-scale SFT、多任务 RL，以及面向世界任务的数据构造。World Exploration 数据把视觉帧、文字观察和探索指令交错组织；Embodied Manipulation 数据把机器人轨迹划分为子任务和关键帧，让模型预测后续关键状态。</p>
+<p>DiDA 是推理效率的关键。它在预训练自回归模型上加入离散扩散适配：图像 token 序列先以 noisy copy 形式出现，noisy visual tokens 在同一图像内部可以双向交互，同时仍保持对前文 clean tokens 的因果依赖。这样文本生成仍保持 AR，视觉块可以并行去噪生成。论文还训练 image decoder 和 video decoder，将离散视觉 token 还原成高质量图像或连续视频。</p>
+<h3 id="结论"><a class="markdownIt-Anchor" href="#结论"></a> 结论</h3>
+<p>实验上，Emu3.5 在 any-to-image、text-to-image、复杂 interleaved tasks、world exploration 和 embodied manipulation 等任务上报告了强结果；论文还显示 DiDA 在保持视觉质量相近的情况下可带来显著推理加速，报告中给出最高约 20x 的 per-image 加速。world exploration 评估强调模型能按指令生成连续视角变化并保持场景一致；embodied manipulation 评估强调能按子任务生成关键状态过程。</p>
+<p>需要注意的是，这些 world-modeling 证据主要是生成式 next-state / keyframe evidence，不等同于真实机器人闭环控制。模型能生成“看起来合理的下一状态”，但不代表它具备传感器闭环、碰撞检测、低层轨迹控制或失败恢复。论文的结论更准确地说是：原生多模态 next-token model 可以成为视觉语言世界状态预测的强底座，并通过 DiDA 解决一部分交互效率问题。</p>
+<h3 id="关键术语"><a class="markdownIt-Anchor" href="#关键术语"></a> 关键术语</h3>
+<ul>
+<li><strong>Native Multimodal Model（原生多模态模型）</strong>：从训练目标上统一处理文本、图像、视频等 token 的模型，而不是外接单独视觉生成器。</li>
+<li><strong>Next-Token Prediction, NTP（下一 Token 预测）</strong>：给定前文 token 预测下一个 token；Emu3.5 把视觉 token 也纳入这个目标。</li>
+<li><strong>World Exploration（世界探索）</strong>：给定初始视觉状态和探索指令，连续生成后续视觉帧和文字观察的任务。</li>
+<li><strong>Embodied Manipulation（具身操控生成）</strong>：用子任务和关键帧表示操控过程，让模型预测动作过程中的关键视觉状态。</li>
+<li><strong>Discrete Diffusion Adaptation, DiDA（离散扩散适配）</strong>：把图像 token 生成从逐 token 自回归改成视觉块并行去噪的推理加速方法。</li>
+<li><strong>Visual Tokenizer（视觉分词器）</strong>：把图像或视频帧压缩成离散 token，再由 decoder 还原成视觉输出。</li>
+</ul>
+<p>Emu3.5 是四篇里最直接把 unified multimodal model 称为 world model 的论文。它的关键判断是：如果模型在大规模长视频帧和 transcript 交错序列上做端到端 next-token prediction，它学到的就不只是图文映射，而是跨视觉和语言的下一状态预测。</p>
+<p>先用一个交互场景理解它的野心和边界。用户给模型一张房间图片，然后连续说“向前走”“向左看”“把桌上的杯子拿起来”。Emu3.5 试图生成接下来会看到的画面、文字说明、子任务步骤和关键状态图。它确实在做一种视觉语言 next-state generation：同一段历史换一个指令，后续画面和叙述应该变。但这还不是机器人闭环控制，因为它没有真实传感器反馈、碰撞检查、低层轨迹、夹爪力控和失败恢复。</p>
+<p>所以读 Emu3.5 要分清两层 claim：强 claim 是“长视频 + transcript + 世界任务 SFT 能让统一模型生成更长时序的世界状态”；弱证据边界是“生成关键帧和探索过程还不能证明真实物理执行成功”。</p>
+<h2 id="贡献速览"><a class="markdownIt-Anchor" href="#贡献速览"></a> 贡献速览</h2>
+<table>
+<thead>
+<tr>
+<th>维度</th>
+<th>贡献</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>节省的成本</td>
+<td>用统一 next-token prediction 建模视觉与语言，推理时再用 DiDA 把图像 token 逐 token 解码改成并行预测</td>
+</tr>
+<tr>
+<td>核心机制</td>
+<td>32B decoder-only backbone、离散视觉 tokenizer、13T pretraining、150B SFT samples、multi-task RL、DiDA hybrid inference</td>
+</tr>
+<tr>
+<td>对世界模型主线的意义</td>
+<td>把 internet video 的 sequential frames + transcripts 变成视觉语言 next-state prediction 训练信号</td>
+</tr>
+<tr>
+<td>主要风险</td>
+<td>世界探索和 embodied manipulation 多为生成式 keyframe / interleaved output，不能直接等同真实动作控制</td>
+</tr>
+<tr>
+<td>应接到本站哪里</td>
+<td><a href="/2026/05/11/ai-files-paper-deep-dives-world-models-bagel/">BAGEL</a>、<a href="/2026/05/11/ai-files-paper-deep-dives-world-models-lingbot-world/">LingBot-World</a>、<a href="/2026/05/11/ai-files-embodied-ai-vla-data-model-and-evaluation-roadmap/">VLA 数据、模型与评测路线</a></td>
+</tr>
+</tbody>
+</table>
+<h2 id="论文位置"><a class="markdownIt-Anchor" href="#论文位置"></a> 论文位置</h2>
+<p>前一代 unified models 常把图像生成、图像理解和文本生成作为并列任务。Emu3.5 更进一步，把长视频里的帧和 transcript 组织成长时序数据，让模型在视觉和语言之间预测下一状态。</p>
+<p>这带来两个变化：</p>
+<table>
+<thead>
+<tr>
+<th>旧读法</th>
+<th>Emu3.5 的读法</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>图像是单次输入或输出</td>
+<td>图像帧是长序列世界状态的一部分</td>
+</tr>
+<tr>
+<td>文字主要是 prompt 或 answer</td>
+<td>transcript、instruction、CoT 和 subtask text 都是状态转移条件</td>
+</tr>
+<tr>
+<td>生成质量是核心指标</td>
+<td>长时一致、交互探索、任务分解和 keyframe prediction 也进入目标</td>
+</tr>
+<tr>
+<td>视觉 token 解码逐 token 很慢</td>
+<td>训练仍用 NTP，推理用 DiDA 并行化视觉 token</td>
+</tr>
+</tbody>
+</table>
+<h2 id="核心问题"><a class="markdownIt-Anchor" href="#核心问题"></a> 核心问题</h2>
+<table>
+<thead>
+<tr>
+<th>Question</th>
+<th>Emu3.5 的回答</th>
+<th>证据边界</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>native multimodal NTP 能否学世界状态？</td>
+<td>把视频帧、transcript、instruction 和视觉 token 都作为统一序列预测下一 token</td>
+<td>支撑 next-state generation，不等同低层物理状态估计</td>
+</tr>
+<tr>
+<td>长视频数据是否是关键？</td>
+<td>13T+ pretraining 里大量使用 sequential video frames + transcripts</td>
+<td>说明视频可提供世界流，但不能证明动作因果</td>
+</tr>
+<tr>
+<td>后训练如何显式世界化？</td>
+<td>SFT 设置 World Exploration、Visual Guidance、Embodied Manipulation 等任务</td>
+<td>更接近规划和 keyframe proposal，不是闭环控制</td>
+</tr>
+<tr>
+<td>推理延迟如何处理？</td>
+<td>DiDA 把视觉块改成并行预测，论文报告 per-image 约 20x 加速</td>
+<td>加速视觉输出，不保证状态预测更正确</td>
+</tr>
+</tbody>
+</table>
+<h2 id="方法结构"><a class="markdownIt-Anchor" href="#方法结构"></a> 方法结构</h2>
+<p><img  
+                     lazyload
+                     src="/images/loading.svg"
+                     data-src="/image/ai-notes/images/paper-deep-dives/world-models/emu3-5/figure-3-architecture.png"
+                      alt="Emu3.5 architecture 原图" 
+                ></p>
+<p><small>图源：<code>Emu3.5: Native Multimodal Models are World Learners</code>，Figure 3。原论文图意：Emu3.5 在大规模训练中用统一 next-token prediction；推理时通过 Discrete Diffusion Adaptation 加速单图视觉 token 生成。</small></p>
+<p><strong>Emu3.5 架构图要分清训练目标和解码方式。</strong><br />
+左侧是训练逻辑：文本 token 和视觉 token 都进入 decoder-only Transformer，用标准 next-token prediction 学习下一状态。右侧是推理逻辑：文本仍然适合自回归，但图像 token 数量太大，逐 token 生成成本高，所以 DiDA 把视觉块改成 bidirectional parallel generation。</p>
+<p>对世界模型来说，这张图的核心是“训练目标统一，推理解码分工”。统一目标给模型一个共同状态空间；推理阶段再按模态特性优化成本。</p>
+<h3 id="模型配置与视觉-token"><a class="markdownIt-Anchor" href="#模型配置与视觉-token"></a> 模型配置与视觉 token</h3>
+<table>
+<thead>
+<tr>
+<th>Item</th>
+<th>Emu3.5</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Parameters</td>
+<td>34.1B total</td>
+</tr>
+<tr>
+<td>Transformer layers</td>
+<td>64</td>
+</tr>
+<tr>
+<td>Hidden size</td>
+<td>5120</td>
+</tr>
+<tr>
+<td>Intermediate size</td>
+<td>25600</td>
+</tr>
+<tr>
+<td>Attention heads</td>
+<td>64 Q heads / 8 KV heads</td>
+</tr>
+<tr>
+<td>Vocabulary</td>
+<td>282,926 tokens</td>
+</tr>
+<tr>
+<td>Text vocabulary</td>
+<td>151,854 tokens</td>
+</tr>
+<tr>
+<td>Vision vocabulary</td>
+<td>131,072 tokens</td>
+</tr>
+<tr>
+<td>Context length</td>
+<td>32,768 tokens</td>
+</tr>
+</tbody>
+</table>
+<p><small>表源：<code>Emu3.5</code>，Table 1。表格保留原论文英文配置名并压缩为站内读法。</small></p>
+<p>视觉 tokenizer 使用离散视觉 codebook。论文披露的关键点是：视觉 codebook 扩到 131,072，tokenizer 使用 <span class="katex"><span class="katex-mathml"><math><semantics><mrow><mi>f</mi><mo>=</mo><mn>16</mn></mrow><annotation encoding="application/x-tex">f=16</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.8888799999999999em;vertical-align:-0.19444em;"></span><span class="mord mathdefault" style="margin-right:0.10764em;">f</span><span class="mspace" style="margin-right:0.2777777777777778em;"></span><span class="mrel">=</span><span class="mspace" style="margin-right:0.2777777777777778em;"></span></span><span class="base"><span class="strut" style="height:0.64444em;vertical-align:0em;"></span><span class="mord">1</span><span class="mord">6</span></span></span></span> 下采样；图像 decoder 可以走 vanilla decoder，也可以走 diffusion-based decoder；后者通过 LoRA distillation 从 50 steps 加速到 4 steps。视频 decoder 则用 keyframe tokens 加 diffusion-based video decoder 生成连续视频。</p>
+<p>这说明 Emu3.5 的“native”不是把像素直接塞进 LLM，而是把视觉离散化成可预测 token，再用 decoder 把 token 还原成高质量视觉输出。</p>
+<h2 id="训练细节"><a class="markdownIt-Anchor" href="#训练细节"></a> 训练细节</h2>
+<p><img  
+                     lazyload
+                     src="/images/loading.svg"
+                     data-src="/image/ai-notes/images/paper-deep-dives/world-models/emu3-5/figure-4-training-pipeline.png"
+                      alt="Emu3.5 training pipeline 原图" 
+                ></p>
+<p><small>图源：<code>Emu3.5</code>，Figure 4。原论文图意：展示 Emu3.5 从大规模 pre-training，到 SFT、RL，再到 DiDA inference adaptation 的整体训练 pipeline。</small></p>
+<p><strong>这张训练图怎么读。</strong><br />
+先看 pre-training：模型在约 13T multimodal tokens 上学习视觉语言下一状态，其中核心来源是长视频帧和 transcript。再看 SFT：它把统一接口扩成 General Tasks、Any-to-Image、Visual Narrative、Visual Guidance、World Exploration 和 Embodied Manipulation。最后看 RL 与 DiDA：一个优化多任务生成/推理质量，一个优化推理速度。</p>
+<p>这张图支撑的是“world learner 的训练链路”，不是单个 benchmark 分数。</p>
+<h3 id="pre-training视频帧与-transcript-是主燃料"><a class="markdownIt-Anchor" href="#pre-training视频帧与-transcript-是主燃料"></a> Pre-training：视频帧与 transcript 是主燃料</h3>
+<p>Emu3.5 的 pre-training 数据超过 13T multimodal tokens，分为四类：</p>
+<table>
+<thead>
+<tr>
+<th>Component</th>
+<th>Role</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Interleaved vision-language data</td>
+<td>从 sequential video frames 和 temporally aligned audio transcripts 学长时上下文</td>
+</tr>
+<tr>
+<td>Vision-text pairs</td>
+<td>补充通用图文对齐和视觉语义</td>
+</tr>
+<tr>
+<td>Any-to-image data</td>
+<td>支撑多图输入、编辑和开放式 X2I</td>
+</tr>
+<tr>
+<td>Text-only data</td>
+<td>保持语言建模与推理能力</td>
+</tr>
+</tbody>
+</table>
+<p><img  
+                     lazyload
+                     src="/images/loading.svg"
+                     data-src="/image/ai-notes/images/paper-deep-dives/world-models/emu3-5/figure-5-video-data-stats.png"
+                      alt="Emu3.5 video data statistics 原图" 
+                >{ width=“820” .atlas-figure-compact }</p>
+<p><small>图源：<code>Emu3.5</code>，Figure 5。原论文图意：统计 video interleaved data 的时长分布、类别分布和关键帧抽取密度。</small></p>
+<p><strong>这张数据图怎么读。</strong><br />
+论文收集约 63M videos，平均时长约 6.5 minutes，总量约等于 790 years of continuous footage。预处理时先做 scene detection，再按场景取 middle frame 或按间隔采样 keyframes，同时用 Whisper-large-v2 抽取 transcript。</p>
+<p>这里的训练信号不是“视频 caption”，而是长时 visual frames 与 speech/text 的共同序列。它比孤立 image-text pair 更接近世界模型需要的状态流。</p>
+<h3 id="sft把世界任务显式化"><a class="markdownIt-Anchor" href="#sft把世界任务显式化"></a> SFT：把世界任务显式化</h3>
+<table>
+<thead>
+<tr>
+<th>Task</th>
+<th># Tokens (B)</th>
+<th>Question Type</th>
+<th>Output Type</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>General Tasks</td>
+<td>29.7</td>
+<td>Language / VL / T2I</td>
+<td>Text / Image</td>
+</tr>
+<tr>
+<td>Any-to-Image</td>
+<td>56.2</td>
+<td>Multimodal Generation</td>
+<td>Image</td>
+</tr>
+<tr>
+<td>Visual Narrative</td>
+<td>10.1</td>
+<td>Story Generation</td>
+<td>Interleaved Narrative</td>
+</tr>
+<tr>
+<td>Visual Guidance</td>
+<td>22.5</td>
+<td>Procedural Reasoning</td>
+<td>Interleaved Guidance</td>
+</tr>
+<tr>
+<td>World Exploration</td>
+<td>17.5</td>
+<td>Scene Navigation</td>
+<td>Interleaved Scene Synthesis</td>
+</tr>
+<tr>
+<td>Embodied Manipulation</td>
+<td>14.1</td>
+<td>Action Planning</td>
+<td>Interleaved Action Plan</td>
+</tr>
+</tbody>
+</table>
+<p><small>表源：<code>Emu3.5</code>，Table 3。原表英文列名保留；数值用于说明 SFT 任务配比。</small></p>
+<p>这张表是 Emu3.5 最值得细读的训练细节。它把统一多模态模型的后训练任务分成普通能力和世界能力：</p>
+<table>
+<thead>
+<tr>
+<th>World-oriented task</th>
+<th>训练目标</th>
+<th>边界</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Visual Guidance</td>
+<td>用图像/视频帧指导步骤化过程</td>
+<td>更像过程说明和视觉计划，不等于真实执行</td>
+</tr>
+<tr>
+<td>World Exploration</td>
+<td>生成交互式 scene observations 与 narrations</td>
+<td>有空间一致性目标，但仍是生成式探索</td>
+</tr>
+<tr>
+<td>Embodied Manipulation</td>
+<td>预测 subtask instructions 和 keyframe states</td>
+<td>是 keyframe/subtask world modeling，不是连续低层控制</td>
+</tr>
+</tbody>
+</table>
+<h3 id="rl增强统一接口不是物理-reward"><a class="markdownIt-Anchor" href="#rl增强统一接口不是物理-reward"></a> RL：增强统一接口，不是物理 reward</h3>
+<p>SFT 之后，Emu3.5 做 large-scale multi-task RL。论文展示 reward 从约 4.5 上升到大于 7.1，说明统一后训练可以提升多任务生成和推理表现。</p>
+<p>但它和 Dreamer/PlaNet 那类 model-based RL 不同。这里的 reward 主要来自 multimodal generation / reasoning 的评价信号，不是机器人环境里的稀疏成功奖励、碰撞惩罚或物理代价。因此本站把它读成“统一多模态后训练”，而不是“已解决闭环控制”。</p>
+<h3 id="dida把视觉块从逐-token-改成并行预测"><a class="markdownIt-Anchor" href="#dida把视觉块从逐-token-改成并行预测"></a> DiDA：把视觉块从逐 token 改成并行预测</h3>
+<p><img  
+                     lazyload
+                     src="/images/loading.svg"
+                     data-src="/image/ai-notes/images/paper-deep-dives/world-models/emu3-5/figure-9-dida.png"
+                      alt="Discrete Diffusion Adaptation 原图" 
+                ></p>
+<p><small>图源：<code>Emu3.5</code>，Figure 9。原论文图意：训练阶段用标准 next-token prediction；DiDA 阶段复制图像并随机 mask token，让模型学习双向并行预测，从而加速图像生成。</small></p>
+<p><strong>DiDA 图要看视觉 token 如何并行化。</strong><br />
+NTP 适合语言，因为句子天然有顺序；但图像 token 数量很大，逐 token 生成会很慢。DiDA 的核心是把同一张图复制成条件/目标形式，随机 mask 目标视觉 token，让模型在视觉块内部做 bidirectional parallel prediction。</p>
+<p>论文声称 per-image inference 大约 20x 加速。对世界模型部署来说，这类加速很关键：交互式 world rollout 的瓶颈往往不是模型会不会生成，而是能不能足够低延迟地生成下一观察。</p>
+<h2 id="实验结论"><a class="markdownIt-Anchor" href="#实验结论"></a> 实验结论</h2>
+<p><img  
+                     lazyload
+                     src="/images/loading.svg"
+                     data-src="/image/ai-notes/images/paper-deep-dives/world-models/emu3-5/figure-18-world-exploration.png"
+                      alt="Emu3.5 world exploration 原图" 
+                ></p>
+<p><small>图源：<code>Emu3.5</code>，Figure 18。原论文图意：展示 world exploration 结果；图中按钮表示 camera movement 或 viewpoint change instructions。</small></p>
+<p><strong>这张图支撑什么。</strong><br />
+这张图说明 Emu3.5 可以在用户给定世界或场景后，以 interleaved vision-language 输出方式做多步探索。它支撑的是 spatiotemporal consistency 和 controllable viewpoint change 的生成能力。</p>
+<p>它不能单独证明真实机器人导航，因为没有真实传感器闭环、地图误差、碰撞约束或执行反馈。</p>
+<p><img  
+                     lazyload
+                     src="/images/loading.svg"
+                     data-src="/image/ai-notes/images/paper-deep-dives/world-models/emu3-5/figure-19-embodied-manipulation.png"
+                      alt="Emu3.5 embodied manipulation 原图" 
+                ></p>
+<p><small>图源：<code>Emu3.5</code>，Figure 19。原论文图意：展示 embodied manipulation 结果，用 interleaved subtask instructions 和 keyframe states 表示长时程操作过程。</small></p>
+<p><strong>Embodied manipulation 图看子任务和关键状态。</strong><br />
+读这张图时不要把它当 action policy。它更像“任务分解 + 关键状态预测”：模型把长任务拆成若干语义子任务，并为每个子任务生成完成状态 keyframe。</p>
+<p>对 VLA 项目来说，它可以作为 planner 或 world-state proposal 的候选模块；低层控制、轨迹跟踪、夹爪力控和失败恢复仍需要另外的系统。</p>
+<h2 id="消融诊断"><a class="markdownIt-Anchor" href="#消融诊断"></a> 消融诊断</h2>
+<table>
+<thead>
+<tr>
+<th>Diagnostic</th>
+<th>Observation</th>
+<th>训练/推理含义</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Video data statistics</td>
+<td>约 63M videos，平均约 6.5 minutes，配合 scene detection 与 Whisper transcript</td>
+<td>world learner 的主要燃料是长时视觉语言状态流，不只是 image-text pairs</td>
+</tr>
+<tr>
+<td>SFT task mix</td>
+<td>World Exploration 17.5B tokens、Embodied Manipulation 14.1B tokens</td>
+<td>世界能力需要在后训练中显式变成任务接口</td>
+</tr>
+<tr>
+<td>RL post-training</td>
+<td>多任务 reward 从约 4.5 提升到大于 7.1</td>
+<td>RL 强化统一接口质量，但 reward 不是物理环境 reward</td>
+</tr>
+<tr>
+<td>DiDA inference</td>
+<td>随机 mask 视觉 token 后做 bidirectional parallel prediction，报告约 20x per-image acceleration</td>
+<td>适合交互式 rollout 的延迟优化，但不是能力本身</td>
+</tr>
+</tbody>
+</table>
+<h3 id="和-bagel-lingbot-world-的关系"><a class="markdownIt-Anchor" href="#和-bagel-lingbot-world-的关系"></a> 和 BAGEL、LingBot-World 的关系</h3>
+<table>
+<thead>
+<tr>
+<th>Dimension</th>
+<th>BAGEL</th>
+<th>Emu3.5</th>
+<th>LingBot-World</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Training objective</td>
+<td>CE + Rectified Flow</td>
+<td>unified next-token prediction</td>
+<td>video generation objective + action conditioning</td>
+</tr>
+<tr>
+<td>Core data</td>
+<td>text / image / video / web interleaved</td>
+<td>long video frames + transcripts + task SFT</td>
+<td>videos, interaction trajectories, action/camera controls</td>
+</tr>
+<tr>
+<td>World modeling signal</td>
+<td>navigation / manipulation demos from interleaved pretraining</td>
+<td>next-state vision-language prediction, exploration and keyframes</td>
+<td>action-conditioned rollout simulator</td>
+</tr>
+<tr>
+<td>Inference focus</td>
+<td>generalized causal attention + KV cache</td>
+<td>DiDA parallel visual prediction</td>
+<td>causal rollout + KV cache + few-step distillation</td>
+</tr>
+<tr>
+<td>Missing proof</td>
+<td>closed-loop action causality</td>
+<td>real execution and physical feedback</td>
+<td>independent downstream policy improvement</td>
+</tr>
+</tbody>
+</table>
+<p>Emu3.5 最适合和 LingBot-World 对读。Emu3.5 从 native multimodal NTP 出发，强调视觉语言下一状态；LingBot-World 从视频生成器出发，强调动作条件和实时交互模拟。前者更像“统一状态序列底座”，后者更像“动作可控模拟器”。</p>
+<h2 id="局限风险"><a class="markdownIt-Anchor" href="#局限风险"></a> 局限风险</h2>
+<ol>
+<li><strong>离散视觉 token 不是连续物理状态</strong>：token 级 next-state prediction 可以生成连贯图像，但不保证几何、接触和动力学精确。</li>
+<li><strong>world exploration 仍是生成式展示</strong>：没有地图误差、真实传感器噪声、执行器延迟和安全约束。</li>
+<li><strong>embodied manipulation 是 keyframe/subtask 级别</strong>：它预测关键状态和语义步骤，不输出可执行低层轨迹。</li>
+<li><strong>数据治理成本极高</strong>：63M 视频、ASR、scene detection、keyframe 抽取、SFT 多任务标注和 RL 都不是轻量流程。</li>
+<li><strong>DiDA 是推理加速，不是能力本身</strong>：它让视觉输出更快，但 world-state 正确性仍要靠数据、训练和评测保证。</li>
+</ol>
+<h2 id="阅读结论"><a class="markdownIt-Anchor" href="#阅读结论"></a> 阅读结论</h2>
+<p>Emu3.5 的核心启发是：如果把长视频帧、transcript、instruction、reasoning 和 keyframe 状态组织成统一序列，next-token prediction 可以被解释为视觉语言世界状态的下一步预测。它把统一多模态模型向 world model 推了一步。</p>
+<p>但从工程角度看，它还不是可以直接部署到机器人或交互环境的完整世界模型。它更适合作为高层世界状态生成器、可视化 planner、长时 narrative simulator 或 embodied task proposal 模块；真实闭环还需要 action-conditioned dynamics、低层控制和失败反馈。</p>
+<p>Emu3.5 是统一多模态世界模型路线的重要样本。强证据在于 13T+ multimodal pretraining、long video interleaved data、SFT 世界任务和 DiDA 推理加速；弱证据在于 world exploration 与 embodied manipulation 仍主要是生成式视觉语言输出，尚未证明真实闭环控制收益。</p>
+<h2 id="外部精读"><a class="markdownIt-Anchor" href="#外部精读"></a> 外部精读</h2>
+<ol>
+<li><a class="link"   target="_blank" rel="noopener" href="https://arxiv.org/abs/2510.26583" >Emu3.5 arXiv<i class="fa-solid fa-arrow-up-right ml-[0.2em] font-light align-text-top text-[0.7em] link-icon"></i></a>：读数据、SFT 世界任务、DiDA 和 world exploration / embodied manipulation 图表。</li>
+<li><a class="link"   target="_blank" rel="noopener" href="https://ar5iv.labs.arxiv.org/html/2510.26583" >ar5iv HTML<i class="fa-solid fa-arrow-up-right ml-[0.2em] font-light align-text-top text-[0.7em] link-icon"></i></a>：适合检索 Figure 3/4/5/9/18/19 和表格。</li>
+<li><a class="link"   target="_blank" rel="noopener" href="https://github.com/baaivision/Emu3.5" >BAAI Emu3.5 GitHub<i class="fa-solid fa-arrow-up-right ml-[0.2em] font-light align-text-top text-[0.7em] link-icon"></i></a>：确认模型、推理入口和代码发布状态。</li>
+<li><a class="link"   target="_blank" rel="noopener" href="https://huggingface.co/BAAI/Emu3.5" >BAAI/Emu3.5 on Hugging Face<i class="fa-solid fa-arrow-up-right ml-[0.2em] font-light align-text-top text-[0.7em] link-icon"></i></a>：查看模型卡、权重和使用说明；能力 claim 仍回到论文。</li>
+<li><a class="link"   target="_blank" rel="noopener" href="https://arxiv.org/abs/2505.14683" >BAGEL<i class="fa-solid fa-arrow-up-right ml-[0.2em] font-light align-text-top text-[0.7em] link-icon"></i></a> 与 <a class="link"   target="_blank" rel="noopener" href="https://arxiv.org/abs/2603.03276" >Beyond Language Modeling<i class="fa-solid fa-arrow-up-right ml-[0.2em] font-light align-text-top text-[0.7em] link-icon"></i></a>：作为统一多模态世界模型路线对照，帮助区分 flow-based visual generation、native visual-token NTP 和 action-conditioned future prediction。</li>
+</ol>
+
+		</div>
+
+		
+		<div class="post-copyright-info w-full my-8 px-2 sm:px-6 md:px-8">
+			<div class="article-copyright-info-container">
+    <ul>
+        <li><strong>Title:</strong> 论文专题讲解：Emu3.5：原生多模态模型如何变成世界学习器</li>
+        <li><strong>Author:</strong> Charles</li>
+        <li><strong>Created at
+                :</strong> 2026-03-31 09:00:00</li>
+        
+            <li>
+                <strong>Updated at
+                    :</strong> 2026-03-31 09:00:00
+            </li>
+        
+        <li>
+            <strong>Link:</strong> https://charles2530.github.io/2026/03/31/ai-files-paper-deep-dives-world-models-emu3-5/
+        </li>
+        <li>
+            <strong>
+                License:
+            </strong>
+            
+
+            
+                This work is licensed under <a class="license" target="_blank" rel="noopener" href="https://creativecommons.org/licenses/by-nc-sa/4.0">CC BY-NC-SA 4.0</a>.
+            
+        </li>
+    </ul>
+</div>
+
+		</div>
+		
+
+		
+		<ul class="post-tags-box text-lg mt-1.5 flex-wrap justify-center flex md:hidden">
+			
+			<li class="tag-item mx-0.5">
+				<a href="/tags/AI/">#AI</a>&nbsp;
+			</li>
+			
+			<li class="tag-item mx-0.5">
+				<a href="/tags/%E4%B8%96%E7%95%8C%E6%A8%A1%E5%9E%8B/">#世界模型</a>&nbsp;
+			</li>
+			
+			<li class="tag-item mx-0.5">
+				<a href="/tags/%E8%AE%BA%E6%96%87%E4%B8%93%E9%A2%98/">#论文专题</a>&nbsp;
+			</li>
+			
+		</ul>
+		
+
+		
+
+		
+		<div class="article-nav my-8 flex justify-between items-center px-2 sm:px-6 md:px-8">
+			
+			<div class="article-prev border-border-color shadow-redefine-flat shadow-shadow-color-2 rounded-medium px-4 py-2 hover:shadow-redefine-flat-hover hover:shadow-shadow-color-2">
+				<a class="prev" rel="prev" href="/2026/04/01/ai-files-paper-deep-dives-world-models-lance/">
+					<span class="left arrow-icon flex justify-center items-center">
+						<i class="fa-solid fa-chevron-left"></i>
+					</span>
+					<span class="title flex justify-center items-center">
+						<span class="post-nav-title-item truncate max-w-48">论文专题讲解：Lance：统一多模态模型，为什么对世界模型有启发</span>
+						<span class="post-nav-item">Prev posts</span>
+					</span>
+				</a>
+			</div>
+			
+			
+			<div class="article-next border-border-color shadow-redefine-flat shadow-shadow-color-2 rounded-medium px-4 py-2 hover:shadow-redefine-flat-hover hover:shadow-shadow-color-2">
+				<a class="next" rel="next" href="/2026/03/29/ai-files-paper-deep-dives-world-models-beyond-language-modeling/">
+					<span class="title flex justify-center items-center">
+						<span class="post-nav-title-item truncate max-w-48">论文专题讲解：Beyond Language Modeling：多模态预训练怎样长出世界模型能力</span>
+						<span class="post-nav-item">Next posts</span>
+					</span>
+					<span class="right arrow-icon flex justify-center items-center">
+						<i class="fa-solid fa-chevron-right"></i>
+					</span>
+				</a>
+			</div>
+			
+		</div>
+		
+
+
+		
+		<div class="comment-container px-2 sm:px-6 md:px-8 pb-8">
+			<div class="comments-container mt-10 w-full ">
+    <div id="comment-anchor" class="w-full h-2.5"></div>
+    <div class="comment-area-title w-full my-1.5 md:my-2.5 text-xl md:text-3xl font-bold">
+        Comments
+    </div>
+    
+
+        
+            
+    <div id="gitalk-container"></div>
+    <script data-swup-reload-script
+            src="https://cdnjs.cloudflare.com/ajax/libs/gitalk/1.8.0/gitalk.min.js"></script>
+    <script data-swup-reload-script>
+        (function() {
+            const startPath = location.pathname;
+            const startTime = Date.now();
+            const retryDelay = 200;
+            const retryLimit = 5000;
+
+            const runGitalk = () => {
+                if (location.pathname !== startPath) {
+                    return;
+                }
+
+                const container = document.getElementById('gitalk-container');
+                if (!container || typeof Gitalk === 'undefined') {
+                    if (Date.now() - startTime < retryLimit) {
+                        setTimeout(runGitalk, retryDelay);
+                    }
+                    return;
+                }
+
+                container.innerHTML = '';
+
+                let pageKey = decodeURI(location.pathname);
+                const maxLength = 50;
+                if (pageKey.length > maxLength) {
+                    pageKey = pageKey.substring(0, maxLength - 3) + '...';
+                }
+
+                try {
+                    new Gitalk({
+                        clientID: '8083299a8ee2aaf23879',
+                        clientSecret: 'a8161e81d4872181e884fdb69f7be24916b6a9d0',
+                        repo: 'Charles2530.github.io',
+                        owner: 'Charles2530',
+                        admin: ['Charles2530'],
+                        id: pageKey,
+                        language: 'en',
+                        proxy: 'https://github.com/login/oauth/access_token'
+                    }).render(container);
+                } catch (e) {
+                    window.Gitalk = null;
+                }
+            };
+
+            runGitalk();
+        })();
+    </script>
+
+
+
+        
+    
+</div>
+
+		</div>
+		
+	</div>
+
+	
+	<div class="toc-content-container">
+		<div class="post-toc-wrap">
+	<div class="post-toc">
+		<div class="toc-title">On this page</div>
+		<div class="page-title">论文专题讲解：Emu3.5：原生多模态模型如何变成世界学习器</div>
+		<ol class="nav"><li class="nav-item nav-level-2"><a class="nav-link" href="#%E5%8E%9F%E8%AE%BA%E6%96%87%E6%95%85%E4%BA%8B%E7%BA%BF"><span class="nav-text"> 原论文故事线</span></a><ol class="nav-child"><li class="nav-item nav-level-3"><a class="nav-link" href="#%E7%A0%94%E7%A9%B6%E8%83%8C%E6%99%AF"><span class="nav-text"> 研究背景</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#%E9%97%AE%E9%A2%98challenge"><span class="nav-text"> 问题（Challenge）</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#finding"><span class="nav-text"> Finding</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#%E6%96%B9%E6%B3%95"><span class="nav-text"> 方法</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#%E7%BB%93%E8%AE%BA"><span class="nav-text"> 结论</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#%E5%85%B3%E9%94%AE%E6%9C%AF%E8%AF%AD"><span class="nav-text"> 关键术语</span></a></li></ol></li><li class="nav-item nav-level-2"><a class="nav-link" href="#%E8%B4%A1%E7%8C%AE%E9%80%9F%E8%A7%88"><span class="nav-text"> 贡献速览</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#%E8%AE%BA%E6%96%87%E4%BD%8D%E7%BD%AE"><span class="nav-text"> 论文位置</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#%E6%A0%B8%E5%BF%83%E9%97%AE%E9%A2%98"><span class="nav-text"> 核心问题</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#%E6%96%B9%E6%B3%95%E7%BB%93%E6%9E%84"><span class="nav-text"> 方法结构</span></a><ol class="nav-child"><li class="nav-item nav-level-3"><a class="nav-link" href="#%E6%A8%A1%E5%9E%8B%E9%85%8D%E7%BD%AE%E4%B8%8E%E8%A7%86%E8%A7%89-token"><span class="nav-text"> 模型配置与视觉 token</span></a></li></ol></li><li class="nav-item nav-level-2"><a class="nav-link" href="#%E8%AE%AD%E7%BB%83%E7%BB%86%E8%8A%82"><span class="nav-text"> 训练细节</span></a><ol class="nav-child"><li class="nav-item nav-level-3"><a class="nav-link" href="#pre-training%E8%A7%86%E9%A2%91%E5%B8%A7%E4%B8%8E-transcript-%E6%98%AF%E4%B8%BB%E7%87%83%E6%96%99"><span class="nav-text"> Pre-training：视频帧与 transcript 是主燃料</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#sft%E6%8A%8A%E4%B8%96%E7%95%8C%E4%BB%BB%E5%8A%A1%E6%98%BE%E5%BC%8F%E5%8C%96"><span class="nav-text"> SFT：把世界任务显式化</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#rl%E5%A2%9E%E5%BC%BA%E7%BB%9F%E4%B8%80%E6%8E%A5%E5%8F%A3%E4%B8%8D%E6%98%AF%E7%89%A9%E7%90%86-reward"><span class="nav-text"> RL：增强统一接口，不是物理 reward</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#dida%E6%8A%8A%E8%A7%86%E8%A7%89%E5%9D%97%E4%BB%8E%E9%80%90-token-%E6%94%B9%E6%88%90%E5%B9%B6%E8%A1%8C%E9%A2%84%E6%B5%8B"><span class="nav-text"> DiDA：把视觉块从逐 token 改成并行预测</span></a></li></ol></li><li class="nav-item nav-level-2"><a class="nav-link" href="#%E5%AE%9E%E9%AA%8C%E7%BB%93%E8%AE%BA"><span class="nav-text"> 实验结论</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#%E6%B6%88%E8%9E%8D%E8%AF%8A%E6%96%AD"><span class="nav-text"> 消融诊断</span></a><ol class="nav-child"><li class="nav-item nav-level-3"><a class="nav-link" href="#%E5%92%8C-bagel-lingbot-world-%E7%9A%84%E5%85%B3%E7%B3%BB"><span class="nav-text"> 和 BAGEL、LingBot-World 的关系</span></a></li></ol></li><li class="nav-item nav-level-2"><a class="nav-link" href="#%E5%B1%80%E9%99%90%E9%A3%8E%E9%99%A9"><span class="nav-text"> 局限风险</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#%E9%98%85%E8%AF%BB%E7%BB%93%E8%AE%BA"><span class="nav-text"> 阅读结论</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#%E5%A4%96%E9%83%A8%E7%B2%BE%E8%AF%BB"><span class="nav-text"> 外部精读</span></a></li></ol>
+
+	</div>
+</div>
+	</div>
+	
+</div>
+
+			</div>
+
+			
+		</div>
+
+		<div class="main-content-footer">
+			<footer class="footer mt-5 py-5 h-auto text-base text-third-text-color relative border-t-2 border-t-border-color">
+    <div class="info-container py-3 text-center">
+        
+        <div class="text-center">
+            &copy;
+            
+              <span>2022</span>
+              -
+            
+            2026&nbsp;&nbsp;<i class="fa-solid fa-heart fa-beat" style="--fa-animation-duration: 0.5s; color: #f54545"></i>&nbsp;&nbsp;<a href="/">Charles</a>
+            
+                
+                <p class="post-count space-x-0.5">
+                    <span>
+                        601 posts in total
+                    </span>
+                    
+                        <span>
+                            2422.2k words in total
+                        </span>
+                    
+                </p>
+            
+        </div>
+        
+            <script data-swup-reload-script src="https://cn.vercount.one/js"></script>
+            <div class="relative text-center lg:absolute lg:right-[20px] lg:top-1/2 lg:-translate-y-1/2 lg:text-right">
+                
+                    <span id="busuanzi_container_site_uv" class="lg:!block">
+                        <span class="text-sm">VISITOR COUNT</span>
+                        <span id="busuanzi_value_site_uv"></span>
+                    </span>
+                
+                
+                    <span id="busuanzi_container_site_pv" class="lg:!block">
+                        <span class="text-sm">TOTAL PAGE VIEWS</span>
+                        <span id="busuanzi_value_site_pv"></span>
+                    </span>
+                
+            </div>
+        
+        <div class="relative text-center lg:absolute lg:left-[20px] lg:top-1/2 lg:-translate-y-1/2 lg:text-left">
+            <span class="lg:block text-sm">POWERED BY <?xml version="1.0" encoding="utf-8"?><!DOCTYPE svg PUBLIC "-//W3C//DTD SVG 1.1//EN" "http://www.w3.org/Graphics/SVG/1.1/DTD/svg11.dtd"><svg class="relative top-[2px] inline-block align-baseline" version="1.1" id="圖層_1" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" x="0px" y="0px" width="1rem" height="1rem" viewBox="0 0 512 512" enable-background="new 0 0 512 512" xml:space="preserve"><path fill="#0E83CD" d="M256.4,25.8l-200,115.5L56,371.5l199.6,114.7l200-115.5l0.4-230.2L256.4,25.8z M349,354.6l-18.4,10.7l-18.6-11V275H200v79.6l-18.4,10.7l-18.6-11v-197l18.5-10.6l18.5,10.8V237h112v-79.6l18.5-10.6l18.5,10.8V354.6z"/></svg><a target="_blank" class="text-base" href="https://hexo.io">Hexo</a></span>
+            <span class="text-sm lg:block">THEME&nbsp;<a class="text-base" target="_blank" href="https://github.com/EvanNotFound/hexo-theme-redefine">Redefine v2.9.0</a></span>
+        </div>
+        
+        
+            <div>
+                Blog up for <span class="odometer" id="runtime_days" ></span> days <span class="odometer" id="runtime_hours"></span> hrs <span class="odometer" id="runtime_minutes"></span> Min <span class="odometer" id="runtime_seconds"></span> Sec
+            </div>
+        
+        
+            <script data-swup-reload-script>
+                try {
+                    function odometer_init() {
+                    const elements = document.querySelectorAll('.odometer');
+                    elements.forEach(el => {
+                        new Odometer({
+                            el,
+                            format: '( ddd).dd',
+                            duration: 200
+                        });
+                    });
+                    }
+                    odometer_init();
+                } catch (error) {}
+            </script>
+        
+        
+            
+                
+        
+                
+        
+                
+
+                    
+                        <script data-swup-reload-script type="text/javascript" src="/js/love.js"></script>
+                    
+        
+        
+    </div>  
+</footer>
+		</div>
+	</div>
+
+	
+	<div class="post-tools">
+		<div class="post-tools-container">
+	<ul class="article-tools-list">
+		<!-- TOC aside toggle -->
+		
+		<li class="right-bottom-tools page-aside-toggle">
+			<i class="fa-regular fa-outdent"></i>
+		</li>
+		
+
+		<!-- go comment -->
+		
+		<li class="go-comment">
+			<i class="fa-regular fa-comments"></i>
+		</li>
+		
+	</ul>
+</div>
+	</div>
+	
+
+	<div class="right-side-tools-container">
+		<div class="side-tools-container">
+	<ul class="hidden-tools-list">
+		<li class="right-bottom-tools tool-font-adjust-plus flex justify-center items-center">
+			<i class="fa-regular fa-magnifying-glass-plus"></i>
+		</li>
+
+		<li class="right-bottom-tools tool-font-adjust-minus flex justify-center items-center">
+			<i class="fa-regular fa-magnifying-glass-minus"></i>
+		</li>
+
+		<li class="right-bottom-tools tool-dark-light-toggle flex justify-center items-center">
+			<i class="fa-regular fa-moon"></i>
+		</li>
+
+		<!-- rss -->
+		
+		<li class="right-bottom-tools rss flex justify-center items-center">
+			<a class="flex justify-center items-center" href="/atom.xml" target="_blank">
+				<i class="fa-regular fa-rss"></i>
+			</a>
+		</li>
+		
+
+		
+
+		<li class="right-bottom-tools tool-scroll-to-bottom flex justify-center items-center">
+			<i class="fa-regular fa-arrow-down"></i>
+		</li>
+	</ul>
+
+	<ul class="visible-tools-list">
+		<li class="right-bottom-tools toggle-tools-list flex justify-center items-center">
+			<i class="fa-regular fa-cog fa-spin"></i>
+		</li>
+		
+		<li class="right-bottom-tools tool-scroll-to-top flex justify-center items-center">
+			<i class="arrow-up fas fa-arrow-up"></i>
+			<span class="percent"></span>
+		</li>
+		
+		
+	</ul>
+</div>
+	</div>
+
+	<div class="image-viewer-container" role="dialog" aria-modal="true" aria-label="Image viewer">
+	<button class="image-viewer-close" type="button" aria-label="Close">
+		<i class="fa-solid fa-xmark"></i>
+	</button>
+	<button class="image-viewer-prev" type="button" aria-label="Prev">
+		<i class="fa-solid fa-chevron-left"></i>
+	</button>
+	<div class="image-viewer-frame">
+		<img src="" alt="">
+	</div>
+	<div class="image-viewer-exif-panel hidden absolute left-1/2 bottom-20 -translate-x-1/2 w-[min(92vw,420px)] max-h-[60vh] overflow-hidden rounded-2xl bg-background-color-transparent-80 p-4 text-left shadow-redefine-flat backdrop-blur-md" role="dialog" aria-label="EXIF" aria-hidden="true">
+		<div class="flex items-center justify-between mb-3">
+			<span class="text-sm font-semibold text-first-text-color">EXIF</span>
+			<button class="image-viewer-exif-close flex h-8 w-8 items-center justify-center rounded-full bg-background-color-transparent-80 text-first-text-color transition hover:bg-background-color-transparent-40" type="button" aria-label="Close">
+				<i class="fa-solid fa-xmark text-[0.65rem]"></i>
+			</button>
+		</div>
+		<div class="image-viewer-exif-cards grid grid-cols-1 sm:grid-cols-2 gap-3 max-h-[50vh] overflow-y-auto pr-1 scrollbar-hide"></div>
+		<template class="image-viewer-exif-card-template">
+			<div class="rounded-lg bg-background-color-transparent-40 px-3 py-2">
+				<div class="image-viewer-exif-card-header flex items-center gap-2 mb-1">
+					<i class="image-viewer-exif-card-icon fa-solid fa-circle-info text-xs text-third-text-color"></i>
+					<div class="image-viewer-exif-card-title text-xs font-semibold text-first-text-color"></div>
+				</div>
+				<div class="image-viewer-exif-card-items flex flex-col gap-1"></div>
+			</div>
+		</template>
+	</div>
+	<button class="image-viewer-exif-toggle flex items-center gap-2 hidden absolute left-1/2 bottom-6 -translate-x-1/2 rounded-full border border-border-color bg-background-color-transparent-80 px-4 py-2 text-first-text-color backdrop-blur-md transition hover:bg-background-color-transparent-40" type="button" aria-label="EXIF" aria-expanded="false">
+		<i class="fa-solid fa-circle-info text-xs"></i>
+		<span class="text-xs font-semibold uppercase tracking-wider">EXIF</span>
+	</button>
+	<button class="image-viewer-next" type="button" aria-label="Next">
+		<i class="fa-solid fa-chevron-right"></i>
+	</button>
+</div>
+
+
+	
+	<div class="search-pop-overlay">
+	<div class="popup search-popup">
+		<div class="search-header">
+			<span class="search-input-field-pre">
+				<i class="fa-solid fa-keyboard"></i>
+			</span>
+			<div class="search-input-container">
+				<input autocomplete="off" autocorrect="off" autocapitalize="off" placeholder="Search..." spellcheck="false" type="search" class="search-input">
+			</div>
+			<span class="popup-btn-close">
+				<i class="fa-solid fa-times"></i>
+			</span>
+		</div>
+		<div id="search-result">
+			<div id="no-result">
+				<i class="fa-solid fa-spinner fa-spin-pulse fa-5x fa-fw"></i>
+			</div>
+		</div>
+	</div>
+</div>
+	
+
+</main>
+
+
+
+<script src="/js/build/libs/Swup.min.js"></script>
+
+<script src="/js/build/libs/SwupSlideTheme.min.js"></script>
+
+<script src="/js/build/libs/SwupScriptsPlugin.min.js"></script>
+
+<script src="/js/build/libs/SwupProgressPlugin.min.js"></script>
+
+<script src="/js/build/libs/SwupScrollPlugin.min.js"></script>
+
+<script src="/js/build/libs/SwupPreloadPlugin.min.js"></script>
+
+<script>
+    window.swup = new Swup({
+        plugins: [
+            new SwupScriptsPlugin({
+                optin: true,
+            }),
+            new SwupProgressPlugin(),
+            new SwupScrollPlugin({
+                offset: 80,
+            }),
+            new SwupSlideTheme({
+                mainElement: ".main-content-body",
+            }),
+            new SwupPreloadPlugin(),
+        ],
+        containers: ["#swup"],
+    });
+
+    window.dispatchEvent(
+        new CustomEvent("redefine:swup:ready", {
+            detail: {
+                swup: window.swup,
+            },
+        }),
+    );
+</script>
+
+
+
+
+	
+<script src="/js/build/main.js" type="module"></script>
+
+
+
+    
+<script src="/js/build/libs/odometer.min.js"></script>
+
+    
+<link rel="stylesheet" href="/assets/odometer-theme-minimal.css">
+
+
+
+
+
+
+
+  
+<script src="/js/build/libs/Typed.min.js"></script>
+<script src="/js/build/libs/minimasonry.min.js" data-swup-reload-script=""></script>
+
+
+
+
+<script src="/js/build/libs/moment-with-locales.min.js" data-swup-reload-script=""></script>
+
+
+
+	
+</body>
+
+</html>

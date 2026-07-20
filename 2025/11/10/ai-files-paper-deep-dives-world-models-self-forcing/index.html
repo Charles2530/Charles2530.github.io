@@ -1,0 +1,2044 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="keywords" content="Charles">
+    
+    
+    <meta name="author" content="Charles">
+    
+    <!-- Completely eliminate flash of wrong theme -->
+    <script>
+        (function() {
+            const THEME_KEY = "REDEFINE-THEME-STATUS";
+            const DARK = "dark", LIGHT = "light";
+            
+            // Get preferred theme
+            function getTheme() {
+                try {
+                    const saved = localStorage.getItem(THEME_KEY);
+                    if (saved) {
+                        const { isDark } = JSON.parse(saved);
+                        return isDark ? DARK : LIGHT;
+                    }
+                } catch (e) {}
+                
+                return matchMedia("(prefers-color-scheme: dark)").matches ? DARK : LIGHT;
+            }
+            
+            // Apply theme to document
+            function applyTheme(theme) {
+                const isDark = theme === DARK;
+                const root = document.documentElement;
+                
+                // Set classes for compatibility
+                root.classList.add(theme);
+                root.classList.remove(isDark ? LIGHT : DARK);
+                root.style.colorScheme = theme;
+            }
+            
+            // Initial application
+            const theme = getTheme();
+            applyTheme(theme);
+            
+            // Listen for system preference changes
+            matchMedia("(prefers-color-scheme: dark)").addEventListener("change", ({ matches }) => {
+                // Only update if using system preference (no localStorage entry)
+                if (!localStorage.getItem(THEME_KEY)) {
+                    applyTheme(matches ? DARK : LIGHT);
+                }
+            });
+            
+            // Set body classes ASAP (before DOMContentLoaded)
+            (function() {
+                const addBodyClass = () => {
+                    const b = document.body;
+                    if (!b) return false;
+                    b.classList.add(theme + "-mode");
+                    return true;
+                };
+
+                // Try immediately
+                if (addBodyClass()) return;
+
+                // Observe until body exists
+                const mo = new MutationObserver(() => {
+                    if (addBodyClass()) mo.disconnect();
+                });
+                mo.observe(document.documentElement, { childList: true, subtree: true });
+            })();
+        })();
+    </script>
+    
+    <!-- preconnect -->
+<!--- Seo Part-->
+    
+    <link rel="canonical" href="https://charles2530.github.io/2025/11/10/ai-files-paper-deep-dives-world-models-self-forcing/"/>
+    <meta name="robots" content="index,follow">
+    <meta name="googlebot" content="index,follow">
+    <meta name="revisit-after" content="1 days">
+    
+    
+        
+        <meta name="description" content="This is Charles&#39;s Castle.">
+<meta property="og:type" content="article">
+<meta property="og:title" content="论文专题讲解：Self Forcing：对齐自回归视频训练与推理">
+<meta property="og:url" content="https://charles2530.github.io/2025/11/10/ai-files-paper-deep-dives-world-models-self-forcing/index.html">
+<meta property="og:site_name" content="Charles&#39;s Castle">
+<meta property="og:description" content="This is Charles&#39;s Castle.">
+<meta property="og:locale" content="en_US">
+<meta property="og:image" content="https://charles2530.github.io/image/background/logo.jpg">
+<meta property="article:published_time" content="2025-11-10T01:00:00.000Z">
+<meta property="article:modified_time" content="2025-11-10T01:00:00.000Z">
+<meta property="article:author" content="Du Jinyang">
+<meta property="article:tag" content="AI">
+<meta property="article:tag" content="世界模型">
+<meta property="article:tag" content="论文专题">
+<meta name="twitter:card" content="summary">
+<meta name="twitter:image" content="https://charles2530.github.io/image/background/logo.jpg">
+    
+    
+    <!--- Icon Part-->
+    <link rel="icon" type="image/png" href="https://charles2530.github.io/image/background/favicon.png" sizes="192x192">
+    <link rel="apple-touch-icon" sizes="180x180" href="https://charles2530.github.io/image/background/favicon.png">
+    <meta name="theme-color" content="#A31F34">
+    <link rel="shortcut icon" href="https://charles2530.github.io/image/background/favicon.png">
+    <!--- Page Info-->
+    
+    <title>
+        
+            论文专题讲解：Self Forcing：对齐自回归视频训练与推理 | Charles&#39;s Castle
+        
+    </title>
+
+    
+<link rel="stylesheet" href="/fonts/Chillax/chillax.css">
+
+
+    <!--- Inject Part-->
+    
+        
+            
+    
+            
+    
+            
+                
+                    <link rel="stylesheet" href="/katex/katex.min.css">
+                
+    
+            
+                
+                    <link rel="stylesheet" href="/css/site-polish-v2.css">
+                
+    
+            
+                
+                    <script data-swup-reload-script>
+(function() {
+  function loadBaiduAnalytics() {
+    if (window.__baiduAnalyticsLoaded) return;
+    window.__baiduAnalyticsLoaded = true;
+    window._hmt = window._hmt || [];
+    var hm = document.createElement("script");
+    hm.async = true;
+    hm.src = "https://hm.baidu.com/hm.js?8e0e5f382d14d87cbeadc33a36e71e86";
+    document.head.appendChild(hm);
+  }
+  if ("requestIdleCallback" in window) {
+    requestIdleCallback(loadBaiduAnalytics, { timeout: 3000 });
+  } else {
+    window.addEventListener("load", function() {
+      setTimeout(loadBaiduAnalytics, 1500);
+    });
+  }
+})();
+</script>
+
+                
+    
+
+    
+<link rel="stylesheet" href="/css/style.css">
+
+
+    
+        
+<link rel="stylesheet" href="/css/build/tailwind.css">
+
+    
+
+    
+<link rel="stylesheet" href="/fonts/GeistMono/geist-mono.css">
+
+    
+<link rel="stylesheet" href="/fonts/Geist/geist.css">
+
+    <!--- Font Part-->
+    
+    
+    
+    
+    
+    
+        
+<script src="/js/build/libs/anime.min.js"></script>
+
+    
+
+    <script id="hexo-configurations">
+    window.config = {"hostname":"charles2530.github.io","root":"/","language":"en","path":"search.xml"};
+    window.theme = {"articles":{"style":{"font_size":"16px","line_height":1.5,"image_border_radius":"14px","image_alignment":"center","image_caption":false,"link_icon":true,"delete_mask":false,"title_alignment":"left","headings_top_spacing":{"h1":"5rem","h2":"4rem","h3":"2.8rem","h4":"2.5rem","h5":"2.2rem","h6":"2rem"}},"word_count":{"enable":true,"count":true,"min2read":true},"author_label":{"enable":true,"auto":true,"list":["lol","Neo","God"]},"code_block":{"copy":true,"style":"mac","highlight_theme":{"light":"github","dark":"vs2015"},"font":{"enable":false,"family":null,"url":null}},"toc":{"enable":true,"max_depth":6,"number":false,"expand":true,"init_open":true},"copyright":{"enable":true,"default":"cc_by_nc_sa"},"lazyload":true,"pangu_js":false,"recommendation":{"enable":false,"title":"recommend_articles","limit":3,"mobile_limit":2,"placeholder":"https://charles2530.github.io/image/background/p3.jfif","skip_dirs":[]}},"colors":{"primary":"#A31F34","secondary":"#1890ff","default_mode":"light"},"global":{"fonts":{"chinese":{"enable":false,"family":null,"url":null},"english":{"enable":false,"family":null,"url":null},"title":{"enable":false,"family":null,"url":null}},"content_max_width":"1000px","sidebar_width":"210px","hover":{"shadow":true,"scale":true},"scroll_progress":{"bar":true,"percentage":true},"website_counter":{"url":"https://cn.vercount.one/js","enable":true,"site_pv":true,"site_uv":true,"post_pv":true},"single_page":true,"preloader":{"enable":true,"custom_message":null},"side_tools":{"gear_rotation":true,"auto_expand":false},"open_graph":{"enable":true,"image":"https://charles2530.github.io/image/background/logo.jpg","description":"This is Charles's Castle."},"google_analytics":{"enable":false,"id":null}},"home_banner":{"enable":true,"style":"fixed","image":{"light":"https://charles2530.github.io/image/background/background-light1.jpg","dark":"https://charles2530.github.io/image/background/background-dark1.jpg"},"title":"Charles's Castle","subtitle":{"text":["Happiness is best!","Never give up!","Everyday is a gift!"],"hitokoto":{"enable":false,"show_author":false,"api":"https://v1.hitokoto.cn"},"typing_speed":100,"backing_speed":80,"starting_delay":500,"backing_delay":1500,"loop":true,"smart_backspace":true},"text_color":{"light":"#000000","dark":"#d1d1b6"},"text_style":{"title_size":"3.2rem","subtitle_size":"1.5rem","line_height":1.2},"custom_font":{"enable":false,"family":null,"url":null},"social_links":{"enable":true,"style":"center","links":[{"icon":"fa-brands fa-github","url":"https://github.com/Charles2530/"},{"icon":"fa-brands fa-zhihu","url":"https://www.zhihu.com/people/yang-guang-xiao-zi-55-55"},{"icon":"fa-solid fa-at","url":"mailto:charles2530@163.com"},{"icon":"fa-brands fa-telegram","url":null},{"icon":"/images/custom-icon.svg","url":null}],"qrs":[{"icon":"fa-brands fa-weixin","qr":"https://charles2530.github.io/image/background/Wechat_icon.png"},{"icon":"/images/custom-icon.svg","qr":null}]}},"plugins":{"feed":{"enable":true},"aplayer":{"enable":false,"type":"fixed","audios":[{"name":null,"artist":null,"url":null,"cover":null,"lrc":null}]},"mermaid":{"enable":false,"version":"11.4.1","theme":{"light":"default","dark":"dark"}}},"version":"2.9.0","navbar":{"auto_hide":true,"color":{"left":"#f78736","right":"#367df7","transparency":35},"width":{"home":"1200px","pages":"1000px"},"links":{"Home":{"path":"/","icon":"fa-regular fa-house"},"Categories":{"path":"/categories","icon":"fas fa-bookmark"},"Tags":{"path":"/tags","icon":"fas fa-tags"},"About":{"icon":"fa-regular fa-user","submenus":{"Me":"https://jinyang-du.github.io/","Github":"https://github.com/Charles2530/","Blog":"https://charles2530.github.io","Statistics":"https://tongji.baidu.com/"}}},"search":{"enable":true,"preload":false}},"page_templates":{"friends_column":2,"tags_style":"blur","masonry":{"batch_size":12,"initial_batch_size":24}},"home":{"sidebar":{"enable":true,"position":"left","first_item":"menu","announcement":"This is Charles's Castle","show_on_mobile":true,"links":{"Archives":{"path":"/archives","icon":"fa-regular fa-archive"},"Photos":{"icon":"fa-solid fa-image","path":"/masonry/"},"Essays":{"icon":"fa-solid fa-message-lines","path":"/essay/"},"Friends":{"icon":"fa-solid fa-user-group","path":"/friends/"}}},"article_date_format":"auto","excerpt_length":200,"categories":{"enable":true,"limit":3},"tags":{"enable":true,"limit":3}},"footer":{"runtime":true,"icon":"<i class=\"fa-solid fa-heart fa-beat\" style=\"--fa-animation-duration: 0.5s; color: #f54545\"></i>","start":"2022/12/27 00:00:00","statistics":true,"customize":null,"icp":{"enable":false,"number":null,"url":null}},"footerStart":"2022/12/27 00:00:00","mermaid":{"style":{"light":"default","dark":"dark"}}};
+    window.lang_ago = {"second":"%s seconds ago","minute":"%s minutes ago","hour":"%s hours ago","day":"%s days ago","week":"%s weeks ago","month":"%s months ago","year":"%s years ago"};
+    window.i18n = {"search":"Search...","toc":"On this page","prev":"Prev","next":"Next","prev_posts":"Prev posts","next_posts":"Next posts","page":"Page %d","recent_posts":"Recent Posts","share":"Share","powered_by":"POWERED BY %s","theme":"THEME","rss_feed":"RSS Feed","category":"Category","categories":"Categories","tag":"Tag","tags":"Tags","post":"Post","posts":"Posts","tagcloud":"Tag Cloud","comment":"Comment","comments":"Comments","home":"Home","archive":"Archive","archives":"Archives","top":"TOP","sticky":"Sticky","go-back-home":"Go Back Home","masonry_loading":"Loading photos...","image_viewer":"Image viewer","close":"Close","exif":{"title":"EXIF","cards":{"camera":"Camera","lens":"Lens","exposure":"Exposure","other":"Other"},"fields":{"make":"Brand","model":"Model","date_taken":"Date taken","lens_model":"Lens","focal_length":"Focal length","focus_mode":"Focus mode","shutter":"Shutter","aperture":"Aperture","iso":"ISO","exposure_program":"Exposure program","exposure_compensation":"Exposure compensation","metering_mode":"Metering mode","flash":"Flash","white_balance":"White balance","latitude":"Latitude","longitude":"Longitude","altitude":"Altitude"},"status":{"loading":"Loading...","no_exif":"No EXIF available","library_missing":"EXIF library not loaded","image_source_missing":"Image source unavailable","unavailable":"EXIF unavailable (blocked by CORS or missing metadata)","flag_unavailable":"EXIF unavailable"}},"about":"About","changelog":"Changelog","links":"Links","link":"Link","friends":"Friends","friend":"Friend","timeline":"Timeline","shuoshuo":"Shuoshuo","bookmarks":"Bookmarks","site_uv":"VISITOR COUNT","site_pv":"TOTAL PAGE VIEWS","read_more":"Read more","wordcount":"Words","min2read":"Mins","status":"Status","runtime":"Blog up for","days":"days","hours":"hrs","minutes":"Min","seconds":"Sec","optimized_by":"and Optimized by Evan","rights":"All Rights Reserved","site_posts":"%s posts in total","site_wordcount":"%s words in total","copyright":{"author":"Author","title":"Title","link":"Link","create_time":"Created at","update_time":"Updated at","license_title":"License","license_content":"This work is licensed under %s.","all_rights_reserved":"All Rights Reserved &#169; %s","public_domain":"This work is in the public domain."},"ago":{"second":"%s seconds ago","minute":"%s minutes ago","hour":"%s hours ago","day":"%s days ago","week":"%s weeks ago","month":"%s months ago","year":"%s years ago"},"create_time":"Created","update_time":"Updated","expired":"This post is written %s days ago, and the content may not be up to date."};
+    window.data = {"masonry":true};
+  </script>
+    
+    <!--- Fontawesome Part-->
+    
+<link rel="stylesheet" href="/fontawesome/fontawesome.min.css">
+
+    
+<link rel="stylesheet" href="/fontawesome/brands.min.css">
+
+    
+<link rel="stylesheet" href="/fontawesome/solid.min.css">
+
+    
+<link rel="stylesheet" href="/fontawesome/regular.min.css">
+
+    
+    
+    
+    
+<meta name="generator" content="Hexo 6.3.0"><link rel="alternate" href="/atom.xml" title="Charles's Castle" type="application/atom+xml">
+<link rel="stylesheet" href="/css/prism-tomorrow.css" type="text/css"></head>
+
+
+<body>
+	<div class="progress-bar-container">
+	
+	<span class="scroll-progress-bar"></span>
+	
+
+	
+	<span class="pjax-progress-bar"></span>
+	<!--        <span class="swup-progress-icon">-->
+	<!--            <i class="fa-solid fa-circle-notch fa-spin"></i>-->
+	<!--        </span>-->
+	
+</div>
+
+<style>
+    :root {
+        --preloader-background-color: #fff;
+        --preloader-text-color: #000;
+    }
+
+    @media (prefers-color-scheme: dark) {
+        :root {
+            --preloader-background-color: #202124;
+            --preloader-text-color: #fff;
+        }
+    }
+
+    @media (prefers-color-scheme: light) {
+        :root {
+            --preloader-background-color: #fff;
+            --preloader-text-color: #000;
+        }
+    }
+
+    @media (max-width: 600px) {
+        .ml13 {
+            font-size: 2.6rem !important; /* Adjust this value as needed */
+        }
+    }
+
+    .preloader {
+        display: flex;
+        flex-direction: column;
+        gap: 1rem; /* Tailwind 'gap-4' is 1rem */
+        align-items: center;
+        justify-content: center;
+        position: fixed;
+        padding: 12px;
+        top: 0;
+        right: 0;
+        bottom: 0;
+        left: 0;
+        width: 100vw;
+        height: 100vh; /* 'h-screen' is 100% of the viewport height */
+        background-color: var(--preloader-background-color);
+        z-index: 1100; /* 'z-[1100]' sets the z-index */
+        transition: opacity 0.2s ease-in-out;
+    }
+
+    .ml13 {
+        font-size: 3.2rem;
+        /* text-transform: uppercase; */
+        color: var(--preloader-text-color);
+        letter-spacing: -1px;
+        font-weight: 500;
+        font-family: 'Chillax-Variable', sans-serif;
+        text-align: center;
+    }
+
+    .ml13 .word {
+        display: inline-flex;
+        flex-wrap: wrap;
+        white-space: nowrap;
+    }
+
+    .ml13 .letter {
+        display: inline-block;
+        line-height: 1em;
+    }
+</style>
+
+<div class="preloader">
+    <h2 class="ml13">
+        Charles&#39;s Castle
+    </h2>
+    <script>
+        var textWrapper = document.querySelector('.ml13');
+        // Split text into words
+        var words = textWrapper.textContent.trim().split(' ');
+
+        // Clear the existing content
+        textWrapper.innerHTML = '';
+
+        // Wrap each word and its letters in spans
+        words.forEach(function(word) {
+            var wordSpan = document.createElement('span');
+            wordSpan.classList.add('word');
+            wordSpan.innerHTML = word.replace(/\S/g, "<span class='letter'>$&</span>");
+            textWrapper.appendChild(wordSpan);
+            textWrapper.appendChild(document.createTextNode(' ')); // Add space between words
+        });
+
+        var animation = anime.timeline({ loop: true })
+            .add({
+                targets: '.ml13 .letter',
+                translateY: [20, 0],
+                translateZ: 0,
+                opacity: [0, 1],
+                filter: ['blur(5px)', 'blur(0px)'],
+                easing: "easeOutExpo",
+                duration: 1200,
+                delay: (el, i) => 300 + 20 * i,
+            })
+            .add({
+                targets: '.ml13 .letter',
+                translateY: [0, -20],
+                opacity: [1, 0],
+                filter: ['blur(0px)', 'blur(5px)'],
+                easing: "easeInExpo",
+                duration: 1000,
+                delay: (el, i) => 15 * i,
+                complete: function() {
+                    hidePreloader();
+                }
+            }, '-=700');
+
+
+        let themeStatus = JSON.parse(localStorage.getItem('REDEFINE-THEME-STATUS'))?.isDark;
+
+        // If the theme status is not found in local storage, check the preferred color scheme
+        if (themeStatus === undefined || themeStatus === null) {
+            if (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) {
+                themeStatus = 'dark';
+            } else {
+                themeStatus = 'light';
+            }
+        }
+
+        // Now you can use the themeStatus variable in your code
+        if (themeStatus) {
+            document.documentElement.style.setProperty('--preloader-background-color', '#202124');
+            document.documentElement.style.setProperty('--preloader-text-color', '#fff');
+        } else {
+            document.documentElement.style.setProperty('--preloader-background-color', '#fff');
+            document.documentElement.style.setProperty('--preloader-text-color', '#000');
+        }
+
+        window.addEventListener('load', function () {
+            setTimeout(hidePreloader, 5000); // Call hidePreloader after 5000 milliseconds if not already called by animation
+        });
+
+        function hidePreloader() {
+            var preloader = document.querySelector('.preloader');
+            preloader.style.opacity = '0';
+            setTimeout(function () {
+                preloader.style.display = 'none';
+            }, 200);
+        }
+    </script>
+</div>
+
+<main class="page-container" id="swup">
+
+	
+
+	<div class="main-content-container flex flex-col justify-between min-h-dvh">
+		<div class="main-content-header">
+			<header class="navbar-container px-6 md:px-12">
+    <div class="navbar-content transition-navbar ">
+        <div class="left">
+            
+                <a class="logo-image h-8 w-8 sm:w-10 sm:h-10 mr-3" href="/">
+                    <img src="https://charles2530.github.io/image/background/logo.jpg" class="w-full h-full rounded-xs">
+                </a>
+            
+            <a class="logo-title" href="/">
+                
+                Charles&#39;s Castle
+                
+            </a>
+        </div>
+
+        <div class="right">
+            <!-- PC -->
+            <div class="desktop">
+                <ul class="navbar-list">
+                    
+                        
+                            
+
+                            <li class="navbar-item">
+                                <!-- Menu -->
+                                <a class=""
+                                   href="/"
+                                        >
+                                    <i class="fa-regular fa-house fa-fw"></i>
+                                    HOME
+                                    
+                                </a>
+
+                                <!-- Submenu -->
+                                
+                            </li>
+                    
+                        
+                            
+
+                            <li class="navbar-item">
+                                <!-- Menu -->
+                                <a class=""
+                                   href="/categories"
+                                        >
+                                    <i class="fas fa-bookmark fa-fw"></i>
+                                    CATEGORIES
+                                    
+                                </a>
+
+                                <!-- Submenu -->
+                                
+                            </li>
+                    
+                        
+                            
+
+                            <li class="navbar-item">
+                                <!-- Menu -->
+                                <a class=""
+                                   href="/tags"
+                                        >
+                                    <i class="fas fa-tags fa-fw"></i>
+                                    TAGS
+                                    
+                                </a>
+
+                                <!-- Submenu -->
+                                
+                            </li>
+                    
+                        
+                            
+
+                            <li class="navbar-item">
+                                <!-- Menu -->
+                                <a class="has-dropdown"
+                                   href="#"
+                                        onClick=&#34;return false;&#34;>
+                                    <i class="fa-regular fa-user fa-fw"></i>
+                                    ABOUT
+                                    <i class="fa-solid fa-chevron-down fa-fw"></i>
+                                </a>
+
+                                <!-- Submenu -->
+                                
+                                    <ul class="sub-menu">
+                                        
+                                            <li>
+                                                <a target="_blank" rel="noopener" href="https://jinyang-du.github.io/">
+                                                    ME
+                                                </a>
+                                            </li>
+                                        
+                                            <li>
+                                                <a target="_blank" rel="noopener" href="https://github.com/Charles2530/">
+                                                    GITHUB
+                                                </a>
+                                            </li>
+                                        
+                                            <li>
+                                                <a href="https://charles2530.github.io">
+                                                    BLOG
+                                                </a>
+                                            </li>
+                                        
+                                            <li>
+                                                <a target="_blank" rel="noopener" href="https://tongji.baidu.com/">
+                                                    STATISTICS
+                                                </a>
+                                            </li>
+                                        
+                                    </ul>
+                                
+                            </li>
+                    
+                    
+                        <li class="navbar-item search search-popup-trigger">
+                            <i class="fa-solid fa-magnifying-glass"></i>
+                        </li>
+                    
+                </ul>
+            </div>
+            <!-- Mobile -->
+            <div class="mobile">
+                
+                    <div class="icon-item search search-popup-trigger"><i class="fa-solid fa-magnifying-glass"></i>
+                    </div>
+                
+                <div class="icon-item navbar-bar">
+                    <div class="navbar-bar-middle"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Mobile sheet -->
+    <div class="navbar-drawer h-dvh w-full absolute top-0 left-0 bg-background-color flex flex-col justify-between">
+        <ul class="drawer-navbar-list flex flex-col px-4 justify-center items-start">
+            
+                
+                    
+
+                    <li class="drawer-navbar-item text-base my-1.5 flex flex-col w-full">
+                        
+                        <a class="py-1.5 px-2 flex flex-row items-center justify-between gap-1 hover:!text-primary active:!text-primary text-2xl font-semibold group border-b border-border-color hover:border-primary w-full "
+                           href="/"
+                        >
+                            <span>
+                                HOME
+                            </span>
+                            
+                                <i class="fa-regular fa-house fa-sm fa-fw"></i>
+                            
+                        </a>
+                        
+
+                        
+                    </li>
+            
+                
+                    
+
+                    <li class="drawer-navbar-item text-base my-1.5 flex flex-col w-full">
+                        
+                        <a class="py-1.5 px-2 flex flex-row items-center justify-between gap-1 hover:!text-primary active:!text-primary text-2xl font-semibold group border-b border-border-color hover:border-primary w-full "
+                           href="/categories"
+                        >
+                            <span>
+                                CATEGORIES
+                            </span>
+                            
+                                <i class="fas fa-bookmark fa-sm fa-fw"></i>
+                            
+                        </a>
+                        
+
+                        
+                    </li>
+            
+                
+                    
+
+                    <li class="drawer-navbar-item text-base my-1.5 flex flex-col w-full">
+                        
+                        <a class="py-1.5 px-2 flex flex-row items-center justify-between gap-1 hover:!text-primary active:!text-primary text-2xl font-semibold group border-b border-border-color hover:border-primary w-full "
+                           href="/tags"
+                        >
+                            <span>
+                                TAGS
+                            </span>
+                            
+                                <i class="fas fa-tags fa-sm fa-fw"></i>
+                            
+                        </a>
+                        
+
+                        
+                    </li>
+            
+                
+                    
+
+                    <li class="drawer-navbar-item-sub text-base my-1.5 flex flex-col w-full">
+                        
+                        <div class="py-1.5 px-2 flex flex-row items-center justify-between gap-1 hover:!text-primary active:!text-primary cursor-pointer text-2xl font-semibold group border-b border-border-color hover:border-primary w-full "
+                             navbar-data-toggle="submenu-About"
+                        >
+                            <span>
+                                ABOUT
+                            </span>
+                            
+                                <i class="fa-solid fa-chevron-right fa-sm fa-fw transition-all"></i>
+                            
+                        </div>
+                        
+
+                        
+                            <div class="flex-col items-start px-2 py-2 hidden" data-target="submenu-About">
+                                
+                                    <div class="drawer-navbar-item text-base flex flex-col justify-center items-start hover:underline active:underline hover:underline-offset-1 rounded-3xl">
+                                        <a class=" text-third-text-color text-xl"
+                                           target="_blank" rel="noopener" href="https://jinyang-du.github.io/">ME</a>
+                                    </div>
+                                
+                                    <div class="drawer-navbar-item text-base flex flex-col justify-center items-start hover:underline active:underline hover:underline-offset-1 rounded-3xl">
+                                        <a class=" text-third-text-color text-xl"
+                                           target="_blank" rel="noopener" href="https://github.com/Charles2530/">GITHUB</a>
+                                    </div>
+                                
+                                    <div class="drawer-navbar-item text-base flex flex-col justify-center items-start hover:underline active:underline hover:underline-offset-1 rounded-3xl">
+                                        <a class=" text-third-text-color text-xl"
+                                           href="https://charles2530.github.io">BLOG</a>
+                                    </div>
+                                
+                                    <div class="drawer-navbar-item text-base flex flex-col justify-center items-start hover:underline active:underline hover:underline-offset-1 rounded-3xl">
+                                        <a class=" text-third-text-color text-xl"
+                                           target="_blank" rel="noopener" href="https://tongji.baidu.com/">STATISTICS</a>
+                                    </div>
+                                
+                            </div>
+                        
+                    </li>
+            
+
+            
+            
+                
+                    
+                    <li class="drawer-navbar-item text-base my-1.5 flex flex-col w-full">
+                        <a class="py-1.5 px-2 flex flex-row items-center justify-between gap-1 hover:!text-primary active:!text-primary text-2xl font-semibold group border-b border-border-color hover:border-primary w-full active"
+                           href="/archives"
+                        >
+                            <span>Archives</span>
+                            <i class="fa-regular fa-archive fa-sm fa-fw"></i>
+                        </a>
+                    </li>
+                
+                    
+                    <li class="drawer-navbar-item text-base my-1.5 flex flex-col w-full">
+                        <a class="py-1.5 px-2 flex flex-row items-center justify-between gap-1 hover:!text-primary active:!text-primary text-2xl font-semibold group border-b border-border-color hover:border-primary w-full active"
+                           href="/masonry/"
+                        >
+                            <span>Photos</span>
+                            <i class="fa-solid fa-image fa-sm fa-fw"></i>
+                        </a>
+                    </li>
+                
+                    
+                    <li class="drawer-navbar-item text-base my-1.5 flex flex-col w-full">
+                        <a class="py-1.5 px-2 flex flex-row items-center justify-between gap-1 hover:!text-primary active:!text-primary text-2xl font-semibold group border-b border-border-color hover:border-primary w-full active"
+                           href="/essay/"
+                        >
+                            <span>Essays</span>
+                            <i class="fa-solid fa-message-lines fa-sm fa-fw"></i>
+                        </a>
+                    </li>
+                
+                    
+                    <li class="drawer-navbar-item text-base my-1.5 flex flex-col w-full">
+                        <a class="py-1.5 px-2 flex flex-row items-center justify-between gap-1 hover:!text-primary active:!text-primary text-2xl font-semibold group border-b border-border-color hover:border-primary w-full active"
+                           href="/friends/"
+                        >
+                            <span>Friends</span>
+                            <i class="fa-solid fa-user-group fa-sm fa-fw"></i>
+                        </a>
+                    </li>
+                
+            
+        </ul>
+
+        <div class="statistics flex justify-around my-2.5">
+    <a class="item tag-count-item flex flex-col justify-center items-center w-20" href="/tags">
+        <div class="number text-2xl sm:text-xl text-second-text-color font-semibold">47</div>
+        <div class="label text-third-text-color text-sm">Tags</div>
+    </a>
+    <a class="item tag-count-item flex flex-col justify-center items-center w-20" href="/categories">
+        <div class="number text-2xl sm:text-xl text-second-text-color font-semibold">94</div>
+        <div class="label text-third-text-color text-sm">Categories</div>
+    </a>
+    <a class="item tag-count-item flex flex-col justify-center items-center w-20" href="/archives">
+        <div class="number text-2xl sm:text-xl text-second-text-color font-semibold">601</div>
+        <div class="label text-third-text-color text-sm">Posts</div>
+    </a>
+</div>
+    </div>
+
+    <div class="window-mask"></div>
+
+</header>
+
+
+		</div>
+
+		<div class="main-content-body transition-fade-up">
+			
+
+			<div class="main-content">
+				<div class="post-page-container flex relative justify-between box-border w-full h-full">
+	<div class="article-content-container">
+
+		<div class="article-title relative w-full">
+			
+			
+			
+			<img src="https://charles2530.github.io/image/background/background-dark1.jpg" alt="论文专题讲解：Self Forcing：对齐自回归视频训练与推理" class="w-full h-60 sm:h-72 md:h-80 object-cover sm:rounded-t-large dark:brightness-75" />
+			
+			<div class="w-full flex items-center absolute bottom-0 justify-start">
+				<h1 class="article-title-cover text-center mx-6 my-6 text-second-text-color bg-background-color-transparent px-4 py-3 text-3xl sm:text-4xl md:text-5xl font-semibold backdrop-blur-lg rounded-xl border border-border-color ">论文专题讲解：Self Forcing：对齐自回归视频训练与推理</h1>
+			</div>
+			
+		</div>
+
+		
+		<div class="article-header flex flex-row gap-2 items-center px-2 sm:px-6 md:px-8">
+			<div class="avatar w-[46px] h-[46px] shrink-0 rounded-medium border border-border-color p-px">
+				<img src="https://charles2530.github.io/image/background/logo2.jpg">
+			</div>
+			<div class="info flex flex-col justify-between">
+				<div class="author flex items-center">
+					<span class="name text-default-text-color text-lg font-semibold">Charles</span>
+					
+					<span class="author-label ml-1.5 text-xs px-2 py-0.5 rounded-small text-third-text-color border border-shadow-color-1">Lv8</span>
+					
+				</div>
+				<div class="meta-info">
+					<div class="article-meta-info">
+    <span class="article-date article-meta-item">
+        <i class="fa-regular fa-pen-fancy"></i>&nbsp;
+        <span class="desktop">2025-11-10 09:00</span>
+        <span class="mobile">2025-11-10 09:00</span>
+        <span class="hover-info">Created</span>
+    </span>
+    
+        <span class="article-date article-meta-item">
+            <i class="fa-regular fa-wrench"></i>&nbsp;
+            <span class="desktop">2025-11-10 09:00</span>
+            <span class="mobile">2025-11-10 09:00</span>
+            <span class="hover-info">Updated</span>
+        </span>
+    
+
+    
+        <span class="article-categories article-meta-item">
+            <i class="fa-regular fa-folders"></i>&nbsp;
+            <ul>
+                
+                
+                    
+                        
+                        <li>
+                            <a href="/categories/AI/">AI</a>&nbsp;
+                        </li>
+                    
+                    
+                
+                    
+                        
+                            <li>></li>
+                        
+                        <li>
+                            <a href="/categories/AI/%E8%AE%BA%E6%96%87%E4%B8%93%E9%A2%98%E8%AE%B2%E8%A7%A3/">论文专题讲解</a>&nbsp;
+                        </li>
+                    
+                    
+                
+            </ul>
+        </span>
+    
+    
+        <span class="article-tags article-meta-item">
+            <i class="fa-regular fa-tags"></i>&nbsp;
+            <ul>
+                
+                    <li>
+                        <a href="/tags/AI/">AI</a>&nbsp;
+                    </li>
+                
+                    <li>
+                        | <a href="/tags/%E4%B8%96%E7%95%8C%E6%A8%A1%E5%9E%8B/">世界模型</a>&nbsp;
+                    </li>
+                
+                    <li>
+                        | <a href="/tags/%E8%AE%BA%E6%96%87%E4%B8%93%E9%A2%98/">论文专题</a>&nbsp;
+                    </li>
+                
+            </ul>
+        </span>
+    
+
+    
+    
+        <span class="article-wordcount article-meta-item">
+            <i class="fa-regular fa-typewriter"></i>&nbsp;<span>7.3k Words</span>
+        </span>
+    
+    
+        <span class="article-min2read article-meta-item">
+            <i class="fa-regular fa-clock"></i>&nbsp;<span>30 Mins</span>
+        </span>
+    
+    
+        <span class="article-pv article-meta-item">
+            <i class="fa-regular fa-eye"></i>&nbsp;<span id="busuanzi_value_page_pv"></span>
+        </span>
+    
+</div>
+
+				</div>
+			</div>
+		</div>
+		
+
+		
+
+
+		<div class="article-content markdown-body px-2 sm:px-6 md:px-8 pb-8">
+			<div class="callout callout--titled info mb-4 rounded-small shadow-redefine-flat bg-(--callout-bg-color) p-3 pl-1 relative flex flex-row gap-2"><div role="none" class="rounded-full self-stretch w-0.5 bg-(--callout-primary-color) shrink-0 opacity-60"></div><div class="flex flex-col gap-2"><div class="callout__title flex items-center gap-2 font-semibold tracking-tight">论文信息</div><div class="callout__content markdown-body flex-1 min-w-0"><p><strong>论文题名：</strong> Self Forcing: Bridging the Train-Test Gap in Autoregressive Video Diffusion。<br><br />
+<strong>作者：</strong> Xun Huang、Zhengqi Li、Guande He、Mingyuan Zhou、Eli Shechtman。<br><br />
+<strong>机构：</strong> Adobe Research；The University of Texas at Austin。<br><br />
+<strong>时间 / 主题：</strong> 2025-06 首版，2025-11 v2；世界模型。<br><br />
+<strong>arXiv / 官方报告：</strong> arXiv：<a class="link"   target="_blank" rel="noopener" href="https://arxiv.org/abs/2506.08009" >2506.08009<i class="fa-solid fa-arrow-up-right ml-[0.2em] font-light align-text-top text-[0.7em] link-icon"></i></a>；官方材料：<a class="link"   target="_blank" rel="noopener" href="https://self-forcing.github.io/" >self-forcing.github.io/<i class="fa-solid fa-arrow-up-right ml-[0.2em] font-light align-text-top text-[0.7em] link-icon"></i></a>。<br><br />
+<strong>GitHub / 项目：</strong> GitHub：<a class="link"   target="_blank" rel="noopener" href="https://github.com/guandeh17/Self-Forcing" >github.com/guandeh17/Self-Forcing<i class="fa-solid fa-arrow-up-right ml-[0.2em] font-light align-text-top text-[0.7em] link-icon"></i></a>；项目页：<a class="link"   target="_blank" rel="noopener" href="https://self-forcing.github.io/" >self-forcing.github.io/<i class="fa-solid fa-arrow-up-right ml-[0.2em] font-light align-text-top text-[0.7em] link-icon"></i></a>。<br><br />
+<strong>元数据来源与核验口径：</strong> 来源：<a class="link"   target="_blank" rel="noopener" href="https://arxiv.org/abs/2506.08009" >arXiv<i class="fa-solid fa-arrow-up-right ml-[0.2em] font-light align-text-top text-[0.7em] link-icon"></i></a>；<a class="link"   target="_blank" rel="noopener" href="https://github.com/guandeh17/Self-Forcing" >GitHub repo<i class="fa-solid fa-arrow-up-right ml-[0.2em] font-light align-text-top text-[0.7em] link-icon"></i></a>；<a class="link"   target="_blank" rel="noopener" href="https://self-forcing.github.io/" >官方项目页<i class="fa-solid fa-arrow-up-right ml-[0.2em] font-light align-text-top text-[0.7em] link-icon"></i></a>；Checked Date：2026-07-08；Repro Status：Paper / official materials reviewed, independent reproduction not claimed。</p></div></div></div>
+<h2 id="原论文故事线"><a class="markdownIt-Anchor" href="#原论文故事线"></a> 原论文故事线</h2>
+<h3 id="研究背景"><a class="markdownIt-Anchor" href="#研究背景"></a> 研究背景</h3>
+<p>Self Forcing 属于 autoregressive video diffusion，也就是一种 hybrid generative model：它用 autoregressive chain-rule decomposition 拆解视频序列，又用 diffusion / flow matching 来建模每个条件分布。直观地说，模型按时间一帧或一块一块往前生成；生成当前 frame/chunk 时，从 Gaussian noise 开始逐步去噪，并条件化于此前已经生成的内容。</p>
+<p>这条路线试图结合两类模型的优点。普通视频 diffusion 画质强，但常用 bidirectional denoising 一次性生成整段视频，不适合实时交互；自回归模型天然可以流式输出，降低观看延迟，也更适合实时互动内容创作、游戏模拟和机器人学习。代价是 exposure bias：训练时模型依赖真实上下文，推理时却必须依赖自己之前生成的、有误差的输出继续生成。如果某一步偏了一点，下一步就会在这个偏差上继续去噪，错误可能沿时间放大。</p>
+<p>这个背景和世界模型直接相关。交互世界模型必须长期 rollout，并在每一步接收用户或 agent 的新输入。如果模型只在干净 ground-truth context 上训练，部署时小错误会沿时间积累，导致漂移、闪烁、过锐化、过饱和或语义断裂。</p>
+<h3 id="问题challenge"><a class="markdownIt-Anchor" href="#问题challenge"></a> 问题（Challenge）</h3>
+<p>论文要解决的问题是：<strong>如何让自回归视频扩散模型在训练时就面对推理时的自生成上下文，从而减少长时 rollout 的 train-test mismatch？</strong> 难点在于，真正 unroll 自回归扩散很贵；如果对完整 rollout 反向传播，显存会爆；如果只做 frame-wise denoising，又无法惩罚整段视频分布的漂移。此外，实时场景还要求 KV cache、低延迟和足够吞吐。</p>
+<p>有些方法会在推理阶段引入 noisy context frames，希望模型不要过度相信历史帧。这能缓解一部分误差累积，但会牺牲 temporal consistency，KV-cache 设计也更复杂，生成延迟更高；更关键的是，它没有改变训练时主要依赖 ground-truth context 的事实，因此没有从根上解决 exposure bias。</p>
+<p>这个问题有价值，因为世界模拟器不是只生成一个短 clip，而是要边看边生成、边交互边更新。训练分布和推理分布不对齐，会直接限制可交互性。</p>
+<h3 id="finding"><a class="markdownIt-Anchor" href="#finding"></a> Finding</h3>
+<p>作者的 finding 是：<strong>解决 AR 视频扩散的长期漂移，关键不是给 ground-truth context 加噪声，而是在训练中执行和推理一致的 self-rollout，并用视频级 distribution matching 约束整段生成序列。</strong> 这个洞见把训练对象从“下一帧在真实历史下是否去噪正确”转为“模型自己滚出来的视频分布是否像真实视频”。</p>
+<p>这个 finding 解释了 Self Forcing 和 Diffusion Forcing 的差别。Diffusion Forcing 让不同帧处在不同噪声水平，缓解一部分上下文不确定性，但上下文仍不是模型真实生成分布；Self Forcing 直接用当前模型生成的历史帧作为下一步条件，让模型在训练时就见过自己犯下的小错误，并学习如何从这些错误里恢复。</p>
+<h3 id="方法"><a class="markdownIt-Anchor" href="#方法"></a> 方法</h3>
+<p>Self Forcing 以 few-step autoregressive diffusion model 为基础，每个条件分布 <span class="katex"><span class="katex-mathml"><math><semantics><mrow><mi>p</mi><mo stretchy="false">(</mo><msub><mi>x</mi><mi>i</mi></msub><mi mathvariant="normal">∣</mi><msub><mi>x</mi><mrow><mo>&lt;</mo><mi>i</mi></mrow></msub><mo stretchy="false">)</mo></mrow><annotation encoding="application/x-tex">p(x_i|x_{&lt;i})</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:1em;vertical-align:-0.25em;"></span><span class="mord mathdefault">p</span><span class="mopen">(</span><span class="mord"><span class="mord mathdefault">x</span><span class="msupsub"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height:0.31166399999999994em;"><span style="top:-2.5500000000000003em;margin-left:0em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mathdefault mtight">i</span></span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height:0.15em;"><span></span></span></span></span></span></span><span class="mord">∣</span><span class="mord"><span class="mord mathdefault">x</span><span class="msupsub"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height:0.31166399999999994em;"><span style="top:-2.5500000000000003em;margin-left:0em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mtight"><span class="mrel mtight">&lt;</span><span class="mord mathdefault mtight">i</span></span></span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height:0.17737em;"><span></span></span></span></span></span></span><span class="mclose">)</span></span></span></span> 由少步扩散近似。训练时，模型按推理流程自回归 rollout：生成第 <span class="katex"><span class="katex-mathml"><math><semantics><mrow><mi>i</mi></mrow><annotation encoding="application/x-tex">i</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.65952em;vertical-align:0em;"></span><span class="mord mathdefault">i</span></span></span></span> 帧或 chunk 时，条件是前面自己生成的 <span class="katex"><span class="katex-mathml"><math><semantics><mrow><msub><mover accent="true"><mi>x</mi><mo>^</mo></mover><mrow><mo>&lt;</mo><mi>i</mi></mrow></msub></mrow><annotation encoding="application/x-tex">\hat{x}_{&lt;i}</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.87181em;vertical-align:-0.17737em;"></span><span class="mord"><span class="mord accent"><span class="vlist-t"><span class="vlist-r"><span class="vlist" style="height:0.69444em;"><span style="top:-3em;"><span class="pstrut" style="height:3em;"></span><span class="mord"><span class="mord mathdefault">x</span></span></span><span style="top:-3em;"><span class="pstrut" style="height:3em;"></span><span class="accent-body" style="left:-0.22222em;">^</span></span></span></span></span></span><span class="msupsub"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height:0.31166399999999994em;"><span style="top:-2.5500000000000003em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mtight"><span class="mrel mtight">&lt;</span><span class="mord mathdefault mtight">i</span></span></span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height:0.17737em;"><span></span></span></span></span></span></span></span></span></span>，并使用 KV cache 模拟真实推理。为控制显存，论文采用 gradient truncation，不对完整历史无限反传。</p>
+<p>损失方面，Self Forcing 不只逐帧检查生成结果是否接近真实帧，而是对完整生成视频施加 holistic distribution matching loss，直接评价整段序列的整体质量。论文讨论了 DMD、SiD、GAN-style objectives 等视频级匹配方式。长视频推理使用 rolling KV cache 和 sliding-window 机制，支持训练长度之外的 extrapolation，同时避免双向模型每步重算完整上下文。</p>
+<h3 id="结论"><a class="markdownIt-Anchor" href="#结论"></a> 结论</h3>
+<p>实验显示，Self Forcing 可以把预训练视频扩散模型转成实时自回归视频生成器，在单 H100 GPU 上报告约 17 FPS 和亚秒级延迟，同时质量可与更慢的非因果或双向扩散模型竞争。消融表明，self-rollout、视频级 distribution matching、few-step diffusion、gradient truncation 和 rolling KV cache 都服务于同一个目标：对齐训练和推理的生成分布。</p>
+<p>边界是：论文仍是视频生成/外推评估，不直接评估动作条件反事实或真实机器人控制。对世界模型来说，它提供的是长期自回归视频模拟器的训练策略，尤其适合解决交互 rollout 中由模型自身历史造成的误差积累。</p>
+<h3 id="关键术语"><a class="markdownIt-Anchor" href="#关键术语"></a> 关键术语</h3>
+<ul>
+<li><strong>Teacher Forcing（教师强制）</strong>：训练时用真实历史作为条件，推理时却用模型生成历史，容易产生分布错位。</li>
+<li><strong>Exposure Bias（暴露偏差）</strong>：模型训练时没有暴露于自身错误，推理时错误逐步累积的问题。</li>
+<li><strong>Self-rollout（自生成展开）</strong>：训练时让模型按推理方式逐步生成历史，再用这些历史继续生成后续帧。</li>
+<li><strong>Distribution Matching Loss（分布匹配损失）</strong>：直接让完整生成视频分布接近真实视频分布的目标。</li>
+<li><strong>Autoregressive Video Diffusion（自回归视频扩散）</strong>：按时间分解视频分布，每个 frame/chunk 的条件分布再由扩散去噪过程建模。</li>
+<li><strong>Few-step Diffusion（少步扩散）</strong>：用很少 denoising steps 近似扩散生成，以满足实时生成需求。</li>
+<li><strong>Rolling KV Cache（滚动键值缓存）</strong>：长视频自回归生成时保留近期历史缓存、滑动更新上下文的机制。</li>
+</ul>
+<p>一句话读法：Self Forcing 要做的不是从零学会“什么是视频”，而是在已有视频扩散模型的 post-training 阶段修正一个具体错位：训练时依赖真实上下文，推理时依赖自己生成的上下文。它把模型放回真实推理轨道里训练，再用视频级分布匹配约束整段 rollout。</p>
+<h2 id="论文位置"><a class="markdownIt-Anchor" href="#论文位置"></a> 论文位置</h2>
+<p>Self Forcing 和 <a href="/2026/05/11/ai-files-paper-deep-dives-diffusion-diffusion-forcing/">Diffusion Forcing</a>、<a href="/2026/05/11/ai-files-paper-deep-dives-diffusion-causvid/">CausVid</a>、<a href="/2026/05/11/ai-files-paper-deep-dives-world-models-lingbot-world/">LingBot-World</a> 在同一条路线附近，但解决层级不同。</p>
+<table>
+<thead>
+<tr>
+<th>Method</th>
+<th>Core idea</th>
+<th>Main limitation it addresses</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Teacher Forcing</td>
+<td>train next frame/chunk using clean ground-truth context</td>
+<td>inference uses generated context, so exposure bias remains</td>
+</tr>
+<tr>
+<td>Diffusion Forcing</td>
+<td>assign independent noise levels to different frames/chunks</td>
+<td>covers noisy context, but training context still not true model rollout</td>
+</tr>
+<tr>
+<td>CausVid</td>
+<td>causal student distilled from bidirectional teacher with DMD</td>
+<td>fast streaming generation, but DF-generated training outputs differ from inference outputs</td>
+</tr>
+<tr>
+<td>Self Forcing</td>
+<td>train with autoregressive self-rollout and video-level distribution matching</td>
+<td>directly aligns training outputs with inference-time model distribution</td>
+</tr>
+</tbody>
+</table>
+<p>从世界模型角度看，这篇论文重要，是因为流式视频世界模拟器最终必须长期 rollout。一个只在固定短片段里好看的模型，不一定能在交互闭环里稳定；Self Forcing 把训练目标改成“模型要学会处理自己造成的历史误差”。</p>
+<p>这里也能看出它和“推理时给历史帧加噪”的区别。noisy context inference 是在部署路径上补丁式地降低历史帧置信度，可能牺牲时间一致性并增加 KV cache 和延迟成本；Self Forcing 则把错位前移到训练阶段处理，让 loss 直接作用在模型真实会生成的序列分布上。</p>
+<p><img  
+                     lazyload
+                     src="/images/loading.svg"
+                     data-src="/image/ai-notes/images/localized-remote/paper-deep-dives/world-models/self-forcing/self-forcing-training-paradigms-%E5%8E%9F%E5%9B%BE.png"
+                      alt="Self Forcing training paradigms 原图" 
+                ></p>
+<p><small>图源：<code>Self Forcing</code>，Figure 1。原图对比 Teacher Forcing、Diffusion Forcing 和 Self Forcing：前两者训练输出不来自推理时真实模型分布，Self Forcing 在训练中执行 autoregressive self-rollout，并对最终视频序列施加 distribution matching loss。</small></p>
+<h2 id="核心问题"><a class="markdownIt-Anchor" href="#核心问题"></a> 核心问题</h2>
+<p>自回归视频扩散把视频分布拆成时间上的条件分布：</p>
+<p><span class="katex-display"><span class="katex"><span class="katex-mathml"><math><semantics><mrow><mi>p</mi><mo stretchy="false">(</mo><msub><mi>x</mi><mrow><mn>1</mn><mo>:</mo><mi>T</mi></mrow></msub><mo stretchy="false">)</mo><mo>=</mo><munderover><mo>∏</mo><mrow><mi>t</mi><mo>=</mo><mn>1</mn></mrow><mi>T</mi></munderover><mi>p</mi><mo stretchy="false">(</mo><msub><mi>x</mi><mi>t</mi></msub><mo>∣</mo><msub><mi>x</mi><mrow><mo>&lt;</mo><mi>t</mi></mrow></msub><mo stretchy="false">)</mo><mi mathvariant="normal">.</mi></mrow><annotation encoding="application/x-tex">p(x_{1:T}) = \prod_{t=1}^{T} p(x_t \mid x_{&lt;t}).
+</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:1em;vertical-align:-0.25em;"></span><span class="mord mathdefault">p</span><span class="mopen">(</span><span class="mord"><span class="mord mathdefault">x</span><span class="msupsub"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height:0.32833099999999993em;"><span style="top:-2.5500000000000003em;margin-left:0em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mtight"><span class="mord mtight">1</span><span class="mrel mtight">:</span><span class="mord mathdefault mtight" style="margin-right:0.13889em;">T</span></span></span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height:0.15em;"><span></span></span></span></span></span></span><span class="mclose">)</span><span class="mspace" style="margin-right:0.2777777777777778em;"></span><span class="mrel">=</span><span class="mspace" style="margin-right:0.2777777777777778em;"></span></span><span class="base"><span class="strut" style="height:3.0954490000000003em;vertical-align:-1.267113em;"></span><span class="mop op-limits"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height:1.8283360000000002em;"><span style="top:-1.882887em;margin-left:0em;"><span class="pstrut" style="height:3.05em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mtight"><span class="mord mathdefault mtight">t</span><span class="mrel mtight">=</span><span class="mord mtight">1</span></span></span></span><span style="top:-3.050005em;"><span class="pstrut" style="height:3.05em;"></span><span><span class="mop op-symbol large-op">∏</span></span></span><span style="top:-4.3000050000000005em;margin-left:0em;"><span class="pstrut" style="height:3.05em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mtight"><span class="mord mathdefault mtight" style="margin-right:0.13889em;">T</span></span></span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height:1.267113em;"><span></span></span></span></span></span><span class="mspace" style="margin-right:0.16666666666666666em;"></span><span class="mord mathdefault">p</span><span class="mopen">(</span><span class="mord"><span class="mord mathdefault">x</span><span class="msupsub"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height:0.2805559999999999em;"><span style="top:-2.5500000000000003em;margin-left:0em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mathdefault mtight">t</span></span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height:0.15em;"><span></span></span></span></span></span></span><span class="mspace" style="margin-right:0.2777777777777778em;"></span><span class="mrel">∣</span><span class="mspace" style="margin-right:0.2777777777777778em;"></span></span><span class="base"><span class="strut" style="height:1em;vertical-align:-0.25em;"></span><span class="mord"><span class="mord mathdefault">x</span><span class="msupsub"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height:0.2805559999999999em;"><span style="top:-2.5500000000000003em;margin-left:0em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mtight"><span class="mrel mtight">&lt;</span><span class="mord mathdefault mtight">t</span></span></span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height:0.17737em;"><span></span></span></span></span></span></span><span class="mclose">)</span><span class="mord">.</span></span></span></span></span></p>
+<p>每个条件分布不是一次性输出 token，而是通过扩散或 flow matching 逐步去噪：</p>
+<p><span class="katex-display"><span class="katex"><span class="katex-mathml"><math><semantics><mrow><msubsup><mi>x</mi><mi>t</mi><mi>τ</mi></msubsup><mo>=</mo><msub><mi>α</mi><mi>τ</mi></msub><msubsup><mi>x</mi><mi>t</mi><mn>0</mn></msubsup><mo>+</mo><msub><mi>σ</mi><mi>τ</mi></msub><mi>ϵ</mi><mo separator="true">,</mo><mspace width="2em"/><mi>ϵ</mi><mo>∼</mo><mi mathvariant="script">N</mi><mo stretchy="false">(</mo><mn>0</mn><mo separator="true">,</mo><mi>I</mi><mo stretchy="false">)</mo><mi mathvariant="normal">.</mi></mrow><annotation encoding="application/x-tex">x_t^{\tau} = \alpha_\tau x_t^0 + \sigma_\tau \epsilon,
+\qquad
+\epsilon \sim \mathcal N(0,I).
+</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.9613919999999999em;vertical-align:-0.247em;"></span><span class="mord"><span class="mord mathdefault">x</span><span class="msupsub"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height:0.7143919999999999em;"><span style="top:-2.4530000000000003em;margin-left:0em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mathdefault mtight">t</span></span></span><span style="top:-3.113em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mtight"><span class="mord mathdefault mtight" style="margin-right:0.1132em;">τ</span></span></span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height:0.247em;"><span></span></span></span></span></span></span><span class="mspace" style="margin-right:0.2777777777777778em;"></span><span class="mrel">=</span><span class="mspace" style="margin-right:0.2777777777777778em;"></span></span><span class="base"><span class="strut" style="height:1.1111079999999998em;vertical-align:-0.247em;"></span><span class="mord"><span class="mord mathdefault" style="margin-right:0.0037em;">α</span><span class="msupsub"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height:0.151392em;"><span style="top:-2.5500000000000003em;margin-left:-0.0037em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mathdefault mtight" style="margin-right:0.1132em;">τ</span></span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height:0.15em;"><span></span></span></span></span></span></span><span class="mord"><span class="mord mathdefault">x</span><span class="msupsub"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height:0.8641079999999999em;"><span style="top:-2.4530000000000003em;margin-left:0em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mathdefault mtight">t</span></span></span><span style="top:-3.113em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mtight">0</span></span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height:0.247em;"><span></span></span></span></span></span></span><span class="mspace" style="margin-right:0.2222222222222222em;"></span><span class="mbin">+</span><span class="mspace" style="margin-right:0.2222222222222222em;"></span></span><span class="base"><span class="strut" style="height:0.625em;vertical-align:-0.19444em;"></span><span class="mord"><span class="mord mathdefault" style="margin-right:0.03588em;">σ</span><span class="msupsub"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height:0.151392em;"><span style="top:-2.5500000000000003em;margin-left:-0.03588em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mathdefault mtight" style="margin-right:0.1132em;">τ</span></span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height:0.15em;"><span></span></span></span></span></span></span><span class="mord mathdefault">ϵ</span><span class="mpunct">,</span><span class="mspace" style="margin-right:0.16666666666666666em;"></span><span class="mspace" style="margin-right:2em;"></span><span class="mord mathdefault">ϵ</span><span class="mspace" style="margin-right:0.2777777777777778em;"></span><span class="mrel">∼</span><span class="mspace" style="margin-right:0.2777777777777778em;"></span></span><span class="base"><span class="strut" style="height:1em;vertical-align:-0.25em;"></span><span class="mord mathcal" style="margin-right:0.14736em;">N</span><span class="mopen">(</span><span class="mord">0</span><span class="mpunct">,</span><span class="mspace" style="margin-right:0.16666666666666666em;"></span><span class="mord mathdefault" style="margin-right:0.07847em;">I</span><span class="mclose">)</span><span class="mord">.</span></span></span></span></span></p>
+<p><span class="katex"><span class="katex-mathml"><math><semantics><mrow><mi>ϵ</mi><mo>∼</mo><mi mathvariant="script">N</mi><mo stretchy="false">(</mo><mn>0</mn><mo separator="true">,</mo><mi>I</mi><mo stretchy="false">)</mo></mrow><annotation encoding="application/x-tex">\epsilon\sim\mathcal N(0,I)</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.43056em;vertical-align:0em;"></span><span class="mord mathdefault">ϵ</span><span class="mspace" style="margin-right:0.2777777777777778em;"></span><span class="mrel">∼</span><span class="mspace" style="margin-right:0.2777777777777778em;"></span></span><span class="base"><span class="strut" style="height:1em;vertical-align:-0.25em;"></span><span class="mord mathcal" style="margin-right:0.14736em;">N</span><span class="mopen">(</span><span class="mord">0</span><span class="mpunct">,</span><span class="mspace" style="margin-right:0.16666666666666666em;"></span><span class="mord mathdefault" style="margin-right:0.07847em;">I</span><span class="mclose">)</span></span></span></span> 表示标准高斯噪声：<span class="katex"><span class="katex-mathml"><math><semantics><mrow><mn>0</mn></mrow><annotation encoding="application/x-tex">0</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.64444em;vertical-align:0em;"></span><span class="mord">0</span></span></span></span> 是均值，<span class="katex"><span class="katex-mathml"><math><semantics><mrow><mi>I</mi></mrow><annotation encoding="application/x-tex">I</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.68333em;vertical-align:0em;"></span><span class="mord mathdefault" style="margin-right:0.07847em;">I</span></span></span></span> 是单位协方差；<span class="katex"><span class="katex-mathml"><math><semantics><mrow><msub><mi>α</mi><mi>τ</mi></msub></mrow><annotation encoding="application/x-tex">\alpha_\tau</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.58056em;vertical-align:-0.15em;"></span><span class="mord"><span class="mord mathdefault" style="margin-right:0.0037em;">α</span><span class="msupsub"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height:0.151392em;"><span style="top:-2.5500000000000003em;margin-left:-0.0037em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mathdefault mtight" style="margin-right:0.1132em;">τ</span></span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height:0.15em;"><span></span></span></span></span></span></span></span></span></span> 保留原 latent，<span class="katex"><span class="katex-mathml"><math><semantics><mrow><msub><mi>σ</mi><mi>τ</mi></msub></mrow><annotation encoding="application/x-tex">\sigma_\tau</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.58056em;vertical-align:-0.15em;"></span><span class="mord"><span class="mord mathdefault" style="margin-right:0.03588em;">σ</span><span class="msupsub"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height:0.151392em;"><span style="top:-2.5500000000000003em;margin-left:-0.03588em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mathdefault mtight" style="margin-right:0.1132em;">τ</span></span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height:0.15em;"><span></span></span></span></span></span></span></span></span></span> 控制噪声强度。</p>
+<p>Teacher Forcing 训练的是：</p>
+<p><span class="katex-display"><span class="katex"><span class="katex-mathml"><math><semantics><mrow><msub><mi>p</mi><mi>θ</mi></msub><mo stretchy="false">(</mo><msub><mi>x</mi><mi>t</mi></msub><mo>∣</mo><msubsup><mi>x</mi><mrow><mo>&lt;</mo><mi>t</mi></mrow><mtext>data</mtext></msubsup><mo stretchy="false">)</mo><mo separator="true">,</mo></mrow><annotation encoding="application/x-tex">p_\theta(x_t \mid x_{&lt;t}^{\text{data}}),
+</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:1em;vertical-align:-0.25em;"></span><span class="mord"><span class="mord mathdefault">p</span><span class="msupsub"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height:0.33610799999999996em;"><span style="top:-2.5500000000000003em;margin-left:0em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mathdefault mtight" style="margin-right:0.02778em;">θ</span></span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height:0.15em;"><span></span></span></span></span></span></span><span class="mopen">(</span><span class="mord"><span class="mord mathdefault">x</span><span class="msupsub"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height:0.2805559999999999em;"><span style="top:-2.5500000000000003em;margin-left:0em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mathdefault mtight">t</span></span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height:0.15em;"><span></span></span></span></span></span></span><span class="mspace" style="margin-right:0.2777777777777778em;"></span><span class="mrel">∣</span><span class="mspace" style="margin-right:0.2777777777777778em;"></span></span><span class="base"><span class="strut" style="height:1.173478em;vertical-align:-0.27437em;"></span><span class="mord"><span class="mord mathdefault">x</span><span class="msupsub"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height:0.899108em;"><span style="top:-2.453em;margin-left:0em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mtight"><span class="mrel mtight">&lt;</span><span class="mord mathdefault mtight">t</span></span></span></span><span style="top:-3.1130000000000004em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mtight"><span class="mord text mtight"><span class="mord mtight">data</span></span></span></span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height:0.27437em;"><span></span></span></span></span></span></span><span class="mclose">)</span><span class="mpunct">,</span></span></span></span></span></p>
+<p>但推理时实际使用的是：</p>
+<p><span class="katex-display"><span class="katex"><span class="katex-mathml"><math><semantics><mrow><msub><mi>p</mi><mi>θ</mi></msub><mo stretchy="false">(</mo><msub><mi>x</mi><mi>t</mi></msub><mo>∣</mo><msubsup><mover accent="true"><mi>x</mi><mo>^</mo></mover><mrow><mo>&lt;</mo><mi>t</mi></mrow><mi>θ</mi></msubsup><mo stretchy="false">)</mo><mi mathvariant="normal">.</mi></mrow><annotation encoding="application/x-tex">p_\theta(x_t \mid \hat x_{&lt;t}^{\theta}).
+</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:1em;vertical-align:-0.25em;"></span><span class="mord"><span class="mord mathdefault">p</span><span class="msupsub"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height:0.33610799999999996em;"><span style="top:-2.5500000000000003em;margin-left:0em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mathdefault mtight" style="margin-right:0.02778em;">θ</span></span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height:0.15em;"><span></span></span></span></span></span></span><span class="mopen">(</span><span class="mord"><span class="mord mathdefault">x</span><span class="msupsub"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height:0.2805559999999999em;"><span style="top:-2.5500000000000003em;margin-left:0em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mathdefault mtight">t</span></span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height:0.15em;"><span></span></span></span></span></span></span><span class="mspace" style="margin-right:0.2777777777777778em;"></span><span class="mrel">∣</span><span class="mspace" style="margin-right:0.2777777777777778em;"></span></span><span class="base"><span class="strut" style="height:1.173478em;vertical-align:-0.27437em;"></span><span class="mord"><span class="mord accent"><span class="vlist-t"><span class="vlist-r"><span class="vlist" style="height:0.69444em;"><span style="top:-3em;"><span class="pstrut" style="height:3em;"></span><span class="mord mathdefault">x</span></span><span style="top:-3em;"><span class="pstrut" style="height:3em;"></span><span class="accent-body" style="left:-0.22222em;">^</span></span></span></span></span></span><span class="msupsub"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height:0.899108em;"><span style="top:-2.453em;margin-left:0em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mtight"><span class="mrel mtight">&lt;</span><span class="mord mathdefault mtight">t</span></span></span></span><span style="top:-3.1130000000000004em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mtight"><span class="mord mathdefault mtight" style="margin-right:0.02778em;">θ</span></span></span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height:0.27437em;"><span></span></span></span></span></span></span><span class="mclose">)</span><span class="mord">.</span></span></span></span></span></p>
+<p>这里 <span class="katex"><span class="katex-mathml"><math><semantics><mrow><msubsup><mi>x</mi><mrow><mo>&lt;</mo><mi>t</mi></mrow><mtext>data</mtext></msubsup></mrow><annotation encoding="application/x-tex">x_{&lt;t}^{\text{data}}</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:1.123478em;vertical-align:-0.27437em;"></span><span class="mord"><span class="mord mathdefault">x</span><span class="msupsub"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height:0.849108em;"><span style="top:-2.453em;margin-left:0em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mtight"><span class="mrel mtight">&lt;</span><span class="mord mathdefault mtight">t</span></span></span></span><span style="top:-3.063em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mtight"><span class="mord text mtight"><span class="mord mtight">data</span></span></span></span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height:0.27437em;"><span></span></span></span></span></span></span></span></span></span> 是真实历史，<span class="katex"><span class="katex-mathml"><math><semantics><mrow><msubsup><mover accent="true"><mi>x</mi><mo>^</mo></mover><mrow><mo>&lt;</mo><mi>t</mi></mrow><mi>θ</mi></msubsup></mrow><annotation encoding="application/x-tex">\hat x_{&lt;t}^{\theta}</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:1.123478em;vertical-align:-0.27437em;"></span><span class="mord"><span class="mord accent"><span class="vlist-t"><span class="vlist-r"><span class="vlist" style="height:0.69444em;"><span style="top:-3em;"><span class="pstrut" style="height:3em;"></span><span class="mord mathdefault">x</span></span><span style="top:-3em;"><span class="pstrut" style="height:3em;"></span><span class="accent-body" style="left:-0.22222em;">^</span></span></span></span></span></span><span class="msupsub"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height:0.849108em;"><span style="top:-2.453em;margin-left:0em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mtight"><span class="mrel mtight">&lt;</span><span class="mord mathdefault mtight">t</span></span></span></span><span style="top:-3.063em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mtight"><span class="mord mathdefault mtight" style="margin-right:0.02778em;">θ</span></span></span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height:0.27437em;"><span></span></span></span></span></span></span></span></span></span> 是模型自己生成的历史。二者分布不同，训练时没有教模型如何纠正自己的错误，推理时错误就会滚雪球。</p>
+<p>可以先想一个 5 秒滑板视频。模型生成第 1 秒时，滑板边缘稍微锐化过头，衣服颜色也比真实视频更饱和；如果第 2 秒仍然用真实历史训练，模型永远不用面对这个错误。但推理时第 2 秒只能接着自己刚生成的“偏红衣服”和“过锐滑板”往下滚，到了第 4 秒，颜色、轮廓和动作节奏都可能被放大成漂移。Self Forcing 要解决的正是这个问题：训练时不再把模型保护在干净历史里，而是让它在自己造成的历史误差上继续生成，并用完整视频分布来惩罚这种长期漂移。</p>
+<p>Diffusion Forcing 把上下文噪声水平随机化，确实比纯 clean ground-truth 更接近推理场景，但仍然没有真正从模型自己的 rollout 分布里取上下文。Self Forcing 的核心变化是把训练上下文改成：</p>
+<p><span class="katex-display"><span class="katex"><span class="katex-mathml"><math><semantics><mrow><msubsup><mover accent="true"><mi>x</mi><mo>^</mo></mover><mrow><mo>&lt;</mo><mi>t</mi></mrow><mi>θ</mi></msubsup><mspace width="1em"/><mtext>generated by the current model itself</mtext><mi mathvariant="normal">.</mi></mrow><annotation encoding="application/x-tex">\hat x_{&lt;t}^{\theta}
+\quad\text{generated by the current model itself}.
+</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:1.173478em;vertical-align:-0.27437em;"></span><span class="mord"><span class="mord accent"><span class="vlist-t"><span class="vlist-r"><span class="vlist" style="height:0.69444em;"><span style="top:-3em;"><span class="pstrut" style="height:3em;"></span><span class="mord mathdefault">x</span></span><span style="top:-3em;"><span class="pstrut" style="height:3em;"></span><span class="accent-body" style="left:-0.22222em;">^</span></span></span></span></span></span><span class="msupsub"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height:0.899108em;"><span style="top:-2.453em;margin-left:0em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mtight"><span class="mrel mtight">&lt;</span><span class="mord mathdefault mtight">t</span></span></span></span><span style="top:-3.1130000000000004em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mtight"><span class="mord mathdefault mtight" style="margin-right:0.02778em;">θ</span></span></span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height:0.27437em;"><span></span></span></span></span></span></span><span class="mspace" style="margin-right:1em;"></span><span class="mord text"><span class="mord">generated by the current model itself</span></span><span class="mord">.</span></span></span></span></span></p>
+<p>这就是它名字里的 <code>Self</code>。</p>
+<h2 id="方法总览"><a class="markdownIt-Anchor" href="#方法总览"></a> 方法总览</h2>
+<p>Self Forcing 的训练流程可以压成一条链：</p>
+<div class="code-container" data-rel="Text"><figure class="iseeu highlight text"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br></pre></td><td class="code"><pre><span class="line">initialize causal AR diffusion model from Wan2.1 / CausVid-style ODE init</span><br><span class="line">  -&gt; during training, run autoregressive rollout with KV cache</span><br><span class="line">  -&gt; each new frame/chunk conditions on self-generated previous frames/chunks</span><br><span class="line">  -&gt; truncate gradients to keep memory manageable</span><br><span class="line">  -&gt; apply holistic video-level distribution matching loss</span><br><span class="line">  -&gt; update generator and optional critic / fake score network</span><br></pre></td></tr></table></figure></div>
+<p>这条链说明 Self Forcing 的成本为什么可控：它不是从零训练一个视频模型，而是在 post-training 阶段修正 rollout 分布错位；再配合 few-step diffusion backbone 和梯度截断，让顺序 rollout 训练不会退化成不可承受的全序列反传。</p>
+<p><img  
+                     lazyload
+                     src="/images/loading.svg"
+                     data-src="/image/ai-notes/images/localized-remote/paper-deep-dives/world-models/self-forcing/self-forcing-attention-masks-%E5%8E%9F%E5%9B%BE.png"
+                      alt="Self Forcing attention masks 原图" 
+                ></p>
+<p><small>图源：<code>Self Forcing</code>，Figure 2。原图展示 TF/DF 需要在整段视频上用特殊 causal mask 并行训练，而 Self Forcing 训练过程直接模仿 AR inference，使用 KV cache，不需要特殊 attention mask。</small></p>
+<p><strong>attention mask 图在比较训练形态。</strong><br />
+TF/DF 看起来并行高效，但需要人为设计 attention mask，让模型“假装”在做因果生成；上下文仍主要来自数据或带噪数据。Self Forcing 反过来：训练时就真的逐步生成，并用 KV cache 复用历史，因此模型看到的是自己 rollout 造成的上下文分布。读这张图时重点看“训练时上下文从哪里来”，而不是只看是否用了 causal mask。</p>
+<h2 id="自回归-self-rollout"><a class="markdownIt-Anchor" href="#自回归-self-rollout"></a> 自回归 self-rollout</h2>
+<p>论文采用 few-step diffusion / flow matching，让每个 frame 或 chunk 只用 4 个 denoising steps。否则，如果每帧都要几十步扩散，还要反传整条 rollout，训练成本会不可接受。</p>
+<p>这里的“自回归一步”不一定是一帧。实践中也可以一次生成一个 frame chunk，再把这个 chunk 当成下一步上下文；论文为了记号简洁，常把 chunk 也记作 frame。这个选择会直接影响首帧延迟、AR 链长度和时间一致性压力。</p>
+<p>论文实现里有两种自回归粒度：</p>
+<table>
+<thead>
+<tr>
+<th>Variant</th>
+<th>Generation unit</th>
+<th>Strength</th>
+<th>Weakness</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Frame-wise AR</td>
+<td>one latent frame at finer temporal granularity</td>
+<td>lower first-frame latency, more responsive</td>
+<td>more AR steps, more temporal consistency pressure</td>
+</tr>
+<tr>
+<td>Chunk-wise AR</td>
+<td>3 latent frames per block</td>
+<td>better quality and consistency</td>
+<td>slightly higher latency</td>
+</tr>
+</tbody>
+</table>
+<p>chunk-wise 是主结果，frame-wise 用来说明 Self Forcing 在更长 AR chain 下也能稳住质量。</p>
+<p>训练时，模型在第 <span class="katex"><span class="katex-mathml"><math><semantics><mrow><mi>t</mi></mrow><annotation encoding="application/x-tex">t</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.61508em;vertical-align:0em;"></span><span class="mord mathdefault">t</span></span></span></span> 个 frame/chunk 上执行几步去噪，并把生成结果写入 KV cache，下一步生成会读这个 cache。这个流程和推理一致，所以训练 loss 看到的是模型真实会产生的错误。</p>
+<h2 id="梯度截断"><a class="markdownIt-Anchor" href="#梯度截断"></a> 梯度截断</h2>
+<p>Self-rollout 的难点是内存。若对所有历史 frame/chunk 和所有 denoising steps 全量反传，代价会爆炸。论文采用 stochastic gradient truncation：</p>
+<ol>
+<li>对每个训练序列随机采样一个 denoising step <span class="katex"><span class="katex-mathml"><math><semantics><mrow><mi>s</mi><mo>∈</mo><mo stretchy="false">{</mo><mn>1</mn><mo separator="true">,</mo><mo>…</mo><mo separator="true">,</mo><mi>S</mi><mo stretchy="false">}</mo></mrow><annotation encoding="application/x-tex">s \in \{1,\dots,S\}</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.5782em;vertical-align:-0.0391em;"></span><span class="mord mathdefault">s</span><span class="mspace" style="margin-right:0.2777777777777778em;"></span><span class="mrel">∈</span><span class="mspace" style="margin-right:0.2777777777777778em;"></span></span><span class="base"><span class="strut" style="height:1em;vertical-align:-0.25em;"></span><span class="mopen">{</span><span class="mord">1</span><span class="mpunct">,</span><span class="mspace" style="margin-right:0.16666666666666666em;"></span><span class="minner">…</span><span class="mspace" style="margin-right:0.16666666666666666em;"></span><span class="mpunct">,</span><span class="mspace" style="margin-right:0.16666666666666666em;"></span><span class="mord mathdefault" style="margin-right:0.05764em;">S</span><span class="mclose">}</span></span></span></span>，其中 <span class="katex"><span class="katex-mathml"><math><semantics><mrow><mi>S</mi></mrow><annotation encoding="application/x-tex">S</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.68333em;vertical-align:0em;"></span><span class="mord mathdefault" style="margin-right:0.05764em;">S</span></span></span></span> 是少步扩散的 denoising step 数；</li>
+<li>用第 <span class="katex"><span class="katex-mathml"><math><semantics><mrow><mi>s</mi></mrow><annotation encoding="application/x-tex">s</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.43056em;vertical-align:0em;"></span><span class="mord mathdefault">s</span></span></span></span> 步 denoised output 作为当前训练样本的最终输出，让不同中间步都有机会收到监督；</li>
+<li>只对当前 frame/chunk 的相关 denoising step 开启梯度；</li>
+<li>历史 frames/chunks 写入 KV cache 后 detach；</li>
+<li>前面生成的上下文仍影响当前输出，但不承受跨整条序列的反传。</li>
+</ol>
+<p>这种设计的取舍很清楚：它牺牲了一部分长程 credit assignment，但换来可训练性。论文也在局限里承认，梯度截断可能限制模型学习更长距离依赖。</p>
+<h2 id="视频级-distribution-matching"><a class="markdownIt-Anchor" href="#视频级-distribution-matching"></a> 视频级 distribution matching</h2>
+<p>Self Forcing 的 loss 不再是单纯 frame-wise denoising MSE，而是对完整生成视频分布做匹配：</p>
+<p><span class="katex-display"><span class="katex"><span class="katex-mathml"><math><semantics><mrow><msub><mover accent="true"><mi>x</mi><mo>^</mo></mover><mrow><mn>1</mn><mo>:</mo><mi>T</mi></mrow></msub><mo>∼</mo><msubsup><mi>p</mi><mi>θ</mi><mtext>AR</mtext></msubsup><mo stretchy="false">(</mo><msub><mi>x</mi><mrow><mn>1</mn><mo>:</mo><mi>T</mi></mrow></msub><mo stretchy="false">)</mo><mo separator="true">,</mo><mspace width="2em"/><mi mathvariant="script">L</mi><mo>=</mo><mi>D</mi><mo stretchy="false">(</mo><msubsup><mi>p</mi><mi>θ</mi><mtext>AR</mtext></msubsup><mtext> </mtext><mi mathvariant="normal">∥</mi><mtext> </mtext><msub><mi>p</mi><mtext>data</mtext></msub><mo stretchy="false">)</mo><mi mathvariant="normal">.</mi></mrow><annotation encoding="application/x-tex">\hat x_{1:T} \sim p_\theta^{\text{AR}}(x_{1:T}),
+\qquad
+\mathcal L = D(p_\theta^{\text{AR}} \,\|\, p_{\text{data}}).
+</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.84444em;vertical-align:-0.15em;"></span><span class="mord"><span class="mord accent"><span class="vlist-t"><span class="vlist-r"><span class="vlist" style="height:0.69444em;"><span style="top:-3em;"><span class="pstrut" style="height:3em;"></span><span class="mord mathdefault">x</span></span><span style="top:-3em;"><span class="pstrut" style="height:3em;"></span><span class="accent-body" style="left:-0.22222em;">^</span></span></span></span></span></span><span class="msupsub"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height:0.32833099999999993em;"><span style="top:-2.5500000000000003em;margin-left:0em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mtight"><span class="mord mtight">1</span><span class="mrel mtight">:</span><span class="mord mathdefault mtight" style="margin-right:0.13889em;">T</span></span></span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height:0.15em;"><span></span></span></span></span></span></span><span class="mspace" style="margin-right:0.2777777777777778em;"></span><span class="mrel">∼</span><span class="mspace" style="margin-right:0.2777777777777778em;"></span></span><span class="base"><span class="strut" style="height:1.1413309999999999em;vertical-align:-0.25em;"></span><span class="mord"><span class="mord mathdefault">p</span><span class="msupsub"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height:0.8913309999999999em;"><span style="top:-2.4530000000000003em;margin-left:0em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mathdefault mtight" style="margin-right:0.02778em;">θ</span></span></span><span style="top:-3.113em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mtight"><span class="mord text mtight"><span class="mord mtight">AR</span></span></span></span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height:0.247em;"><span></span></span></span></span></span></span><span class="mopen">(</span><span class="mord"><span class="mord mathdefault">x</span><span class="msupsub"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height:0.32833099999999993em;"><span style="top:-2.5500000000000003em;margin-left:0em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mtight"><span class="mord mtight">1</span><span class="mrel mtight">:</span><span class="mord mathdefault mtight" style="margin-right:0.13889em;">T</span></span></span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height:0.15em;"><span></span></span></span></span></span></span><span class="mclose">)</span><span class="mpunct">,</span><span class="mspace" style="margin-right:0.16666666666666666em;"></span><span class="mspace" style="margin-right:2em;"></span><span class="mord mathcal">L</span><span class="mspace" style="margin-right:0.2777777777777778em;"></span><span class="mrel">=</span><span class="mspace" style="margin-right:0.2777777777777778em;"></span></span><span class="base"><span class="strut" style="height:1.1413309999999999em;vertical-align:-0.25em;"></span><span class="mord mathdefault" style="margin-right:0.02778em;">D</span><span class="mopen">(</span><span class="mord"><span class="mord mathdefault">p</span><span class="msupsub"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height:0.8913309999999999em;"><span style="top:-2.4530000000000003em;margin-left:0em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mathdefault mtight" style="margin-right:0.02778em;">θ</span></span></span><span style="top:-3.113em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mtight"><span class="mord text mtight"><span class="mord mtight">AR</span></span></span></span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height:0.247em;"><span></span></span></span></span></span></span><span class="mspace" style="margin-right:0.16666666666666666em;"></span><span class="mord">∥</span><span class="mspace" style="margin-right:0.16666666666666666em;"></span><span class="mord"><span class="mord mathdefault">p</span><span class="msupsub"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height:0.33610799999999996em;"><span style="top:-2.5500000000000003em;margin-left:0em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mtight"><span class="mord text mtight"><span class="mord mtight">data</span></span></span></span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height:0.15em;"><span></span></span></span></span></span></span><span class="mclose">)</span><span class="mord">.</span></span></span></span></span></p>
+<p>这句话的重点是“完整生成视频”。传统 frame-wise objective 更像在问：当前帧在给定真实或带噪上下文时是否去噪正确；Self Forcing 问的是：模型按推理方式连续滚出来的一整段视频，整体分布是否像真实视频。这个目标更直接对应用户最终看到的序列质量。</p>
+<p>论文实验支持三类 distribution matching objective：</p>
+<table>
+<thead>
+<tr>
+<th>Objective</th>
+<th>Matched divergence / signal</th>
+<th>Notes</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>DMD</td>
+<td>reverse KL via score difference</td>
+<td>main result; data-free when using pretrained diffusion score networks</td>
+</tr>
+<tr>
+<td>SiD</td>
+<td>Fisher-divergence-style score identity distillation</td>
+<td>also works, but training can be less stable</td>
+</tr>
+<tr>
+<td>GAN</td>
+<td>Jensen-Shannon via discriminator</td>
+<td>uses generated real video dataset and R3GAN-style objective</td>
+</tr>
+</tbody>
+</table>
+<p>重点不是哪个 objective 单独最强，而是 Self Forcing 框架本身可以接不同的视频级分布匹配目标。论文 Table 2 显示 DMD、SiD、GAN 三者都比 TF/DF 基线更稳。</p>
+<h2 id="rolling-kv-cache"><a class="markdownIt-Anchor" href="#rolling-kv-cache"></a> Rolling KV cache</h2>
+<p>自回归模型相对标准视频 diffusion 的一个关键优势，是理论上可以通过 sliding-window inference 不断往训练长度之外外推。Self Forcing 还提出 rolling KV cache，用于让这种长视频外推在系统上可行。问题是：普通 sliding-window 视频扩散在窗口移动时，要重复计算重叠 frames 的 KV；已有 causal diffusion 实现也常常需要在新窗口重算 cache。</p>
+<p>Self Forcing 的做法更像 StreamingLLM：</p>
+<div class="code-container" data-rel="Text"><figure class="iseeu highlight text"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br></pre></td><td class="code"><pre><span class="line">keep fixed-size KV cache for recent frames/chunks</span><br><span class="line">when generating a new chunk:</span><br><span class="line">  if cache is full, evict the oldest KV entry</span><br><span class="line">  denoise current chunk using cached recent context</span><br><span class="line">  append new KV entry</span><br></pre></td></tr></table></figure></div>
+<p><img  
+                     lazyload
+                     src="/images/loading.svg"
+                     data-src="/image/ai-notes/images/localized-remote/paper-deep-dives/world-models/self-forcing/self-forcing-rolling-kv-cache-%E5%8E%9F%E5%9B%BE.png"
+                      alt="Self Forcing rolling KV cache 原图" 
+                ></p>
+<p><small>图源：<code>Self Forcing</code>，Figure 3。原图对比 bidirectional sliding window、causal sliding window with KV recomputation 和 Self Forcing rolling KV cache。Self Forcing 不重算 KV，将长视频外推复杂度降到随长度线性增长。</small></p>
+<p><strong>为什么 rolling KV cache 是系统关键。</strong><br />
+长视频流式生成时，问题不只是模型能不能 causal，还包括历史上下文的计算能不能复用。bidirectional sliding window 每次处理一个窗口都需要看窗口内全部 token，不能自然复用过去计算；普通 causal sliding window 虽然不看未来，但如果每次移动窗口都重算历史 KV，长视频成本仍然很高。</p>
+<p>Self Forcing 的 rolling KV cache 把过去 chunk 的 key/value 缓存下来，新 chunk 只计算自己的 KV，并读最近历史 cache。窗口满了就淘汰最旧 KV。这样每新增一段视频，计算量主要来自新段，而不是反复重算整段历史。对世界模型或交互视频来说，这个设计决定了它能不能长期 rollout，而不只是生成一个短 demo。</p>
+<p>论文还发现一个细节：naive rolling KV 会有明显闪烁，因为模型训练时总能看到第一帧 image latent，而 rolling cache 长视频推理时第一帧会被淘汰。解决办法是在训练时限制 attention window，让模型在 denoise 最后一个 chunk 时看不到第一 chunk，从而模拟长视频推理条件。</p>
+<h2 id="训练细节"><a class="markdownIt-Anchor" href="#训练细节"></a> 训练细节</h2>
+<p>论文和官方代码给出的实现细节如下。</p>
+<table>
+<thead>
+<tr>
+<th>Item</th>
+<th>Detail</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Base model</td>
+<td>Wan2.1-T2V-1.3B</td>
+</tr>
+<tr>
+<td>Model family</td>
+<td>Flow Matching text-to-video model with causal 3D VAE latent space</td>
+</tr>
+<tr>
+<td>Video setting</td>
+<td>5s videos, 16 FPS, 480P-level generation</td>
+</tr>
+<tr>
+<td>Initialization</td>
+<td>CausVid-style ODE initialization</td>
+</tr>
+<tr>
+<td>ODE pairs</td>
+<td>16K ODE solution pairs sampled from the base model</td>
+</tr>
+<tr>
+<td>Prompt source</td>
+<td>filtered and LLM-extended VidProM / VidProS prompts</td>
+</tr>
+<tr>
+<td>Prompt filtering</td>
+<td>remove too-short prompts, command-line args, and high-NSFW prompts</td>
+</tr>
+<tr>
+<td>Prompt expansion</td>
+<td>Qwen/Qwen2.5-7B-Instruct with Wan2.1-style prompt extension</td>
+</tr>
+<tr>
+<td>Diffusion steps</td>
+<td>4-step schedule</td>
+</tr>
+<tr>
+<td>Denoising step list in code</td>
+<td><code>[1000, 750, 500, 250]</code></td>
+</tr>
+<tr>
+<td>Timestep shift</td>
+<td><code>5.0</code></td>
+</tr>
+<tr>
+<td>CFG / guidance scale</td>
+<td><code>3.0</code></td>
+</tr>
+<tr>
+<td>Chunk-wise AR</td>
+<td>3 latent frames per block</td>
+</tr>
+<tr>
+<td>DMD training</td>
+<td>about 600 iterations, under 2 hours on 64 H100 GPUs in released repo</td>
+</tr>
+<tr>
+<td>Paper training budget</td>
+<td>each DMD Self Forcing experiment converges in about 1.5 hours on 64 H100 GPUs</td>
+</tr>
+<tr>
+<td>Repro note</td>
+<td>repo suggests gradient accumulation can reproduce in under 16 hours on 8 H100 GPUs</td>
+</tr>
+<tr>
+<td>Attention</td>
+<td>Self Forcing uses FlashAttention-3; TF/DF baselines use FlexAttention</td>
+</tr>
+<tr>
+<td>Mixed precision</td>
+<td>enabled in released config</td>
+</tr>
+<tr>
+<td>FSDP sharding</td>
+<td><code>hybrid_full</code> in released config</td>
+</tr>
+<tr>
+<td>EMA</td>
+<td><code>0.99</code>, starts at step 200 in released config</td>
+</tr>
+<tr>
+<td>DMD total batch size</td>
+<td>64</td>
+</tr>
+<tr>
+<td>DMD learning rate</td>
+<td>generator <code>2e-6</code>, critic/fake score <code>4e-7</code></td>
+</tr>
+<tr>
+<td>SiD learning rate</td>
+<td>generator <code>2e-6</code>, critic <code>2e-6</code></td>
+</tr>
+<tr>
+<td>DMD / SiD update ratio</td>
+<td><code>dfake_gen_update_ratio = 5</code> in released configs</td>
+</tr>
+<tr>
+<td>Stochastic truncation</td>
+<td>randomly sample one denoising step <span class="katex"><span class="katex-mathml"><math><semantics><mrow><mi>s</mi></mrow><annotation encoding="application/x-tex">s</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.43056em;vertical-align:0em;"></span><span class="mord mathdefault">s</span></span></span></span> per training sequence and use the <span class="katex"><span class="katex-mathml"><math><semantics><mrow><mi>s</mi></mrow><annotation encoding="application/x-tex">s</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.43056em;vertical-align:0em;"></span><span class="mord mathdefault">s</span></span></span></span>-th denoised output as final output</td>
+</tr>
+</tbody>
+</table>
+<p>有两个细节特别值得注意：</p>
+<ol>
+<li>DMD/SiD 版本可以是 data-free post-training：不需要真实视频数据，只需要 prompts 和 pretrained score networks；</li>
+<li>GAN 版本需要真实或生成的视频数据，论文用 Wan2.1-14B 生成 70K videos 作为 GAN 训练数据，也用于 many-step TF/DF AR baseline 微调。</li>
+</ol>
+<h3 id="table-3-specification-of-training-hyperparameters"><a class="markdownIt-Anchor" href="#table-3-specification-of-training-hyperparameters"></a> Table 3: Specification of training hyperparameters</h3>
+<p>下面根据论文 Table 3 与官方配置重绘，保留英文表头。部分 GAN 细节论文只在公式和文字中描述，开源 repo 当前主要提供 DMD / SiD 配置。</p>
+<table>
+<thead>
+<tr>
+<th>Hyperparameters</th>
+<th>DMD</th>
+<th>SiD</th>
+<th>GAN</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Real score network</td>
+<td>Wan2.1-T2V-14B</td>
+<td>Wan2.1-T2V-1.3B</td>
+<td>N/A</td>
+</tr>
+<tr>
+<td>Real score CFG weight</td>
+<td>3.0</td>
+<td>3.0</td>
+<td>N/A</td>
+</tr>
+<tr>
+<td>Critic network initialization</td>
+<td>Wan2.1-T2V-1.3B</td>
+<td>Wan2.1-T2V-1.3B</td>
+<td>Wan2.1-T2V-1.3B</td>
+</tr>
+<tr>
+<td>Batch size</td>
+<td>64</td>
+<td>64</td>
+<td>768</td>
+</tr>
+<tr>
+<td>Generator optimizer</td>
+<td>AdamW</td>
+<td>Adam</td>
+<td>AdamW</td>
+</tr>
+<tr>
+<td>Critic optimizer</td>
+<td>AdamW</td>
+<td>Adam</td>
+<td>AdamW</td>
+</tr>
+<tr>
+<td>Generator LR</td>
+<td>2e-6</td>
+<td>2e-6</td>
+<td>reported in paper appendix</td>
+</tr>
+<tr>
+<td>Critic LR</td>
+<td>4e-7</td>
+<td>2e-6</td>
+<td>reported in paper appendix</td>
+</tr>
+<tr>
+<td>EMA decay</td>
+<td>0.99</td>
+<td>0.99</td>
+<td>reported in paper appendix</td>
+</tr>
+<tr>
+<td>Denoising steps</td>
+<td>4</td>
+<td>4</td>
+<td>4</td>
+</tr>
+<tr>
+<td>Distribution loss</td>
+<td>DMD</td>
+<td>SiD</td>
+<td>R3GAN / relativistic GAN with R1 + R2</td>
+</tr>
+</tbody>
+</table>
+<p><small>表源：<code>Self Forcing: Bridging the Train-Test Gap in Autoregressive Video Diffusion</code>，Table 3。原论文表格要点：该表汇总 DMD、SiD 和 GAN 三类 Self Forcing objective 的训练超参；DMD/SiD 使用 pretrained score networks 和 4-step generator，GAN 版本则使用 R3GAN-style 对抗目标与更大的 batch。</small></p>
+<h2 id="实验结果"><a class="markdownIt-Anchor" href="#实验结果"></a> 实验结果</h2>
+<h3 id="table-1-comparison-with-relevant-baselines"><a class="markdownIt-Anchor" href="#table-1-comparison-with-relevant-baselines"></a> Table 1: Comparison with relevant baselines</h3>
+<p>论文使用 VBench 和速度指标比较同规模模型。表格保留英文格式。</p>
+<table>
+<thead>
+<tr>
+<th>Model</th>
+<th style="text-align:right">#Params</th>
+<th>Resolution</th>
+<th style="text-align:right">Throughput (FPS)</th>
+<th style="text-align:right">Latency (s)</th>
+<th style="text-align:right">Total Score</th>
+<th style="text-align:right">Quality Score</th>
+<th style="text-align:right">Semantic Score</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>LTX-Video</td>
+<td style="text-align:right">1.9B</td>
+<td>480P</td>
+<td style="text-align:right">8.98</td>
+<td style="text-align:right">13.5</td>
+<td style="text-align:right">80.00</td>
+<td style="text-align:right">82.30</td>
+<td style="text-align:right">70.79</td>
+</tr>
+<tr>
+<td>Wan2.1</td>
+<td style="text-align:right">1.3B</td>
+<td>480P</td>
+<td style="text-align:right">0.78</td>
+<td style="text-align:right">103</td>
+<td style="text-align:right">84.26</td>
+<td style="text-align:right">85.30</td>
+<td style="text-align:right">80.09</td>
+</tr>
+<tr>
+<td>SkyReels-V2</td>
+<td style="text-align:right">1.3B</td>
+<td>480P</td>
+<td style="text-align:right">0.49</td>
+<td style="text-align:right">112</td>
+<td style="text-align:right">82.67</td>
+<td style="text-align:right">84.70</td>
+<td style="text-align:right">74.53</td>
+</tr>
+<tr>
+<td>MAGI-1</td>
+<td style="text-align:right">4.5B</td>
+<td>480P</td>
+<td style="text-align:right">0.19</td>
+<td style="text-align:right">282</td>
+<td style="text-align:right">79.18</td>
+<td style="text-align:right">82.04</td>
+<td style="text-align:right">67.74</td>
+</tr>
+<tr>
+<td>CausVid</td>
+<td style="text-align:right">1.3B</td>
+<td>480P</td>
+<td style="text-align:right">17.0</td>
+<td style="text-align:right">0.69</td>
+<td style="text-align:right">81.20</td>
+<td style="text-align:right">84.05</td>
+<td style="text-align:right">69.80</td>
+</tr>
+<tr>
+<td>Self Forcing (Ours, chunk-wise)</td>
+<td style="text-align:right">1.3B</td>
+<td>480P</td>
+<td style="text-align:right">17.0</td>
+<td style="text-align:right">0.69</td>
+<td style="text-align:right">84.31</td>
+<td style="text-align:right">85.07</td>
+<td style="text-align:right">81.28</td>
+</tr>
+<tr>
+<td>NOVA</td>
+<td style="text-align:right">0.6B</td>
+<td>480P</td>
+<td style="text-align:right">0.88</td>
+<td style="text-align:right">4.1</td>
+<td style="text-align:right">80.12</td>
+<td style="text-align:right">80.39</td>
+<td style="text-align:right">79.05</td>
+</tr>
+<tr>
+<td>Pyramid Flow</td>
+<td style="text-align:right">2B</td>
+<td>480P</td>
+<td style="text-align:right">6.7</td>
+<td style="text-align:right">2.5</td>
+<td style="text-align:right">81.72</td>
+<td style="text-align:right">84.74</td>
+<td style="text-align:right">69.62</td>
+</tr>
+<tr>
+<td>Self Forcing (Ours, frame-wise)</td>
+<td style="text-align:right">1.3B</td>
+<td>480P</td>
+<td style="text-align:right">8.9</td>
+<td style="text-align:right">0.45</td>
+<td style="text-align:right">84.26</td>
+<td style="text-align:right">85.25</td>
+<td style="text-align:right">80.30</td>
+</tr>
+</tbody>
+</table>
+<p><small>表源：<code>Self Forcing: Bridging the Train-Test Gap in Autoregressive Video Diffusion</code>，Table 1。原论文表格要点：该表比较同类视频生成模型的参数量、分辨率、吞吐、延迟和 VBench 分数；Self Forcing 在保持 Wan2.1 级别总分的同时，把延迟降到 <code>0.69s</code> chunk-wise 或 <code>0.45s</code> frame-wise。</small></p>
+<p>这张表支撑三点：</p>
+<ol>
+<li>chunk-wise Self Forcing 和 CausVid 速度相同，但质量和语义分数明显更高；</li>
+<li>frame-wise Self Forcing 延迟最低，为 0.45s；</li>
+<li>相对 Wan2.1，Self Forcing 基本保住 VBench 总分，同时把 latency 从 103s 降到 0.69s 或 0.45s。</li>
+</ol>
+<p><img  
+                     lazyload
+                     src="/images/loading.svg"
+                     data-src="/image/ai-notes/images/localized-remote/paper-deep-dives/world-models/self-forcing/self-forcing-qualitative-comparison-%E5%8E%9F%E5%9B%BE.png"
+                      alt="Self Forcing qualitative comparison 原图" 
+                ></p>
+<p><small>图源：<code>Self Forcing</code>，Figure 5。原图对比 Wan2.1、SkyReels-V2、CausVid 和 Self Forcing 在多个时间点的生成结果，展示 CausVid 随时间出现过饱和，而 Self Forcing 更稳定。</small></p>
+<p><strong>定性对比图要沿时间读。</strong><br />
+这类视频结果不能只看第一帧或最漂亮的一帧，要沿时间检查颜色是否逐步过饱和、主体是否漂移、背景是否跳变、动作是否变慢。图中 CausVid 的问题更像长期 rollout 的统计漂移，而不是单帧能力不足；Self Forcing 的优势在于训练时已经让模型条件在自己生成的历史上，所以更能适应这种推理时分布。它和前面的 self-rollout 训练图是一组因果链：训练分布更接近推理分布，长时视觉漂移更轻。</p>
+<h3 id="table-2-ablation-study"><a class="markdownIt-Anchor" href="#table-2-ablation-study"></a> Table 2: Ablation study</h3>
+<table>
+<thead>
+<tr>
+<th>Chunk-wise AR</th>
+<th style="text-align:right">Total Score</th>
+<th style="text-align:right">Quality Score</th>
+<th style="text-align:right">Semantic Score</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Diffusion Forcing (DF), Many (502)-step models</td>
+<td style="text-align:right">82.95</td>
+<td style="text-align:right">83.66</td>
+<td style="text-align:right">80.09</td>
+</tr>
+<tr>
+<td>Teacher Forcing (TF), Many (502)-step models</td>
+<td style="text-align:right">83.58</td>
+<td style="text-align:right">84.34</td>
+<td style="text-align:right">80.52</td>
+</tr>
+<tr>
+<td>DF + DMD, Few (4)-step models</td>
+<td style="text-align:right">82.76</td>
+<td style="text-align:right">83.49</td>
+<td style="text-align:right">79.85</td>
+</tr>
+<tr>
+<td>TF + DMD, Few (4)-step models</td>
+<td style="text-align:right">82.32</td>
+<td style="text-align:right">82.73</td>
+<td style="text-align:right">80.67</td>
+</tr>
+<tr>
+<td>Self Forcing (Ours, DMD)</td>
+<td style="text-align:right">84.31</td>
+<td style="text-align:right">85.07</td>
+<td style="text-align:right">81.28</td>
+</tr>
+<tr>
+<td>Self Forcing (Ours, SiD)</td>
+<td style="text-align:right">84.07</td>
+<td style="text-align:right">85.52</td>
+<td style="text-align:right">78.24</td>
+</tr>
+<tr>
+<td>Self Forcing (Ours, GAN)</td>
+<td style="text-align:right">83.88</td>
+<td style="text-align:right">85.06</td>
+<td style="text-align:right">79.16</td>
+</tr>
+</tbody>
+</table>
+<table>
+<thead>
+<tr>
+<th>Frame-wise AR</th>
+<th style="text-align:right">Total Score</th>
+<th style="text-align:right">Quality Score</th>
+<th style="text-align:right">Semantic Score</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Diffusion Forcing (DF), Many (502)-step models</td>
+<td style="text-align:right">77.24</td>
+<td style="text-align:right">79.72</td>
+<td style="text-align:right">67.33</td>
+</tr>
+<tr>
+<td>Teacher Forcing (TF), Many (502)-step models</td>
+<td style="text-align:right">80.34</td>
+<td style="text-align:right">81.34</td>
+<td style="text-align:right">76.34</td>
+</tr>
+<tr>
+<td>DF + DMD, Few (4)-step models</td>
+<td style="text-align:right">80.56</td>
+<td style="text-align:right">81.02</td>
+<td style="text-align:right">78.71</td>
+</tr>
+<tr>
+<td>TF + DMD, Few (4)-step models</td>
+<td style="text-align:right">78.12</td>
+<td style="text-align:right">79.62</td>
+<td style="text-align:right">72.11</td>
+</tr>
+<tr>
+<td>Self Forcing (Ours, DMD)</td>
+<td style="text-align:right">84.26</td>
+<td style="text-align:right">85.25</td>
+<td style="text-align:right">80.30</td>
+</tr>
+<tr>
+<td>Self Forcing (Ours, SiD)</td>
+<td style="text-align:right">83.54</td>
+<td style="text-align:right">84.71</td>
+<td style="text-align:right">78.86</td>
+</tr>
+<tr>
+<td>Self Forcing (Ours, GAN)</td>
+<td style="text-align:right">83.27</td>
+<td style="text-align:right">84.57</td>
+<td style="text-align:right">78.08</td>
+</tr>
+</tbody>
+</table>
+<p><small>表源：<code>Self Forcing: Bridging the Train-Test Gap in Autoregressive Video Diffusion</code>，Table 2。原论文表格要点：该表在 chunk-wise 和 frame-wise AR 两种设置下比较 TF、DF、DMD 后训练和 Self Forcing；frame-wise AR 链更长、误差累积更强，而 Self Forcing 仍保持最高或接近最高 VBench 分数，直接支撑 train-test distribution alignment 的主张。</small></p>
+<p><strong>为什么这张消融表重要。</strong><br />
+这张表要分 chunk-wise 和 frame-wise 两部分读。chunk-wise 每次生成一个较大的 latent block，AR 链较短，误差累积压力较小；frame-wise 的生成粒度更细，链更长，更容易暴露 train-test mismatch。若一个方法只在 chunk-wise 好，在 frame-wise 掉很多，说明它可能仍然依赖较短 rollout 掩盖误差。</p>
+<p>Self Forcing 在 frame-wise 下仍保持接近 84 的总分，而 TF/DF 和它们的 DMD 后训练版本掉得更明显。这直接支撑论文主张：训练时使用模型自己的 rollout 分布，比只在真实历史或 noisy context 上训练更能抗长期误差累积。这里的重点不是 Self Forcing 换了一个更强 backbone，而是同一类 AR 设置下训练分布对齐带来的差异。</p>
+<p><img  
+                     lazyload
+                     src="/images/loading.svg"
+                     data-src="/image/ai-notes/images/localized-remote/paper-deep-dives/world-models/self-forcing/self-forcing-training-efficiency-%E5%8E%9F%E5%9B%BE.png"
+                      alt="Self Forcing training efficiency 原图" 
+                ></p>
+<p><small>图源：<code>Self Forcing</code>，Figure 6。原图左侧比较 DMD loss 下不同训练范式的单 iteration 时间，右侧比较相同 wall-clock budget 下 VBench score。Self Forcing 虽然顺序 rollout，但训练效率不差，且同等时间质量更高。</small></p>
+<p><strong>这张效率图怎么读。</strong><br />
+常见担心是 Self Forcing 训练时要顺序 rollout，会比 TF/DF 慢太多。左图看单次 iteration 成本，右图看同样 wall-clock budget 下的 VBench 分数；真正要比较的是“单位训练时间换来多少质量”，不是单步是否最并行。图里的结论是：Self Forcing 虽然牺牲了一部分并行形态，但因为训练分布更对齐推理分布，同等时间下质量收益更好。</p>
+<h2 id="和-causvid-的关系"><a class="markdownIt-Anchor" href="#和-causvid-的关系"></a> 和 CausVid 的关系</h2>
+<p>CausVid 和 Self Forcing 都从 Wan2.1-1.3B 出发，都追求 few-step causal video generation，也都使用 distribution matching。但它们的训练分布不同。</p>
+<table>
+<thead>
+<tr>
+<th>Dimension</th>
+<th>CausVid</th>
+<th>Self Forcing</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Training context</td>
+<td>DF-style noisy / ground-truth-derived context</td>
+<td>self-generated context from AR rollout</td>
+</tr>
+<tr>
+<td>Loss target</td>
+<td>distribution matching on DF-generated outputs</td>
+<td>distribution matching on actual inference-time outputs</td>
+</tr>
+<tr>
+<td>KV cache in training</td>
+<td>mainly inference-side system mechanism</td>
+<td>used during training self-rollout</td>
+</tr>
+<tr>
+<td>Main failure addressed</td>
+<td>bidirectional-to-causal distillation and speed</td>
+<td>exposure bias and error accumulation</td>
+</tr>
+<tr>
+<td>Reported speed</td>
+<td>17 FPS, 0.69s latency in comparable Wan-1.3B setting</td>
+<td>17 FPS, 0.69s chunk-wise; 8.9 FPS, 0.45s frame-wise</td>
+</tr>
+</tbody>
+</table>
+<p>论文对 CausVid 的批评非常明确：CausVid 的 DMD loss 匹配的是 DF 训练输出分布，而不是模型真实推理分布。Self Forcing 认为这会导致 loss 对错分布做优化。它的修正方式就是训练时真的跑 AR inference。也就是说，Self Forcing 不是让模型在推理时临时处理 noisy context，而是让训练 loss 从一开始就看见真实 self-rollout 输出。</p>
+<h2 id="和-lingbot-world-的关系"><a class="markdownIt-Anchor" href="#和-lingbot-world-的关系"></a> 和 LingBot-World 的关系</h2>
+<p>LingBot-World 要把视频生成模型变成可交互世界模拟器；Self Forcing 则解决这条路线里的一个关键训练问题。</p>
+<table>
+<thead>
+<tr>
+<th>Requirement for interactive world model</th>
+<th>Self Forcing contribution</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>low latency</td>
+<td>0.45s / 0.69s first-frame latency on single H100</td>
+</tr>
+<tr>
+<td>streaming generation</td>
+<td>causal AR generation with KV cache</td>
+</tr>
+<tr>
+<td>long rollout</td>
+<td>rolling KV cache avoids recomputing overlapping windows</td>
+</tr>
+<tr>
+<td>train-test consistency</td>
+<td>training uses self-generated context</td>
+</tr>
+<tr>
+<td>robust sequence quality</td>
+<td>holistic video-level distribution matching reduces error accumulation</td>
+</tr>
+</tbody>
+</table>
+<p>不过 Self Forcing 本身仍不是完整的动作条件世界模型。它主要解决“视频如何稳定、低延迟地自回归生成”，还没有解决动作、交互、物理约束和闭环评测。要变成 LingBot-World 一类系统，还需要接动作条件数据、用户输入、交互接口和长期记忆。</p>
+<h2 id="最值得复用的设计经验"><a class="markdownIt-Anchor" href="#最值得复用的设计经验"></a> 最值得复用的设计经验</h2>
+<h3 id="1-并行训练不一定总是正确目标"><a class="markdownIt-Anchor" href="#1-并行训练不一定总是正确目标"></a> 1. 并行训练不一定总是正确目标</h3>
+<p>TF/DF 的优势是并行，但并行训练把模型放在一个不同于推理的分布里。Self Forcing 的观点是：基础预训练可以并行，关键 post-training 可以顺序化，以换取训练-推理一致性。</p>
+<h3 id="2-少量-post-training-也能改变-rollout-行为"><a class="markdownIt-Anchor" href="#2-少量-post-training-也能改变-rollout-行为"></a> 2. 少量 post-training 也能改变 rollout 行为</h3>
+<p>论文和 repo 都显示，DMD Self Forcing 只需要数百到数千级别的 post-training iteration，就能显著改善 AR rollout。这对已有视频模型工程很实用：它要修的是“训练上下文”和“推理上下文”的错位，而不是重新学习完整视频分布。</p>
+<h3 id="3-distribution-matching-应该匹配真实生成分布"><a class="markdownIt-Anchor" href="#3-distribution-matching-应该匹配真实生成分布"></a> 3. distribution matching 应该匹配真实生成分布</h3>
+<p>如果训练 loss 作用在 teacher-forced 或 diffusion-forced 输出上，而推理输出来自 self-rollout，那么优化目标和真实用户看到的视频不一致。Self Forcing 的核心原则是：loss 要施加在模型实际会生成的序列上。</p>
+<h3 id="4-kv-cache-不是只属于推理"><a class="markdownIt-Anchor" href="#4-kv-cache-不是只属于推理"></a> 4. KV cache 不是只属于推理</h3>
+<p>Self Forcing 把 KV cache 放进训练 loop，让训练过程也经历推理时的状态更新。这是它和常规“训练并行、推理缓存”的关键区别。</p>
+<h2 id="局限与风险"><a class="markdownIt-Anchor" href="#局限与风险"></a> 局限与风险</h2>
+<ol>
+<li><strong>超过训练长度仍会退化</strong>：论文承认训练长度内误差累积明显缓解，但远超 5s 训练 horizon 后仍会质量下降。</li>
+<li><strong>梯度截断限制长程学习</strong>：为了可训练，历史 KV 被 detach，可能影响长距离 credit assignment。</li>
+<li><strong>不是动作条件模型</strong>：没有显式建模动作如何改变未来视频，不能直接作为交互世界模型。</li>
+<li><strong>真实数据依赖因 objective 而异</strong>：DMD/SiD 可以 data-free，但 GAN 版本需要视频数据。</li>
+<li><strong>实时性依赖硬件和优化</strong>：论文速度主要在单 H100 上报告，项目页也提到 4090 需要优化才能接近实时。</li>
+<li><strong>生成风险更高</strong>：低延迟视频生成降低了滥用门槛，论文也提醒 deepfake、虚假信息和偏见风险。</li>
+</ol>
+<h2 id="阅读结论"><a class="markdownIt-Anchor" href="#阅读结论"></a> 阅读结论</h2>
+<p>Self Forcing 最值得记住的不是“视频扩散又快了一点”，而是它把自回归生成的监督对象改对了。Teacher Forcing 和 Diffusion Forcing 都在某种外部构造的历史上训练模型，Self Forcing 则直接在模型自己的 rollout 分布上训练：历史帧从模型来，KV cache 按推理方式更新，loss 作用在完整生成视频上。</p>
+<p>它的工程成熟度属于前沿待复现：论文和官方代码给出了清晰 post-training 路线，也报告了单 H100 上 17 FPS、亚秒级延迟和 VBench 结果，但本站没有独立复现这些数字。可复用机制主要是 self-rollout post-training、视频级 distribution matching、stochastic gradient truncation 和 rolling KV cache。不可外推项也很明确：它不能凭空补出动作因果、物理约束或闭环安全性；但如果一个视频模型连自己的生成历史都没见过，就很难指望它在交互系统里长期稳定运行。</p>
+<h2 id="外部精读"><a class="markdownIt-Anchor" href="#外部精读"></a> 外部精读</h2>
+<ol>
+<li>Huang et al. <a class="link"   target="_blank" rel="noopener" href="https://arxiv.org/abs/2506.08009" >Self Forcing: Bridging the Train-Test Gap in Autoregressive Video Diffusion<i class="fa-solid fa-arrow-up-right ml-[0.2em] font-light align-text-top text-[0.7em] link-icon"></i></a>. arXiv:2506.08009.</li>
+<li>官方项目页：<a class="link"   target="_blank" rel="noopener" href="https://self-forcing.github.io/" >Self Forcing<i class="fa-solid fa-arrow-up-right ml-[0.2em] font-light align-text-top text-[0.7em] link-icon"></i></a>.</li>
+<li>官方代码：<a class="link"   target="_blank" rel="noopener" href="https://github.com/guandeh17/Self-Forcing" >guandeh17/Self-Forcing<i class="fa-solid fa-arrow-up-right ml-[0.2em] font-light align-text-top text-[0.7em] link-icon"></i></a>.</li>
+<li>论文 HTML 版本：<a class="link"   target="_blank" rel="noopener" href="https://ar5iv.labs.arxiv.org/html/2506.08009v2" >ar5iv:2506.08009v2<i class="fa-solid fa-arrow-up-right ml-[0.2em] font-light align-text-top text-[0.7em] link-icon"></i></a>.</li>
+</ol>
+
+		</div>
+
+		
+		<div class="post-copyright-info w-full my-8 px-2 sm:px-6 md:px-8">
+			<div class="article-copyright-info-container">
+    <ul>
+        <li><strong>Title:</strong> 论文专题讲解：Self Forcing：对齐自回归视频训练与推理</li>
+        <li><strong>Author:</strong> Charles</li>
+        <li><strong>Created at
+                :</strong> 2025-11-10 09:00:00</li>
+        
+            <li>
+                <strong>Updated at
+                    :</strong> 2025-11-10 09:00:00
+            </li>
+        
+        <li>
+            <strong>Link:</strong> https://charles2530.github.io/2025/11/10/ai-files-paper-deep-dives-world-models-self-forcing/
+        </li>
+        <li>
+            <strong>
+                License:
+            </strong>
+            
+
+            
+                This work is licensed under <a class="license" target="_blank" rel="noopener" href="https://creativecommons.org/licenses/by-nc-sa/4.0">CC BY-NC-SA 4.0</a>.
+            
+        </li>
+    </ul>
+</div>
+
+		</div>
+		
+
+		
+		<ul class="post-tags-box text-lg mt-1.5 flex-wrap justify-center flex md:hidden">
+			
+			<li class="tag-item mx-0.5">
+				<a href="/tags/AI/">#AI</a>&nbsp;
+			</li>
+			
+			<li class="tag-item mx-0.5">
+				<a href="/tags/%E4%B8%96%E7%95%8C%E6%A8%A1%E5%9E%8B/">#世界模型</a>&nbsp;
+			</li>
+			
+			<li class="tag-item mx-0.5">
+				<a href="/tags/%E8%AE%BA%E6%96%87%E4%B8%93%E9%A2%98/">#论文专题</a>&nbsp;
+			</li>
+			
+		</ul>
+		
+
+		
+
+		
+		<div class="article-nav my-8 flex justify-between items-center px-2 sm:px-6 md:px-8">
+			
+			<div class="article-prev border-border-color shadow-redefine-flat shadow-shadow-color-2 rounded-medium px-4 py-2 hover:shadow-redefine-flat-hover hover:shadow-shadow-color-2">
+				<a class="prev" rel="prev" href="/2025/11/12/ai-files-paper-deep-dives-world-models-towards-video-world-models/">
+					<span class="left arrow-icon flex justify-center items-center">
+						<i class="fa-solid fa-chevron-left"></i>
+					</span>
+					<span class="title flex justify-center items-center">
+						<span class="post-nav-title-item truncate max-w-48">论文专题讲解：Towards Video World Models：视频世界模型五个门槛</span>
+						<span class="post-nav-item">Prev posts</span>
+					</span>
+				</a>
+			</div>
+			
+			
+			<div class="article-next border-border-color shadow-redefine-flat shadow-shadow-color-2 rounded-medium px-4 py-2 hover:shadow-redefine-flat-hover hover:shadow-shadow-color-2">
+				<a class="next" rel="next" href="/2025/11/09/ai-files-paper-deep-dives-world-models-ringattention/">
+					<span class="title flex justify-center items-center">
+						<span class="post-nav-title-item truncate max-w-48">论文专题讲解：RingAttention：近无限上下文训练</span>
+						<span class="post-nav-item">Next posts</span>
+					</span>
+					<span class="right arrow-icon flex justify-center items-center">
+						<i class="fa-solid fa-chevron-right"></i>
+					</span>
+				</a>
+			</div>
+			
+		</div>
+		
+
+
+		
+		<div class="comment-container px-2 sm:px-6 md:px-8 pb-8">
+			<div class="comments-container mt-10 w-full ">
+    <div id="comment-anchor" class="w-full h-2.5"></div>
+    <div class="comment-area-title w-full my-1.5 md:my-2.5 text-xl md:text-3xl font-bold">
+        Comments
+    </div>
+    
+
+        
+            
+    <div id="gitalk-container"></div>
+    <script data-swup-reload-script
+            src="https://cdnjs.cloudflare.com/ajax/libs/gitalk/1.8.0/gitalk.min.js"></script>
+    <script data-swup-reload-script>
+        (function() {
+            const startPath = location.pathname;
+            const startTime = Date.now();
+            const retryDelay = 200;
+            const retryLimit = 5000;
+
+            const runGitalk = () => {
+                if (location.pathname !== startPath) {
+                    return;
+                }
+
+                const container = document.getElementById('gitalk-container');
+                if (!container || typeof Gitalk === 'undefined') {
+                    if (Date.now() - startTime < retryLimit) {
+                        setTimeout(runGitalk, retryDelay);
+                    }
+                    return;
+                }
+
+                container.innerHTML = '';
+
+                let pageKey = decodeURI(location.pathname);
+                const maxLength = 50;
+                if (pageKey.length > maxLength) {
+                    pageKey = pageKey.substring(0, maxLength - 3) + '...';
+                }
+
+                try {
+                    new Gitalk({
+                        clientID: '8083299a8ee2aaf23879',
+                        clientSecret: 'a8161e81d4872181e884fdb69f7be24916b6a9d0',
+                        repo: 'Charles2530.github.io',
+                        owner: 'Charles2530',
+                        admin: ['Charles2530'],
+                        id: pageKey,
+                        language: 'en',
+                        proxy: 'https://github.com/login/oauth/access_token'
+                    }).render(container);
+                } catch (e) {
+                    window.Gitalk = null;
+                }
+            };
+
+            runGitalk();
+        })();
+    </script>
+
+
+
+        
+    
+</div>
+
+		</div>
+		
+	</div>
+
+	
+	<div class="toc-content-container">
+		<div class="post-toc-wrap">
+	<div class="post-toc">
+		<div class="toc-title">On this page</div>
+		<div class="page-title">论文专题讲解：Self Forcing：对齐自回归视频训练与推理</div>
+		<ol class="nav"><li class="nav-item nav-level-2"><a class="nav-link" href="#%E5%8E%9F%E8%AE%BA%E6%96%87%E6%95%85%E4%BA%8B%E7%BA%BF"><span class="nav-text"> 原论文故事线</span></a><ol class="nav-child"><li class="nav-item nav-level-3"><a class="nav-link" href="#%E7%A0%94%E7%A9%B6%E8%83%8C%E6%99%AF"><span class="nav-text"> 研究背景</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#%E9%97%AE%E9%A2%98challenge"><span class="nav-text"> 问题（Challenge）</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#finding"><span class="nav-text"> Finding</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#%E6%96%B9%E6%B3%95"><span class="nav-text"> 方法</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#%E7%BB%93%E8%AE%BA"><span class="nav-text"> 结论</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#%E5%85%B3%E9%94%AE%E6%9C%AF%E8%AF%AD"><span class="nav-text"> 关键术语</span></a></li></ol></li><li class="nav-item nav-level-2"><a class="nav-link" href="#%E8%AE%BA%E6%96%87%E4%BD%8D%E7%BD%AE"><span class="nav-text"> 论文位置</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#%E6%A0%B8%E5%BF%83%E9%97%AE%E9%A2%98"><span class="nav-text"> 核心问题</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#%E6%96%B9%E6%B3%95%E6%80%BB%E8%A7%88"><span class="nav-text"> 方法总览</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#%E8%87%AA%E5%9B%9E%E5%BD%92-self-rollout"><span class="nav-text"> 自回归 self-rollout</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#%E6%A2%AF%E5%BA%A6%E6%88%AA%E6%96%AD"><span class="nav-text"> 梯度截断</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#%E8%A7%86%E9%A2%91%E7%BA%A7-distribution-matching"><span class="nav-text"> 视频级 distribution matching</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#rolling-kv-cache"><span class="nav-text"> Rolling KV cache</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#%E8%AE%AD%E7%BB%83%E7%BB%86%E8%8A%82"><span class="nav-text"> 训练细节</span></a><ol class="nav-child"><li class="nav-item nav-level-3"><a class="nav-link" href="#table-3-specification-of-training-hyperparameters"><span class="nav-text"> Table 3: Specification of training hyperparameters</span></a></li></ol></li><li class="nav-item nav-level-2"><a class="nav-link" href="#%E5%AE%9E%E9%AA%8C%E7%BB%93%E6%9E%9C"><span class="nav-text"> 实验结果</span></a><ol class="nav-child"><li class="nav-item nav-level-3"><a class="nav-link" href="#table-1-comparison-with-relevant-baselines"><span class="nav-text"> Table 1: Comparison with relevant baselines</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#table-2-ablation-study"><span class="nav-text"> Table 2: Ablation study</span></a></li></ol></li><li class="nav-item nav-level-2"><a class="nav-link" href="#%E5%92%8C-causvid-%E7%9A%84%E5%85%B3%E7%B3%BB"><span class="nav-text"> 和 CausVid 的关系</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#%E5%92%8C-lingbot-world-%E7%9A%84%E5%85%B3%E7%B3%BB"><span class="nav-text"> 和 LingBot-World 的关系</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#%E6%9C%80%E5%80%BC%E5%BE%97%E5%A4%8D%E7%94%A8%E7%9A%84%E8%AE%BE%E8%AE%A1%E7%BB%8F%E9%AA%8C"><span class="nav-text"> 最值得复用的设计经验</span></a><ol class="nav-child"><li class="nav-item nav-level-3"><a class="nav-link" href="#1-%E5%B9%B6%E8%A1%8C%E8%AE%AD%E7%BB%83%E4%B8%8D%E4%B8%80%E5%AE%9A%E6%80%BB%E6%98%AF%E6%AD%A3%E7%A1%AE%E7%9B%AE%E6%A0%87"><span class="nav-text"> 1. 并行训练不一定总是正确目标</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#2-%E5%B0%91%E9%87%8F-post-training-%E4%B9%9F%E8%83%BD%E6%94%B9%E5%8F%98-rollout-%E8%A1%8C%E4%B8%BA"><span class="nav-text"> 2. 少量 post-training 也能改变 rollout 行为</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#3-distribution-matching-%E5%BA%94%E8%AF%A5%E5%8C%B9%E9%85%8D%E7%9C%9F%E5%AE%9E%E7%94%9F%E6%88%90%E5%88%86%E5%B8%83"><span class="nav-text"> 3. distribution matching 应该匹配真实生成分布</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#4-kv-cache-%E4%B8%8D%E6%98%AF%E5%8F%AA%E5%B1%9E%E4%BA%8E%E6%8E%A8%E7%90%86"><span class="nav-text"> 4. KV cache 不是只属于推理</span></a></li></ol></li><li class="nav-item nav-level-2"><a class="nav-link" href="#%E5%B1%80%E9%99%90%E4%B8%8E%E9%A3%8E%E9%99%A9"><span class="nav-text"> 局限与风险</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#%E9%98%85%E8%AF%BB%E7%BB%93%E8%AE%BA"><span class="nav-text"> 阅读结论</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#%E5%A4%96%E9%83%A8%E7%B2%BE%E8%AF%BB"><span class="nav-text"> 外部精读</span></a></li></ol>
+
+	</div>
+</div>
+	</div>
+	
+</div>
+
+			</div>
+
+			
+		</div>
+
+		<div class="main-content-footer">
+			<footer class="footer mt-5 py-5 h-auto text-base text-third-text-color relative border-t-2 border-t-border-color">
+    <div class="info-container py-3 text-center">
+        
+        <div class="text-center">
+            &copy;
+            
+              <span>2022</span>
+              -
+            
+            2026&nbsp;&nbsp;<i class="fa-solid fa-heart fa-beat" style="--fa-animation-duration: 0.5s; color: #f54545"></i>&nbsp;&nbsp;<a href="/">Charles</a>
+            
+                
+                <p class="post-count space-x-0.5">
+                    <span>
+                        601 posts in total
+                    </span>
+                    
+                        <span>
+                            2422.2k words in total
+                        </span>
+                    
+                </p>
+            
+        </div>
+        
+            <script data-swup-reload-script src="https://cn.vercount.one/js"></script>
+            <div class="relative text-center lg:absolute lg:right-[20px] lg:top-1/2 lg:-translate-y-1/2 lg:text-right">
+                
+                    <span id="busuanzi_container_site_uv" class="lg:!block">
+                        <span class="text-sm">VISITOR COUNT</span>
+                        <span id="busuanzi_value_site_uv"></span>
+                    </span>
+                
+                
+                    <span id="busuanzi_container_site_pv" class="lg:!block">
+                        <span class="text-sm">TOTAL PAGE VIEWS</span>
+                        <span id="busuanzi_value_site_pv"></span>
+                    </span>
+                
+            </div>
+        
+        <div class="relative text-center lg:absolute lg:left-[20px] lg:top-1/2 lg:-translate-y-1/2 lg:text-left">
+            <span class="lg:block text-sm">POWERED BY <?xml version="1.0" encoding="utf-8"?><!DOCTYPE svg PUBLIC "-//W3C//DTD SVG 1.1//EN" "http://www.w3.org/Graphics/SVG/1.1/DTD/svg11.dtd"><svg class="relative top-[2px] inline-block align-baseline" version="1.1" id="圖層_1" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" x="0px" y="0px" width="1rem" height="1rem" viewBox="0 0 512 512" enable-background="new 0 0 512 512" xml:space="preserve"><path fill="#0E83CD" d="M256.4,25.8l-200,115.5L56,371.5l199.6,114.7l200-115.5l0.4-230.2L256.4,25.8z M349,354.6l-18.4,10.7l-18.6-11V275H200v79.6l-18.4,10.7l-18.6-11v-197l18.5-10.6l18.5,10.8V237h112v-79.6l18.5-10.6l18.5,10.8V354.6z"/></svg><a target="_blank" class="text-base" href="https://hexo.io">Hexo</a></span>
+            <span class="text-sm lg:block">THEME&nbsp;<a class="text-base" target="_blank" href="https://github.com/EvanNotFound/hexo-theme-redefine">Redefine v2.9.0</a></span>
+        </div>
+        
+        
+            <div>
+                Blog up for <span class="odometer" id="runtime_days" ></span> days <span class="odometer" id="runtime_hours"></span> hrs <span class="odometer" id="runtime_minutes"></span> Min <span class="odometer" id="runtime_seconds"></span> Sec
+            </div>
+        
+        
+            <script data-swup-reload-script>
+                try {
+                    function odometer_init() {
+                    const elements = document.querySelectorAll('.odometer');
+                    elements.forEach(el => {
+                        new Odometer({
+                            el,
+                            format: '( ddd).dd',
+                            duration: 200
+                        });
+                    });
+                    }
+                    odometer_init();
+                } catch (error) {}
+            </script>
+        
+        
+            
+                
+        
+                
+        
+                
+
+                    
+                        <script data-swup-reload-script type="text/javascript" src="/js/love.js"></script>
+                    
+        
+        
+    </div>  
+</footer>
+		</div>
+	</div>
+
+	
+	<div class="post-tools">
+		<div class="post-tools-container">
+	<ul class="article-tools-list">
+		<!-- TOC aside toggle -->
+		
+		<li class="right-bottom-tools page-aside-toggle">
+			<i class="fa-regular fa-outdent"></i>
+		</li>
+		
+
+		<!-- go comment -->
+		
+		<li class="go-comment">
+			<i class="fa-regular fa-comments"></i>
+		</li>
+		
+	</ul>
+</div>
+	</div>
+	
+
+	<div class="right-side-tools-container">
+		<div class="side-tools-container">
+	<ul class="hidden-tools-list">
+		<li class="right-bottom-tools tool-font-adjust-plus flex justify-center items-center">
+			<i class="fa-regular fa-magnifying-glass-plus"></i>
+		</li>
+
+		<li class="right-bottom-tools tool-font-adjust-minus flex justify-center items-center">
+			<i class="fa-regular fa-magnifying-glass-minus"></i>
+		</li>
+
+		<li class="right-bottom-tools tool-dark-light-toggle flex justify-center items-center">
+			<i class="fa-regular fa-moon"></i>
+		</li>
+
+		<!-- rss -->
+		
+		<li class="right-bottom-tools rss flex justify-center items-center">
+			<a class="flex justify-center items-center" href="/atom.xml" target="_blank">
+				<i class="fa-regular fa-rss"></i>
+			</a>
+		</li>
+		
+
+		
+
+		<li class="right-bottom-tools tool-scroll-to-bottom flex justify-center items-center">
+			<i class="fa-regular fa-arrow-down"></i>
+		</li>
+	</ul>
+
+	<ul class="visible-tools-list">
+		<li class="right-bottom-tools toggle-tools-list flex justify-center items-center">
+			<i class="fa-regular fa-cog fa-spin"></i>
+		</li>
+		
+		<li class="right-bottom-tools tool-scroll-to-top flex justify-center items-center">
+			<i class="arrow-up fas fa-arrow-up"></i>
+			<span class="percent"></span>
+		</li>
+		
+		
+	</ul>
+</div>
+	</div>
+
+	<div class="image-viewer-container" role="dialog" aria-modal="true" aria-label="Image viewer">
+	<button class="image-viewer-close" type="button" aria-label="Close">
+		<i class="fa-solid fa-xmark"></i>
+	</button>
+	<button class="image-viewer-prev" type="button" aria-label="Prev">
+		<i class="fa-solid fa-chevron-left"></i>
+	</button>
+	<div class="image-viewer-frame">
+		<img src="" alt="">
+	</div>
+	<div class="image-viewer-exif-panel hidden absolute left-1/2 bottom-20 -translate-x-1/2 w-[min(92vw,420px)] max-h-[60vh] overflow-hidden rounded-2xl bg-background-color-transparent-80 p-4 text-left shadow-redefine-flat backdrop-blur-md" role="dialog" aria-label="EXIF" aria-hidden="true">
+		<div class="flex items-center justify-between mb-3">
+			<span class="text-sm font-semibold text-first-text-color">EXIF</span>
+			<button class="image-viewer-exif-close flex h-8 w-8 items-center justify-center rounded-full bg-background-color-transparent-80 text-first-text-color transition hover:bg-background-color-transparent-40" type="button" aria-label="Close">
+				<i class="fa-solid fa-xmark text-[0.65rem]"></i>
+			</button>
+		</div>
+		<div class="image-viewer-exif-cards grid grid-cols-1 sm:grid-cols-2 gap-3 max-h-[50vh] overflow-y-auto pr-1 scrollbar-hide"></div>
+		<template class="image-viewer-exif-card-template">
+			<div class="rounded-lg bg-background-color-transparent-40 px-3 py-2">
+				<div class="image-viewer-exif-card-header flex items-center gap-2 mb-1">
+					<i class="image-viewer-exif-card-icon fa-solid fa-circle-info text-xs text-third-text-color"></i>
+					<div class="image-viewer-exif-card-title text-xs font-semibold text-first-text-color"></div>
+				</div>
+				<div class="image-viewer-exif-card-items flex flex-col gap-1"></div>
+			</div>
+		</template>
+	</div>
+	<button class="image-viewer-exif-toggle flex items-center gap-2 hidden absolute left-1/2 bottom-6 -translate-x-1/2 rounded-full border border-border-color bg-background-color-transparent-80 px-4 py-2 text-first-text-color backdrop-blur-md transition hover:bg-background-color-transparent-40" type="button" aria-label="EXIF" aria-expanded="false">
+		<i class="fa-solid fa-circle-info text-xs"></i>
+		<span class="text-xs font-semibold uppercase tracking-wider">EXIF</span>
+	</button>
+	<button class="image-viewer-next" type="button" aria-label="Next">
+		<i class="fa-solid fa-chevron-right"></i>
+	</button>
+</div>
+
+
+	
+	<div class="search-pop-overlay">
+	<div class="popup search-popup">
+		<div class="search-header">
+			<span class="search-input-field-pre">
+				<i class="fa-solid fa-keyboard"></i>
+			</span>
+			<div class="search-input-container">
+				<input autocomplete="off" autocorrect="off" autocapitalize="off" placeholder="Search..." spellcheck="false" type="search" class="search-input">
+			</div>
+			<span class="popup-btn-close">
+				<i class="fa-solid fa-times"></i>
+			</span>
+		</div>
+		<div id="search-result">
+			<div id="no-result">
+				<i class="fa-solid fa-spinner fa-spin-pulse fa-5x fa-fw"></i>
+			</div>
+		</div>
+	</div>
+</div>
+	
+
+</main>
+
+
+
+<script src="/js/build/libs/Swup.min.js"></script>
+
+<script src="/js/build/libs/SwupSlideTheme.min.js"></script>
+
+<script src="/js/build/libs/SwupScriptsPlugin.min.js"></script>
+
+<script src="/js/build/libs/SwupProgressPlugin.min.js"></script>
+
+<script src="/js/build/libs/SwupScrollPlugin.min.js"></script>
+
+<script src="/js/build/libs/SwupPreloadPlugin.min.js"></script>
+
+<script>
+    window.swup = new Swup({
+        plugins: [
+            new SwupScriptsPlugin({
+                optin: true,
+            }),
+            new SwupProgressPlugin(),
+            new SwupScrollPlugin({
+                offset: 80,
+            }),
+            new SwupSlideTheme({
+                mainElement: ".main-content-body",
+            }),
+            new SwupPreloadPlugin(),
+        ],
+        containers: ["#swup"],
+    });
+
+    window.dispatchEvent(
+        new CustomEvent("redefine:swup:ready", {
+            detail: {
+                swup: window.swup,
+            },
+        }),
+    );
+</script>
+
+
+
+
+	
+<script src="/js/build/main.js" type="module"></script>
+
+
+
+    
+<script src="/js/build/libs/odometer.min.js"></script>
+
+    
+<link rel="stylesheet" href="/assets/odometer-theme-minimal.css">
+
+
+
+
+
+
+
+  
+<script src="/js/build/libs/Typed.min.js"></script>
+<script src="/js/build/libs/minimasonry.min.js" data-swup-reload-script=""></script>
+
+
+
+
+<script src="/js/build/libs/moment-with-locales.min.js" data-swup-reload-script=""></script>
+
+
+
+	
+</body>
+
+</html>

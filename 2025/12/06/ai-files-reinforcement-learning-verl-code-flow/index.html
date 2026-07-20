@@ -1,0 +1,1597 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="keywords" content="Charles">
+    
+    
+    <meta name="author" content="Charles">
+    
+    <!-- Completely eliminate flash of wrong theme -->
+    <script>
+        (function() {
+            const THEME_KEY = "REDEFINE-THEME-STATUS";
+            const DARK = "dark", LIGHT = "light";
+            
+            // Get preferred theme
+            function getTheme() {
+                try {
+                    const saved = localStorage.getItem(THEME_KEY);
+                    if (saved) {
+                        const { isDark } = JSON.parse(saved);
+                        return isDark ? DARK : LIGHT;
+                    }
+                } catch (e) {}
+                
+                return matchMedia("(prefers-color-scheme: dark)").matches ? DARK : LIGHT;
+            }
+            
+            // Apply theme to document
+            function applyTheme(theme) {
+                const isDark = theme === DARK;
+                const root = document.documentElement;
+                
+                // Set classes for compatibility
+                root.classList.add(theme);
+                root.classList.remove(isDark ? LIGHT : DARK);
+                root.style.colorScheme = theme;
+            }
+            
+            // Initial application
+            const theme = getTheme();
+            applyTheme(theme);
+            
+            // Listen for system preference changes
+            matchMedia("(prefers-color-scheme: dark)").addEventListener("change", ({ matches }) => {
+                // Only update if using system preference (no localStorage entry)
+                if (!localStorage.getItem(THEME_KEY)) {
+                    applyTheme(matches ? DARK : LIGHT);
+                }
+            });
+            
+            // Set body classes ASAP (before DOMContentLoaded)
+            (function() {
+                const addBodyClass = () => {
+                    const b = document.body;
+                    if (!b) return false;
+                    b.classList.add(theme + "-mode");
+                    return true;
+                };
+
+                // Try immediately
+                if (addBodyClass()) return;
+
+                // Observe until body exists
+                const mo = new MutationObserver(() => {
+                    if (addBodyClass()) mo.disconnect();
+                });
+                mo.observe(document.documentElement, { childList: true, subtree: true });
+            })();
+        })();
+    </script>
+    
+    <!-- preconnect -->
+<!--- Seo Part-->
+    
+    <link rel="canonical" href="https://charles2530.github.io/2025/12/06/ai-files-reinforcement-learning-verl-code-flow/"/>
+    <meta name="robots" content="index,follow">
+    <meta name="googlebot" content="index,follow">
+    <meta name="revisit-after" content="1 days">
+    
+    
+        
+        <meta name="description" content="This is Charles&#39;s Castle.">
+<meta property="og:type" content="article">
+<meta property="og:title" content="强化学习：verl 训练流程：从 rollout 到分布式更新">
+<meta property="og:url" content="https://charles2530.github.io/2025/12/06/ai-files-reinforcement-learning-verl-code-flow/index.html">
+<meta property="og:site_name" content="Charles&#39;s Castle">
+<meta property="og:description" content="This is Charles&#39;s Castle.">
+<meta property="og:locale" content="en_US">
+<meta property="og:image" content="https://charles2530.github.io/image/background/logo.jpg">
+<meta property="article:published_time" content="2025-12-06T01:00:00.000Z">
+<meta property="article:modified_time" content="2025-12-06T01:00:00.000Z">
+<meta property="article:author" content="Du Jinyang">
+<meta property="article:tag" content="AI">
+<meta property="article:tag" content="强化学习">
+<meta name="twitter:card" content="summary">
+<meta name="twitter:image" content="https://charles2530.github.io/image/background/logo.jpg">
+    
+    
+    <!--- Icon Part-->
+    <link rel="icon" type="image/png" href="https://charles2530.github.io/image/background/favicon.png" sizes="192x192">
+    <link rel="apple-touch-icon" sizes="180x180" href="https://charles2530.github.io/image/background/favicon.png">
+    <meta name="theme-color" content="#A31F34">
+    <link rel="shortcut icon" href="https://charles2530.github.io/image/background/favicon.png">
+    <!--- Page Info-->
+    
+    <title>
+        
+            强化学习：verl 训练流程：从 rollout 到分布式更新 | Charles&#39;s Castle
+        
+    </title>
+
+    
+<link rel="stylesheet" href="/fonts/Chillax/chillax.css">
+
+
+    <!--- Inject Part-->
+    
+        
+            
+    
+            
+    
+            
+                
+                    <link rel="stylesheet" href="/katex/katex.min.css">
+                
+    
+            
+                
+                    <link rel="stylesheet" href="/css/site-polish-v2.css">
+                
+    
+            
+                
+                    <script data-swup-reload-script>
+(function() {
+  function loadBaiduAnalytics() {
+    if (window.__baiduAnalyticsLoaded) return;
+    window.__baiduAnalyticsLoaded = true;
+    window._hmt = window._hmt || [];
+    var hm = document.createElement("script");
+    hm.async = true;
+    hm.src = "https://hm.baidu.com/hm.js?8e0e5f382d14d87cbeadc33a36e71e86";
+    document.head.appendChild(hm);
+  }
+  if ("requestIdleCallback" in window) {
+    requestIdleCallback(loadBaiduAnalytics, { timeout: 3000 });
+  } else {
+    window.addEventListener("load", function() {
+      setTimeout(loadBaiduAnalytics, 1500);
+    });
+  }
+})();
+</script>
+
+                
+    
+
+    
+<link rel="stylesheet" href="/css/style.css">
+
+
+    
+        
+<link rel="stylesheet" href="/css/build/tailwind.css">
+
+    
+
+    
+<link rel="stylesheet" href="/fonts/GeistMono/geist-mono.css">
+
+    
+<link rel="stylesheet" href="/fonts/Geist/geist.css">
+
+    <!--- Font Part-->
+    
+    
+    
+    
+    
+    
+        
+<script src="/js/build/libs/anime.min.js"></script>
+
+    
+
+    <script id="hexo-configurations">
+    window.config = {"hostname":"charles2530.github.io","root":"/","language":"en","path":"search.xml"};
+    window.theme = {"articles":{"style":{"font_size":"16px","line_height":1.5,"image_border_radius":"14px","image_alignment":"center","image_caption":false,"link_icon":true,"delete_mask":false,"title_alignment":"left","headings_top_spacing":{"h1":"5rem","h2":"4rem","h3":"2.8rem","h4":"2.5rem","h5":"2.2rem","h6":"2rem"}},"word_count":{"enable":true,"count":true,"min2read":true},"author_label":{"enable":true,"auto":true,"list":["lol","Neo","God"]},"code_block":{"copy":true,"style":"mac","highlight_theme":{"light":"github","dark":"vs2015"},"font":{"enable":false,"family":null,"url":null}},"toc":{"enable":true,"max_depth":6,"number":false,"expand":true,"init_open":true},"copyright":{"enable":true,"default":"cc_by_nc_sa"},"lazyload":true,"pangu_js":false,"recommendation":{"enable":false,"title":"recommend_articles","limit":3,"mobile_limit":2,"placeholder":"https://charles2530.github.io/image/background/p3.jfif","skip_dirs":[]}},"colors":{"primary":"#A31F34","secondary":"#1890ff","default_mode":"light"},"global":{"fonts":{"chinese":{"enable":false,"family":null,"url":null},"english":{"enable":false,"family":null,"url":null},"title":{"enable":false,"family":null,"url":null}},"content_max_width":"1000px","sidebar_width":"210px","hover":{"shadow":true,"scale":true},"scroll_progress":{"bar":true,"percentage":true},"website_counter":{"url":"https://cn.vercount.one/js","enable":true,"site_pv":true,"site_uv":true,"post_pv":true},"single_page":true,"preloader":{"enable":true,"custom_message":null},"side_tools":{"gear_rotation":true,"auto_expand":false},"open_graph":{"enable":true,"image":"https://charles2530.github.io/image/background/logo.jpg","description":"This is Charles's Castle."},"google_analytics":{"enable":false,"id":null}},"home_banner":{"enable":true,"style":"fixed","image":{"light":"https://charles2530.github.io/image/background/background-light1.jpg","dark":"https://charles2530.github.io/image/background/background-dark1.jpg"},"title":"Charles's Castle","subtitle":{"text":["Happiness is best!","Never give up!","Everyday is a gift!"],"hitokoto":{"enable":false,"show_author":false,"api":"https://v1.hitokoto.cn"},"typing_speed":100,"backing_speed":80,"starting_delay":500,"backing_delay":1500,"loop":true,"smart_backspace":true},"text_color":{"light":"#000000","dark":"#d1d1b6"},"text_style":{"title_size":"3.2rem","subtitle_size":"1.5rem","line_height":1.2},"custom_font":{"enable":false,"family":null,"url":null},"social_links":{"enable":true,"style":"center","links":[{"icon":"fa-brands fa-github","url":"https://github.com/Charles2530/"},{"icon":"fa-brands fa-zhihu","url":"https://www.zhihu.com/people/yang-guang-xiao-zi-55-55"},{"icon":"fa-solid fa-at","url":"mailto:charles2530@163.com"},{"icon":"fa-brands fa-telegram","url":null},{"icon":"/images/custom-icon.svg","url":null}],"qrs":[{"icon":"fa-brands fa-weixin","qr":"https://charles2530.github.io/image/background/Wechat_icon.png"},{"icon":"/images/custom-icon.svg","qr":null}]}},"plugins":{"feed":{"enable":true},"aplayer":{"enable":false,"type":"fixed","audios":[{"name":null,"artist":null,"url":null,"cover":null,"lrc":null}]},"mermaid":{"enable":false,"version":"11.4.1","theme":{"light":"default","dark":"dark"}}},"version":"2.9.0","navbar":{"auto_hide":true,"color":{"left":"#f78736","right":"#367df7","transparency":35},"width":{"home":"1200px","pages":"1000px"},"links":{"Home":{"path":"/","icon":"fa-regular fa-house"},"Categories":{"path":"/categories","icon":"fas fa-bookmark"},"Tags":{"path":"/tags","icon":"fas fa-tags"},"About":{"icon":"fa-regular fa-user","submenus":{"Me":"https://jinyang-du.github.io/","Github":"https://github.com/Charles2530/","Blog":"https://charles2530.github.io","Statistics":"https://tongji.baidu.com/"}}},"search":{"enable":true,"preload":false}},"page_templates":{"friends_column":2,"tags_style":"blur","masonry":{"batch_size":12,"initial_batch_size":24}},"home":{"sidebar":{"enable":true,"position":"left","first_item":"menu","announcement":"This is Charles's Castle","show_on_mobile":true,"links":{"Archives":{"path":"/archives","icon":"fa-regular fa-archive"},"Photos":{"icon":"fa-solid fa-image","path":"/masonry/"},"Essays":{"icon":"fa-solid fa-message-lines","path":"/essay/"},"Friends":{"icon":"fa-solid fa-user-group","path":"/friends/"}}},"article_date_format":"auto","excerpt_length":200,"categories":{"enable":true,"limit":3},"tags":{"enable":true,"limit":3}},"footer":{"runtime":true,"icon":"<i class=\"fa-solid fa-heart fa-beat\" style=\"--fa-animation-duration: 0.5s; color: #f54545\"></i>","start":"2022/12/27 00:00:00","statistics":true,"customize":null,"icp":{"enable":false,"number":null,"url":null}},"footerStart":"2022/12/27 00:00:00","mermaid":{"style":{"light":"default","dark":"dark"}}};
+    window.lang_ago = {"second":"%s seconds ago","minute":"%s minutes ago","hour":"%s hours ago","day":"%s days ago","week":"%s weeks ago","month":"%s months ago","year":"%s years ago"};
+    window.i18n = {"search":"Search...","toc":"On this page","prev":"Prev","next":"Next","prev_posts":"Prev posts","next_posts":"Next posts","page":"Page %d","recent_posts":"Recent Posts","share":"Share","powered_by":"POWERED BY %s","theme":"THEME","rss_feed":"RSS Feed","category":"Category","categories":"Categories","tag":"Tag","tags":"Tags","post":"Post","posts":"Posts","tagcloud":"Tag Cloud","comment":"Comment","comments":"Comments","home":"Home","archive":"Archive","archives":"Archives","top":"TOP","sticky":"Sticky","go-back-home":"Go Back Home","masonry_loading":"Loading photos...","image_viewer":"Image viewer","close":"Close","exif":{"title":"EXIF","cards":{"camera":"Camera","lens":"Lens","exposure":"Exposure","other":"Other"},"fields":{"make":"Brand","model":"Model","date_taken":"Date taken","lens_model":"Lens","focal_length":"Focal length","focus_mode":"Focus mode","shutter":"Shutter","aperture":"Aperture","iso":"ISO","exposure_program":"Exposure program","exposure_compensation":"Exposure compensation","metering_mode":"Metering mode","flash":"Flash","white_balance":"White balance","latitude":"Latitude","longitude":"Longitude","altitude":"Altitude"},"status":{"loading":"Loading...","no_exif":"No EXIF available","library_missing":"EXIF library not loaded","image_source_missing":"Image source unavailable","unavailable":"EXIF unavailable (blocked by CORS or missing metadata)","flag_unavailable":"EXIF unavailable"}},"about":"About","changelog":"Changelog","links":"Links","link":"Link","friends":"Friends","friend":"Friend","timeline":"Timeline","shuoshuo":"Shuoshuo","bookmarks":"Bookmarks","site_uv":"VISITOR COUNT","site_pv":"TOTAL PAGE VIEWS","read_more":"Read more","wordcount":"Words","min2read":"Mins","status":"Status","runtime":"Blog up for","days":"days","hours":"hrs","minutes":"Min","seconds":"Sec","optimized_by":"and Optimized by Evan","rights":"All Rights Reserved","site_posts":"%s posts in total","site_wordcount":"%s words in total","copyright":{"author":"Author","title":"Title","link":"Link","create_time":"Created at","update_time":"Updated at","license_title":"License","license_content":"This work is licensed under %s.","all_rights_reserved":"All Rights Reserved &#169; %s","public_domain":"This work is in the public domain."},"ago":{"second":"%s seconds ago","minute":"%s minutes ago","hour":"%s hours ago","day":"%s days ago","week":"%s weeks ago","month":"%s months ago","year":"%s years ago"},"create_time":"Created","update_time":"Updated","expired":"This post is written %s days ago, and the content may not be up to date."};
+    window.data = {"masonry":true};
+  </script>
+    
+    <!--- Fontawesome Part-->
+    
+<link rel="stylesheet" href="/fontawesome/fontawesome.min.css">
+
+    
+<link rel="stylesheet" href="/fontawesome/brands.min.css">
+
+    
+<link rel="stylesheet" href="/fontawesome/solid.min.css">
+
+    
+<link rel="stylesheet" href="/fontawesome/regular.min.css">
+
+    
+    
+    
+    
+<meta name="generator" content="Hexo 6.3.0"><link rel="alternate" href="/atom.xml" title="Charles's Castle" type="application/atom+xml">
+<link rel="stylesheet" href="/css/prism-tomorrow.css" type="text/css"></head>
+
+
+<body>
+	<div class="progress-bar-container">
+	
+	<span class="scroll-progress-bar"></span>
+	
+
+	
+	<span class="pjax-progress-bar"></span>
+	<!--        <span class="swup-progress-icon">-->
+	<!--            <i class="fa-solid fa-circle-notch fa-spin"></i>-->
+	<!--        </span>-->
+	
+</div>
+
+<style>
+    :root {
+        --preloader-background-color: #fff;
+        --preloader-text-color: #000;
+    }
+
+    @media (prefers-color-scheme: dark) {
+        :root {
+            --preloader-background-color: #202124;
+            --preloader-text-color: #fff;
+        }
+    }
+
+    @media (prefers-color-scheme: light) {
+        :root {
+            --preloader-background-color: #fff;
+            --preloader-text-color: #000;
+        }
+    }
+
+    @media (max-width: 600px) {
+        .ml13 {
+            font-size: 2.6rem !important; /* Adjust this value as needed */
+        }
+    }
+
+    .preloader {
+        display: flex;
+        flex-direction: column;
+        gap: 1rem; /* Tailwind 'gap-4' is 1rem */
+        align-items: center;
+        justify-content: center;
+        position: fixed;
+        padding: 12px;
+        top: 0;
+        right: 0;
+        bottom: 0;
+        left: 0;
+        width: 100vw;
+        height: 100vh; /* 'h-screen' is 100% of the viewport height */
+        background-color: var(--preloader-background-color);
+        z-index: 1100; /* 'z-[1100]' sets the z-index */
+        transition: opacity 0.2s ease-in-out;
+    }
+
+    .ml13 {
+        font-size: 3.2rem;
+        /* text-transform: uppercase; */
+        color: var(--preloader-text-color);
+        letter-spacing: -1px;
+        font-weight: 500;
+        font-family: 'Chillax-Variable', sans-serif;
+        text-align: center;
+    }
+
+    .ml13 .word {
+        display: inline-flex;
+        flex-wrap: wrap;
+        white-space: nowrap;
+    }
+
+    .ml13 .letter {
+        display: inline-block;
+        line-height: 1em;
+    }
+</style>
+
+<div class="preloader">
+    <h2 class="ml13">
+        Charles&#39;s Castle
+    </h2>
+    <script>
+        var textWrapper = document.querySelector('.ml13');
+        // Split text into words
+        var words = textWrapper.textContent.trim().split(' ');
+
+        // Clear the existing content
+        textWrapper.innerHTML = '';
+
+        // Wrap each word and its letters in spans
+        words.forEach(function(word) {
+            var wordSpan = document.createElement('span');
+            wordSpan.classList.add('word');
+            wordSpan.innerHTML = word.replace(/\S/g, "<span class='letter'>$&</span>");
+            textWrapper.appendChild(wordSpan);
+            textWrapper.appendChild(document.createTextNode(' ')); // Add space between words
+        });
+
+        var animation = anime.timeline({ loop: true })
+            .add({
+                targets: '.ml13 .letter',
+                translateY: [20, 0],
+                translateZ: 0,
+                opacity: [0, 1],
+                filter: ['blur(5px)', 'blur(0px)'],
+                easing: "easeOutExpo",
+                duration: 1200,
+                delay: (el, i) => 300 + 20 * i,
+            })
+            .add({
+                targets: '.ml13 .letter',
+                translateY: [0, -20],
+                opacity: [1, 0],
+                filter: ['blur(0px)', 'blur(5px)'],
+                easing: "easeInExpo",
+                duration: 1000,
+                delay: (el, i) => 15 * i,
+                complete: function() {
+                    hidePreloader();
+                }
+            }, '-=700');
+
+
+        let themeStatus = JSON.parse(localStorage.getItem('REDEFINE-THEME-STATUS'))?.isDark;
+
+        // If the theme status is not found in local storage, check the preferred color scheme
+        if (themeStatus === undefined || themeStatus === null) {
+            if (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) {
+                themeStatus = 'dark';
+            } else {
+                themeStatus = 'light';
+            }
+        }
+
+        // Now you can use the themeStatus variable in your code
+        if (themeStatus) {
+            document.documentElement.style.setProperty('--preloader-background-color', '#202124');
+            document.documentElement.style.setProperty('--preloader-text-color', '#fff');
+        } else {
+            document.documentElement.style.setProperty('--preloader-background-color', '#fff');
+            document.documentElement.style.setProperty('--preloader-text-color', '#000');
+        }
+
+        window.addEventListener('load', function () {
+            setTimeout(hidePreloader, 5000); // Call hidePreloader after 5000 milliseconds if not already called by animation
+        });
+
+        function hidePreloader() {
+            var preloader = document.querySelector('.preloader');
+            preloader.style.opacity = '0';
+            setTimeout(function () {
+                preloader.style.display = 'none';
+            }, 200);
+        }
+    </script>
+</div>
+
+<main class="page-container" id="swup">
+
+	
+
+	<div class="main-content-container flex flex-col justify-between min-h-dvh">
+		<div class="main-content-header">
+			<header class="navbar-container px-6 md:px-12">
+    <div class="navbar-content transition-navbar ">
+        <div class="left">
+            
+                <a class="logo-image h-8 w-8 sm:w-10 sm:h-10 mr-3" href="/">
+                    <img src="https://charles2530.github.io/image/background/logo.jpg" class="w-full h-full rounded-xs">
+                </a>
+            
+            <a class="logo-title" href="/">
+                
+                Charles&#39;s Castle
+                
+            </a>
+        </div>
+
+        <div class="right">
+            <!-- PC -->
+            <div class="desktop">
+                <ul class="navbar-list">
+                    
+                        
+                            
+
+                            <li class="navbar-item">
+                                <!-- Menu -->
+                                <a class=""
+                                   href="/"
+                                        >
+                                    <i class="fa-regular fa-house fa-fw"></i>
+                                    HOME
+                                    
+                                </a>
+
+                                <!-- Submenu -->
+                                
+                            </li>
+                    
+                        
+                            
+
+                            <li class="navbar-item">
+                                <!-- Menu -->
+                                <a class=""
+                                   href="/categories"
+                                        >
+                                    <i class="fas fa-bookmark fa-fw"></i>
+                                    CATEGORIES
+                                    
+                                </a>
+
+                                <!-- Submenu -->
+                                
+                            </li>
+                    
+                        
+                            
+
+                            <li class="navbar-item">
+                                <!-- Menu -->
+                                <a class=""
+                                   href="/tags"
+                                        >
+                                    <i class="fas fa-tags fa-fw"></i>
+                                    TAGS
+                                    
+                                </a>
+
+                                <!-- Submenu -->
+                                
+                            </li>
+                    
+                        
+                            
+
+                            <li class="navbar-item">
+                                <!-- Menu -->
+                                <a class="has-dropdown"
+                                   href="#"
+                                        onClick=&#34;return false;&#34;>
+                                    <i class="fa-regular fa-user fa-fw"></i>
+                                    ABOUT
+                                    <i class="fa-solid fa-chevron-down fa-fw"></i>
+                                </a>
+
+                                <!-- Submenu -->
+                                
+                                    <ul class="sub-menu">
+                                        
+                                            <li>
+                                                <a target="_blank" rel="noopener" href="https://jinyang-du.github.io/">
+                                                    ME
+                                                </a>
+                                            </li>
+                                        
+                                            <li>
+                                                <a target="_blank" rel="noopener" href="https://github.com/Charles2530/">
+                                                    GITHUB
+                                                </a>
+                                            </li>
+                                        
+                                            <li>
+                                                <a href="https://charles2530.github.io">
+                                                    BLOG
+                                                </a>
+                                            </li>
+                                        
+                                            <li>
+                                                <a target="_blank" rel="noopener" href="https://tongji.baidu.com/">
+                                                    STATISTICS
+                                                </a>
+                                            </li>
+                                        
+                                    </ul>
+                                
+                            </li>
+                    
+                    
+                        <li class="navbar-item search search-popup-trigger">
+                            <i class="fa-solid fa-magnifying-glass"></i>
+                        </li>
+                    
+                </ul>
+            </div>
+            <!-- Mobile -->
+            <div class="mobile">
+                
+                    <div class="icon-item search search-popup-trigger"><i class="fa-solid fa-magnifying-glass"></i>
+                    </div>
+                
+                <div class="icon-item navbar-bar">
+                    <div class="navbar-bar-middle"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Mobile sheet -->
+    <div class="navbar-drawer h-dvh w-full absolute top-0 left-0 bg-background-color flex flex-col justify-between">
+        <ul class="drawer-navbar-list flex flex-col px-4 justify-center items-start">
+            
+                
+                    
+
+                    <li class="drawer-navbar-item text-base my-1.5 flex flex-col w-full">
+                        
+                        <a class="py-1.5 px-2 flex flex-row items-center justify-between gap-1 hover:!text-primary active:!text-primary text-2xl font-semibold group border-b border-border-color hover:border-primary w-full "
+                           href="/"
+                        >
+                            <span>
+                                HOME
+                            </span>
+                            
+                                <i class="fa-regular fa-house fa-sm fa-fw"></i>
+                            
+                        </a>
+                        
+
+                        
+                    </li>
+            
+                
+                    
+
+                    <li class="drawer-navbar-item text-base my-1.5 flex flex-col w-full">
+                        
+                        <a class="py-1.5 px-2 flex flex-row items-center justify-between gap-1 hover:!text-primary active:!text-primary text-2xl font-semibold group border-b border-border-color hover:border-primary w-full "
+                           href="/categories"
+                        >
+                            <span>
+                                CATEGORIES
+                            </span>
+                            
+                                <i class="fas fa-bookmark fa-sm fa-fw"></i>
+                            
+                        </a>
+                        
+
+                        
+                    </li>
+            
+                
+                    
+
+                    <li class="drawer-navbar-item text-base my-1.5 flex flex-col w-full">
+                        
+                        <a class="py-1.5 px-2 flex flex-row items-center justify-between gap-1 hover:!text-primary active:!text-primary text-2xl font-semibold group border-b border-border-color hover:border-primary w-full "
+                           href="/tags"
+                        >
+                            <span>
+                                TAGS
+                            </span>
+                            
+                                <i class="fas fa-tags fa-sm fa-fw"></i>
+                            
+                        </a>
+                        
+
+                        
+                    </li>
+            
+                
+                    
+
+                    <li class="drawer-navbar-item-sub text-base my-1.5 flex flex-col w-full">
+                        
+                        <div class="py-1.5 px-2 flex flex-row items-center justify-between gap-1 hover:!text-primary active:!text-primary cursor-pointer text-2xl font-semibold group border-b border-border-color hover:border-primary w-full "
+                             navbar-data-toggle="submenu-About"
+                        >
+                            <span>
+                                ABOUT
+                            </span>
+                            
+                                <i class="fa-solid fa-chevron-right fa-sm fa-fw transition-all"></i>
+                            
+                        </div>
+                        
+
+                        
+                            <div class="flex-col items-start px-2 py-2 hidden" data-target="submenu-About">
+                                
+                                    <div class="drawer-navbar-item text-base flex flex-col justify-center items-start hover:underline active:underline hover:underline-offset-1 rounded-3xl">
+                                        <a class=" text-third-text-color text-xl"
+                                           target="_blank" rel="noopener" href="https://jinyang-du.github.io/">ME</a>
+                                    </div>
+                                
+                                    <div class="drawer-navbar-item text-base flex flex-col justify-center items-start hover:underline active:underline hover:underline-offset-1 rounded-3xl">
+                                        <a class=" text-third-text-color text-xl"
+                                           target="_blank" rel="noopener" href="https://github.com/Charles2530/">GITHUB</a>
+                                    </div>
+                                
+                                    <div class="drawer-navbar-item text-base flex flex-col justify-center items-start hover:underline active:underline hover:underline-offset-1 rounded-3xl">
+                                        <a class=" text-third-text-color text-xl"
+                                           href="https://charles2530.github.io">BLOG</a>
+                                    </div>
+                                
+                                    <div class="drawer-navbar-item text-base flex flex-col justify-center items-start hover:underline active:underline hover:underline-offset-1 rounded-3xl">
+                                        <a class=" text-third-text-color text-xl"
+                                           target="_blank" rel="noopener" href="https://tongji.baidu.com/">STATISTICS</a>
+                                    </div>
+                                
+                            </div>
+                        
+                    </li>
+            
+
+            
+            
+                
+                    
+                    <li class="drawer-navbar-item text-base my-1.5 flex flex-col w-full">
+                        <a class="py-1.5 px-2 flex flex-row items-center justify-between gap-1 hover:!text-primary active:!text-primary text-2xl font-semibold group border-b border-border-color hover:border-primary w-full active"
+                           href="/archives"
+                        >
+                            <span>Archives</span>
+                            <i class="fa-regular fa-archive fa-sm fa-fw"></i>
+                        </a>
+                    </li>
+                
+                    
+                    <li class="drawer-navbar-item text-base my-1.5 flex flex-col w-full">
+                        <a class="py-1.5 px-2 flex flex-row items-center justify-between gap-1 hover:!text-primary active:!text-primary text-2xl font-semibold group border-b border-border-color hover:border-primary w-full active"
+                           href="/masonry/"
+                        >
+                            <span>Photos</span>
+                            <i class="fa-solid fa-image fa-sm fa-fw"></i>
+                        </a>
+                    </li>
+                
+                    
+                    <li class="drawer-navbar-item text-base my-1.5 flex flex-col w-full">
+                        <a class="py-1.5 px-2 flex flex-row items-center justify-between gap-1 hover:!text-primary active:!text-primary text-2xl font-semibold group border-b border-border-color hover:border-primary w-full active"
+                           href="/essay/"
+                        >
+                            <span>Essays</span>
+                            <i class="fa-solid fa-message-lines fa-sm fa-fw"></i>
+                        </a>
+                    </li>
+                
+                    
+                    <li class="drawer-navbar-item text-base my-1.5 flex flex-col w-full">
+                        <a class="py-1.5 px-2 flex flex-row items-center justify-between gap-1 hover:!text-primary active:!text-primary text-2xl font-semibold group border-b border-border-color hover:border-primary w-full active"
+                           href="/friends/"
+                        >
+                            <span>Friends</span>
+                            <i class="fa-solid fa-user-group fa-sm fa-fw"></i>
+                        </a>
+                    </li>
+                
+            
+        </ul>
+
+        <div class="statistics flex justify-around my-2.5">
+    <a class="item tag-count-item flex flex-col justify-center items-center w-20" href="/tags">
+        <div class="number text-2xl sm:text-xl text-second-text-color font-semibold">47</div>
+        <div class="label text-third-text-color text-sm">Tags</div>
+    </a>
+    <a class="item tag-count-item flex flex-col justify-center items-center w-20" href="/categories">
+        <div class="number text-2xl sm:text-xl text-second-text-color font-semibold">94</div>
+        <div class="label text-third-text-color text-sm">Categories</div>
+    </a>
+    <a class="item tag-count-item flex flex-col justify-center items-center w-20" href="/archives">
+        <div class="number text-2xl sm:text-xl text-second-text-color font-semibold">601</div>
+        <div class="label text-third-text-color text-sm">Posts</div>
+    </a>
+</div>
+    </div>
+
+    <div class="window-mask"></div>
+
+</header>
+
+
+		</div>
+
+		<div class="main-content-body transition-fade-up">
+			
+
+			<div class="main-content">
+				<div class="post-page-container flex relative justify-between box-border w-full h-full">
+	<div class="article-content-container">
+
+		<div class="article-title relative w-full">
+			
+			
+			
+			<img src="https://charles2530.github.io/image/background/p1.png" alt="强化学习：verl 训练流程：从 rollout 到分布式更新" class="w-full h-60 sm:h-72 md:h-80 object-cover sm:rounded-t-large dark:brightness-75" />
+			
+			<div class="w-full flex items-center absolute bottom-0 justify-start">
+				<h1 class="article-title-cover text-center mx-6 my-6 text-second-text-color bg-background-color-transparent px-4 py-3 text-3xl sm:text-4xl md:text-5xl font-semibold backdrop-blur-lg rounded-xl border border-border-color ">强化学习：verl 训练流程：从 rollout 到分布式更新</h1>
+			</div>
+			
+		</div>
+
+		
+		<div class="article-header flex flex-row gap-2 items-center px-2 sm:px-6 md:px-8">
+			<div class="avatar w-[46px] h-[46px] shrink-0 rounded-medium border border-border-color p-px">
+				<img src="https://charles2530.github.io/image/background/logo2.jpg">
+			</div>
+			<div class="info flex flex-col justify-between">
+				<div class="author flex items-center">
+					<span class="name text-default-text-color text-lg font-semibold">Charles</span>
+					
+					<span class="author-label ml-1.5 text-xs px-2 py-0.5 rounded-small text-third-text-color border border-shadow-color-1">Lv8</span>
+					
+				</div>
+				<div class="meta-info">
+					<div class="article-meta-info">
+    <span class="article-date article-meta-item">
+        <i class="fa-regular fa-pen-fancy"></i>&nbsp;
+        <span class="desktop">2025-12-06 09:00</span>
+        <span class="mobile">2025-12-06 09:00</span>
+        <span class="hover-info">Created</span>
+    </span>
+    
+        <span class="article-date article-meta-item">
+            <i class="fa-regular fa-wrench"></i>&nbsp;
+            <span class="desktop">2025-12-06 09:00</span>
+            <span class="mobile">2025-12-06 09:00</span>
+            <span class="hover-info">Updated</span>
+        </span>
+    
+
+    
+        <span class="article-categories article-meta-item">
+            <i class="fa-regular fa-folders"></i>&nbsp;
+            <ul>
+                
+                
+                    
+                        
+                        <li>
+                            <a href="/categories/AI/">AI</a>&nbsp;
+                        </li>
+                    
+                    
+                
+                    
+                        
+                            <li>></li>
+                        
+                        <li>
+                            <a href="/categories/AI/%E5%BC%BA%E5%8C%96%E5%AD%A6%E4%B9%A0/">强化学习</a>&nbsp;
+                        </li>
+                    
+                    
+                
+            </ul>
+        </span>
+    
+    
+        <span class="article-tags article-meta-item">
+            <i class="fa-regular fa-tags"></i>&nbsp;
+            <ul>
+                
+                    <li>
+                        <a href="/tags/AI/">AI</a>&nbsp;
+                    </li>
+                
+                    <li>
+                        | <a href="/tags/%E5%BC%BA%E5%8C%96%E5%AD%A6%E4%B9%A0/">强化学习</a>&nbsp;
+                    </li>
+                
+            </ul>
+        </span>
+    
+
+    
+    
+        <span class="article-wordcount article-meta-item">
+            <i class="fa-regular fa-typewriter"></i>&nbsp;<span>3.5k Words</span>
+        </span>
+    
+    
+        <span class="article-min2read article-meta-item">
+            <i class="fa-regular fa-clock"></i>&nbsp;<span>14 Mins</span>
+        </span>
+    
+    
+        <span class="article-pv article-meta-item">
+            <i class="fa-regular fa-eye"></i>&nbsp;<span id="busuanzi_value_page_pv"></span>
+        </span>
+    
+</div>
+
+				</div>
+			</div>
+		</div>
+		
+
+		
+
+
+		<div class="article-content markdown-body px-2 sm:px-6 md:px-8 pb-8">
+			<h2 id="本章回答什么"><a class="markdownIt-Anchor" href="#本章回答什么"></a> 本章回答什么</h2>
+<p><code>verl</code> 这一章负责回答系统问题：一个 prompt batch 如何经过分布式 rollout、reward、advantage、optimizer update 和 weight sync，最终成为下一版本的生成策略。它不重新推导 PPO 或 GRPO 公式，而是追踪公式依赖的字段由谁产生、在哪个 mask 上对齐，以及 rollout 与 update 是否仍属于兼容的策略状态。</p>
+<p>学完后应能画出 worker 拓扑和字段流，区分 rollout policy、proximal old policy、current train policy 与 reference policy，解释吞吐与样本新鲜度为何冲突，并用版本、mask、样本标识和服务元数据定位分布式训练故障。稳定概念可以保留；涉及具体字段和 worker ownership 的结论只对应文中锁定的 <code>e5687fce...</code> 代码快照，不外推为其他版本的 API。</p>
+<h2 id="先修知识"><a class="markdownIt-Anchor" href="#先修知识"></a> 先修知识</h2>
+<ul>
+<li><a href="/2026/05/11/ai-files-reinforcement-learning-llm-rlhf-rlvr-and-grpo/">LLM 强化学习：RLHF、RLVR 与 GRPO</a>：prompt、token action、verifier、group advantage 与 sampled KL。</li>
+<li><a href="/2026/05/11/ai-files-reinforcement-learning-policy-gradient-actor-critic-ppo-grpo/">Actor-Critic、GAE 与 PPO</a>：old logprob、value、returns、clipped surrogate 和 on-policy 边界。</li>
+<li><a href="/2026/05/11/ai-files-training-distributed-training-and-checkpointing/">分布式训练与 Checkpoint</a>：参数切分、通信、checkpoint 与可复现恢复。</li>
+<li><a href="/2026/05/11/ai-files-inference-serving-runtimes-vllm-sglang-and-tensorrt-llm/">推理运行时</a>：prefill、decode、KV cache 与 serving batching。</li>
+</ul>
+<h2 id="最小任务"><a class="markdownIt-Anchor" href="#最小任务"></a> 最小任务</h2>
+<p>把一次最小系统任务写成：输入一个带 tokenized prompt、<code>attention_mask</code> 和唯一 sample id 的 prompt batch，由生成层执行 distributed rollout，再由 reward/reference/critic 等角色补齐训练字段，完成一次 distributed update，并把新权重同步给下一轮 rollout。</p>
+<div class="code-container" data-rel="Text"><figure class="iseeu highlight text"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br></pre></td><td class="code"><pre><span class="line">prompt batch</span><br><span class="line">  -&gt; distributed rollout</span><br><span class="line">  -&gt; responses + response_mask + rollout_log_probs + reward</span><br><span class="line">  -&gt; old/ref log probs + values + advantages/returns</span><br><span class="line">  -&gt; actor/critic minibatches -&gt; distributed update -&gt; weight sync</span><br></pre></td></tr></table></figure></div>
+<p>最小验收不是 reward 上升，而是每条 response 能反查 prompt、rollout sampling behavior、<code>rollout_log_probs</code>、<code>old_log_probs</code> 的生成模式、reference 配置和 optimizer step。bypass 模式会令 old 与 rollout 相同；decoupled 模式会另外计算 proximal old anchor。若只看最终 loss，字段或策略角色错位也可能产生有限数值。</p>
+<p>如果部署需要跨队列审计，可由应用显式增加 <code>policy_version_id</code>、<code>rollout_version_id</code> 等 application-level audit metadata；它们不是 pinned VERL 的内置 keys，不能写进内置字段表或据此推断框架已自动校验版本一致性。</p>
+<h2 id="核心机制"><a class="markdownIt-Anchor" href="#核心机制"></a> 核心机制</h2>
+<h3 id="sft-与-rl-后训练的系统差异"><a class="markdownIt-Anchor" href="#sft-与-rl-后训练的系统差异"></a> SFT 与 RL 后训练的系统差异</h3>
+<p>SFT 的 target response 已在数据中，典型 batch 只需 forward、cross entropy、backward 和 optimizer step。RL 后训练必须先让当前 actor 生成 response，再由 reward model、规则或 verifier 评价，最后把评价变成策略更新信号。同一个 actor 因而在生成形态和训练形态之间切换：前者关心 decode batching 与 KV cache，后者关心梯度、optimizer state 和参数切分。</p>
+<h3 id="四种-policy-角色与字段"><a class="markdownIt-Anchor" href="#四种-policy-角色与字段"></a> 四种 policy 角色与字段</h3>
+<p>下表的字段名与分支语义锁定在 <code>e5687fce...</code>。这里最重要的修正是：采样行为、PPO proximal anchor、正在更新的参数和 KL anchor 是四种责任，不能只用“old/current/reference”三个模糊快照概括。</p>
+<table>
+<thead>
+<tr>
+<th>策略角色</th>
+<th>字段</th>
+<th>快照语义</th>
+<th>用途</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>rollout policy</td>
+<td><code>rollout_log_probs</code></td>
+<td>实际生成 response 的 sampling behavior/version</td>
+<td>记录 behavior probability，并为 rollout correction 提供采样侧基准</td>
+</tr>
+<tr>
+<td>proximal old policy</td>
+<td><code>old_log_probs</code></td>
+<td>每个 data batch 固定的 proximal snapshot</td>
+<td>PPO ratio anchor；来源由 bypass 或 recompute 模式决定</td>
+</tr>
+<tr>
+<td>current train policy</td>
+<td><span class="katex"><span class="katex-mathml"><math><semantics><mrow><msub><mi>π</mi><mi>θ</mi></msub></mrow><annotation encoding="application/x-tex">\pi_\theta</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.58056em;vertical-align:-0.15em;"></span><span class="mord"><span class="mord mathdefault" style="margin-right:0.03588em;">π</span><span class="msupsub"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height:0.33610799999999996em;"><span style="top:-2.5500000000000003em;margin-left:-0.03588em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mathdefault mtight" style="margin-right:0.02778em;">θ</span></span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height:0.15em;"><span></span></span></span></span></span></span></span></span></span>；actor loss 内计算 current log probs</td>
+<td>随当前 minibatch update 演进的参数</td>
+<td>PPO ratio 分子，执行 actor update</td>
+</tr>
+<tr>
+<td>reference policy</td>
+<td><code>ref_log_prob</code></td>
+<td>配置的 KL anchor，通常不随 actor minibatch 更新</td>
+<td>约束策略偏移；不是 old policy，也不是 sampling behavior</td>
+</tr>
+</tbody>
+</table>
+<p>reference policy 是否启用与 old logprob 模式是正交问题。pinned 源码注释中的“两策略/三策略”只计算 rollout、old、current 这条 PPO/rollout-correction 链，不把可选 reference KL anchor 算入数量。</p>
+<h3 id="bypass-与-decoupled-两种-old-logprob-模式"><a class="markdownIt-Anchor" href="#bypass-与-decoupled-两种-old-logprob-模式"></a> Bypass 与 decoupled 两种 old logprob 模式</h3>
+<table>
+<thead>
+<tr>
+<th>模式</th>
+<th>old_log_probs 来源</th>
+<th>策略关系</th>
+<th>修正边界</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>bypass</td>
+<td><code>old_log_probs = rollout_log_probs</code></td>
+<td><span class="katex"><span class="katex-mathml"><math><semantics><mrow><msub><mi>π</mi><mtext>rollout</mtext></msub><mo>=</mo><msub><mi>π</mi><mtext>old</mtext></msub></mrow><annotation encoding="application/x-tex">\pi_{\text{rollout}} = \pi_{\text{old}}</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.58056em;vertical-align:-0.15em;"></span><span class="mord"><span class="mord mathdefault" style="margin-right:0.03588em;">π</span><span class="msupsub"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height:0.33610799999999996em;"><span style="top:-2.5500000000000003em;margin-left:-0.03588em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mtight"><span class="mord text mtight"><span class="mord mtight">rollout</span></span></span></span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height:0.15em;"><span></span></span></span></span></span></span><span class="mspace" style="margin-right:0.2777777777777778em;"></span><span class="mrel">=</span><span class="mspace" style="margin-right:0.2777777777777778em;"></span></span><span class="base"><span class="strut" style="height:0.58056em;vertical-align:-0.15em;"></span><span class="mord"><span class="mord mathdefault" style="margin-right:0.03588em;">π</span><span class="msupsub"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height:0.33610799999999996em;"><span style="top:-2.5500000000000003em;margin-left:-0.03588em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mtight"><span class="mord text mtight"><span class="mord mtight">old</span></span></span></span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height:0.15em;"><span></span></span></span></span></span></span></span></span></span>，rollout/old 合一后与 <span class="katex"><span class="katex-mathml"><math><semantics><mrow><msub><mi>π</mi><mi>θ</mi></msub></mrow><annotation encoding="application/x-tex">\pi_\theta</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.58056em;vertical-align:-0.15em;"></span><span class="mord"><span class="mord mathdefault" style="margin-right:0.03588em;">π</span><span class="msupsub"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height:0.33610799999999996em;"><span style="top:-2.5500000000000003em;margin-left:-0.03588em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mathdefault mtight" style="margin-right:0.02778em;">θ</span></span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height:0.15em;"><span></span></span></span></span></span></span></span></span></span> 构成两策略</td>
+<td>PPO ratio 与 current-vs-rollout ratio 重合；按配置还可在 actor loss 内做 rejection / IS</td>
+</tr>
+<tr>
+<td>decoupled / recompute</td>
+<td><code>actor_rollout_wg</code> 重新计算 proximal old policy 的 <code>old_log_probs</code></td>
+<td><span class="katex"><span class="katex-mathml"><math><semantics><mrow><msub><mi>π</mi><mtext>rollout</mtext></msub></mrow><annotation encoding="application/x-tex">\pi_{\text{rollout}}</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.58056em;vertical-align:-0.15em;"></span><span class="mord"><span class="mord mathdefault" style="margin-right:0.03588em;">π</span><span class="msupsub"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height:0.33610799999999996em;"><span style="top:-2.5500000000000003em;margin-left:-0.03588em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mtight"><span class="mord text mtight"><span class="mord mtight">rollout</span></span></span></span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height:0.15em;"><span></span></span></span></span></span></span></span></span></span>、<span class="katex"><span class="katex-mathml"><math><semantics><mrow><msub><mi>π</mi><mtext>old</mtext></msub></mrow><annotation encoding="application/x-tex">\pi_{\text{old}}</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.58056em;vertical-align:-0.15em;"></span><span class="mord"><span class="mord mathdefault" style="margin-right:0.03588em;">π</span><span class="msupsub"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height:0.33610799999999996em;"><span style="top:-2.5500000000000003em;margin-left:-0.03588em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mtight"><span class="mord text mtight"><span class="mord mtight">old</span></span></span></span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height:0.15em;"><span></span></span></span></span></span></span></span></span></span>、<span class="katex"><span class="katex-mathml"><math><semantics><mrow><msub><mi>π</mi><mi>θ</mi></msub></mrow><annotation encoding="application/x-tex">\pi_\theta</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.58056em;vertical-align:-0.15em;"></span><span class="mord"><span class="mord mathdefault" style="margin-right:0.03588em;">π</span><span class="msupsub"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height:0.33610799999999996em;"><span style="top:-2.5500000000000003em;margin-left:-0.03588em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mathdefault mtight" style="margin-right:0.02778em;">θ</span></span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height:0.15em;"><span></span></span></span></span></span></span></span></span></span> 可以不同</td>
+<td>rollout correction 只处理 old-vs-rollout；不能修复任意 staleness 或 off-support 样本</td>
+</tr>
+</tbody>
+</table>
+<p>这一分支直接见 pinned <a target="_blank" rel="noopener" href="https://github.com/verl-project/verl/blob/e5687fce0516d31e1fdc4580499074a9bd94c751/verl/trainer/ppo/ray_trainer.py#L1533-L1536"><code>ray_trainer.py</code> 1533-1536 行</a>：bypass 把 rollout logprob 作为 old anchor，decoupled 则为每个 data batch 重算一次稳定的 proximal old anchor。</p>
+<h3 id="三种-ratio-与-mismatch"><a class="markdownIt-Anchor" href="#三种-ratio-与-mismatch"></a> 三种 ratio 与 mismatch</h3>
+<table>
+<thead>
+<tr>
+<th>关系</th>
+<th>log-space orientation</th>
+<th>ratio / meaning</th>
+<th>用途</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>rollout correction</td>
+<td><code>old_log_probs - rollout_log_probs</code></td>
+<td><code>exp(old - rollout)</code>；pinned 实现明确计算 <span class="katex"><span class="katex-mathml"><math><semantics><mrow><msub><mi>π</mi><mtext>old</mtext></msub><mi mathvariant="normal">/</mi><msub><mi>π</mi><mtext>rollout</mtext></msub></mrow><annotation encoding="application/x-tex">\pi_{\text{old}}/\pi_{\text{rollout}}</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:1em;vertical-align:-0.25em;"></span><span class="mord"><span class="mord mathdefault" style="margin-right:0.03588em;">π</span><span class="msupsub"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height:0.33610799999999996em;"><span style="top:-2.5500000000000003em;margin-left:-0.03588em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mtight"><span class="mord text mtight"><span class="mord mtight">old</span></span></span></span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height:0.15em;"><span></span></span></span></span></span></span><span class="mord">/</span><span class="mord"><span class="mord mathdefault" style="margin-right:0.03588em;">π</span><span class="msupsub"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height:0.33610799999999996em;"><span style="top:-2.5500000000000003em;margin-left:-0.03588em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mtight"><span class="mord text mtight"><span class="mord mtight">rollout</span></span></span></span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height:0.15em;"><span></span></span></span></span></span></span></span></span></span></td>
+<td>仅在 decoupled 模式修正 old-vs-rollout 分布差异；<a class="link"   target="_blank" rel="noopener" href="https://github.com/verl-project/verl/blob/e5687fce0516d31e1fdc4580499074a9bd94c751/verl/trainer/ppo/rollout_corr_helper.py#L784-L848" >减法方向<i class="fa-solid fa-arrow-up-right ml-[0.2em] font-light align-text-top text-[0.7em] link-icon"></i></a> 与<a class="link"   target="_blank" rel="noopener" href="https://github.com/verl-project/verl/blob/e5687fce0516d31e1fdc4580499074a9bd94c751/verl/trainer/ppo/rollout_corr_helper.py#L1011-L1055" >字段传入点<i class="fa-solid fa-arrow-up-right ml-[0.2em] font-light align-text-top text-[0.7em] link-icon"></i></a> 均锁定在同一 commit</td>
+</tr>
+<tr>
+<td>PPO optimization ratio</td>
+<td><code>current_log_probs - old_log_probs</code></td>
+<td><code>exp(current - old)</code>，即 <span class="katex"><span class="katex-mathml"><math><semantics><mrow><msub><mi>π</mi><mi>θ</mi></msub><mi mathvariant="normal">/</mi><msub><mi>π</mi><mtext>old</mtext></msub></mrow><annotation encoding="application/x-tex">\pi_\theta/\pi_{\text{old}}</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:1em;vertical-align:-0.25em;"></span><span class="mord"><span class="mord mathdefault" style="margin-right:0.03588em;">π</span><span class="msupsub"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height:0.33610799999999996em;"><span style="top:-2.5500000000000003em;margin-left:-0.03588em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mathdefault mtight" style="margin-right:0.02778em;">θ</span></span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height:0.15em;"><span></span></span></span></span></span></span><span class="mord">/</span><span class="mord"><span class="mord mathdefault" style="margin-right:0.03588em;">π</span><span class="msupsub"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height:0.33610799999999996em;"><span style="top:-2.5500000000000003em;margin-left:-0.03588em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mtight"><span class="mord text mtight"><span class="mord mtight">old</span></span></span></span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height:0.15em;"><span></span></span></span></span></span></span></span></span></span></td>
+<td>clipped actor objective 的独立 ratio；见 <a class="link"   target="_blank" rel="noopener" href="https://github.com/verl-project/verl/blob/e5687fce0516d31e1fdc4580499074a9bd94c751/verl/trainer/ppo/core_algos.py#L1278-L1333" >pinned policy loss<i class="fa-solid fa-arrow-up-right ml-[0.2em] font-light align-text-top text-[0.7em] link-icon"></i></a></td>
+</tr>
+<tr>
+<td>current-vs-rollout measurement</td>
+<td><code>current_log_probs - rollout_log_probs</code></td>
+<td>训练中 <span class="katex"><span class="katex-mathml"><math><semantics><mrow><msub><mi>π</mi><mi>θ</mi></msub></mrow><annotation encoding="application/x-tex">\pi_\theta</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.58056em;vertical-align:-0.15em;"></span><span class="mord"><span class="mord mathdefault" style="margin-right:0.03588em;">π</span><span class="msupsub"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height:0.33610799999999996em;"><span style="top:-2.5500000000000003em;margin-left:-0.03588em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mathdefault mtight" style="margin-right:0.02778em;">θ</span></span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height:0.15em;"><span></span></span></span></span></span></span></span></span></span> 相对 rollout behavior 的 mismatch</td>
+<td><a class="link"   target="_blank" rel="noopener" href="https://github.com/verl-project/verl/blob/e5687fce0516d31e1fdc4580499074a9bd94c751/verl/trainer/ppo/rollout_corr_helper.py#L1068-L1084" >diagnostic helper<i class="fa-solid fa-arrow-up-right ml-[0.2em] font-light align-text-top text-[0.7em] link-icon"></i></a> 单独测量该差异；<a class="link"   target="_blank" rel="noopener" href="https://github.com/verl-project/verl/blob/e5687fce0516d31e1fdc4580499074a9bd94c751/verl/trainer/ppo/core_algos.py#L2372-L2506" >bypass actor loss<i class="fa-solid fa-arrow-up-right ml-[0.2em] font-light align-text-top text-[0.7em] link-icon"></i></a> 中 old=rollout，同一 ratio 还可按配置驱动 rejection / IS，或直接成为 PPO ratio</td>
+</tr>
+</tbody>
+</table>
+<p><code>ref_log_prob</code> 不参与以上三个 ratio；它只在启用 reference policy 时进入 KL penalty。这里说的 decoupled rollout correction 始终是 old-vs-rollout，不是 old-vs-current；bypass 因 old=rollout 而折叠了两条关系。无论哪种模式，correction 都不能把任意过期、字段错位或 off-support 样本修复成有效数据。</p>
+<h3 id="worker-角色与边界"><a class="markdownIt-Anchor" href="#worker-角色与边界"></a> Worker 角色与边界</h3>
+<p>下表锁定 <code>e5687fce...</code> 的所有权。worker role 可能 colocate 或由配置启用；表中 role 不承诺独立进程，但明确哪个执行点承担计算。</p>
+<table>
+<thead>
+<tr>
+<th>角色</th>
+<th>职责</th>
+<th>产物或边界</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>RayPPOTrainer driver / controller</td>
+<td>通过 RPC 编排 worker calls，并执行 driver-side <code>compute_advantage</code></td>
+<td>合并 batch、<code>advantages</code> / <code>returns</code>、调度与 metrics；不替 actor/critic 做 backward</td>
+</tr>
+<tr>
+<td>rollout generation layer</td>
+<td><code>LLMServerManager</code> 提供生成服务 client，<code>AgentLoopManager</code> 建立 <code>async_rollout_manager</code>，由 <code>async_rollout_manager.generate_sequences</code> 发起生成</td>
+<td><code>responses</code> 与 rollout-side metadata；不承担 actor optimizer</td>
+</tr>
+<tr>
+<td>actor_rollout_wg actor training</td>
+<td>计算 logprob，并通过 <code>update_actor</code> 进入 actor minibatch 的 backward 与 optimizer</td>
+<td><code>old_log_probs</code>、current logprob 与 actor metrics；生成服务与训练权重可 colocate，但职责不同</td>
+</tr>
+<tr>
+<td>critic_wg（可选）</td>
+<td>推理得到 <code>values</code>，并以 critic minibatch 的 <code>train_mini_batch</code> 执行 backward 与 optimizer</td>
+<td><code>values</code> 与 critic metrics；无 critic 路线可省略</td>
+</tr>
+<tr>
+<td>reward role</td>
+<td>按配置调用规则、reward model 或 colocated/remote reward 路径</td>
+<td>token-level 或 sequence-level score 与 reward metadata</td>
+</tr>
+<tr>
+<td>reference role</td>
+<td>启用 reference policy 时计算 <code>ref_log_prob</code>，placement 可配置</td>
+<td>KL anchor；参数不更新，也不充当 proximal old policy</td>
+</tr>
+</tbody>
+</table>
+<p>直接代码证据是：<a target="_blank" rel="noopener" href="https://github.com/verl-project/verl/blob/e5687fce0516d31e1fdc4580499074a9bd94c751/verl/trainer/ppo/ray_trainer.py#L1332-L1359"><code>_update_actor</code> 与 <code>_update_critic</code> worker calls</a> 分别调用 <code>actor_rollout_wg.update_actor</code> 和 <code>critic_wg.train_mini_batch</code>；<a target="_blank" rel="noopener" href="https://github.com/verl-project/verl/blob/e5687fce0516d31e1fdc4580499074a9bd94c751/verl/trainer/ppo/ray_trainer.py#L1368-L1373"><code>fit()</code> ownership 注释</a> 明确 driver 通过 RPC 构造 dataflow，轻量 advantage computation 在 driver process 完成。生成侧则先<a target="_blank" rel="noopener" href="https://github.com/verl-project/verl/blob/e5687fce0516d31e1fdc4580499074a9bd94c751/verl/trainer/ppo/ray_trainer.py#L939-L953">构造 <code>LLMServerManager</code> 和 <code>AgentLoopManager</code></a>，再由 driver <a target="_blank" rel="noopener" href="https://github.com/verl-project/verl/blob/e5687fce0516d31e1fdc4580499074a9bd94c751/verl/trainer/ppo/ray_trainer.py#L1472-L1476">调用 <code>async_rollout_manager.generate_sequences</code></a>。同一 loop 中 <a class="link"   target="_blank" rel="noopener" href="https://github.com/verl-project/verl/blob/e5687fce0516d31e1fdc4580499074a9bd94c751/verl/trainer/ppo/ray_trainer.py#L1524-L1591" >reward、reference logprob 与 critic values<i class="fa-solid fa-arrow-up-right ml-[0.2em] font-light align-text-top text-[0.7em] link-icon"></i></a> 分别由对应角色补齐。底层通用训练引擎把 train batch 落到 <a class="link"   target="_blank" rel="noopener" href="https://github.com/verl-project/verl/blob/e5687fce0516d31e1fdc4580499074a9bd94c751/verl/workers/engine/base.py#L113-L129" >forward/backward 与 optimizer step<i class="fa-solid fa-arrow-up-right ml-[0.2em] font-light align-text-top text-[0.7em] link-icon"></i></a>，因此这里没有额外的 trainer worker。</p>
+<h3 id="hybridflow算法图映射到-worker-图"><a class="markdownIt-Anchor" href="#hybridflow算法图映射到-worker-图"></a> HybridFlow：算法图映射到 worker 图</h3>
+<p><img  
+                     lazyload
+                     src="/images/loading.svg"
+                     data-src="/image/ai-notes/images/paper-figures/reinforcement-learning/hybridflow-architecture.png"
+                      alt="HybridFlow architecture 原论文图" 
+                ></p>
+<p><small>图源：<a class="link"   target="_blank" rel="noopener" href="https://arxiv.org/abs/2409.19256" >HybridFlow: A Flexible and Efficient RLHF Framework<i class="fa-solid fa-arrow-up-right ml-[0.2em] font-light align-text-top text-[0.7em] link-icon"></i></a>，原论文图题为 Architecture of HybridFlow。这里仅用它说明算法 dataflow、resource mapping 与 worker communication 是不同层次；具体后端和布局以实际代码版本为准。</small></p>
+<p>HybridFlow 的系统贡献不是重写 PPO 公式，而是把 rollout、reward、reference、critic 和 actor update 等算法节点映射到物理资源。训练并行与推理并行的合适布局往往不同：actor/critic worker 要容纳梯度和 optimizer state，生成侧要容纳 KV cache 并减少逐 token decode 延迟。映射错误会表现为等待、重复搬运或某一服务长时间成为 straggler。</p>
+<h3 id="配置按谁生产字段来读"><a class="markdownIt-Anchor" href="#配置按谁生产字段来读"></a> 配置按“谁生产字段”来读</h3>
+<p>下面保留的是概念性配置读法，来源于原有 <code>verl.trainer.main_ppo</code> / Ray trainer 代码流分析。上游配置键会演进，使用时必须以锁定 commit 或安装版本的示例为准，不能把此片段当作当前 upstream API 保证。</p>
+<div class="code-container" data-rel="Bash"><figure class="iseeu highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br></pre></td><td class="code"><pre><span class="line">python -m verl.trainer.main_ppo \</span><br><span class="line">  algorithm.adv_estimator=grpo \</span><br><span class="line">  actor_rollout_ref.model.path=Qwen/Qwen3-8B \</span><br><span class="line">  actor_rollout_ref.rollout.name=vllm \</span><br><span class="line">  actor_rollout_ref.rollout.n=5 \</span><br><span class="line">  actor_rollout_ref.actor.use_kl_loss=True \</span><br><span class="line">  trainer.n_gpus_per_node=8</span><br></pre></td></tr></table></figure></div>
+<p>读配置时依次问：prompt 从哪里来，每个 prompt 采多少 response，rollout 使用哪个 sampling behavior，old logprob 走 bypass 还是 recompute，reward/reference 字段由谁补齐，driver 采用哪种 advantage estimator，以及 actor/critic worker 各自执行哪个 optimizer。这样即使其他版本字段变化，责任边界仍可核查。</p>
+<h3 id="prefixkv-reuse-吞吐与-freshness"><a class="markdownIt-Anchor" href="#prefixkv-reuse-吞吐与-freshness"></a> Prefix/KV reuse、吞吐与 freshness</h3>
+<p>同一 prompt 的多候选 rollout 可以做 prefix/KV reuse，减少重复 prefill；它不会消除各 response 的 decode、reward 和传输成本，也不能让不同 policy version 共享不兼容的 cache。cache key 至少应覆盖模型/adapter 版本、tokenized prefix 和影响生成的配置。</p>
+<p>提高并发和更大的 rollout queue 通常改善 throughput，却可能拉大采样到更新的延迟，降低 freshness。weight sync 频繁可缩小 policy lag，但会增加通信与 actor 暂停时间；同步稀疏可提高设备利用率，却必须接受并度量 staleness。两者是显式取舍，不存在只调一个 batch size 就同时最优的结论。</p>
+<p><img  
+                     lazyload
+                     src="/images/loading.svg"
+                     data-src="/image/ai-notes/images/paper-figures/reinforcement-learning/hybridflow-one-iteration.png"
+                      alt="HybridFlow one RLHF iteration 原论文图" 
+                ></p>
+<p><small>图源同上，原论文图题为 3D-HybridEngine workflow in one RLHF iteration。图中训练布局、生成布局、权重聚合与重新切分说明 weight sync 本身就是一次迭代的系统成本；它不证明任意当前版本采用完全相同实现。</small></p>
+<h2 id="训练数据流"><a class="markdownIt-Anchor" href="#训练数据流"></a> 训练数据流</h2>
+<p>字段应按阶段单调补齐，而不是用一个笼统的 trainer worker 猜测缺失语义：</p>
+<table>
+<thead>
+<tr>
+<th>阶段</th>
+<th>输入字段</th>
+<th>输出字段</th>
+<th>首要边界</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>prompt batch</td>
+<td>tokenized prompt、sample id</td>
+<td><code>prompts</code>、<code>attention_mask</code></td>
+<td>tokenizer 与 padding side 固定</td>
+</tr>
+<tr>
+<td>rollout</td>
+<td><code>prompts</code>、<code>attention_mask</code>、<code>global_steps</code> metadata、sampling metadata</td>
+<td><code>responses</code>、<code>response_mask</code>、可选 <code>rollout_log_probs</code></td>
+<td>概念上的 action-token mask 在该 pinned 流程具体映射为 <code>response_mask</code></td>
+</tr>
+<tr>
+<td>reward</td>
+<td><code>responses</code>、有效 token mask、verifier/reward 配置、sequence-level reward 概念输入或聚合</td>
+<td><code>token_level_scores</code>，再经 KL/no-KL 路径形成 <code>token_level_rewards</code></td>
+<td>sequence-level reward 不是 pinned batch key；分数必须回到同一 sample/token</td>
+</tr>
+<tr>
+<td>policy fields</td>
+<td><code>responses</code>、rollout behavior、模式配置、reference/critic snapshot</td>
+<td><code>rollout_log_probs</code>、<code>old_log_probs</code>、<code>ref_log_prob</code>、PPO 可选 <code>values</code></td>
+<td>old 按 bypass/recompute 产生；reference 只作 KL anchor</td>
+</tr>
+<tr>
+<td>advantage</td>
+<td>reward、<code>values</code>、终止语义、<code>response_mask</code></td>
+<td>driver-side <code>advantages</code>、<code>returns</code></td>
+<td>driver 执行；PPO/GAE 与 group estimator 不能混用边界</td>
+</tr>
+<tr>
+<td>critic update</td>
+<td>完整 batch、<code>values</code>、<code>returns</code>、masks</td>
+<td>critic minibatch -&gt; backward -&gt; optimizer、critic metrics</td>
+<td>critic worker 所有；无 critic 路线跳过</td>
+</tr>
+<tr>
+<td>actor update</td>
+<td>完整 batch、<code>old_log_probs</code>、<code>advantages</code>、correction fields</td>
+<td>actor minibatch -&gt; current policy loss -&gt; backward -&gt; optimizer</td>
+<td><code>actor_rollout_wg</code> 所有；current policy 在 minibatch 间变化</td>
+</tr>
+<tr>
+<td>weight sync</td>
+<td>新训练权重、目标 rollout replicas</td>
+<td>完成 <code>weight sync</code></td>
+<td>全量确认后才为新样本记录新的应用层审计版本</td>
+</tr>
+</tbody>
+</table>
+<p>字段证据分别来自 pinned agent loop 对 <a target="_blank" rel="noopener" href="https://github.com/verl-project/verl/blob/e5687fce0516d31e1fdc4580499074a9bd94c751/verl/experimental/agent_loop/agent_loop.py#L1047-L1060"><code>prompts</code>、<code>responses</code>、<code>attention_mask</code>、<code>response_mask</code> 和 <code>rollout_log_probs</code> 的组装</a>，trainer 对 <a target="_blank" rel="noopener" href="https://github.com/verl-project/verl/blob/e5687fce0516d31e1fdc4580499074a9bd94c751/verl/trainer/ppo/ray_trainer.py#L1248-L1282"><code>ref_log_prob</code> 与 <code>old_log_probs</code> 的构造</a>，生成前写入 <a target="_blank" rel="noopener" href="https://github.com/verl-project/verl/blob/e5687fce0516d31e1fdc4580499074a9bd94c751/verl/trainer/ppo/ray_trainer.py#L1451-L1507"><code>global_steps</code> 并补齐 <code>response_mask</code></a>，以及后续合并 <a target="_blank" rel="noopener" href="https://github.com/verl-project/verl/blob/e5687fce0516d31e1fdc4580499074a9bd94c751/verl/trainer/ppo/ray_trainer.py#L1580-L1638">reference/value 并在 driver 计算 <code>advantages</code> / <code>returns</code></a>。</p>
+<p>LLM 的 <code>terminated</code> 常对应真实结束条件，例如 EOS 或任务完成；<code>truncated</code> 表示最大生成长度、调度边界等截断。两者都停止继续 decode，但只有算法语义上的 true termination 才能无条件去掉 critic bootstrap。系统应同时保留终止原因，而不是压成一个 <code>done</code>。</p>
+<p><code>attention_mask</code> 描述完整输入序列中非 padding token；概念上的 action-token mask 在这里具体由 <code>response_mask</code> 承担，它标出有效 response token，并可被 rollout rejection 进一步收紧。prompt token、padding、工具返回或被裁切尾部是否进入 policy loss，必须按该 concrete mask 的生产逻辑核对。reward 若是 sequence-level，需要说明怎样广播或只放在末 token；若是 token-level，则长度必须和 logp/value 对齐。reward/logp 的 token 偏移一位仍可能得到有限 loss，因此要用 sample id、token id 和 mask 总数做逐层断言。</p>
+<p>一次可审计运行还应保存 reproducibility metadata：代码 commit、容器和依赖版本、模型/tokenizer/reward 版本、随机 seed、数据切片、sampling 参数、并行拓扑、batch id、rollout behavior version、old-logprob mode、current actor step、reference version、终止原因与重试计数。seed 不能保证跨硬件或 serving kernel 位级一致，但这些元数据能区分配置变化、策略角色错配和 nondeterministic serving。</p>
+<h2 id="常见失败"><a class="markdownIt-Anchor" href="#常见失败"></a> 常见失败</h2>
+<table>
+<thead>
+<tr>
+<th>失败</th>
+<th>直接症状</th>
+<th>首个检查</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>stale logp</td>
+<td>PPO ratio 或 correction metrics 异常</td>
+<td>分别核对 <code>rollout_log_probs</code> 的 behavior version、<code>old_log_probs</code> 模式和 current actor step</td>
+</tr>
+<tr>
+<td>wrong mask</td>
+<td>prompt/padding 进入 loss，长度越长偏差越大</td>
+<td>比较 <code>attention_mask</code> 与 <code>response_mask</code> 的 token 计数，并核对 rejection 是否修改后者</td>
+</tr>
+<tr>
+<td>reward/logp misalignment</td>
+<td>reward 正常但更新方向反常</td>
+<td>在同一样本上打印 token id、reward 位置和 logp 位置</td>
+</tr>
+<tr>
+<td>reference/old confusion</td>
+<td>KL 与 PPO ratio anchor 混用</td>
+<td>核对 <code>ref_log_prob</code> 只服务 KL，<code>old_log_probs</code> 只服务 proximal ratio</td>
+</tr>
+<tr>
+<td>duplicate samples</td>
+<td>某些 prompt 权重被无意放大</td>
+<td>检查全局 sample id、重试次数与去重位置</td>
+</tr>
+<tr>
+<td>nondeterministic serving</td>
+<td>同 seed 重跑 response 或 logp 不一致</td>
+<td>保存 backend/kernel/batching 元数据并先缩到单 worker</td>
+</tr>
+<tr>
+<td>reward 很快上涨、验证不涨</td>
+<td>verifier 漏洞或长度/格式捷径</td>
+<td>拆 reward 分量并跑隐藏集和人工抽检</td>
+</tr>
+<tr>
+<td>weight sync 部分完成</td>
+<td>worker 间混合 policy version</td>
+<td>同步使用 barrier/确认记录，禁止提前发新版本样本</td>
+</tr>
+</tbody>
+</table>
+<p>调试顺序沿字段流前进：prompt 和 id，response 与 masks，reward 对齐，rollout/old/current/reference 四种角色，driver-side advantage，critic update，actor update，最后才是跨节点性能。这样能先排除数据协议错误，再分析 placement、communication 和设备利用率。</p>
+<h2 id="自检与练习"><a class="markdownIt-Anchor" href="#自检与练习"></a> 自检与练习</h2>
+<ol>
+<li>分别说明 bypass 与 decoupled 模式中 <code>old_log_probs</code> 的来源，并解释为何只有 bypass 把它直接设为 <code>rollout_log_probs</code>。</li>
+<li>给一个 prompt 长 4、response 长 3、右侧 padding 2 的样本写出 <code>attention_mask</code> 与 <code>response_mask</code>，说明概念上的 action-token mask 为什么映射到后者。</li>
+<li>若 rollout queue 从 1 扩到 8，列出 throughput、freshness、显存和 weight sync 等待时间应记录的指标。</li>
+<li>为 rollout behavior、proximal old、current actor 和 reference 分别设计版本记录，并说明 rollout correction 为什么不能修复任意 staleness。</li>
+<li>对 sequence-level verifier reward，说明怎样验证它与 group id、response 和 token logp 属于同一条样本。</li>
+</ol>
+<p>继续精读时可对照 <a class="link"   target="_blank" rel="noopener" href="https://github.com/verl-project/verl" >verl GitHub<i class="fa-solid fa-arrow-up-right ml-[0.2em] font-light align-text-top text-[0.7em] link-icon"></i></a>、<a class="link"   target="_blank" rel="noopener" href="https://verl.readthedocs.io/en/latest/workers/ray_trainer.html" >verl PPO Ray Trainer docs<i class="fa-solid fa-arrow-up-right ml-[0.2em] font-light align-text-top text-[0.7em] link-icon"></i></a> 与 <a class="link"   target="_blank" rel="noopener" href="https://arxiv.org/abs/2409.19256" >HybridFlow 论文<i class="fa-solid fa-arrow-up-right ml-[0.2em] font-light align-text-top text-[0.7em] link-icon"></i></a>。前两者用于核对实际安装版本，论文用于理解 dataflow/resource mapping 设计；若三者细节不同，应以锁定代码快照为运行事实并记录 commit。</p>
+<p>原页保留的算法与实现背景也可继续使用：<a class="link"   target="_blank" rel="noopener" href="https://huggingface.co/blog/the_n_implementation_details_of_rlhf_with_ppo" >Hugging Face 的 PPO/RLHF implementation details<i class="fa-solid fa-arrow-up-right ml-[0.2em] font-light align-text-top text-[0.7em] link-icon"></i></a> 用于核查容易遗漏的工程语义，<a class="link"   target="_blank" rel="noopener" href="https://spinningup.openai.com/en/latest/spinningup/rl_intro3.html" >Spinning Up 的 Policy Optimization<i class="fa-solid fa-arrow-up-right ml-[0.2em] font-light align-text-top text-[0.7em] link-icon"></i></a> 和 <a class="link"   target="_blank" rel="noopener" href="https://arxiv.org/abs/1707.06347" >PPO 论文<i class="fa-solid fa-arrow-up-right ml-[0.2em] font-light align-text-top text-[0.7em] link-icon"></i></a> 用于回看 on-policy 目标，<a class="link"   target="_blank" rel="noopener" href="https://arxiv.org/abs/1801.01290" >Soft Actor-Critic 论文<i class="fa-solid fa-arrow-up-right ml-[0.2em] font-light align-text-top text-[0.7em] link-icon"></i></a> 用作 off-policy 系统对照。这些来源解释算法责任，不能替代所用 <code>verl</code> commit 的运行事实。</p>
+
+		</div>
+
+		
+		<div class="post-copyright-info w-full my-8 px-2 sm:px-6 md:px-8">
+			<div class="article-copyright-info-container">
+    <ul>
+        <li><strong>Title:</strong> 强化学习：verl 训练流程：从 rollout 到分布式更新</li>
+        <li><strong>Author:</strong> Charles</li>
+        <li><strong>Created at
+                :</strong> 2025-12-06 09:00:00</li>
+        
+            <li>
+                <strong>Updated at
+                    :</strong> 2025-12-06 09:00:00
+            </li>
+        
+        <li>
+            <strong>Link:</strong> https://charles2530.github.io/2025/12/06/ai-files-reinforcement-learning-verl-code-flow/
+        </li>
+        <li>
+            <strong>
+                License:
+            </strong>
+            
+
+            
+                This work is licensed under <a class="license" target="_blank" rel="noopener" href="https://creativecommons.org/licenses/by-nc-sa/4.0">CC BY-NC-SA 4.0</a>.
+            
+        </li>
+    </ul>
+</div>
+
+		</div>
+		
+
+		
+		<ul class="post-tags-box text-lg mt-1.5 flex-wrap justify-center flex md:hidden">
+			
+			<li class="tag-item mx-0.5">
+				<a href="/tags/AI/">#AI</a>&nbsp;
+			</li>
+			
+			<li class="tag-item mx-0.5">
+				<a href="/tags/%E5%BC%BA%E5%8C%96%E5%AD%A6%E4%B9%A0/">#强化学习</a>&nbsp;
+			</li>
+			
+		</ul>
+		
+
+		
+
+		
+		<div class="article-nav my-8 flex justify-between items-center px-2 sm:px-6 md:px-8">
+			
+			<div class="article-prev border-border-color shadow-redefine-flat shadow-shadow-color-2 rounded-medium px-4 py-2 hover:shadow-redefine-flat-hover hover:shadow-shadow-color-2">
+				<a class="prev" rel="prev" href="/2025/12/08/ai-files-roadmap-common-decision-patterns-and-tradeoffs/">
+					<span class="left arrow-icon flex justify-center items-center">
+						<i class="fa-solid fa-chevron-left"></i>
+					</span>
+					<span class="title flex justify-center items-center">
+						<span class="post-nav-title-item truncate max-w-48">路线图：常见技术决策与取舍</span>
+						<span class="post-nav-item">Prev posts</span>
+					</span>
+				</a>
+			</div>
+			
+			
+			<div class="article-next border-border-color shadow-redefine-flat shadow-shadow-color-2 rounded-medium px-4 py-2 hover:shadow-redefine-flat-hover hover:shadow-shadow-color-2">
+				<a class="next" rel="next" href="/2025/12/05/ai-files-reinforcement-learning-rl-for-world-models/">
+					<span class="title flex justify-center items-center">
+						<span class="post-nav-title-item truncate max-w-48">强化学习：Model-based RL 与世界模型</span>
+						<span class="post-nav-item">Next posts</span>
+					</span>
+					<span class="right arrow-icon flex justify-center items-center">
+						<i class="fa-solid fa-chevron-right"></i>
+					</span>
+				</a>
+			</div>
+			
+		</div>
+		
+
+
+		
+		<div class="comment-container px-2 sm:px-6 md:px-8 pb-8">
+			<div class="comments-container mt-10 w-full ">
+    <div id="comment-anchor" class="w-full h-2.5"></div>
+    <div class="comment-area-title w-full my-1.5 md:my-2.5 text-xl md:text-3xl font-bold">
+        Comments
+    </div>
+    
+
+        
+            
+    <div id="gitalk-container"></div>
+    <script data-swup-reload-script
+            src="https://cdnjs.cloudflare.com/ajax/libs/gitalk/1.8.0/gitalk.min.js"></script>
+    <script data-swup-reload-script>
+        (function() {
+            const startPath = location.pathname;
+            const startTime = Date.now();
+            const retryDelay = 200;
+            const retryLimit = 5000;
+
+            const runGitalk = () => {
+                if (location.pathname !== startPath) {
+                    return;
+                }
+
+                const container = document.getElementById('gitalk-container');
+                if (!container || typeof Gitalk === 'undefined') {
+                    if (Date.now() - startTime < retryLimit) {
+                        setTimeout(runGitalk, retryDelay);
+                    }
+                    return;
+                }
+
+                container.innerHTML = '';
+
+                let pageKey = decodeURI(location.pathname);
+                const maxLength = 50;
+                if (pageKey.length > maxLength) {
+                    pageKey = pageKey.substring(0, maxLength - 3) + '...';
+                }
+
+                try {
+                    new Gitalk({
+                        clientID: '8083299a8ee2aaf23879',
+                        clientSecret: 'a8161e81d4872181e884fdb69f7be24916b6a9d0',
+                        repo: 'Charles2530.github.io',
+                        owner: 'Charles2530',
+                        admin: ['Charles2530'],
+                        id: pageKey,
+                        language: 'en',
+                        proxy: 'https://github.com/login/oauth/access_token'
+                    }).render(container);
+                } catch (e) {
+                    window.Gitalk = null;
+                }
+            };
+
+            runGitalk();
+        })();
+    </script>
+
+
+
+        
+    
+</div>
+
+		</div>
+		
+	</div>
+
+	
+	<div class="toc-content-container">
+		<div class="post-toc-wrap">
+	<div class="post-toc">
+		<div class="toc-title">On this page</div>
+		<div class="page-title">强化学习：verl 训练流程：从 rollout 到分布式更新</div>
+		<ol class="nav"><li class="nav-item nav-level-2"><a class="nav-link" href="#%E6%9C%AC%E7%AB%A0%E5%9B%9E%E7%AD%94%E4%BB%80%E4%B9%88"><span class="nav-text"> 本章回答什么</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#%E5%85%88%E4%BF%AE%E7%9F%A5%E8%AF%86"><span class="nav-text"> 先修知识</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#%E6%9C%80%E5%B0%8F%E4%BB%BB%E5%8A%A1"><span class="nav-text"> 最小任务</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#%E6%A0%B8%E5%BF%83%E6%9C%BA%E5%88%B6"><span class="nav-text"> 核心机制</span></a><ol class="nav-child"><li class="nav-item nav-level-3"><a class="nav-link" href="#sft-%E4%B8%8E-rl-%E5%90%8E%E8%AE%AD%E7%BB%83%E7%9A%84%E7%B3%BB%E7%BB%9F%E5%B7%AE%E5%BC%82"><span class="nav-text"> SFT 与 RL 后训练的系统差异</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#%E5%9B%9B%E7%A7%8D-policy-%E8%A7%92%E8%89%B2%E4%B8%8E%E5%AD%97%E6%AE%B5"><span class="nav-text"> 四种 policy 角色与字段</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#bypass-%E4%B8%8E-decoupled-%E4%B8%A4%E7%A7%8D-old-logprob-%E6%A8%A1%E5%BC%8F"><span class="nav-text"> Bypass 与 decoupled 两种 old logprob 模式</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#%E4%B8%89%E7%A7%8D-ratio-%E4%B8%8E-mismatch"><span class="nav-text"> 三种 ratio 与 mismatch</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#worker-%E8%A7%92%E8%89%B2%E4%B8%8E%E8%BE%B9%E7%95%8C"><span class="nav-text"> Worker 角色与边界</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#hybridflow%E7%AE%97%E6%B3%95%E5%9B%BE%E6%98%A0%E5%B0%84%E5%88%B0-worker-%E5%9B%BE"><span class="nav-text"> HybridFlow：算法图映射到 worker 图</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#%E9%85%8D%E7%BD%AE%E6%8C%89%E8%B0%81%E7%94%9F%E4%BA%A7%E5%AD%97%E6%AE%B5%E6%9D%A5%E8%AF%BB"><span class="nav-text"> 配置按“谁生产字段”来读</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#prefixkv-reuse-%E5%90%9E%E5%90%90%E4%B8%8E-freshness"><span class="nav-text"> Prefix&#x2F;KV reuse、吞吐与 freshness</span></a></li></ol></li><li class="nav-item nav-level-2"><a class="nav-link" href="#%E8%AE%AD%E7%BB%83%E6%95%B0%E6%8D%AE%E6%B5%81"><span class="nav-text"> 训练数据流</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#%E5%B8%B8%E8%A7%81%E5%A4%B1%E8%B4%A5"><span class="nav-text"> 常见失败</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#%E8%87%AA%E6%A3%80%E4%B8%8E%E7%BB%83%E4%B9%A0"><span class="nav-text"> 自检与练习</span></a></li></ol>
+
+	</div>
+</div>
+	</div>
+	
+</div>
+
+			</div>
+
+			
+		</div>
+
+		<div class="main-content-footer">
+			<footer class="footer mt-5 py-5 h-auto text-base text-third-text-color relative border-t-2 border-t-border-color">
+    <div class="info-container py-3 text-center">
+        
+        <div class="text-center">
+            &copy;
+            
+              <span>2022</span>
+              -
+            
+            2026&nbsp;&nbsp;<i class="fa-solid fa-heart fa-beat" style="--fa-animation-duration: 0.5s; color: #f54545"></i>&nbsp;&nbsp;<a href="/">Charles</a>
+            
+                
+                <p class="post-count space-x-0.5">
+                    <span>
+                        601 posts in total
+                    </span>
+                    
+                        <span>
+                            2422.2k words in total
+                        </span>
+                    
+                </p>
+            
+        </div>
+        
+            <script data-swup-reload-script src="https://cn.vercount.one/js"></script>
+            <div class="relative text-center lg:absolute lg:right-[20px] lg:top-1/2 lg:-translate-y-1/2 lg:text-right">
+                
+                    <span id="busuanzi_container_site_uv" class="lg:!block">
+                        <span class="text-sm">VISITOR COUNT</span>
+                        <span id="busuanzi_value_site_uv"></span>
+                    </span>
+                
+                
+                    <span id="busuanzi_container_site_pv" class="lg:!block">
+                        <span class="text-sm">TOTAL PAGE VIEWS</span>
+                        <span id="busuanzi_value_site_pv"></span>
+                    </span>
+                
+            </div>
+        
+        <div class="relative text-center lg:absolute lg:left-[20px] lg:top-1/2 lg:-translate-y-1/2 lg:text-left">
+            <span class="lg:block text-sm">POWERED BY <?xml version="1.0" encoding="utf-8"?><!DOCTYPE svg PUBLIC "-//W3C//DTD SVG 1.1//EN" "http://www.w3.org/Graphics/SVG/1.1/DTD/svg11.dtd"><svg class="relative top-[2px] inline-block align-baseline" version="1.1" id="圖層_1" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" x="0px" y="0px" width="1rem" height="1rem" viewBox="0 0 512 512" enable-background="new 0 0 512 512" xml:space="preserve"><path fill="#0E83CD" d="M256.4,25.8l-200,115.5L56,371.5l199.6,114.7l200-115.5l0.4-230.2L256.4,25.8z M349,354.6l-18.4,10.7l-18.6-11V275H200v79.6l-18.4,10.7l-18.6-11v-197l18.5-10.6l18.5,10.8V237h112v-79.6l18.5-10.6l18.5,10.8V354.6z"/></svg><a target="_blank" class="text-base" href="https://hexo.io">Hexo</a></span>
+            <span class="text-sm lg:block">THEME&nbsp;<a class="text-base" target="_blank" href="https://github.com/EvanNotFound/hexo-theme-redefine">Redefine v2.9.0</a></span>
+        </div>
+        
+        
+            <div>
+                Blog up for <span class="odometer" id="runtime_days" ></span> days <span class="odometer" id="runtime_hours"></span> hrs <span class="odometer" id="runtime_minutes"></span> Min <span class="odometer" id="runtime_seconds"></span> Sec
+            </div>
+        
+        
+            <script data-swup-reload-script>
+                try {
+                    function odometer_init() {
+                    const elements = document.querySelectorAll('.odometer');
+                    elements.forEach(el => {
+                        new Odometer({
+                            el,
+                            format: '( ddd).dd',
+                            duration: 200
+                        });
+                    });
+                    }
+                    odometer_init();
+                } catch (error) {}
+            </script>
+        
+        
+            
+                
+        
+                
+        
+                
+
+                    
+                        <script data-swup-reload-script type="text/javascript" src="/js/love.js"></script>
+                    
+        
+        
+    </div>  
+</footer>
+		</div>
+	</div>
+
+	
+	<div class="post-tools">
+		<div class="post-tools-container">
+	<ul class="article-tools-list">
+		<!-- TOC aside toggle -->
+		
+		<li class="right-bottom-tools page-aside-toggle">
+			<i class="fa-regular fa-outdent"></i>
+		</li>
+		
+
+		<!-- go comment -->
+		
+		<li class="go-comment">
+			<i class="fa-regular fa-comments"></i>
+		</li>
+		
+	</ul>
+</div>
+	</div>
+	
+
+	<div class="right-side-tools-container">
+		<div class="side-tools-container">
+	<ul class="hidden-tools-list">
+		<li class="right-bottom-tools tool-font-adjust-plus flex justify-center items-center">
+			<i class="fa-regular fa-magnifying-glass-plus"></i>
+		</li>
+
+		<li class="right-bottom-tools tool-font-adjust-minus flex justify-center items-center">
+			<i class="fa-regular fa-magnifying-glass-minus"></i>
+		</li>
+
+		<li class="right-bottom-tools tool-dark-light-toggle flex justify-center items-center">
+			<i class="fa-regular fa-moon"></i>
+		</li>
+
+		<!-- rss -->
+		
+		<li class="right-bottom-tools rss flex justify-center items-center">
+			<a class="flex justify-center items-center" href="/atom.xml" target="_blank">
+				<i class="fa-regular fa-rss"></i>
+			</a>
+		</li>
+		
+
+		
+
+		<li class="right-bottom-tools tool-scroll-to-bottom flex justify-center items-center">
+			<i class="fa-regular fa-arrow-down"></i>
+		</li>
+	</ul>
+
+	<ul class="visible-tools-list">
+		<li class="right-bottom-tools toggle-tools-list flex justify-center items-center">
+			<i class="fa-regular fa-cog fa-spin"></i>
+		</li>
+		
+		<li class="right-bottom-tools tool-scroll-to-top flex justify-center items-center">
+			<i class="arrow-up fas fa-arrow-up"></i>
+			<span class="percent"></span>
+		</li>
+		
+		
+	</ul>
+</div>
+	</div>
+
+	<div class="image-viewer-container" role="dialog" aria-modal="true" aria-label="Image viewer">
+	<button class="image-viewer-close" type="button" aria-label="Close">
+		<i class="fa-solid fa-xmark"></i>
+	</button>
+	<button class="image-viewer-prev" type="button" aria-label="Prev">
+		<i class="fa-solid fa-chevron-left"></i>
+	</button>
+	<div class="image-viewer-frame">
+		<img src="" alt="">
+	</div>
+	<div class="image-viewer-exif-panel hidden absolute left-1/2 bottom-20 -translate-x-1/2 w-[min(92vw,420px)] max-h-[60vh] overflow-hidden rounded-2xl bg-background-color-transparent-80 p-4 text-left shadow-redefine-flat backdrop-blur-md" role="dialog" aria-label="EXIF" aria-hidden="true">
+		<div class="flex items-center justify-between mb-3">
+			<span class="text-sm font-semibold text-first-text-color">EXIF</span>
+			<button class="image-viewer-exif-close flex h-8 w-8 items-center justify-center rounded-full bg-background-color-transparent-80 text-first-text-color transition hover:bg-background-color-transparent-40" type="button" aria-label="Close">
+				<i class="fa-solid fa-xmark text-[0.65rem]"></i>
+			</button>
+		</div>
+		<div class="image-viewer-exif-cards grid grid-cols-1 sm:grid-cols-2 gap-3 max-h-[50vh] overflow-y-auto pr-1 scrollbar-hide"></div>
+		<template class="image-viewer-exif-card-template">
+			<div class="rounded-lg bg-background-color-transparent-40 px-3 py-2">
+				<div class="image-viewer-exif-card-header flex items-center gap-2 mb-1">
+					<i class="image-viewer-exif-card-icon fa-solid fa-circle-info text-xs text-third-text-color"></i>
+					<div class="image-viewer-exif-card-title text-xs font-semibold text-first-text-color"></div>
+				</div>
+				<div class="image-viewer-exif-card-items flex flex-col gap-1"></div>
+			</div>
+		</template>
+	</div>
+	<button class="image-viewer-exif-toggle flex items-center gap-2 hidden absolute left-1/2 bottom-6 -translate-x-1/2 rounded-full border border-border-color bg-background-color-transparent-80 px-4 py-2 text-first-text-color backdrop-blur-md transition hover:bg-background-color-transparent-40" type="button" aria-label="EXIF" aria-expanded="false">
+		<i class="fa-solid fa-circle-info text-xs"></i>
+		<span class="text-xs font-semibold uppercase tracking-wider">EXIF</span>
+	</button>
+	<button class="image-viewer-next" type="button" aria-label="Next">
+		<i class="fa-solid fa-chevron-right"></i>
+	</button>
+</div>
+
+
+	
+	<div class="search-pop-overlay">
+	<div class="popup search-popup">
+		<div class="search-header">
+			<span class="search-input-field-pre">
+				<i class="fa-solid fa-keyboard"></i>
+			</span>
+			<div class="search-input-container">
+				<input autocomplete="off" autocorrect="off" autocapitalize="off" placeholder="Search..." spellcheck="false" type="search" class="search-input">
+			</div>
+			<span class="popup-btn-close">
+				<i class="fa-solid fa-times"></i>
+			</span>
+		</div>
+		<div id="search-result">
+			<div id="no-result">
+				<i class="fa-solid fa-spinner fa-spin-pulse fa-5x fa-fw"></i>
+			</div>
+		</div>
+	</div>
+</div>
+	
+
+</main>
+
+
+
+<script src="/js/build/libs/Swup.min.js"></script>
+
+<script src="/js/build/libs/SwupSlideTheme.min.js"></script>
+
+<script src="/js/build/libs/SwupScriptsPlugin.min.js"></script>
+
+<script src="/js/build/libs/SwupProgressPlugin.min.js"></script>
+
+<script src="/js/build/libs/SwupScrollPlugin.min.js"></script>
+
+<script src="/js/build/libs/SwupPreloadPlugin.min.js"></script>
+
+<script>
+    window.swup = new Swup({
+        plugins: [
+            new SwupScriptsPlugin({
+                optin: true,
+            }),
+            new SwupProgressPlugin(),
+            new SwupScrollPlugin({
+                offset: 80,
+            }),
+            new SwupSlideTheme({
+                mainElement: ".main-content-body",
+            }),
+            new SwupPreloadPlugin(),
+        ],
+        containers: ["#swup"],
+    });
+
+    window.dispatchEvent(
+        new CustomEvent("redefine:swup:ready", {
+            detail: {
+                swup: window.swup,
+            },
+        }),
+    );
+</script>
+
+
+
+
+	
+<script src="/js/build/main.js" type="module"></script>
+
+
+
+    
+<script src="/js/build/libs/odometer.min.js"></script>
+
+    
+<link rel="stylesheet" href="/assets/odometer-theme-minimal.css">
+
+
+
+
+
+
+
+  
+<script src="/js/build/libs/Typed.min.js"></script>
+<script src="/js/build/libs/minimasonry.min.js" data-swup-reload-script=""></script>
+
+
+
+
+<script src="/js/build/libs/moment-with-locales.min.js" data-swup-reload-script=""></script>
+
+
+
+	
+</body>
+
+</html>

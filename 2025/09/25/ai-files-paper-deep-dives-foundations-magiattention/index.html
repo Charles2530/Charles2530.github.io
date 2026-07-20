@@ -1,0 +1,1845 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="keywords" content="Charles">
+    
+    
+    <meta name="author" content="Charles">
+    
+    <!-- Completely eliminate flash of wrong theme -->
+    <script>
+        (function() {
+            const THEME_KEY = "REDEFINE-THEME-STATUS";
+            const DARK = "dark", LIGHT = "light";
+            
+            // Get preferred theme
+            function getTheme() {
+                try {
+                    const saved = localStorage.getItem(THEME_KEY);
+                    if (saved) {
+                        const { isDark } = JSON.parse(saved);
+                        return isDark ? DARK : LIGHT;
+                    }
+                } catch (e) {}
+                
+                return matchMedia("(prefers-color-scheme: dark)").matches ? DARK : LIGHT;
+            }
+            
+            // Apply theme to document
+            function applyTheme(theme) {
+                const isDark = theme === DARK;
+                const root = document.documentElement;
+                
+                // Set classes for compatibility
+                root.classList.add(theme);
+                root.classList.remove(isDark ? LIGHT : DARK);
+                root.style.colorScheme = theme;
+            }
+            
+            // Initial application
+            const theme = getTheme();
+            applyTheme(theme);
+            
+            // Listen for system preference changes
+            matchMedia("(prefers-color-scheme: dark)").addEventListener("change", ({ matches }) => {
+                // Only update if using system preference (no localStorage entry)
+                if (!localStorage.getItem(THEME_KEY)) {
+                    applyTheme(matches ? DARK : LIGHT);
+                }
+            });
+            
+            // Set body classes ASAP (before DOMContentLoaded)
+            (function() {
+                const addBodyClass = () => {
+                    const b = document.body;
+                    if (!b) return false;
+                    b.classList.add(theme + "-mode");
+                    return true;
+                };
+
+                // Try immediately
+                if (addBodyClass()) return;
+
+                // Observe until body exists
+                const mo = new MutationObserver(() => {
+                    if (addBodyClass()) mo.disconnect();
+                });
+                mo.observe(document.documentElement, { childList: true, subtree: true });
+            })();
+        })();
+    </script>
+    
+    <!-- preconnect -->
+<!--- Seo Part-->
+    
+    <link rel="canonical" href="https://charles2530.github.io/2025/09/25/ai-files-paper-deep-dives-foundations-magiattention/"/>
+    <meta name="robots" content="index,follow">
+    <meta name="googlebot" content="index,follow">
+    <meta name="revisit-after" content="1 days">
+    
+    
+        
+        <meta name="description" content="This is Charles&#39;s Castle.">
+<meta property="og:type" content="article">
+<meta property="og:title" content="论文专题讲解：MagiAttention：超长上下文分布式 Attention">
+<meta property="og:url" content="https://charles2530.github.io/2025/09/25/ai-files-paper-deep-dives-foundations-magiattention/index.html">
+<meta property="og:site_name" content="Charles&#39;s Castle">
+<meta property="og:description" content="This is Charles&#39;s Castle.">
+<meta property="og:locale" content="en_US">
+<meta property="og:image" content="https://charles2530.github.io/image/background/logo.jpg">
+<meta property="article:published_time" content="2025-09-25T01:00:00.000Z">
+<meta property="article:modified_time" content="2025-09-25T01:00:00.000Z">
+<meta property="article:author" content="Du Jinyang">
+<meta property="article:tag" content="AI">
+<meta property="article:tag" content="基础知识">
+<meta property="article:tag" content="论文专题">
+<meta name="twitter:card" content="summary">
+<meta name="twitter:image" content="https://charles2530.github.io/image/background/logo.jpg">
+    
+    
+    <!--- Icon Part-->
+    <link rel="icon" type="image/png" href="https://charles2530.github.io/image/background/favicon.png" sizes="192x192">
+    <link rel="apple-touch-icon" sizes="180x180" href="https://charles2530.github.io/image/background/favicon.png">
+    <meta name="theme-color" content="#A31F34">
+    <link rel="shortcut icon" href="https://charles2530.github.io/image/background/favicon.png">
+    <!--- Page Info-->
+    
+    <title>
+        
+            论文专题讲解：MagiAttention：超长上下文分布式 Attention | Charles&#39;s Castle
+        
+    </title>
+
+    
+<link rel="stylesheet" href="/fonts/Chillax/chillax.css">
+
+
+    <!--- Inject Part-->
+    
+        
+            
+    
+            
+    
+            
+                
+                    <link rel="stylesheet" href="/katex/katex.min.css">
+                
+    
+            
+                
+                    <link rel="stylesheet" href="/css/site-polish-v2.css">
+                
+    
+            
+                
+                    <script data-swup-reload-script>
+(function() {
+  function loadBaiduAnalytics() {
+    if (window.__baiduAnalyticsLoaded) return;
+    window.__baiduAnalyticsLoaded = true;
+    window._hmt = window._hmt || [];
+    var hm = document.createElement("script");
+    hm.async = true;
+    hm.src = "https://hm.baidu.com/hm.js?8e0e5f382d14d87cbeadc33a36e71e86";
+    document.head.appendChild(hm);
+  }
+  if ("requestIdleCallback" in window) {
+    requestIdleCallback(loadBaiduAnalytics, { timeout: 3000 });
+  } else {
+    window.addEventListener("load", function() {
+      setTimeout(loadBaiduAnalytics, 1500);
+    });
+  }
+})();
+</script>
+
+                
+    
+
+    
+<link rel="stylesheet" href="/css/style.css">
+
+
+    
+        
+<link rel="stylesheet" href="/css/build/tailwind.css">
+
+    
+
+    
+<link rel="stylesheet" href="/fonts/GeistMono/geist-mono.css">
+
+    
+<link rel="stylesheet" href="/fonts/Geist/geist.css">
+
+    <!--- Font Part-->
+    
+    
+    
+    
+    
+    
+        
+<script src="/js/build/libs/anime.min.js"></script>
+
+    
+
+    <script id="hexo-configurations">
+    window.config = {"hostname":"charles2530.github.io","root":"/","language":"en","path":"search.xml"};
+    window.theme = {"articles":{"style":{"font_size":"16px","line_height":1.5,"image_border_radius":"14px","image_alignment":"center","image_caption":false,"link_icon":true,"delete_mask":false,"title_alignment":"left","headings_top_spacing":{"h1":"5rem","h2":"4rem","h3":"2.8rem","h4":"2.5rem","h5":"2.2rem","h6":"2rem"}},"word_count":{"enable":true,"count":true,"min2read":true},"author_label":{"enable":true,"auto":true,"list":["lol","Neo","God"]},"code_block":{"copy":true,"style":"mac","highlight_theme":{"light":"github","dark":"vs2015"},"font":{"enable":false,"family":null,"url":null}},"toc":{"enable":true,"max_depth":6,"number":false,"expand":true,"init_open":true},"copyright":{"enable":true,"default":"cc_by_nc_sa"},"lazyload":true,"pangu_js":false,"recommendation":{"enable":false,"title":"recommend_articles","limit":3,"mobile_limit":2,"placeholder":"https://charles2530.github.io/image/background/p3.jfif","skip_dirs":[]}},"colors":{"primary":"#A31F34","secondary":"#1890ff","default_mode":"light"},"global":{"fonts":{"chinese":{"enable":false,"family":null,"url":null},"english":{"enable":false,"family":null,"url":null},"title":{"enable":false,"family":null,"url":null}},"content_max_width":"1000px","sidebar_width":"210px","hover":{"shadow":true,"scale":true},"scroll_progress":{"bar":true,"percentage":true},"website_counter":{"url":"https://cn.vercount.one/js","enable":true,"site_pv":true,"site_uv":true,"post_pv":true},"single_page":true,"preloader":{"enable":true,"custom_message":null},"side_tools":{"gear_rotation":true,"auto_expand":false},"open_graph":{"enable":true,"image":"https://charles2530.github.io/image/background/logo.jpg","description":"This is Charles's Castle."},"google_analytics":{"enable":false,"id":null}},"home_banner":{"enable":true,"style":"fixed","image":{"light":"https://charles2530.github.io/image/background/background-light1.jpg","dark":"https://charles2530.github.io/image/background/background-dark1.jpg"},"title":"Charles's Castle","subtitle":{"text":["Happiness is best!","Never give up!","Everyday is a gift!"],"hitokoto":{"enable":false,"show_author":false,"api":"https://v1.hitokoto.cn"},"typing_speed":100,"backing_speed":80,"starting_delay":500,"backing_delay":1500,"loop":true,"smart_backspace":true},"text_color":{"light":"#000000","dark":"#d1d1b6"},"text_style":{"title_size":"3.2rem","subtitle_size":"1.5rem","line_height":1.2},"custom_font":{"enable":false,"family":null,"url":null},"social_links":{"enable":true,"style":"center","links":[{"icon":"fa-brands fa-github","url":"https://github.com/Charles2530/"},{"icon":"fa-brands fa-zhihu","url":"https://www.zhihu.com/people/yang-guang-xiao-zi-55-55"},{"icon":"fa-solid fa-at","url":"mailto:charles2530@163.com"},{"icon":"fa-brands fa-telegram","url":null},{"icon":"/images/custom-icon.svg","url":null}],"qrs":[{"icon":"fa-brands fa-weixin","qr":"https://charles2530.github.io/image/background/Wechat_icon.png"},{"icon":"/images/custom-icon.svg","qr":null}]}},"plugins":{"feed":{"enable":true},"aplayer":{"enable":false,"type":"fixed","audios":[{"name":null,"artist":null,"url":null,"cover":null,"lrc":null}]},"mermaid":{"enable":false,"version":"11.4.1","theme":{"light":"default","dark":"dark"}}},"version":"2.9.0","navbar":{"auto_hide":true,"color":{"left":"#f78736","right":"#367df7","transparency":35},"width":{"home":"1200px","pages":"1000px"},"links":{"Home":{"path":"/","icon":"fa-regular fa-house"},"Categories":{"path":"/categories","icon":"fas fa-bookmark"},"Tags":{"path":"/tags","icon":"fas fa-tags"},"About":{"icon":"fa-regular fa-user","submenus":{"Me":"https://jinyang-du.github.io/","Github":"https://github.com/Charles2530/","Blog":"https://charles2530.github.io","Statistics":"https://tongji.baidu.com/"}}},"search":{"enable":true,"preload":false}},"page_templates":{"friends_column":2,"tags_style":"blur","masonry":{"batch_size":12,"initial_batch_size":24}},"home":{"sidebar":{"enable":true,"position":"left","first_item":"menu","announcement":"This is Charles's Castle","show_on_mobile":true,"links":{"Archives":{"path":"/archives","icon":"fa-regular fa-archive"},"Photos":{"icon":"fa-solid fa-image","path":"/masonry/"},"Essays":{"icon":"fa-solid fa-message-lines","path":"/essay/"},"Friends":{"icon":"fa-solid fa-user-group","path":"/friends/"}}},"article_date_format":"auto","excerpt_length":200,"categories":{"enable":true,"limit":3},"tags":{"enable":true,"limit":3}},"footer":{"runtime":true,"icon":"<i class=\"fa-solid fa-heart fa-beat\" style=\"--fa-animation-duration: 0.5s; color: #f54545\"></i>","start":"2022/12/27 00:00:00","statistics":true,"customize":null,"icp":{"enable":false,"number":null,"url":null}},"footerStart":"2022/12/27 00:00:00","mermaid":{"style":{"light":"default","dark":"dark"}}};
+    window.lang_ago = {"second":"%s seconds ago","minute":"%s minutes ago","hour":"%s hours ago","day":"%s days ago","week":"%s weeks ago","month":"%s months ago","year":"%s years ago"};
+    window.i18n = {"search":"Search...","toc":"On this page","prev":"Prev","next":"Next","prev_posts":"Prev posts","next_posts":"Next posts","page":"Page %d","recent_posts":"Recent Posts","share":"Share","powered_by":"POWERED BY %s","theme":"THEME","rss_feed":"RSS Feed","category":"Category","categories":"Categories","tag":"Tag","tags":"Tags","post":"Post","posts":"Posts","tagcloud":"Tag Cloud","comment":"Comment","comments":"Comments","home":"Home","archive":"Archive","archives":"Archives","top":"TOP","sticky":"Sticky","go-back-home":"Go Back Home","masonry_loading":"Loading photos...","image_viewer":"Image viewer","close":"Close","exif":{"title":"EXIF","cards":{"camera":"Camera","lens":"Lens","exposure":"Exposure","other":"Other"},"fields":{"make":"Brand","model":"Model","date_taken":"Date taken","lens_model":"Lens","focal_length":"Focal length","focus_mode":"Focus mode","shutter":"Shutter","aperture":"Aperture","iso":"ISO","exposure_program":"Exposure program","exposure_compensation":"Exposure compensation","metering_mode":"Metering mode","flash":"Flash","white_balance":"White balance","latitude":"Latitude","longitude":"Longitude","altitude":"Altitude"},"status":{"loading":"Loading...","no_exif":"No EXIF available","library_missing":"EXIF library not loaded","image_source_missing":"Image source unavailable","unavailable":"EXIF unavailable (blocked by CORS or missing metadata)","flag_unavailable":"EXIF unavailable"}},"about":"About","changelog":"Changelog","links":"Links","link":"Link","friends":"Friends","friend":"Friend","timeline":"Timeline","shuoshuo":"Shuoshuo","bookmarks":"Bookmarks","site_uv":"VISITOR COUNT","site_pv":"TOTAL PAGE VIEWS","read_more":"Read more","wordcount":"Words","min2read":"Mins","status":"Status","runtime":"Blog up for","days":"days","hours":"hrs","minutes":"Min","seconds":"Sec","optimized_by":"and Optimized by Evan","rights":"All Rights Reserved","site_posts":"%s posts in total","site_wordcount":"%s words in total","copyright":{"author":"Author","title":"Title","link":"Link","create_time":"Created at","update_time":"Updated at","license_title":"License","license_content":"This work is licensed under %s.","all_rights_reserved":"All Rights Reserved &#169; %s","public_domain":"This work is in the public domain."},"ago":{"second":"%s seconds ago","minute":"%s minutes ago","hour":"%s hours ago","day":"%s days ago","week":"%s weeks ago","month":"%s months ago","year":"%s years ago"},"create_time":"Created","update_time":"Updated","expired":"This post is written %s days ago, and the content may not be up to date."};
+    window.data = {"masonry":true};
+  </script>
+    
+    <!--- Fontawesome Part-->
+    
+<link rel="stylesheet" href="/fontawesome/fontawesome.min.css">
+
+    
+<link rel="stylesheet" href="/fontawesome/brands.min.css">
+
+    
+<link rel="stylesheet" href="/fontawesome/solid.min.css">
+
+    
+<link rel="stylesheet" href="/fontawesome/regular.min.css">
+
+    
+    
+    
+    
+<meta name="generator" content="Hexo 6.3.0"><link rel="alternate" href="/atom.xml" title="Charles's Castle" type="application/atom+xml">
+<link rel="stylesheet" href="/css/prism-tomorrow.css" type="text/css"></head>
+
+
+<body>
+	<div class="progress-bar-container">
+	
+	<span class="scroll-progress-bar"></span>
+	
+
+	
+	<span class="pjax-progress-bar"></span>
+	<!--        <span class="swup-progress-icon">-->
+	<!--            <i class="fa-solid fa-circle-notch fa-spin"></i>-->
+	<!--        </span>-->
+	
+</div>
+
+<style>
+    :root {
+        --preloader-background-color: #fff;
+        --preloader-text-color: #000;
+    }
+
+    @media (prefers-color-scheme: dark) {
+        :root {
+            --preloader-background-color: #202124;
+            --preloader-text-color: #fff;
+        }
+    }
+
+    @media (prefers-color-scheme: light) {
+        :root {
+            --preloader-background-color: #fff;
+            --preloader-text-color: #000;
+        }
+    }
+
+    @media (max-width: 600px) {
+        .ml13 {
+            font-size: 2.6rem !important; /* Adjust this value as needed */
+        }
+    }
+
+    .preloader {
+        display: flex;
+        flex-direction: column;
+        gap: 1rem; /* Tailwind 'gap-4' is 1rem */
+        align-items: center;
+        justify-content: center;
+        position: fixed;
+        padding: 12px;
+        top: 0;
+        right: 0;
+        bottom: 0;
+        left: 0;
+        width: 100vw;
+        height: 100vh; /* 'h-screen' is 100% of the viewport height */
+        background-color: var(--preloader-background-color);
+        z-index: 1100; /* 'z-[1100]' sets the z-index */
+        transition: opacity 0.2s ease-in-out;
+    }
+
+    .ml13 {
+        font-size: 3.2rem;
+        /* text-transform: uppercase; */
+        color: var(--preloader-text-color);
+        letter-spacing: -1px;
+        font-weight: 500;
+        font-family: 'Chillax-Variable', sans-serif;
+        text-align: center;
+    }
+
+    .ml13 .word {
+        display: inline-flex;
+        flex-wrap: wrap;
+        white-space: nowrap;
+    }
+
+    .ml13 .letter {
+        display: inline-block;
+        line-height: 1em;
+    }
+</style>
+
+<div class="preloader">
+    <h2 class="ml13">
+        Charles&#39;s Castle
+    </h2>
+    <script>
+        var textWrapper = document.querySelector('.ml13');
+        // Split text into words
+        var words = textWrapper.textContent.trim().split(' ');
+
+        // Clear the existing content
+        textWrapper.innerHTML = '';
+
+        // Wrap each word and its letters in spans
+        words.forEach(function(word) {
+            var wordSpan = document.createElement('span');
+            wordSpan.classList.add('word');
+            wordSpan.innerHTML = word.replace(/\S/g, "<span class='letter'>$&</span>");
+            textWrapper.appendChild(wordSpan);
+            textWrapper.appendChild(document.createTextNode(' ')); // Add space between words
+        });
+
+        var animation = anime.timeline({ loop: true })
+            .add({
+                targets: '.ml13 .letter',
+                translateY: [20, 0],
+                translateZ: 0,
+                opacity: [0, 1],
+                filter: ['blur(5px)', 'blur(0px)'],
+                easing: "easeOutExpo",
+                duration: 1200,
+                delay: (el, i) => 300 + 20 * i,
+            })
+            .add({
+                targets: '.ml13 .letter',
+                translateY: [0, -20],
+                opacity: [1, 0],
+                filter: ['blur(0px)', 'blur(5px)'],
+                easing: "easeInExpo",
+                duration: 1000,
+                delay: (el, i) => 15 * i,
+                complete: function() {
+                    hidePreloader();
+                }
+            }, '-=700');
+
+
+        let themeStatus = JSON.parse(localStorage.getItem('REDEFINE-THEME-STATUS'))?.isDark;
+
+        // If the theme status is not found in local storage, check the preferred color scheme
+        if (themeStatus === undefined || themeStatus === null) {
+            if (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) {
+                themeStatus = 'dark';
+            } else {
+                themeStatus = 'light';
+            }
+        }
+
+        // Now you can use the themeStatus variable in your code
+        if (themeStatus) {
+            document.documentElement.style.setProperty('--preloader-background-color', '#202124');
+            document.documentElement.style.setProperty('--preloader-text-color', '#fff');
+        } else {
+            document.documentElement.style.setProperty('--preloader-background-color', '#fff');
+            document.documentElement.style.setProperty('--preloader-text-color', '#000');
+        }
+
+        window.addEventListener('load', function () {
+            setTimeout(hidePreloader, 5000); // Call hidePreloader after 5000 milliseconds if not already called by animation
+        });
+
+        function hidePreloader() {
+            var preloader = document.querySelector('.preloader');
+            preloader.style.opacity = '0';
+            setTimeout(function () {
+                preloader.style.display = 'none';
+            }, 200);
+        }
+    </script>
+</div>
+
+<main class="page-container" id="swup">
+
+	
+
+	<div class="main-content-container flex flex-col justify-between min-h-dvh">
+		<div class="main-content-header">
+			<header class="navbar-container px-6 md:px-12">
+    <div class="navbar-content transition-navbar ">
+        <div class="left">
+            
+                <a class="logo-image h-8 w-8 sm:w-10 sm:h-10 mr-3" href="/">
+                    <img src="https://charles2530.github.io/image/background/logo.jpg" class="w-full h-full rounded-xs">
+                </a>
+            
+            <a class="logo-title" href="/">
+                
+                Charles&#39;s Castle
+                
+            </a>
+        </div>
+
+        <div class="right">
+            <!-- PC -->
+            <div class="desktop">
+                <ul class="navbar-list">
+                    
+                        
+                            
+
+                            <li class="navbar-item">
+                                <!-- Menu -->
+                                <a class=""
+                                   href="/"
+                                        >
+                                    <i class="fa-regular fa-house fa-fw"></i>
+                                    HOME
+                                    
+                                </a>
+
+                                <!-- Submenu -->
+                                
+                            </li>
+                    
+                        
+                            
+
+                            <li class="navbar-item">
+                                <!-- Menu -->
+                                <a class=""
+                                   href="/categories"
+                                        >
+                                    <i class="fas fa-bookmark fa-fw"></i>
+                                    CATEGORIES
+                                    
+                                </a>
+
+                                <!-- Submenu -->
+                                
+                            </li>
+                    
+                        
+                            
+
+                            <li class="navbar-item">
+                                <!-- Menu -->
+                                <a class=""
+                                   href="/tags"
+                                        >
+                                    <i class="fas fa-tags fa-fw"></i>
+                                    TAGS
+                                    
+                                </a>
+
+                                <!-- Submenu -->
+                                
+                            </li>
+                    
+                        
+                            
+
+                            <li class="navbar-item">
+                                <!-- Menu -->
+                                <a class="has-dropdown"
+                                   href="#"
+                                        onClick=&#34;return false;&#34;>
+                                    <i class="fa-regular fa-user fa-fw"></i>
+                                    ABOUT
+                                    <i class="fa-solid fa-chevron-down fa-fw"></i>
+                                </a>
+
+                                <!-- Submenu -->
+                                
+                                    <ul class="sub-menu">
+                                        
+                                            <li>
+                                                <a target="_blank" rel="noopener" href="https://jinyang-du.github.io/">
+                                                    ME
+                                                </a>
+                                            </li>
+                                        
+                                            <li>
+                                                <a target="_blank" rel="noopener" href="https://github.com/Charles2530/">
+                                                    GITHUB
+                                                </a>
+                                            </li>
+                                        
+                                            <li>
+                                                <a href="https://charles2530.github.io">
+                                                    BLOG
+                                                </a>
+                                            </li>
+                                        
+                                            <li>
+                                                <a target="_blank" rel="noopener" href="https://tongji.baidu.com/">
+                                                    STATISTICS
+                                                </a>
+                                            </li>
+                                        
+                                    </ul>
+                                
+                            </li>
+                    
+                    
+                        <li class="navbar-item search search-popup-trigger">
+                            <i class="fa-solid fa-magnifying-glass"></i>
+                        </li>
+                    
+                </ul>
+            </div>
+            <!-- Mobile -->
+            <div class="mobile">
+                
+                    <div class="icon-item search search-popup-trigger"><i class="fa-solid fa-magnifying-glass"></i>
+                    </div>
+                
+                <div class="icon-item navbar-bar">
+                    <div class="navbar-bar-middle"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Mobile sheet -->
+    <div class="navbar-drawer h-dvh w-full absolute top-0 left-0 bg-background-color flex flex-col justify-between">
+        <ul class="drawer-navbar-list flex flex-col px-4 justify-center items-start">
+            
+                
+                    
+
+                    <li class="drawer-navbar-item text-base my-1.5 flex flex-col w-full">
+                        
+                        <a class="py-1.5 px-2 flex flex-row items-center justify-between gap-1 hover:!text-primary active:!text-primary text-2xl font-semibold group border-b border-border-color hover:border-primary w-full "
+                           href="/"
+                        >
+                            <span>
+                                HOME
+                            </span>
+                            
+                                <i class="fa-regular fa-house fa-sm fa-fw"></i>
+                            
+                        </a>
+                        
+
+                        
+                    </li>
+            
+                
+                    
+
+                    <li class="drawer-navbar-item text-base my-1.5 flex flex-col w-full">
+                        
+                        <a class="py-1.5 px-2 flex flex-row items-center justify-between gap-1 hover:!text-primary active:!text-primary text-2xl font-semibold group border-b border-border-color hover:border-primary w-full "
+                           href="/categories"
+                        >
+                            <span>
+                                CATEGORIES
+                            </span>
+                            
+                                <i class="fas fa-bookmark fa-sm fa-fw"></i>
+                            
+                        </a>
+                        
+
+                        
+                    </li>
+            
+                
+                    
+
+                    <li class="drawer-navbar-item text-base my-1.5 flex flex-col w-full">
+                        
+                        <a class="py-1.5 px-2 flex flex-row items-center justify-between gap-1 hover:!text-primary active:!text-primary text-2xl font-semibold group border-b border-border-color hover:border-primary w-full "
+                           href="/tags"
+                        >
+                            <span>
+                                TAGS
+                            </span>
+                            
+                                <i class="fas fa-tags fa-sm fa-fw"></i>
+                            
+                        </a>
+                        
+
+                        
+                    </li>
+            
+                
+                    
+
+                    <li class="drawer-navbar-item-sub text-base my-1.5 flex flex-col w-full">
+                        
+                        <div class="py-1.5 px-2 flex flex-row items-center justify-between gap-1 hover:!text-primary active:!text-primary cursor-pointer text-2xl font-semibold group border-b border-border-color hover:border-primary w-full "
+                             navbar-data-toggle="submenu-About"
+                        >
+                            <span>
+                                ABOUT
+                            </span>
+                            
+                                <i class="fa-solid fa-chevron-right fa-sm fa-fw transition-all"></i>
+                            
+                        </div>
+                        
+
+                        
+                            <div class="flex-col items-start px-2 py-2 hidden" data-target="submenu-About">
+                                
+                                    <div class="drawer-navbar-item text-base flex flex-col justify-center items-start hover:underline active:underline hover:underline-offset-1 rounded-3xl">
+                                        <a class=" text-third-text-color text-xl"
+                                           target="_blank" rel="noopener" href="https://jinyang-du.github.io/">ME</a>
+                                    </div>
+                                
+                                    <div class="drawer-navbar-item text-base flex flex-col justify-center items-start hover:underline active:underline hover:underline-offset-1 rounded-3xl">
+                                        <a class=" text-third-text-color text-xl"
+                                           target="_blank" rel="noopener" href="https://github.com/Charles2530/">GITHUB</a>
+                                    </div>
+                                
+                                    <div class="drawer-navbar-item text-base flex flex-col justify-center items-start hover:underline active:underline hover:underline-offset-1 rounded-3xl">
+                                        <a class=" text-third-text-color text-xl"
+                                           href="https://charles2530.github.io">BLOG</a>
+                                    </div>
+                                
+                                    <div class="drawer-navbar-item text-base flex flex-col justify-center items-start hover:underline active:underline hover:underline-offset-1 rounded-3xl">
+                                        <a class=" text-third-text-color text-xl"
+                                           target="_blank" rel="noopener" href="https://tongji.baidu.com/">STATISTICS</a>
+                                    </div>
+                                
+                            </div>
+                        
+                    </li>
+            
+
+            
+            
+                
+                    
+                    <li class="drawer-navbar-item text-base my-1.5 flex flex-col w-full">
+                        <a class="py-1.5 px-2 flex flex-row items-center justify-between gap-1 hover:!text-primary active:!text-primary text-2xl font-semibold group border-b border-border-color hover:border-primary w-full active"
+                           href="/archives"
+                        >
+                            <span>Archives</span>
+                            <i class="fa-regular fa-archive fa-sm fa-fw"></i>
+                        </a>
+                    </li>
+                
+                    
+                    <li class="drawer-navbar-item text-base my-1.5 flex flex-col w-full">
+                        <a class="py-1.5 px-2 flex flex-row items-center justify-between gap-1 hover:!text-primary active:!text-primary text-2xl font-semibold group border-b border-border-color hover:border-primary w-full active"
+                           href="/masonry/"
+                        >
+                            <span>Photos</span>
+                            <i class="fa-solid fa-image fa-sm fa-fw"></i>
+                        </a>
+                    </li>
+                
+                    
+                    <li class="drawer-navbar-item text-base my-1.5 flex flex-col w-full">
+                        <a class="py-1.5 px-2 flex flex-row items-center justify-between gap-1 hover:!text-primary active:!text-primary text-2xl font-semibold group border-b border-border-color hover:border-primary w-full active"
+                           href="/essay/"
+                        >
+                            <span>Essays</span>
+                            <i class="fa-solid fa-message-lines fa-sm fa-fw"></i>
+                        </a>
+                    </li>
+                
+                    
+                    <li class="drawer-navbar-item text-base my-1.5 flex flex-col w-full">
+                        <a class="py-1.5 px-2 flex flex-row items-center justify-between gap-1 hover:!text-primary active:!text-primary text-2xl font-semibold group border-b border-border-color hover:border-primary w-full active"
+                           href="/friends/"
+                        >
+                            <span>Friends</span>
+                            <i class="fa-solid fa-user-group fa-sm fa-fw"></i>
+                        </a>
+                    </li>
+                
+            
+        </ul>
+
+        <div class="statistics flex justify-around my-2.5">
+    <a class="item tag-count-item flex flex-col justify-center items-center w-20" href="/tags">
+        <div class="number text-2xl sm:text-xl text-second-text-color font-semibold">47</div>
+        <div class="label text-third-text-color text-sm">Tags</div>
+    </a>
+    <a class="item tag-count-item flex flex-col justify-center items-center w-20" href="/categories">
+        <div class="number text-2xl sm:text-xl text-second-text-color font-semibold">94</div>
+        <div class="label text-third-text-color text-sm">Categories</div>
+    </a>
+    <a class="item tag-count-item flex flex-col justify-center items-center w-20" href="/archives">
+        <div class="number text-2xl sm:text-xl text-second-text-color font-semibold">601</div>
+        <div class="label text-third-text-color text-sm">Posts</div>
+    </a>
+</div>
+    </div>
+
+    <div class="window-mask"></div>
+
+</header>
+
+
+		</div>
+
+		<div class="main-content-body transition-fade-up">
+			
+
+			<div class="main-content">
+				<div class="post-page-container flex relative justify-between box-border w-full h-full">
+	<div class="article-content-container">
+
+		<div class="article-title relative w-full">
+			
+			
+			
+			<img src="https://charles2530.github.io/image/background/p7.jpg" alt="论文专题讲解：MagiAttention：超长上下文分布式 Attention" class="w-full h-60 sm:h-72 md:h-80 object-cover sm:rounded-t-large dark:brightness-75" />
+			
+			<div class="w-full flex items-center absolute bottom-0 justify-start">
+				<h1 class="article-title-cover text-center mx-6 my-6 text-second-text-color bg-background-color-transparent px-4 py-3 text-3xl sm:text-4xl md:text-5xl font-semibold backdrop-blur-lg rounded-xl border border-border-color ">论文专题讲解：MagiAttention：超长上下文分布式 Attention</h1>
+			</div>
+			
+		</div>
+
+		
+		<div class="article-header flex flex-row gap-2 items-center px-2 sm:px-6 md:px-8">
+			<div class="avatar w-[46px] h-[46px] shrink-0 rounded-medium border border-border-color p-px">
+				<img src="https://charles2530.github.io/image/background/logo2.jpg">
+			</div>
+			<div class="info flex flex-col justify-between">
+				<div class="author flex items-center">
+					<span class="name text-default-text-color text-lg font-semibold">Charles</span>
+					
+					<span class="author-label ml-1.5 text-xs px-2 py-0.5 rounded-small text-third-text-color border border-shadow-color-1">Lv8</span>
+					
+				</div>
+				<div class="meta-info">
+					<div class="article-meta-info">
+    <span class="article-date article-meta-item">
+        <i class="fa-regular fa-pen-fancy"></i>&nbsp;
+        <span class="desktop">2025-09-25 09:00</span>
+        <span class="mobile">2025-09-25 09:00</span>
+        <span class="hover-info">Created</span>
+    </span>
+    
+        <span class="article-date article-meta-item">
+            <i class="fa-regular fa-wrench"></i>&nbsp;
+            <span class="desktop">2025-09-25 09:00</span>
+            <span class="mobile">2025-09-25 09:00</span>
+            <span class="hover-info">Updated</span>
+        </span>
+    
+
+    
+        <span class="article-categories article-meta-item">
+            <i class="fa-regular fa-folders"></i>&nbsp;
+            <ul>
+                
+                
+                    
+                        
+                        <li>
+                            <a href="/categories/AI/">AI</a>&nbsp;
+                        </li>
+                    
+                    
+                
+                    
+                        
+                            <li>></li>
+                        
+                        <li>
+                            <a href="/categories/AI/%E8%AE%BA%E6%96%87%E4%B8%93%E9%A2%98%E8%AE%B2%E8%A7%A3/">论文专题讲解</a>&nbsp;
+                        </li>
+                    
+                    
+                
+            </ul>
+        </span>
+    
+    
+        <span class="article-tags article-meta-item">
+            <i class="fa-regular fa-tags"></i>&nbsp;
+            <ul>
+                
+                    <li>
+                        <a href="/tags/AI/">AI</a>&nbsp;
+                    </li>
+                
+                    <li>
+                        | <a href="/tags/%E5%9F%BA%E7%A1%80%E7%9F%A5%E8%AF%86/">基础知识</a>&nbsp;
+                    </li>
+                
+                    <li>
+                        | <a href="/tags/%E8%AE%BA%E6%96%87%E4%B8%93%E9%A2%98/">论文专题</a>&nbsp;
+                    </li>
+                
+            </ul>
+        </span>
+    
+
+    
+    
+        <span class="article-wordcount article-meta-item">
+            <i class="fa-regular fa-typewriter"></i>&nbsp;<span>6.7k Words</span>
+        </span>
+    
+    
+        <span class="article-min2read article-meta-item">
+            <i class="fa-regular fa-clock"></i>&nbsp;<span>27 Mins</span>
+        </span>
+    
+    
+        <span class="article-pv article-meta-item">
+            <i class="fa-regular fa-eye"></i>&nbsp;<span id="busuanzi_value_page_pv"></span>
+        </span>
+    
+</div>
+
+				</div>
+			</div>
+		</div>
+		
+
+		
+
+
+		<div class="article-content markdown-body px-2 sm:px-6 md:px-8 pb-8">
+			<div class="callout callout--titled info mb-4 rounded-small shadow-redefine-flat bg-(--callout-bg-color) p-3 pl-1 relative flex flex-row gap-2"><div role="none" class="rounded-full self-stretch w-0.5 bg-(--callout-primary-color) shrink-0 opacity-60"></div><div class="flex flex-col gap-2"><div class="callout__title flex items-center gap-2 font-semibold tracking-tight">论文信息</div><div class="callout__content markdown-body flex-1 min-w-0"><p><strong>论文题名：</strong> MagiAttention: A Distributed Attention Towards Linear Scalability for Ultra-Long Context, Heterogeneous Mask Training。<br><br />
+<strong>作者：</strong> SandAI。<br><br />
+<strong>机构：</strong> SandAI。<br><br />
+<strong>时间 / 主题：</strong> 2025-04；高效训练。<br><br />
+<strong>arXiv / 官方报告：</strong> arXiv：未找到专门条目；官方材料：<a class="link"   target="_blank" rel="noopener" href="https://sandai-org.github.io/MagiAttention/docs/main/blog/magi_attn.html" >sandai-org.github.io/MagiAttention/docs/main/blog/magi_attn.html<i class="fa-solid fa-arrow-up-right ml-[0.2em] font-light align-text-top text-[0.7em] link-icon"></i></a>。<br><br />
+<strong>GitHub / 项目：</strong> GitHub：<a class="link"   target="_blank" rel="noopener" href="https://github.com/SandAI-org/MagiAttention" >github.com/SandAI-org/MagiAttention<i class="fa-solid fa-arrow-up-right ml-[0.2em] font-light align-text-top text-[0.7em] link-icon"></i></a>；项目页：<a class="link"   target="_blank" rel="noopener" href="https://sandai-org.github.io/MagiAttention/docs/main/blog/magi_attn.html" >sandai-org.github.io/MagiAttention/docs/main/blog/magi_attn.html<i class="fa-solid fa-arrow-up-right ml-[0.2em] font-light align-text-top text-[0.7em] link-icon"></i></a>。<br><br />
+<strong>元数据来源与核验口径：</strong> 来源：<a class="link"   target="_blank" rel="noopener" href="https://github.com/SandAI-org/MagiAttention" >GitHub API / repo<i class="fa-solid fa-arrow-up-right ml-[0.2em] font-light align-text-top text-[0.7em] link-icon"></i></a>；<a class="link"   target="_blank" rel="noopener" href="https://sandai-org.github.io/MagiAttention/docs/main/blog/magi_attn.html" >官方 / 项目材料<i class="fa-solid fa-arrow-up-right ml-[0.2em] font-light align-text-top text-[0.7em] link-icon"></i></a>；Checked Date：2026-06-04；Repro Status：Paper / official materials reviewed, independent reproduction not claimed。</p></div></div></div>
+<h2 id="原文故事线"><a class="markdownIt-Anchor" href="#原文故事线"></a> 原文故事线</h2>
+<h3 id="研究背景"><a class="markdownIt-Anchor" href="#研究背景"></a> 研究背景</h3>
+<p>MagiAttention 官方文档讨论的是超长上下文训练中的分布式 attention。普通 context parallel / Ring Attention 能把长序列切到多卡，但真实训练数据不只是规则 causal mask：视频生成、packing、多样本拼接、prefix / block causal、局部双向和异构 mask 会让有效 attention area 在不同 rank 之间严重不均衡。这个领域关心的不再只是单卡 FlashAttention，而是 mask 表达、rank dispatch、通信集合和 overlap 调度的整体系统。</p>
+<h3 id="问题challenge"><a class="markdownIt-Anchor" href="#问题challenge"></a> 问题（Challenge）</h3>
+<p>MagiAttention 要解决的问题是：当上下文极长且 mask 高度异构时，如何让分布式 attention 接近线性扩展。挑战在于三个层面同时出现：有效 mask area 不均会造成某些 CP rank 等待；传统 ring P2P 会传输对当前 rank 无用的 KV / dKV；通信和计算如果不能重叠，长序列训练会被 NCCL 等待拖慢。这个问题有价值，因为视频世界模型、长上下文 LLM 和多模态 packing 都越来越依赖百万 token 级训练。</p>
+<h3 id="finding"><a class="markdownIt-Anchor" href="#finding"></a> Finding</h3>
+<p>MagiAttention 的 finding 是：长上下文 attention 的瓶颈不是单一 <span class="katex"><span class="katex-mathml"><math><semantics><mrow><mi>O</mi><mo stretchy="false">(</mo><msup><mi>N</mi><mn>2</mn></msup><mo stretchy="false">)</mo></mrow><annotation encoding="application/x-tex">O(N^2)</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:1.064108em;vertical-align:-0.25em;"></span><span class="mord mathdefault" style="margin-right:0.02778em;">O</span><span class="mopen">(</span><span class="mord"><span class="mord mathdefault" style="margin-right:0.10903em;">N</span><span class="msupsub"><span class="vlist-t"><span class="vlist-r"><span class="vlist" style="height:0.8141079999999999em;"><span style="top:-3.063em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mtight">2</span></span></span></span></span></span></span></span><span class="mclose">)</span></span></span></span> 公式，而是“有效 mask 计算量、通信路由、kernel 后端、调度 overlap”共同决定的系统问题。也就是说，只做 ring 或只写一个高效 kernel 都不够；必须先把 heterogeneous mask 切成可调度的 AttnSlice，再用 dispatch solver 平衡计算，最后让 group collectives 和 overlap solver 只传该传的数据、在该算的时候传。</p>
+<h3 id="方法"><a class="markdownIt-Anchor" href="#方法"></a> 方法</h3>
+<p>方法分四层。第一，AttnSlice 用统一描述表示不同 mask pattern 下的有效 attention 块。第二，dispatch solver 根据有效 mask area 把 slice 分配给 CP ranks，降低负载不均。第三，GroupCast / GroupReduce 替代简单 ring P2P，减少无效 KV / dKV 传输。第四，overlap solver 把通信和计算安排成多阶段流水，尽量隐藏通信延迟。输入是超长序列、mask 描述和 CP 拓扑，输出是可在 H100 / B200 等集群上运行的分布式 attention 执行计划。</p>
+<h3 id="结论"><a class="markdownIt-Anchor" href="#结论"></a> 结论</h3>
+<p>官方报告展示了多种 mask pattern、dispatch 结果、通信冗余对比，以及 H100 / B200 forward / backward 性能图。结论是 MagiAttention 在异构 mask 和超长上下文下比常规 ring-style CP 更能保持负载均衡和通信效率，尤其当数据 packing 和 mask 形态复杂时收益明显。边界是系统复杂度高，收益依赖 workload 是否足够长、mask 是否足够不规则、kernel/backend 是否匹配，以及集群互联条件。</p>
+<h3 id="关键术语"><a class="markdownIt-Anchor" href="#关键术语"></a> 关键术语</h3>
+<ul>
+<li><strong>Context Parallelism（上下文并行）</strong>：沿序列长度维度切分 attention 计算到多设备</li>
+<li><strong>Heterogeneous Mask（异构遮罩）</strong>：不同样本、块或模态拥有不同 attention 可见范围的 mask</li>
+<li><strong>AttnSlice（注意力切片）</strong>：MagiAttention 用来表达可调度 attention 子区域的抽象</li>
+<li><strong>Dispatch Solver（分派求解器）</strong>：根据计算量和依赖把 attention 切片分配到不同 rank</li>
+<li><strong>GroupCast / GroupReduce（组播 / 组规约）</strong>：减少无效 KV 通信的分组通信机制</li>
+</ul>
+<h2 id="它的效率贡献是什么"><a class="markdownIt-Anchor" href="#它的效率贡献是什么"></a> 它的效率贡献是什么</h2>
+<table>
+<thead>
+<tr>
+<th>维度</th>
+<th>贡献</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>节省的成本</td>
+<td>降低超长上下文和视频训练中的 attention 计算失衡、冗余 KV 通信和 CP rank 等待时间</td>
+</tr>
+<tr>
+<td>核心机制</td>
+<td>用 AttnSlice 表达异构 mask，用 dispatch solver 均衡有效 mask area，用 GroupCast/GroupReduce 减少无效通信，再用 overlap solver 重叠通信与计算</td>
+</tr>
+<tr>
+<td>对世界模型主线的意义</td>
+<td>视频世界模型和 VLA 长任务训练会遇到变长、block-causal、patch-and-pack 等复杂 mask；MagiAttention 展示了长序列效率不是单个 kernel 问题，而是 mask、分布式和通信共同问题</td>
+</tr>
+<tr>
+<td>主要风险</td>
+<td>依赖复杂调度、kernel 支持和训练数据形态；如果 workload mask 很规则或上下文不长，收益可能不足以覆盖系统复杂度</td>
+</tr>
+<tr>
+<td>应接到本站哪里</td>
+<td><a href="/2026/05/11/ai-files-world-models-efficient-training-roadmap/">世界模型高效训练技术路线图</a>、训练路线图、算子与编译器</td>
+</tr>
+</tbody>
+</table>
+<h2 id="证据等级与外推边界"><a class="markdownIt-Anchor" href="#证据等级与外推边界"></a> 证据等级与外推边界</h2>
+<p>MagiAttention 的证据主要是系统吞吐、负载均衡、通信冗余和长上下文 attention benchmark。它证明的是“异构 mask 下分布式 attention 可以更接近线性扩展”，不是证明某个 world model 训练目标更好。</p>
+<table>
+<thead>
+<tr>
+<th>论文结论</th>
+<th>证据来源</th>
+<th>证据等级</th>
+<th>可外推到世界模型高效训练</th>
+<th>不能直接外推</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>异构 mask 需要显式表达为可调度片段</td>
+<td>AttnSlice 抽象、mask pattern 图和 kernel 元数据</td>
+<td>System design</td>
+<td>视频/VLA 的 packed sequence、block-causal 和多段 memory 要先建模 mask</td>
+<td>不能说明所有训练都需要复杂 mask solver</td>
+</tr>
+<tr>
+<td>CP rank 负载不能只按 token 数切</td>
+<td>dispatch solver、mask area 均衡和 benchmark</td>
+<td>System throughput + Ablation</td>
+<td>world model 长序列训练要按有效 attention area 做 workload modeling</td>
+<td>不能把收益照搬到短序列或规则 full attention</td>
+</tr>
+<tr>
+<td>GroupCast/GroupReduce 减少冗余通信</td>
+<td>Ring P2P 冗余案例、通信路径设计</td>
+<td>System throughput</td>
+<td>长视频训练的通信优化要知道哪些 rank 真需要 KV/dKV</td>
+<td>不能证明通信永远是主瓶颈，GEMM/MLP 也可能接管</td>
+</tr>
+<tr>
+<td>overlap solver 影响端到端扩展</td>
+<td>forward/backward timeline 和 CP benchmark</td>
+<td>System throughput</td>
+<td>训练系统要同时报告 kernel、通信和 step time</td>
+<td>不能只用单 kernel numbers 判断训练收益</td>
+</tr>
+<tr>
+<td>复杂调度依赖 workload 分布</td>
+<td>chunk size、mask、CP size 和硬件拓扑</td>
+<td>Boundary condition</td>
+<td>世界模型应先采集真实 shape/mask 直方图再选方案</td>
+<td>不能为小模型或离线实验引入过度复杂性</td>
+</tr>
+</tbody>
+</table>
+<p>这篇适合外推到世界模型的部分是“长视频训练的 attention 不是单 kernel 问题”。要先把 episode packing、因果 mask、memory token 和多相机 token 的真实形状画出来，再决定是否值得上 CP、AttnSlice 和通信重叠。</p>
+<h2 id="系统位置"><a class="markdownIt-Anchor" href="#系统位置"></a> 系统位置</h2>
+<p>MagiAttention 的直接背景是 Magi-1 这类大规模自回归视频生成训练。视频 token 数本来就长，再加上 Patch-and-Pack 这类数据管线，实际 batch 里经常出现 variable-length sequences、block-causal attention、局部块和全局块混合等模式。结果是 mask 不再是简单 full 或 causal，而是很多不规则子区域拼出来的 heterogeneous mask。</p>
+<p><img  
+                     lazyload
+                     src="/images/loading.svg"
+                     data-src="/image/ai-notes/images/paper-deep-dives/foundations/magiattention/figure-1-overview.png"
+                      alt="MagiAttention overview 原图" 
+                ></p>
+<p><small>图源：<code>MagiAttention</code> 官方博客，Figure 1。原图概览了 FFA kernel、dispatch solver、GroupCast/GroupReduce、overlap solver，以及 forward/backward 时间线如何共同支撑超长上下文和异构 mask 训练。</small></p>
+<p><strong>总图先看四层系统流水线。</strong><br />
+从左到右读这张总图：先把全局 heterogeneous mask 切成可调度的 AttnSlice，再由 dispatch solver 分配到 CP ranks；中间的 FFA kernel 负责真正算 attention，右侧的 GroupCast/GroupReduce 和 overlap timeline 说明 KV/dKV 通信怎样避开无效传输并尽量覆盖在计算后面。它证明的是系统路径完整，不等于任何 mask 都能自动线性扩展。</p>
+<p>这张图可以先读成一条流水线：</p>
+<div class="code-container" data-rel="Text"><figure class="iseeu highlight text"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br></pre></td><td class="code"><pre><span class="line">global heterogeneous mask</span><br><span class="line">  -&gt; AttnSlice 表达</span><br><span class="line">  -&gt; dispatch solver 做负载均衡</span><br><span class="line">  -&gt; FFA 计算本地或远端片段</span><br><span class="line">  -&gt; GroupCast / GroupReduce 只传必要 KV / dKV</span><br><span class="line">  -&gt; overlap solver 安排多阶段通信和计算</span><br></pre></td></tr></table></figure></div>
+<p>这也是它和普通 FlashAttention 优化的差别。FlashAttention 主要解决单卡或单 rank 内 attention 的 IO 和并行效率；MagiAttention 关注的是，当一个 attention 被拆到多个 CP ranks 后，mask、数据分布和通信拓扑如何不把 GPU 等待时间重新带回来。</p>
+<h2 id="核心问题"><a class="markdownIt-Anchor" href="#核心问题"></a> 核心问题</h2>
+<p>现有 context parallel 方法各自抓住了一部分问题，但在 Magi-1 这种超长、变长、异构 mask 训练里会同时遇到约束。</p>
+<table>
+<thead>
+<tr>
+<th>Method family</th>
+<th>What it shards</th>
+<th>Main issue under heterogeneous masks</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Ulysses</td>
+<td>attention heads through All-to-All</td>
+<td>Requires the number of heads to be divisible by CP size; conflicts with GQA and head-aware TP layouts</td>
+</tr>
+<tr>
+<td>Ring-Attention / Ring P2P</td>
+<td>sequence blocks passed around a ring</td>
+<td>Communication scales poorly and can send KV blocks to ranks that do not need them under sparse or varlen masks</td>
+</tr>
+<tr>
+<td>Zigzag sharding</td>
+<td>manually rearranged sequence blocks</td>
+<td>Helps some causal masks but causes fragmentation, padding, and poor generality for varlen block-causal masks</td>
+</tr>
+<tr>
+<td>USP / LoongTrain</td>
+<td>hybrid head and sequence parallelism</td>
+<td>Reduces some bottlenecks but still inherits mask-specific load imbalance and communication complexity</td>
+</tr>
+<tr>
+<td>DCP / HybridCP</td>
+<td>dynamic CP groups by sequence length</td>
+<td>Avoids some unnecessary sharding, but adds scheduling complexity, cross-group synchronization, and extra communication buffers</td>
+</tr>
+</tbody>
+</table>
+<p><img  
+                     lazyload
+                     src="/images/loading.svg"
+                     data-src="/image/ai-notes/images/paper-deep-dives/foundations/magiattention/figure-2-ring-attention-load-balance.png"
+                      alt="Ring-Attention load balance 原图" 
+                ></p>
+<p><small>图源：<code>MagiAttention</code> 官方博客，Figure 2。原图对比 full、causal、varlen full 和 varlen causal mask 下 Ring-Attention 的 sharding 策略，重点展示 varlen causal 会带来更强的碎片化、padding 和负载不均。</small></p>
+<p><strong>负载均衡要按有效 attention 面积读。</strong><br />
+读图时看每个 rank 分到的有效 QK 区域，而不是只看 token 数。full mask 比较均匀，causal mask 已经出现三角形面积差，varlen causal 又叠加样本边界和 padding；作者想说明固定 ring 传递在真实 packed 长序列里会产生 straggler 和冗余通信。</p>
+<p>这里的关键不是“某个 baseline 不好”，而是 attention 的计算量并不等于每个 rank 拿到的 token 数。对 full mask 来说，按 sequence 均匀切分通常还可以；对 causal 或 varlen causal 来说，不同 query chunk 对应的 valid key area 差很多。更麻烦的是，视频训练中的 block-causal + PnP 会让 mask area 变得更不规则，手工 zigzag 很难覆盖所有情况。</p>
+<p>所以 MagiAttention 设定的目标有三条：</p>
+<ol>
+<li><strong>Balanced computational workloads</strong>：每个 CP rank 的有效 mask area 尽量接近，减少等待；</li>
+<li><strong>Zero-redundant communication</strong>：只传对方真正需要的 KV 或 dKV，不做固定环形广播；</li>
+<li><strong>Full overlap of communication and computation</strong>：通信不能成为 CP size 放大后的新瓶颈。</li>
+</ol>
+<h2 id="方法总览"><a class="markdownIt-Anchor" href="#方法总览"></a> 方法总览</h2>
+<p>MagiAttention 的组件分工很清楚：</p>
+<table>
+<thead>
+<tr>
+<th>Component</th>
+<th>Role</th>
+<th>Training-system meaning</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>FFA</code> / Flex-Flash-Attention</td>
+<td>FlashAttention-3 based kernel with flexible mask support</td>
+<td>让不规则 mask 仍能走高吞吐 fused attention forward/backward</td>
+</tr>
+<tr>
+<td><code>AttnSlice</code></td>
+<td>Represents a contiguous 2D QK sub-mask as <code>(QRange, KRange, MaskType)</code></td>
+<td>把复杂 mask 分解成 kernel 可调度的基本片段</td>
+</tr>
+<tr>
+<td><code>dispatch solver</code></td>
+<td>Assigns query chunks to CP buckets under load-balance constraints</td>
+<td>同时平衡 attention 计算量和非 attention 层的 token 数</td>
+</tr>
+<tr>
+<td><code>attn solver</code></td>
+<td>Emits <code>CalcMeta</code> and <code>CommMeta</code> for each rank and stage</td>
+<td>把预处理阶段的 mask/dispatch 结果变成训练时的 kernel 参数</td>
+</tr>
+<tr>
+<td><code>GroupCast</code> / <code>GroupReduce</code></td>
+<td>Zero-redundant KV and dKV communication primitives</td>
+<td>避免 Ring P2P 对无关 rank 传输数据</td>
+</tr>
+<tr>
+<td><code>overlap solver</code></td>
+<td>Splits communication and computation into overlapped stages</td>
+<td>让远端 KV 预取、partial attention 和 dKV reduce 尽量并行</td>
+</tr>
+</tbody>
+</table>
+<p>这套设计的主线是：<strong>先用 AttnSlice 让 mask 可表达，再用 dispatch solver 让计算可均衡，最后用 group collectives 和 overlap 让分布式通信不抵消前面的收益。</strong></p>
+<h2 id="flex-flash-attention-与-attnslice"><a class="markdownIt-Anchor" href="#flex-flash-attention-与-attnslice"></a> Flex-Flash-Attention 与 AttnSlice</h2>
+<p>MagiAttention 的 kernel 层叫 <code>FFA</code>，全称 Flex-Flash-Attention。它基于 FlashAttention-3，但不是只给 FA3 多加几个 boolean mask 参数，而是引入 <code>AttnSlice</code>：</p>
+<p><span class="katex-display"><span class="katex"><span class="katex-mathml"><math><semantics><mrow><mrow><mi mathvariant="normal">A</mi><mi mathvariant="normal">t</mi><mi mathvariant="normal">t</mi><mi mathvariant="normal">n</mi><mi mathvariant="normal">S</mi><mi mathvariant="normal">l</mi><mi mathvariant="normal">i</mi><mi mathvariant="normal">c</mi><mi mathvariant="normal">e</mi></mrow><mo>=</mo><mo stretchy="false">(</mo><mrow><mi mathvariant="normal">Q</mi><mi mathvariant="normal">R</mi><mi mathvariant="normal">a</mi><mi mathvariant="normal">n</mi><mi mathvariant="normal">g</mi><mi mathvariant="normal">e</mi></mrow><mo separator="true">,</mo><mrow><mi mathvariant="normal">K</mi><mi mathvariant="normal">R</mi><mi mathvariant="normal">a</mi><mi mathvariant="normal">n</mi><mi mathvariant="normal">g</mi><mi mathvariant="normal">e</mi></mrow><mo separator="true">,</mo><mrow><mi mathvariant="normal">M</mi><mi mathvariant="normal">a</mi><mi mathvariant="normal">s</mi><mi mathvariant="normal">k</mi><mi mathvariant="normal">T</mi><mi mathvariant="normal">y</mi><mi mathvariant="normal">p</mi><mi mathvariant="normal">e</mi></mrow><mo stretchy="false">)</mo></mrow><annotation encoding="application/x-tex">\mathrm{AttnSlice} = (\mathrm{QRange}, \mathrm{KRange}, \mathrm{MaskType})
+</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.69444em;vertical-align:0em;"></span><span class="mord"><span class="mord mathrm">A</span><span class="mord mathrm">t</span><span class="mord mathrm">t</span><span class="mord mathrm">n</span><span class="mord mathrm">S</span><span class="mord mathrm">l</span><span class="mord mathrm">i</span><span class="mord mathrm">c</span><span class="mord mathrm">e</span></span><span class="mspace" style="margin-right:0.2777777777777778em;"></span><span class="mrel">=</span><span class="mspace" style="margin-right:0.2777777777777778em;"></span></span><span class="base"><span class="strut" style="height:1em;vertical-align:-0.25em;"></span><span class="mopen">(</span><span class="mord"><span class="mord mathrm">Q</span><span class="mord mathrm">R</span><span class="mord mathrm">a</span><span class="mord mathrm">n</span><span class="mord mathrm" style="margin-right:0.01389em;">g</span><span class="mord mathrm">e</span></span><span class="mpunct">,</span><span class="mspace" style="margin-right:0.16666666666666666em;"></span><span class="mord"><span class="mord mathrm">K</span><span class="mord mathrm">R</span><span class="mord mathrm">a</span><span class="mord mathrm">n</span><span class="mord mathrm" style="margin-right:0.01389em;">g</span><span class="mord mathrm">e</span></span><span class="mpunct">,</span><span class="mspace" style="margin-right:0.16666666666666666em;"></span><span class="mord"><span class="mord mathrm">M</span><span class="mord mathrm">a</span><span class="mord mathrm">s</span><span class="mord mathrm">k</span><span class="mord mathrm">T</span><span class="mord mathrm" style="margin-right:0.01389em;">y</span><span class="mord mathrm">p</span><span class="mord mathrm">e</span></span><span class="mclose">)</span></span></span></span></span></p>
+<p>其中 <code>QRange</code> 和 <code>KRange</code> 是连续 query/key 范围，<code>MaskType</code> 描述这个 2D 子块内部的规则。博客中当前列出的 mask types 包括 <code>FULL</code>、<code>CAUSAL</code>、<code>INV-CAUSAL</code> 和 <code>BI-CAUSAL</code>。</p>
+<p><img  
+                     lazyload
+                     src="/images/loading.svg"
+                     data-src="/image/ai-notes/images/paper-deep-dives/foundations/magiattention/figure-3-attnslice.png"
+                      alt="AttnSlice 原图" 
+                ></p>
+<p><small>图源：<code>MagiAttention</code> 官方博客，Figure 3。原图说明复杂全局 mask 如何被拆成多个 AttnSlice，并且这些 slice 在 CP ranks 间重排后仍能作为有效计算单元。</small></p>
+<p><img  
+                     lazyload
+                     src="/images/loading.svg"
+                     data-src="/image/ai-notes/images/paper-deep-dives/foundations/magiattention/figure-4-mask-patterns.png"
+                      alt="Mask patterns 原图" 
+                ></p>
+<p><small>图源：<code>MagiAttention</code> 官方博客，Figure 4。原图展示 AttnSlice 能覆盖 FA3 常见 mask，以及 varlen block-causal 等 FA3 原生不方便表达的 irregular masks。</small></p>
+<p><strong>AttnSlice 把全局 mask 拆成局部规则块。</strong><br />
+Figure 3 先看“复杂 mask 被拆成矩形子片段”，Figure 4 再看这些片段能拼出哪些常见模式。<code>QRange</code> 和 <code>KRange</code> 给出子矩形边界，<code>MaskType</code> 决定子矩形内部是 full、causal 还是反向/双向 causal；这样 kernel 不需要理解整张全局 mask，只要消费一串规则局部块。</p>
+<p>这个抽象很实用。传统 fused attention kernel 通常假设 mask 形状比较规则，例如 full、causal、local window 或 varlen causal。可是训练数据一旦被 pack，某些样本可能有全局块、某些块只看局部历史、某些 query 段还要跨样本边界禁看。把这些全部硬编码进 kernel 会爆炸；AttnSlice 则把它们拆成若干相对规则的小区域，让 kernel 只需要处理有限种局部 mask。</p>
+<p><img  
+                     lazyload
+                     src="/images/loading.svg"
+                     data-src="/image/ai-notes/images/paper-deep-dives/foundations/magiattention/figure-5-ffa-kernel.png"
+                      alt="FFA kernel 原图" 
+                ></p>
+<p><small>图源：<code>MagiAttention</code> 官方博客，Figure 5。原图展示 FFA forward/backward kernel 中的数据加载、on-chip 计算，以及 slice-level parallelism 下通过 atomic reduction 合并 partial results。</small></p>
+<p><strong>Kernel 图要同时看 forward 和 backward。</strong><br />
+这张图读 kernel 内部：左侧是 Q/K/V tile 进入片上计算，中央是每个 AttnSlice 的局部 softmax attention，右侧是多个 slice 对同一输出产生 partial results 后的合并。重点是 forward 和 backward 都要支持 slice-level metadata，否则训练阶段会被梯度路径卡住。</p>
+<p>训练角度最重要的是：FFA 不是只做 inference forward。它要支持 backward，还要和分布式的 <code>CalcMeta</code>、<code>CommMeta</code> 配合。也就是说，AttnSlice 不是一个可视化概念，而是进入了训练时的 kernel 参数、远端 KV 获取、partial output reduce 和 backward dKV reduce。</p>
+<h2 id="dispatch-solver"><a class="markdownIt-Anchor" href="#dispatch-solver"></a> Dispatch Solver</h2>
+<p>如果只把 sequence 平均切给不同 CP ranks，非 attention 层确实很均衡，因为每个 rank token 数差不多。但 attention 的真实工作量取决于 mask area。MagiAttention 的 dispatch solver 就是在这两者之间找平衡：既不能让某个 rank 拿太少 token 导致 MLP/norm 等非 attention 层失衡，也不能让某个 rank 拿到明显更大的 attention mask area。</p>
+<p>设全局 sequence 被按 <code>chunk_size</code> 切成 <span class="katex"><span class="katex-mathml"><math><semantics><mrow><mi>n</mi></mrow><annotation encoding="application/x-tex">n</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.43056em;vertical-align:0em;"></span><span class="mord mathdefault">n</span></span></span></span> 个 query chunks：</p>
+<p><span class="katex-display"><span class="katex"><span class="katex-mathml"><math><semantics><mrow><mi>n</mi><mo>=</mo><mfrac><mrow><mi>s</mi><mi>e</mi><mi>q</mi><mi>l</mi><mi>e</mi><mi>n</mi></mrow><mrow><mi>c</mi><mi>h</mi><mi>u</mi><mi>n</mi><mi>k</mi><mi mathvariant="normal">_</mi><mi>s</mi><mi>i</mi><mi>z</mi><mi>e</mi></mrow></mfrac></mrow><annotation encoding="application/x-tex">n = \frac{seqlen}{chunk\_size}
+</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.43056em;vertical-align:0em;"></span><span class="mord mathdefault">n</span><span class="mspace" style="margin-right:0.2777777777777778em;"></span><span class="mrel">=</span><span class="mspace" style="margin-right:0.2777777777777778em;"></span></span><span class="base"><span class="strut" style="height:2.3674399999999998em;vertical-align:-0.996em;"></span><span class="mord"><span class="mopen nulldelimiter"></span><span class="mfrac"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height:1.3714399999999998em;"><span style="top:-2.314em;"><span class="pstrut" style="height:3em;"></span><span class="mord"><span class="mord mathdefault">c</span><span class="mord mathdefault">h</span><span class="mord mathdefault">u</span><span class="mord mathdefault">n</span><span class="mord mathdefault" style="margin-right:0.03148em;">k</span><span class="mord" style="margin-right:0.02778em;">_</span><span class="mord mathdefault">s</span><span class="mord mathdefault">i</span><span class="mord mathdefault" style="margin-right:0.04398em;">z</span><span class="mord mathdefault">e</span></span></span><span style="top:-3.23em;"><span class="pstrut" style="height:3em;"></span><span class="frac-line" style="border-bottom-width:0.04em;"></span></span><span style="top:-3.677em;"><span class="pstrut" style="height:3em;"></span><span class="mord"><span class="mord mathdefault">s</span><span class="mord mathdefault">e</span><span class="mord mathdefault" style="margin-right:0.03588em;">q</span><span class="mord mathdefault" style="margin-right:0.01968em;">l</span><span class="mord mathdefault">e</span><span class="mord mathdefault">n</span></span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height:0.996em;"><span></span></span></span></span></span><span class="mclose nulldelimiter"></span></span></span></span></span></span></p>
+<p>每个 chunk <span class="katex"><span class="katex-mathml"><math><semantics><mrow><msub><mi>C</mi><mi>i</mi></msub></mrow><annotation encoding="application/x-tex">C_i</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.83333em;vertical-align:-0.15em;"></span><span class="mord"><span class="mord mathdefault" style="margin-right:0.07153em;">C</span><span class="msupsub"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height:0.31166399999999994em;"><span style="top:-2.5500000000000003em;margin-left:-0.07153em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mathdefault mtight">i</span></span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height:0.15em;"><span></span></span></span></span></span></span></span></span></span> 有对应的有效 mask area，记作 <span class="katex"><span class="katex-mathml"><math><semantics><mrow><mrow><mi mathvariant="normal">A</mi><mi mathvariant="normal">r</mi><mi mathvariant="normal">e</mi><mi mathvariant="normal">a</mi></mrow><mo stretchy="false">(</mo><msub><mi>C</mi><mi>i</mi></msub><mo stretchy="false">)</mo></mrow><annotation encoding="application/x-tex">\mathrm{Area}(C_i)</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:1em;vertical-align:-0.25em;"></span><span class="mord"><span class="mord mathrm">A</span><span class="mord mathrm">r</span><span class="mord mathrm">e</span><span class="mord mathrm">a</span></span><span class="mopen">(</span><span class="mord"><span class="mord mathdefault" style="margin-right:0.07153em;">C</span><span class="msupsub"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height:0.31166399999999994em;"><span style="top:-2.5500000000000003em;margin-left:-0.07153em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mathdefault mtight">i</span></span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height:0.15em;"><span></span></span></span></span></span></span><span class="mclose">)</span></span></span></span>。dispatch solver 要把 chunks 分到 <code>cp_size</code> 个 buckets 中，并约束每个 bucket 的 chunk 数相同：</p>
+<p><span class="katex-display"><span class="katex"><span class="katex-mathml"><math><semantics><mrow><msup><mi>f</mi><mo>∗</mo></msup><mo>=</mo><mi>arg</mi><mo>⁡</mo><munder><mo><mi>min</mi><mo>⁡</mo></mo><mi>f</mi></munder><munder><mo><mi>max</mi><mo>⁡</mo></mo><mi>j</mi></munder><munder><mo>∑</mo><mrow><msub><mi>C</mi><mi>i</mi></msub><mo>∈</mo><msub><mi>B</mi><mi>j</mi></msub></mrow></munder><mrow><mi mathvariant="normal">A</mi><mi mathvariant="normal">r</mi><mi mathvariant="normal">e</mi><mi mathvariant="normal">a</mi></mrow><mo stretchy="false">(</mo><msub><mi>C</mi><mi>i</mi></msub><mo stretchy="false">)</mo></mrow><annotation encoding="application/x-tex">f^*=\arg\min_f \max_j \sum_{C_i \in B_j} \mathrm{Area}(C_i)
+</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.933136em;vertical-align:-0.19444em;"></span><span class="mord"><span class="mord mathdefault" style="margin-right:0.10764em;">f</span><span class="msupsub"><span class="vlist-t"><span class="vlist-r"><span class="vlist" style="height:0.738696em;"><span style="top:-3.113em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mbin mtight">∗</span></span></span></span></span></span></span></span><span class="mspace" style="margin-right:0.2777777777777778em;"></span><span class="mrel">=</span><span class="mspace" style="margin-right:0.2777777777777778em;"></span></span><span class="base"><span class="strut" style="height:2.5416610000000004em;vertical-align:-1.491656em;"></span><span class="mop">ar<span style="margin-right:0.01389em;">g</span></span><span class="mspace" style="margin-right:0.16666666666666666em;"></span><span class="mop op-limits"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height:0.66786em;"><span style="top:-2.0478920000000005em;margin-left:0em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mathdefault mtight" style="margin-right:0.10764em;">f</span></span></span><span style="top:-2.7em;"><span class="pstrut" style="height:2.7em;"></span><span><span class="mop">min</span></span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height:0.8882159999999999em;"><span></span></span></span></span></span><span class="mspace" style="margin-right:0.16666666666666666em;"></span><span class="mop op-limits"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height:0.43055999999999994em;"><span style="top:-2.0723360000000004em;margin-left:0em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mathdefault mtight" style="margin-right:0.05724em;">j</span></span></span><span style="top:-2.7em;"><span class="pstrut" style="height:2.7em;"></span><span><span class="mop">max</span></span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height:0.863772em;"><span></span></span></span></span></span><span class="mspace" style="margin-right:0.16666666666666666em;"></span><span class="mop op-limits"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height:1.050005em;"><span style="top:-1.8556639999999998em;margin-left:0em;"><span class="pstrut" style="height:3.05em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mtight"><span class="mord mtight"><span class="mord mathdefault mtight" style="margin-right:0.07153em;">C</span><span class="msupsub"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height:0.3280857142857143em;"><span style="top:-2.357em;margin-left:-0.07153em;margin-right:0.07142857142857144em;"><span class="pstrut" style="height:2.5em;"></span><span class="sizing reset-size3 size1 mtight"><span class="mord mathdefault mtight">i</span></span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height:0.143em;"><span></span></span></span></span></span></span><span class="mrel mtight">∈</span><span class="mord mtight"><span class="mord mathdefault mtight" style="margin-right:0.05017em;">B</span><span class="msupsub"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height:0.3280857142857143em;"><span style="top:-2.357em;margin-left:-0.05017em;margin-right:0.07142857142857144em;"><span class="pstrut" style="height:2.5em;"></span><span class="sizing reset-size3 size1 mtight"><span class="mord mathdefault mtight" style="margin-right:0.05724em;">j</span></span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height:0.2818857142857143em;"><span></span></span></span></span></span></span></span></span></span><span style="top:-3.0500049999999996em;"><span class="pstrut" style="height:3.05em;"></span><span><span class="mop op-symbol large-op">∑</span></span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height:1.491656em;"><span></span></span></span></span></span><span class="mspace" style="margin-right:0.16666666666666666em;"></span><span class="mord"><span class="mord mathrm">A</span><span class="mord mathrm">r</span><span class="mord mathrm">e</span><span class="mord mathrm">a</span></span><span class="mopen">(</span><span class="mord"><span class="mord mathdefault" style="margin-right:0.07153em;">C</span><span class="msupsub"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height:0.31166399999999994em;"><span style="top:-2.5500000000000003em;margin-left:-0.07153em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mathdefault mtight">i</span></span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height:0.15em;"><span></span></span></span></span></span></span><span class="mclose">)</span></span></span></span></span></p>
+<p>约束是：</p>
+<p><span class="katex-display"><span class="katex"><span class="katex-mathml"><math><semantics><mrow><mi mathvariant="normal">∣</mi><msub><mi>B</mi><mi>j</mi></msub><mi mathvariant="normal">∣</mi><mo>=</mo><mfrac><mi>n</mi><mrow><mi>c</mi><mi>p</mi><mi mathvariant="normal">_</mi><mi>s</mi><mi>i</mi><mi>z</mi><mi>e</mi></mrow></mfrac><mo separator="true">,</mo><mspace width="2em"/><mi>s</mi><mi>e</mi><mi>q</mi><mi>l</mi><mi>e</mi><mi>n</mi><mtext> </mtext><mrow><mi mathvariant="normal">m</mi><mi mathvariant="normal">o</mi><mi mathvariant="normal">d</mi></mrow><mtext> </mtext><mo stretchy="false">(</mo><mi>c</mi><mi>p</mi><mi mathvariant="normal">_</mi><mi>s</mi><mi>i</mi><mi>z</mi><mi>e</mi><mo>×</mo><mi>c</mi><mi>h</mi><mi>u</mi><mi>n</mi><mi>k</mi><mi mathvariant="normal">_</mi><mi>s</mi><mi>i</mi><mi>z</mi><mi>e</mi><mo stretchy="false">)</mo><mo>=</mo><mn>0</mn></mrow><annotation encoding="application/x-tex">|B_j| = \frac{n}{cp\_size}, \qquad seqlen \bmod (cp\_size \times chunk\_size)=0
+</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:1.036108em;vertical-align:-0.286108em;"></span><span class="mord">∣</span><span class="mord"><span class="mord mathdefault" style="margin-right:0.05017em;">B</span><span class="msupsub"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height:0.311664em;"><span style="top:-2.5500000000000003em;margin-left:-0.05017em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mathdefault mtight" style="margin-right:0.05724em;">j</span></span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height:0.286108em;"><span></span></span></span></span></span></span><span class="mord">∣</span><span class="mspace" style="margin-right:0.2777777777777778em;"></span><span class="mrel">=</span><span class="mspace" style="margin-right:0.2777777777777778em;"></span></span><span class="base"><span class="strut" style="height:2.10356em;vertical-align:-0.996em;"></span><span class="mord"><span class="mopen nulldelimiter"></span><span class="mfrac"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height:1.10756em;"><span style="top:-2.314em;"><span class="pstrut" style="height:3em;"></span><span class="mord"><span class="mord mathdefault">c</span><span class="mord mathdefault">p</span><span class="mord" style="margin-right:0.02778em;">_</span><span class="mord mathdefault">s</span><span class="mord mathdefault">i</span><span class="mord mathdefault" style="margin-right:0.04398em;">z</span><span class="mord mathdefault">e</span></span></span><span style="top:-3.23em;"><span class="pstrut" style="height:3em;"></span><span class="frac-line" style="border-bottom-width:0.04em;"></span></span><span style="top:-3.677em;"><span class="pstrut" style="height:3em;"></span><span class="mord"><span class="mord mathdefault">n</span></span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height:0.996em;"><span></span></span></span></span></span><span class="mclose nulldelimiter"></span></span><span class="mpunct">,</span><span class="mspace" style="margin-right:0.16666666666666666em;"></span><span class="mspace" style="margin-right:2em;"></span><span class="mord mathdefault">s</span><span class="mord mathdefault">e</span><span class="mord mathdefault" style="margin-right:0.03588em;">q</span><span class="mord mathdefault" style="margin-right:0.01968em;">l</span><span class="mord mathdefault">e</span><span class="mord mathdefault">n</span><span class="mspace" style="margin-right:0.2222222222222222em;"></span><span class="mspace" style="margin-right:0.05555555555555555em;"></span><span class="mbin"><span class="mord"><span class="mord mathrm">m</span><span class="mord mathrm">o</span><span class="mord mathrm">d</span></span></span><span class="mspace" style="margin-right:0.2222222222222222em;"></span><span class="mspace" style="margin-right:0.05555555555555555em;"></span></span><span class="base"><span class="strut" style="height:1.06em;vertical-align:-0.31em;"></span><span class="mopen">(</span><span class="mord mathdefault">c</span><span class="mord mathdefault">p</span><span class="mord" style="margin-right:0.02778em;">_</span><span class="mord mathdefault">s</span><span class="mord mathdefault">i</span><span class="mord mathdefault" style="margin-right:0.04398em;">z</span><span class="mord mathdefault">e</span><span class="mspace" style="margin-right:0.2222222222222222em;"></span><span class="mbin">×</span><span class="mspace" style="margin-right:0.2222222222222222em;"></span></span><span class="base"><span class="strut" style="height:1.06em;vertical-align:-0.31em;"></span><span class="mord mathdefault">c</span><span class="mord mathdefault">h</span><span class="mord mathdefault">u</span><span class="mord mathdefault">n</span><span class="mord mathdefault" style="margin-right:0.03148em;">k</span><span class="mord" style="margin-right:0.02778em;">_</span><span class="mord mathdefault">s</span><span class="mord mathdefault">i</span><span class="mord mathdefault" style="margin-right:0.04398em;">z</span><span class="mord mathdefault">e</span><span class="mclose">)</span><span class="mspace" style="margin-right:0.2777777777777778em;"></span><span class="mrel">=</span><span class="mspace" style="margin-right:0.2777777777777778em;"></span></span><span class="base"><span class="strut" style="height:0.64444em;vertical-align:0em;"></span><span class="mord">0</span></span></span></span></span></p>
+<p>这个优化问题本身是 NP-hard。MagiAttention 实际采用 greedy Min-Heap algorithm，时间复杂度约为 <span class="katex"><span class="katex-mathml"><math><semantics><mrow><mi>O</mi><mo stretchy="false">(</mo><mi>n</mi><mi>log</mi><mo>⁡</mo><mi>n</mi><mo stretchy="false">)</mo></mrow><annotation encoding="application/x-tex">O(n\log n)</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:1em;vertical-align:-0.25em;"></span><span class="mord mathdefault" style="margin-right:0.02778em;">O</span><span class="mopen">(</span><span class="mord mathdefault">n</span><span class="mspace" style="margin-right:0.16666666666666666em;"></span><span class="mop">lo<span style="margin-right:0.01389em;">g</span></span><span class="mspace" style="margin-right:0.16666666666666666em;"></span><span class="mord mathdefault">n</span><span class="mclose">)</span></span></span></span>：先估计每个 chunk 的 area，再不断把较重 chunk 分给当前负载较低的 bucket。</p>
+<p><img  
+                     lazyload
+                     src="/images/loading.svg"
+                     data-src="/image/ai-notes/images/paper-deep-dives/foundations/magiattention/figure-6-dispatch-solver.png"
+                      alt="Dispatch solver 原图" 
+                ></p>
+<p><small>图源：<code>MagiAttention</code> 官方博客，Figure 10。原图展示 dispatch solver 如何用 Min-Heap 近似解决 query chunks 到 CP buckets 的负载均衡分配。</small></p>
+<p><strong>Dispatch solver 在 attention 面积和 token 数之间折中。</strong><br />
+横向看 chunks，纵向看 CP buckets。solver 不是平均分 token，而是按每个 chunk 的有效 mask area 做贪心装箱，同时约束每个 bucket 的 chunk 数相同。它想避免两个问题：attention 面积不均导致某些 rank 慢，token 数不均又让 MLP/norm 等非 attention 层失衡。</p>
+<p>这里有一个容易忽略的训练细节：为什么要强制每个 bucket 的 chunk 数一样？因为一个 Transformer block 不只有 attention。MLP、norm、residual、embedding、loss 等通常按 token 数计费。假如 dispatch 只追求 attention area 均衡，可能会让某些 rank token 数过多，非 attention 部分又失衡。MagiAttention 的约束是在大训练系统里更稳的选择。</p>
+<h2 id="通信与重叠"><a class="markdownIt-Anchor" href="#通信与重叠"></a> 通信与重叠</h2>
+<p>Ring P2P 的问题不是“不能工作”，而是在异构 mask 下会传很多对目标 rank 没用的 KV。MagiAttention 官方博客举了两个直观例子：简单 causal mask 下会出现约 25% 的冗余通信；带最后 global block 的 varlen block-causal mask 下，冗余比例可以超过 33%。</p>
+<p><img  
+                     lazyload
+                     src="/images/loading.svg"
+                     data-src="/image/ai-notes/images/paper-deep-dives/foundations/magiattention/figure-7-ring-p2p-redundancy.png"
+                      alt="Ring P2P redundancy 原图" 
+                ></p>
+<p><small>图源：<code>MagiAttention</code> 官方博客，Figure 11。原图展示 Ring P2P 在 simple causal 和 irregular varlen block-causal mask 下的冗余 KV 传输。</small></p>
+<p><strong>Ring P2P 的问题是把无用 KV 也传出去。</strong><br />
+图里的箭头表示 KV 沿 ring 传递，阴影/标记区域表示接收 rank 是否真的需要这些 KV。simple causal 里已经会传到不需要的 rank，varlen block-causal 更严重；作者想证明通信拓扑必须感知 mask，而不是固定把 KV 绕一圈。</p>
+<p>MagiAttention 用 <code>GroupCast</code> 和 <code>GroupReduce</code> 改写这个通信模型：</p>
+<table>
+<thead>
+<tr>
+<th>Primitive</th>
+<th>Data path</th>
+<th>Purpose</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>GroupCast</code></td>
+<td>sender KV -&gt; only ranks whose Q slices need it</td>
+<td>forward 和 backward 中只把 KV 发送给真正需要的 CP ranks</td>
+</tr>
+<tr>
+<td><code>GroupReduce</code></td>
+<td>partial dKV from consumer ranks -&gt; owner rank</td>
+<td>backward 中把多个 rank 产生的 dKV partials 聚合回原 KV owner</td>
+</tr>
+</tbody>
+</table>
+<p><img  
+                     lazyload
+                     src="/images/loading.svg"
+                     data-src="/image/ai-notes/images/paper-deep-dives/foundations/magiattention/figure-8-group-collectives.png"
+                      alt="GroupCast and GroupReduce 原图" 
+                ></p>
+<p><small>图源：<code>MagiAttention</code> 官方博客，Figure 12。原图展示基于 AlltoAll-v 的 GroupCast/GroupReduce：通过 transfer table、Range-Gather 和 Range-Scatter-Reduce 支持 zero-redundant KV/dKV 通信。</small></p>
+<p><strong>Group collectives 把通信对象变成按需集合。</strong><br />
+先看 transfer table：它记录哪个 sender 的哪段 KV 被哪些 receiver 需要。GroupCast 只把 KV 送给相关 Q slices，GroupReduce 则在 backward 把多个 receiver 产生的 dKV partial 聚回 owner。重点不是通信消失了，而是无关 rank 不再接收无用 KV。</p>
+<p>最初实现基于 <code>AlltoAll-v</code>，需要额外的 <code>Range-Gather</code>、<code>Range-Scatter-Reduce</code> 等 pre/post kernels。这能消除冗余通信，但 D2D 重排开销不小。后续 benchmark 中还加入了 <code>magi_attn-native</code>，也就是基于 DeepEP 思路的 native group collectives，用来减少 AlltoAll-v 方案的重排和 launch overhead。</p>
+<p>通信减少以后，还要处理 overlap。MagiAttention 把远端 KV 获取和 FFA partial attention 拆成多阶段：</p>
+<p><img  
+                     lazyload
+                     src="/images/loading.svg"
+                     data-src="/image/ai-notes/images/paper-deep-dives/foundations/magiattention/figure-9-multi-stage-overlap.png"
+                      alt="Multi-stage overlap 原图" 
+                ></p>
+<p><small>图源：<code>MagiAttention</code> 官方博客，Figure 13。原图展示 forward 中 prefetch next-stage KV 与 current-stage FFA overlap，以及 backward 中 KV prefetch、partial dKV reduce 和 current-stage attention 的多阶段重叠。</small></p>
+<p><strong>Overlap 图要找通信和计算之间的空白。</strong><br />
+时间轴上方看通信，下方看 FFA 计算。理想状态是当前 stage 正在算时，下一 stage 的远端 KV 已经在预取；backward 还要同时安排 dKV reduce。颜色块之间若出现空白，就是通信或调度没有被计算覆盖，端到端 step time 会被拉长。</p>
+<p>forward 里，本地 qkv 已经可用，所以初始 stage 可以先算，同时预取下一阶段远端 KV；理想情况下通信被当前阶段计算覆盖，只暴露最后一个远端 stage 的计算。backward 更复杂：既要预取下一阶段 KV，又要 reduce 上一阶段 partial dKV，还要算当前 stage，因此 overlap solver 要同时安排 prefetch、FFA backward 和 GroupReduce。</p>
+<p>实际训练里 <code>overlap_degree</code> 是一个重要旋钮。官方博客建议通常在 <code>&#123;1, 2, 3, 4&#125;</code> 里手动调；自动搜索如果对计算/通信比估计不准，可能会选到不理想配置。这一点很现实：分布式 attention 的最优点不仅取决于 FLOPs，还取决于 GPU 型号、网络、mask 分布、CP size、kernel backend 和当前 batch 的序列分布。</p>
+<h2 id="训练和-benchmark-设置"><a class="markdownIt-Anchor" href="#训练和-benchmark-设置"></a> 训练和 Benchmark 设置</h2>
+<p>MagiAttention 页面展示的是 attention 系统和 benchmark，不是完整 Magi-1 端到端训练报告。因此下面这些设置应该读成“长上下文 attention 训练子系统的压力测试”，而不是模型最终质量指标。</p>
+<p>官方 CP benchmark 的 common configuration 如下，表头和字段保持原格式：</p>
+<table>
+<thead>
+<tr>
+<th>settings</th>
+<th>value</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>attention type</td>
+<td>self-attention where <code>seqlen = seqlen_q = seqlen_k</code></td>
+</tr>
+<tr>
+<td>batch size (b)</td>
+<td>1</td>
+</tr>
+<tr>
+<td>number of heads (nh)</td>
+<td>nhq:nhk:nhv = 64:8:8 (GQA)</td>
+</tr>
+<tr>
+<td>head dimension (hd)</td>
+<td>128</td>
+</tr>
+<tr>
+<td>dtype</td>
+<td><code>torch.bfloat16</code></td>
+</tr>
+<tr>
+<td>window size</td>
+<td>1024 (for sliding window masks only)</td>
+</tr>
+</tbody>
+</table>
+<p>这组配置有几个训练含义。<code>64:8:8 (GQA)</code> 说明它不是只为普通 MHA 服务，GQA 场景下 Ulysses 这类 head sharding 的可整除约束会更扎眼。<code>hd=128</code> 和 <code>bf16</code> 则接近现代大模型训练常见设置。batch size 固定为 1，是为了把主要变量集中到 sequence length、mask pattern 和 CP strategy。</p>
+<p>吞吐定义也要看清楚。kernel-level 使用 <code>TFLOPs/s</code>，distributed-level 使用 <code>TFLOPs/s/GPU</code>。对每个 AttnSlice，benchmark 按下式计算 FLOPs：</p>
+<p><span class="katex-display"><span class="katex"><span class="katex-mathml"><math><semantics><mtable rowspacing="0.24999999999999992em" columnalign="right left" columnspacing="0em"><mtr><mtd><mstyle scriptlevel="0" displaystyle="true"><msup><mrow><mi mathvariant="normal">F</mi><mi mathvariant="normal">L</mi><mi mathvariant="normal">O</mi><mi mathvariant="normal">P</mi><mi mathvariant="normal">s</mi></mrow><mrow><mo stretchy="false">(</mo><mi>f</mi><mi>w</mi><mi>d</mi><mo stretchy="false">)</mo></mrow></msup></mstyle></mtd><mtd><mstyle scriptlevel="0" displaystyle="true"><mrow><mrow></mrow><mo>=</mo><mn>2</mn><mo>×</mo><mn>2</mn><mo>×</mo><mrow><mi mathvariant="normal">M</mi><mi mathvariant="normal">a</mi><mi mathvariant="normal">s</mi><mi mathvariant="normal">k</mi><mi mathvariant="normal">A</mi><mi mathvariant="normal">r</mi><mi mathvariant="normal">e</mi><mi mathvariant="normal">a</mi></mrow><mo stretchy="false">(</mo><mi>s</mi><mi>e</mi><mi>q</mi><mi>l</mi><mi>e</mi><mi>n</mi><mo separator="true">,</mo><mi>m</mi><mi>a</mi><mi>s</mi><mi>k</mi><mi mathvariant="normal">_</mi><mi>t</mi><mi>y</mi><mi>p</mi><mi>e</mi><mo stretchy="false">)</mo></mrow></mstyle></mtd></mtr><mtr><mtd><mstyle scriptlevel="0" displaystyle="true"><mrow></mrow></mstyle></mtd><mtd><mstyle scriptlevel="0" displaystyle="true"><mrow><mrow></mrow><mo>×</mo><mi>b</mi><mi>a</mi><mi>t</mi><mi>c</mi><mi>h</mi><mi mathvariant="normal">_</mi><mi>s</mi><mi>i</mi><mi>z</mi><mi>e</mi><mo>×</mo><mi>n</mi><mi>u</mi><mi>m</mi><mi mathvariant="normal">_</mi><mi>h</mi><mi>e</mi><mi>a</mi><mi>d</mi><mi>s</mi><mi mathvariant="normal">_</mi><mi>q</mi><mo>×</mo><mi>h</mi><mi>e</mi><mi>a</mi><mi>d</mi><mi mathvariant="normal">_</mi><mi>d</mi><mi>i</mi><mi>m</mi></mrow></mstyle></mtd></mtr><mtr><mtd><mstyle scriptlevel="0" displaystyle="true"><msup><mrow><mi mathvariant="normal">F</mi><mi mathvariant="normal">L</mi><mi mathvariant="normal">O</mi><mi mathvariant="normal">P</mi><mi mathvariant="normal">s</mi></mrow><mrow><mo stretchy="false">(</mo><mi>b</mi><mi>w</mi><mi>d</mi><mo stretchy="false">)</mo></mrow></msup></mstyle></mtd><mtd><mstyle scriptlevel="0" displaystyle="true"><mrow><mrow></mrow><mo>=</mo><mn>2.5</mn><mo>×</mo><msup><mrow><mi mathvariant="normal">F</mi><mi mathvariant="normal">L</mi><mi mathvariant="normal">O</mi><mi mathvariant="normal">P</mi><mi mathvariant="normal">s</mi></mrow><mrow><mo stretchy="false">(</mo><mi>f</mi><mi>w</mi><mi>d</mi><mo stretchy="false">)</mo></mrow></msup></mrow></mstyle></mtd></mtr></mtable><annotation encoding="application/x-tex">\begin{aligned}
+\mathrm{FLOPs}^{(fwd)} &amp;= 2 \times 2 \times \mathrm{MaskArea}(seqlen, mask\_type) \\
+&amp;\times batch\_size \times num\_heads\_q \times head\_dim \\
+\mathrm{FLOPs}^{(bwd)} &amp;= 2.5 \times \mathrm{FLOPs}^{(fwd)}
+\end{aligned}
+</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:4.742460000000001em;vertical-align:-2.1212300000000006em;"></span><span class="mord"><span class="mtable"><span class="col-align-r"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height:2.6212300000000006em;"><span style="top:-4.66em;"><span class="pstrut" style="height:3em;"></span><span class="mord"><span class="mord"><span class="mord"><span class="mord mathrm">F</span><span class="mord mathrm">L</span><span class="mord mathrm">O</span><span class="mord mathrm">P</span><span class="mord mathrm">s</span></span><span class="msupsub"><span class="vlist-t"><span class="vlist-r"><span class="vlist" style="height:0.96123em;"><span style="top:-3.13623em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mtight"><span class="mopen mtight">(</span><span class="mord mathdefault mtight" style="margin-right:0.10764em;">f</span><span class="mord mathdefault mtight" style="margin-right:0.02691em;">w</span><span class="mord mathdefault mtight">d</span><span class="mclose mtight">)</span></span></span></span></span></span></span></span></span></span></span><span style="top:-3.16em;"><span class="pstrut" style="height:3em;"></span><span class="mord"></span></span><span style="top:-1.5387699999999995em;"><span class="pstrut" style="height:3em;"></span><span class="mord"><span class="mord"><span class="mord"><span class="mord mathrm">F</span><span class="mord mathrm">L</span><span class="mord mathrm">O</span><span class="mord mathrm">P</span><span class="mord mathrm">s</span></span><span class="msupsub"><span class="vlist-t"><span class="vlist-r"><span class="vlist" style="height:0.96123em;"><span style="top:-3.13623em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mtight"><span class="mopen mtight">(</span><span class="mord mathdefault mtight">b</span><span class="mord mathdefault mtight" style="margin-right:0.02691em;">w</span><span class="mord mathdefault mtight">d</span><span class="mclose mtight">)</span></span></span></span></span></span></span></span></span></span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height:2.1212300000000006em;"><span></span></span></span></span></span><span class="col-align-l"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height:2.6212300000000006em;"><span style="top:-4.66em;"><span class="pstrut" style="height:3em;"></span><span class="mord"><span class="mord"></span><span class="mspace" style="margin-right:0.2777777777777778em;"></span><span class="mrel">=</span><span class="mspace" style="margin-right:0.2777777777777778em;"></span><span class="mord">2</span><span class="mspace" style="margin-right:0.2222222222222222em;"></span><span class="mbin">×</span><span class="mspace" style="margin-right:0.2222222222222222em;"></span><span class="mord">2</span><span class="mspace" style="margin-right:0.2222222222222222em;"></span><span class="mbin">×</span><span class="mspace" style="margin-right:0.2222222222222222em;"></span><span class="mord"><span class="mord mathrm">M</span><span class="mord mathrm">a</span><span class="mord mathrm">s</span><span class="mord mathrm">k</span><span class="mord mathrm">A</span><span class="mord mathrm">r</span><span class="mord mathrm">e</span><span class="mord mathrm">a</span></span><span class="mopen">(</span><span class="mord mathdefault">s</span><span class="mord mathdefault">e</span><span class="mord mathdefault" style="margin-right:0.03588em;">q</span><span class="mord mathdefault" style="margin-right:0.01968em;">l</span><span class="mord mathdefault">e</span><span class="mord mathdefault">n</span><span class="mpunct">,</span><span class="mspace" style="margin-right:0.16666666666666666em;"></span><span class="mord mathdefault">m</span><span class="mord mathdefault">a</span><span class="mord mathdefault">s</span><span class="mord mathdefault" style="margin-right:0.03148em;">k</span><span class="mord" style="margin-right:0.02778em;">_</span><span class="mord mathdefault">t</span><span class="mord mathdefault" style="margin-right:0.03588em;">y</span><span class="mord mathdefault">p</span><span class="mord mathdefault">e</span><span class="mclose">)</span></span></span><span style="top:-3.16em;"><span class="pstrut" style="height:3em;"></span><span class="mord"><span class="mord"></span><span class="mspace" style="margin-right:0.2222222222222222em;"></span><span class="mbin">×</span><span class="mspace" style="margin-right:0.2222222222222222em;"></span><span class="mord mathdefault">b</span><span class="mord mathdefault">a</span><span class="mord mathdefault">t</span><span class="mord mathdefault">c</span><span class="mord mathdefault">h</span><span class="mord" style="margin-right:0.02778em;">_</span><span class="mord mathdefault">s</span><span class="mord mathdefault">i</span><span class="mord mathdefault" style="margin-right:0.04398em;">z</span><span class="mord mathdefault">e</span><span class="mspace" style="margin-right:0.2222222222222222em;"></span><span class="mbin">×</span><span class="mspace" style="margin-right:0.2222222222222222em;"></span><span class="mord mathdefault">n</span><span class="mord mathdefault">u</span><span class="mord mathdefault">m</span><span class="mord" style="margin-right:0.02778em;">_</span><span class="mord mathdefault">h</span><span class="mord mathdefault">e</span><span class="mord mathdefault">a</span><span class="mord mathdefault">d</span><span class="mord mathdefault">s</span><span class="mord" style="margin-right:0.02778em;">_</span><span class="mord mathdefault" style="margin-right:0.03588em;">q</span><span class="mspace" style="margin-right:0.2222222222222222em;"></span><span class="mbin">×</span><span class="mspace" style="margin-right:0.2222222222222222em;"></span><span class="mord mathdefault">h</span><span class="mord mathdefault">e</span><span class="mord mathdefault">a</span><span class="mord mathdefault">d</span><span class="mord" style="margin-right:0.02778em;">_</span><span class="mord mathdefault">d</span><span class="mord mathdefault">i</span><span class="mord mathdefault">m</span></span></span><span style="top:-1.5387699999999995em;"><span class="pstrut" style="height:3em;"></span><span class="mord"><span class="mord"></span><span class="mspace" style="margin-right:0.2777777777777778em;"></span><span class="mrel">=</span><span class="mspace" style="margin-right:0.2777777777777778em;"></span><span class="mord">2</span><span class="mord">.</span><span class="mord">5</span><span class="mspace" style="margin-right:0.2222222222222222em;"></span><span class="mbin">×</span><span class="mspace" style="margin-right:0.2222222222222222em;"></span><span class="mord"><span class="mord"><span class="mord mathrm">F</span><span class="mord mathrm">L</span><span class="mord mathrm">O</span><span class="mord mathrm">P</span><span class="mord mathrm">s</span></span><span class="msupsub"><span class="vlist-t"><span class="vlist-r"><span class="vlist" style="height:0.96123em;"><span style="top:-3.13623em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mtight"><span class="mopen mtight">(</span><span class="mord mathdefault mtight" style="margin-right:0.10764em;">f</span><span class="mord mathdefault mtight" style="margin-right:0.02691em;">w</span><span class="mord mathdefault mtight">d</span><span class="mclose mtight">)</span></span></span></span></span></span></span></span></span></span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height:2.1212300000000006em;"><span></span></span></span></span></span></span></span></span></span></span></span></p>
+<p>其中 full mask 的 area 是 <span class="katex"><span class="katex-mathml"><math><semantics><mrow><mi>s</mi><mi>e</mi><mi>q</mi><mi>l</mi><mi>e</mi><msup><mi>n</mi><mn>2</mn></msup></mrow><annotation encoding="application/x-tex">seqlen^2</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:1.008548em;vertical-align:-0.19444em;"></span><span class="mord mathdefault">s</span><span class="mord mathdefault">e</span><span class="mord mathdefault" style="margin-right:0.03588em;">q</span><span class="mord mathdefault" style="margin-right:0.01968em;">l</span><span class="mord mathdefault">e</span><span class="mord"><span class="mord mathdefault">n</span><span class="msupsub"><span class="vlist-t"><span class="vlist-r"><span class="vlist" style="height:0.8141079999999999em;"><span style="top:-3.063em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mtight">2</span></span></span></span></span></span></span></span></span></span></span>，causal mask 的 area 是 <span class="katex"><span class="katex-mathml"><math><semantics><mrow><mfrac><mrow><mi>s</mi><mi>e</mi><mi>q</mi><mi>l</mi><mi>e</mi><mi>n</mi><mo stretchy="false">(</mo><mi>s</mi><mi>e</mi><mi>q</mi><mi>l</mi><mi>e</mi><mi>n</mi><mo>+</mo><mn>1</mn><mo stretchy="false">)</mo></mrow><mn>2</mn></mfrac></mrow><annotation encoding="application/x-tex">\frac{seqlen(seqlen+1)}{2}</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:1.355em;vertical-align:-0.345em;"></span><span class="mord"><span class="mopen nulldelimiter"></span><span class="mfrac"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height:1.01em;"><span style="top:-2.6550000000000002em;"><span class="pstrut" style="height:3em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mtight"><span class="mord mtight">2</span></span></span></span><span style="top:-3.23em;"><span class="pstrut" style="height:3em;"></span><span class="frac-line" style="border-bottom-width:0.04em;"></span></span><span style="top:-3.485em;"><span class="pstrut" style="height:3em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mtight"><span class="mord mathdefault mtight">s</span><span class="mord mathdefault mtight">e</span><span class="mord mathdefault mtight" style="margin-right:0.03588em;">q</span><span class="mord mathdefault mtight" style="margin-right:0.01968em;">l</span><span class="mord mathdefault mtight">e</span><span class="mord mathdefault mtight">n</span><span class="mopen mtight">(</span><span class="mord mathdefault mtight">s</span><span class="mord mathdefault mtight">e</span><span class="mord mathdefault mtight" style="margin-right:0.03588em;">q</span><span class="mord mathdefault mtight" style="margin-right:0.01968em;">l</span><span class="mord mathdefault mtight">e</span><span class="mord mathdefault mtight">n</span><span class="mbin mtight">+</span><span class="mord mtight">1</span><span class="mclose mtight">)</span></span></span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height:0.345em;"><span></span></span></span></span></span><span class="mclose nulldelimiter"></span></span></span></span></span>。distributed 计时使用所有 ranks 中最慢的 elapsed time：</p>
+<p><span class="katex-display"><span class="katex"><span class="katex-mathml"><math><semantics><mrow><msup><mrow><mi mathvariant="normal">E</mi><mi mathvariant="normal">l</mi><mi mathvariant="normal">a</mi><mi mathvariant="normal">p</mi><mi mathvariant="normal">s</mi><mi mathvariant="normal">e</mi><mi mathvariant="normal">d</mi><mi mathvariant="normal">T</mi><mi mathvariant="normal">i</mi><mi mathvariant="normal">m</mi><mi mathvariant="normal">e</mi></mrow><mrow><mo stretchy="false">(</mo><mi>w</mi><mi>d</mi><mo stretchy="false">)</mo></mrow></msup><mo>=</mo><munder><mo><mi>max</mi><mo>⁡</mo></mo><mrow><mi>r</mi><mi>a</mi><mi>n</mi><mi>k</mi><mo>∈</mo><mo stretchy="false">[</mo><mn>0</mn><mo separator="true">,</mo><mi>c</mi><mi>p</mi><mi mathvariant="normal">_</mi><mi>s</mi><mi>i</mi><mi>z</mi><mi>e</mi><mo stretchy="false">)</mo></mrow></munder><msubsup><mrow><mi mathvariant="normal">E</mi><mi mathvariant="normal">l</mi><mi mathvariant="normal">a</mi><mi mathvariant="normal">p</mi><mi mathvariant="normal">s</mi><mi mathvariant="normal">e</mi><mi mathvariant="normal">d</mi><mi mathvariant="normal">T</mi><mi mathvariant="normal">i</mi><mi mathvariant="normal">m</mi><mi mathvariant="normal">e</mi></mrow><mrow><mi>r</mi><mi>a</mi><mi>n</mi><mi>k</mi></mrow><mrow><mo stretchy="false">(</mo><mi>w</mi><mi>d</mi><mo stretchy="false">)</mo></mrow></msubsup></mrow><annotation encoding="application/x-tex">\mathrm{ElapsedTime}^{(wd)}=\max_{rank\in[0,cp\_size)}\mathrm{ElapsedTime}_{rank}^{(wd)}
+</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:1.16678em;vertical-align:-0.19444em;"></span><span class="mord"><span class="mord"><span class="mord mathrm">E</span><span class="mord mathrm">l</span><span class="mord mathrm">a</span><span class="mord mathrm">p</span><span class="mord mathrm">s</span><span class="mord mathrm">e</span><span class="mord mathrm">d</span><span class="mord mathrm">T</span><span class="mord mathrm">i</span><span class="mord mathrm">m</span><span class="mord mathrm">e</span></span><span class="msupsub"><span class="vlist-t"><span class="vlist-r"><span class="vlist" style="height:0.97234em;"><span style="top:-3.14734em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mtight"><span class="mopen mtight">(</span><span class="mord mathdefault mtight" style="margin-right:0.02691em;">w</span><span class="mord mathdefault mtight">d</span><span class="mclose mtight">)</span></span></span></span></span></span></span></span></span><span class="mspace" style="margin-right:0.2777777777777778em;"></span><span class="mrel">=</span><span class="mspace" style="margin-right:0.2777777777777778em;"></span></span><span class="base"><span class="strut" style="height:2.0528em;vertical-align:-1.008em;"></span><span class="mop op-limits"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height:0.43055999999999983em;"><span style="top:-2.0090000000000003em;margin-left:0em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mtight"><span class="mord mathdefault mtight" style="margin-right:0.02778em;">r</span><span class="mord mathdefault mtight">a</span><span class="mord mathdefault mtight">n</span><span class="mord mathdefault mtight" style="margin-right:0.03148em;">k</span><span class="mrel mtight">∈</span><span class="mopen mtight">[</span><span class="mord mtight">0</span><span class="mpunct mtight">,</span><span class="mord mathdefault mtight">c</span><span class="mord mathdefault mtight">p</span><span class="mord mtight" style="margin-right:0.02778em;">_</span><span class="mord mathdefault mtight">s</span><span class="mord mathdefault mtight">i</span><span class="mord mathdefault mtight" style="margin-right:0.04398em;">z</span><span class="mord mathdefault mtight">e</span><span class="mclose mtight">)</span></span></span></span><span style="top:-2.7em;"><span class="pstrut" style="height:2.7em;"></span><span><span class="mop">max</span></span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height:1.008em;"><span></span></span></span></span></span><span class="mspace" style="margin-right:0.16666666666666666em;"></span><span class="mord"><span class="mord"><span class="mord mathrm">E</span><span class="mord mathrm">l</span><span class="mord mathrm">a</span><span class="mord mathrm">p</span><span class="mord mathrm">s</span><span class="mord mathrm">e</span><span class="mord mathrm">d</span><span class="mord mathrm">T</span><span class="mord mathrm">i</span><span class="mord mathrm">m</span><span class="mord mathrm">e</span></span><span class="msupsub"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height:1.0448em;"><span style="top:-2.398692em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mtight"><span class="mord mathdefault mtight" style="margin-right:0.02778em;">r</span><span class="mord mathdefault mtight">a</span><span class="mord mathdefault mtight">n</span><span class="mord mathdefault mtight" style="margin-right:0.03148em;">k</span></span></span></span><span style="top:-3.2197999999999998em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mtight"><span class="mopen mtight">(</span><span class="mord mathdefault mtight" style="margin-right:0.02691em;">w</span><span class="mord mathdefault mtight">d</span><span class="mclose mtight">)</span></span></span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height:0.30130799999999996em;"><span></span></span></span></span></span></span></span></span></span></span></p>
+<p>这个定义很重要。分布式训练的步时由最慢 rank 决定，所以 load imbalance 不会被平均吞吐掩盖。</p>
+<p>benchmark 的 varlen 数据分布也值得注意。官方做法是从代表性训练数据中抽取真实长上下文长度分布，先 shuffle dataset，再顺序 pack samples，之后 reshuffle packs。为了避免 varlen mask 退化成接近 pure full/causal，每个 sample length 被限制为总 sequence length 的最多四分之一。例如总长度为 64K 时，单个 sample 不超过 16K。</p>
+<p>distributed-level benchmark 的设置如下：</p>
+<table>
+<thead>
+<tr>
+<th>setting</th>
+<th>value</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>mask patterns</td>
+<td><code>full</code>, <code>causal</code>, <code>varlen full</code>, <code>varlen causal</code></td>
+</tr>
+<tr>
+<td>cp_size</td>
+<td>from <code>8</code> up to <code>64</code></td>
+</tr>
+<tr>
+<td>H100 per-device sequence length</td>
+<td><code>8K</code></td>
+</tr>
+<tr>
+<td>B200 per-device sequence length</td>
+<td><code>16K</code></td>
+</tr>
+<tr>
+<td>total sequence length</td>
+<td>scales linearly with <code>cp_size</code></td>
+</tr>
+<tr>
+<td>Hopper backend</td>
+<td>baselines use <code>FA3</code>; MagiAttention uses <code>FFA</code></td>
+</tr>
+<tr>
+<td>Blackwell backend</td>
+<td>baselines use <code>cuDNN</code>; MagiAttention uses <code>FFA_FA4</code></td>
+</tr>
+</tbody>
+</table>
+<p>legend-name mapping 保持官方表格格式：</p>
+<table>
+<thead>
+<tr>
+<th>legend</th>
+<th>name</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>magi_attn-a2av</td>
+<td><code>MagiAttention</code> with <code>AlltoAll-v</code>-based group collectives</td>
+</tr>
+<tr>
+<td>magi_attn-native</td>
+<td><code>MagiAttention</code> with native group collectives</td>
+</tr>
+<tr>
+<td>ulysses</td>
+<td><code>Ulysses</code></td>
+</tr>
+<tr>
+<td>ring_p2p</td>
+<td><code>Ring P2P</code></td>
+</tr>
+<tr>
+<td>ring_allgather</td>
+<td><code>Ring AllGather</code></td>
+</tr>
+<tr>
+<td>usp</td>
+<td><code>USP</code></td>
+</tr>
+<tr>
+<td>loongtrain</td>
+<td><code>LoongTrain</code></td>
+</tr>
+<tr>
+<td>hybrid_dcp</td>
+<td>Megatron <code>HybridCP</code></td>
+</tr>
+</tbody>
+</table>
+<p>Blackwell 上有一个额外细节：<code>FFA</code> 本体基于 FA3，而 FA3 主要面向 Hopper；因此官方临时提供 <code>FFA_FA4</code> backend，用 forked FlashAttention-4 的 HSTU Function representation 支持 Blackwell。benchmark 里也说明，FA4 在稳定 <code>2.8.3</code> 上对 varlen backward 的支持还不够稳，所以 Blackwell baseline 采用 cuDNN，Megatron <code>HybridCP</code> 因依赖 FA3 而不进入 Blackwell 对照。</p>
+<h2 id="实验结果"><a class="markdownIt-Anchor" href="#实验结果"></a> 实验结果</h2>
+<p>主博客里展示了最有代表性的 varlen causal mask 分布式结果，因为这类 mask 最接近真实长上下文训练中的难点：既有 causal 方向性，又有变长 pack 造成的碎片化和负载不均。</p>
+<p><img  
+                     lazyload
+                     src="/images/loading.svg"
+                     data-src="/image/ai-notes/images/paper-deep-dives/foundations/magiattention/figure-10-h100-forward.png"
+                      alt="H100 forward 原图" 
+                ></p>
+<p><small>图源：<code>MagiAttention</code> 官方博客，H100 varlen causal forward benchmark 原图。原图比较 MagiAttention 与 Ulysses、Ring、USP、LoongTrain、HybridCP 等 CP strategies 在不同 CP size 下的 distributed-level throughput。本站读法：先看 CP size 增大时每 GPU 吞吐是否还能保持。</small></p>
+<p><img  
+                     lazyload
+                     src="/images/loading.svg"
+                     data-src="/image/ai-notes/images/paper-deep-dives/foundations/magiattention/figure-11-h100-backward.png"
+                      alt="H100 backward 原图" 
+                ></p>
+<p><small>图源：<code>MagiAttention</code> 官方博客，H100 varlen causal backward benchmark 原图。原图展示 backward 中 dKV reduce 和通信重叠对扩展性的影响。本站读法：backward 曲线更容易暴露通信和梯度聚合是否挡住扩展。</small></p>
+<p><img  
+                     lazyload
+                     src="/images/loading.svg"
+                     data-src="/image/ai-notes/images/paper-deep-dives/foundations/magiattention/figure-12-b200-forward.png"
+                      alt="B200 forward 原图" 
+                ></p>
+<p><small>图源：<code>MagiAttention</code> 官方博客，B200 varlen causal forward benchmark 原图。B200 结果使用临时 <code>FFA_FA4</code> backend，对照组使用 Blackwell 上可用的 attention backend。本站读法：这张图主要核对同一系统设计换到 Blackwell 后是否还保留扩展趋势。</small></p>
+<p><img  
+                     lazyload
+                     src="/images/loading.svg"
+                     data-src="/image/ai-notes/images/paper-deep-dives/foundations/magiattention/figure-13-b200-backward.png"
+                      alt="B200 backward 原图" 
+                ></p>
+<p><small>图源：<code>MagiAttention</code> 官方博客，B200 varlen causal backward benchmark 原图。原图用于验证 Blackwell 上 MagiAttention 分布式 attention 的 backward scalability。本站读法：如果 backward 掉速明显，说明 group collectives 或 overlap 仍可能是系统瓶颈。</small></p>
+<p><strong>Benchmark 图看 CP size 增大后的斜率。</strong><br />
+这组四张图按硬件和方向读：H100 forward/backward、B200 forward/backward。横轴是 CP size 或总上下文扩展，纵轴是每 GPU 吞吐；最该看的不是单点最高值，而是 CP size 增大后曲线掉得快不快。forward 主要看远端 KV 获取和 FFA 计算，backward 还要看 dKV reduce，因此 backward 曲线更能暴露通信重叠是否有效。</p>
+<p>这些图的读法不要只看最高点，而要看曲线随 <code>cp_size</code> 增大是否保持斜率。对超长上下文训练来说，CP size 增大通常意味着总 sequence length 也增大。如果 throughput per GPU 很快掉下去，说明通信、负载不均或 kernel fragmentation 已经吃掉了并行收益。MagiAttention 的结果想证明的是：在 varlen causal 这种更接近真实训练的 mask 下，AttnSlice + dispatch + group collectives + overlap 能让分布式 attention 更接近线性扩展。</p>
+<p><code>magi_attn-native</code> 和 <code>magi_attn-a2av</code> 的差别也很有信息量。前者说明 AlltoAll-v 虽然能表达 zero-redundant group communication，但额外 gather/scatter 和 D2D copy 仍会成为 overhead；native group collectives 能进一步把设计收益释放出来。换句话说，MagiAttention 的系统贡献不止是“少传数据”，还包括把少传数据这件事变成可用的高效通信 primitive。</p>
+<h2 id="和其他高效训练路线的关系"><a class="markdownIt-Anchor" href="#和其他高效训练路线的关系"></a> 和其他高效训练路线的关系</h2>
+<p>MagiAttention、<a href="/2026/05/11/ai-files-paper-deep-dives-foundations-sla-sparse-linear-attention/">SLA / SLA2</a> 和 <a href="/2026/05/11/ai-files-paper-deep-dives-foundations-attn-qat/">Attn-QAT</a> 都在减少 attention 成本，但它们切的层级不同。</p>
+<table>
+<thead>
+<tr>
+<th>Method</th>
+<th>Main target</th>
+<th>What changes</th>
+<th>Best mental model</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>MagiAttention</td>
+<td>Distributed long-context training</td>
+<td>CP dispatch, flexible mask kernel, KV/dKV communication, overlap schedule</td>
+<td>让真实异构 mask 的长上下文训练可扩展</td>
+</tr>
+<tr>
+<td>SLA / SLA2</td>
+<td>Video DiT attention compute</td>
+<td>Sparse exact branch, linear compensation, learnable routing, QAT</td>
+<td>减少单层 attention 需要精确计算的 blocks</td>
+</tr>
+<tr>
+<td>Attn-QAT</td>
+<td>Low-bit attention</td>
+<td>FP4 fake quant forward/backward and inference kernel alignment</td>
+<td>让 fused attention 进入 4-bit 训练和推理</td>
+</tr>
+<tr>
+<td>Muon</td>
+<td>Optimizer efficiency</td>
+<td>Matrix-level orthogonalized momentum and distributed optimizer</td>
+<td>提升大模型预训练的 token/FLOP efficiency</td>
+</tr>
+</tbody>
+</table>
+<p>如果要组合这些方向，MagiAttention 更像底层分布式 substrate。SLA/SLA2 可以减少每个 rank 实际要算的 attention blocks，Attn-QAT 可以降低 attention GEMM 的精度和带宽压力，MagiAttention 则负责在超长上下文和异构 mask 下把这些计算合理分发、通信和重叠。真正困难的地方是三者的 metadata 要对齐：sparse block map、low-bit activation、AttnSlice、dispatch plan、KV ownership 和 backward dKV reduce 都会互相影响。</p>
+<h2 id="局限"><a class="markdownIt-Anchor" href="#局限"></a> 局限</h2>
+<p>第一，官方页面目前主要是技术博客和 benchmark，而不是完整论文正文。它展示了系统设计和 attention benchmark，但不是 Magi-1 端到端训练质量报告。因此不能把这些吞吐图直接读成模型质量提升。</p>
+<p>第二，static attn solver 的假设比较强：global mask 在预处理阶段已知，并且 forward/backward 与各层之间保持稳定。对 layer-varying hybrid attention 或 runtime dynamic sparse masks，官方提到 dynamic solver 仍属于 WIP/experimental 方向。</p>
+<p>第三，<code>overlap_degree</code> 仍需要调参。只要网络拓扑、GPU 型号、CP size 或 mask 分布改变，最优 overlap stage 可能变化。自动调参要准确估计 compute/communication ratio，不是简单枚举就稳定。</p>
+<p>第四，Blackwell 支持还处在过渡阶段。<code>FFA_FA4</code> 让 MagiAttention 可以在 B200 上跑，但官方也把 native FFA on Blackwell、B300/A100 等更多 benchmark 和 distributed-native FFA kernel 列为未来工作。</p>
+<h2 id="阅读结论"><a class="markdownIt-Anchor" href="#阅读结论"></a> 阅读结论</h2>
+<p>MagiAttention 最值得记住的一点是：<strong>超长上下文训练的瓶颈不是单个 attention 公式，而是 mask、数据分布、rank 映射、kernel 表达和通信调度共同形成的系统问题。</strong> 当上下文长度进入百万级，真实训练里的 irregular mask 会让“平均分 token”这类直觉失效；高效训练需要把有效计算面积、数据移动和 step-time straggler 一起纳入设计。</p>
+<p>方法上，MagiAttention 把长上下文 attention 拆成 AttnSlice，再用 dispatch solver 解决负载均衡，用 GroupCast/GroupReduce 消除无关 KV/dKV 传输，最后用 overlap solver 避免通信重新变成步时瓶颈。实验上，H100/B200 forward/backward 图要按硬件、mask pattern 和 sequence shape 分开读；诊断上，Ring Attention load-balance 与 group collectives 图说明瓶颈常在调度和通信，不在 attention 公式本身。</p>
+<h2 id="外部精读"><a class="markdownIt-Anchor" href="#外部精读"></a> 外部精读</h2>
+<ol>
+<li>官方技术博客：<a class="link"   target="_blank" rel="noopener" href="https://sandai-org.github.io/MagiAttention/docs/main/blog/magi_attn.html" >MagiAttention<i class="fa-solid fa-arrow-up-right ml-[0.2em] font-light align-text-top text-[0.7em] link-icon"></i></a>.</li>
+<li>官方 benchmark：<a class="link"   target="_blank" rel="noopener" href="https://sandai-org.github.io/MagiAttention/docs/main/blog/cp_benchmark.html" >Long-Context Attention Benchmark<i class="fa-solid fa-arrow-up-right ml-[0.2em] font-light align-text-top text-[0.7em] link-icon"></i></a>.</li>
+<li>代码仓库：<a class="link"   target="_blank" rel="noopener" href="https://github.com/SandAI-org/MagiAttention" >SandAI-org/MagiAttention<i class="fa-solid fa-arrow-up-right ml-[0.2em] font-light align-text-top text-[0.7em] link-icon"></i></a>.</li>
+<li>相关模型：<a class="link"   target="_blank" rel="noopener" href="https://github.com/SandAI-org/MAGI-1" >SandAI-org/MAGI-1<i class="fa-solid fa-arrow-up-right ml-[0.2em] font-light align-text-top text-[0.7em] link-icon"></i></a>.</li>
+</ol>
+
+		</div>
+
+		
+		<div class="post-copyright-info w-full my-8 px-2 sm:px-6 md:px-8">
+			<div class="article-copyright-info-container">
+    <ul>
+        <li><strong>Title:</strong> 论文专题讲解：MagiAttention：超长上下文分布式 Attention</li>
+        <li><strong>Author:</strong> Charles</li>
+        <li><strong>Created at
+                :</strong> 2025-09-25 09:00:00</li>
+        
+            <li>
+                <strong>Updated at
+                    :</strong> 2025-09-25 09:00:00
+            </li>
+        
+        <li>
+            <strong>Link:</strong> https://charles2530.github.io/2025/09/25/ai-files-paper-deep-dives-foundations-magiattention/
+        </li>
+        <li>
+            <strong>
+                License:
+            </strong>
+            
+
+            
+                This work is licensed under <a class="license" target="_blank" rel="noopener" href="https://creativecommons.org/licenses/by-nc-sa/4.0">CC BY-NC-SA 4.0</a>.
+            
+        </li>
+    </ul>
+</div>
+
+		</div>
+		
+
+		
+		<ul class="post-tags-box text-lg mt-1.5 flex-wrap justify-center flex md:hidden">
+			
+			<li class="tag-item mx-0.5">
+				<a href="/tags/AI/">#AI</a>&nbsp;
+			</li>
+			
+			<li class="tag-item mx-0.5">
+				<a href="/tags/%E5%9F%BA%E7%A1%80%E7%9F%A5%E8%AF%86/">#基础知识</a>&nbsp;
+			</li>
+			
+			<li class="tag-item mx-0.5">
+				<a href="/tags/%E8%AE%BA%E6%96%87%E4%B8%93%E9%A2%98/">#论文专题</a>&nbsp;
+			</li>
+			
+		</ul>
+		
+
+		
+
+		
+		<div class="article-nav my-8 flex justify-between items-center px-2 sm:px-6 md:px-8">
+			
+			<div class="article-prev border-border-color shadow-redefine-flat shadow-shadow-color-2 rounded-medium px-4 py-2 hover:shadow-redefine-flat-hover hover:shadow-shadow-color-2">
+				<a class="prev" rel="prev" href="/2025/09/26/ai-files-paper-deep-dives-foundations-megatron-lm/">
+					<span class="left arrow-icon flex justify-center items-center">
+						<i class="fa-solid fa-chevron-left"></i>
+					</span>
+					<span class="title flex justify-center items-center">
+						<span class="post-nav-title-item truncate max-w-48">论文专题讲解：Megatron-LM：Tensor Model Parallel 的大模型训练栈</span>
+						<span class="post-nav-item">Prev posts</span>
+					</span>
+				</a>
+			</div>
+			
+			
+			<div class="article-next border-border-color shadow-redefine-flat shadow-shadow-color-2 rounded-medium px-4 py-2 hover:shadow-redefine-flat-hover hover:shadow-shadow-color-2">
+				<a class="next" rel="next" href="/2025/09/23/ai-files-paper-deep-dives-foundations-attn-qat/">
+					<span class="title flex justify-center items-center">
+						<span class="post-nav-title-item truncate max-w-48">论文专题讲解：Attn-QAT：4-bit Attention 量化感知训练</span>
+						<span class="post-nav-item">Next posts</span>
+					</span>
+					<span class="right arrow-icon flex justify-center items-center">
+						<i class="fa-solid fa-chevron-right"></i>
+					</span>
+				</a>
+			</div>
+			
+		</div>
+		
+
+
+		
+		<div class="comment-container px-2 sm:px-6 md:px-8 pb-8">
+			<div class="comments-container mt-10 w-full ">
+    <div id="comment-anchor" class="w-full h-2.5"></div>
+    <div class="comment-area-title w-full my-1.5 md:my-2.5 text-xl md:text-3xl font-bold">
+        Comments
+    </div>
+    
+
+        
+            
+    <div id="gitalk-container"></div>
+    <script data-swup-reload-script
+            src="https://cdnjs.cloudflare.com/ajax/libs/gitalk/1.8.0/gitalk.min.js"></script>
+    <script data-swup-reload-script>
+        (function() {
+            const startPath = location.pathname;
+            const startTime = Date.now();
+            const retryDelay = 200;
+            const retryLimit = 5000;
+
+            const runGitalk = () => {
+                if (location.pathname !== startPath) {
+                    return;
+                }
+
+                const container = document.getElementById('gitalk-container');
+                if (!container || typeof Gitalk === 'undefined') {
+                    if (Date.now() - startTime < retryLimit) {
+                        setTimeout(runGitalk, retryDelay);
+                    }
+                    return;
+                }
+
+                container.innerHTML = '';
+
+                let pageKey = decodeURI(location.pathname);
+                const maxLength = 50;
+                if (pageKey.length > maxLength) {
+                    pageKey = pageKey.substring(0, maxLength - 3) + '...';
+                }
+
+                try {
+                    new Gitalk({
+                        clientID: '8083299a8ee2aaf23879',
+                        clientSecret: 'a8161e81d4872181e884fdb69f7be24916b6a9d0',
+                        repo: 'Charles2530.github.io',
+                        owner: 'Charles2530',
+                        admin: ['Charles2530'],
+                        id: pageKey,
+                        language: 'en',
+                        proxy: 'https://github.com/login/oauth/access_token'
+                    }).render(container);
+                } catch (e) {
+                    window.Gitalk = null;
+                }
+            };
+
+            runGitalk();
+        })();
+    </script>
+
+
+
+        
+    
+</div>
+
+		</div>
+		
+	</div>
+
+	
+	<div class="toc-content-container">
+		<div class="post-toc-wrap">
+	<div class="post-toc">
+		<div class="toc-title">On this page</div>
+		<div class="page-title">论文专题讲解：MagiAttention：超长上下文分布式 Attention</div>
+		<ol class="nav"><li class="nav-item nav-level-2"><a class="nav-link" href="#%E5%8E%9F%E6%96%87%E6%95%85%E4%BA%8B%E7%BA%BF"><span class="nav-text"> 原文故事线</span></a><ol class="nav-child"><li class="nav-item nav-level-3"><a class="nav-link" href="#%E7%A0%94%E7%A9%B6%E8%83%8C%E6%99%AF"><span class="nav-text"> 研究背景</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#%E9%97%AE%E9%A2%98challenge"><span class="nav-text"> 问题（Challenge）</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#finding"><span class="nav-text"> Finding</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#%E6%96%B9%E6%B3%95"><span class="nav-text"> 方法</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#%E7%BB%93%E8%AE%BA"><span class="nav-text"> 结论</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#%E5%85%B3%E9%94%AE%E6%9C%AF%E8%AF%AD"><span class="nav-text"> 关键术语</span></a></li></ol></li><li class="nav-item nav-level-2"><a class="nav-link" href="#%E5%AE%83%E7%9A%84%E6%95%88%E7%8E%87%E8%B4%A1%E7%8C%AE%E6%98%AF%E4%BB%80%E4%B9%88"><span class="nav-text"> 它的效率贡献是什么</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#%E8%AF%81%E6%8D%AE%E7%AD%89%E7%BA%A7%E4%B8%8E%E5%A4%96%E6%8E%A8%E8%BE%B9%E7%95%8C"><span class="nav-text"> 证据等级与外推边界</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#%E7%B3%BB%E7%BB%9F%E4%BD%8D%E7%BD%AE"><span class="nav-text"> 系统位置</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#%E6%A0%B8%E5%BF%83%E9%97%AE%E9%A2%98"><span class="nav-text"> 核心问题</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#%E6%96%B9%E6%B3%95%E6%80%BB%E8%A7%88"><span class="nav-text"> 方法总览</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#flex-flash-attention-%E4%B8%8E-attnslice"><span class="nav-text"> Flex-Flash-Attention 与 AttnSlice</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#dispatch-solver"><span class="nav-text"> Dispatch Solver</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#%E9%80%9A%E4%BF%A1%E4%B8%8E%E9%87%8D%E5%8F%A0"><span class="nav-text"> 通信与重叠</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#%E8%AE%AD%E7%BB%83%E5%92%8C-benchmark-%E8%AE%BE%E7%BD%AE"><span class="nav-text"> 训练和 Benchmark 设置</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#%E5%AE%9E%E9%AA%8C%E7%BB%93%E6%9E%9C"><span class="nav-text"> 实验结果</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#%E5%92%8C%E5%85%B6%E4%BB%96%E9%AB%98%E6%95%88%E8%AE%AD%E7%BB%83%E8%B7%AF%E7%BA%BF%E7%9A%84%E5%85%B3%E7%B3%BB"><span class="nav-text"> 和其他高效训练路线的关系</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#%E5%B1%80%E9%99%90"><span class="nav-text"> 局限</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#%E9%98%85%E8%AF%BB%E7%BB%93%E8%AE%BA"><span class="nav-text"> 阅读结论</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#%E5%A4%96%E9%83%A8%E7%B2%BE%E8%AF%BB"><span class="nav-text"> 外部精读</span></a></li></ol>
+
+	</div>
+</div>
+	</div>
+	
+</div>
+
+			</div>
+
+			
+		</div>
+
+		<div class="main-content-footer">
+			<footer class="footer mt-5 py-5 h-auto text-base text-third-text-color relative border-t-2 border-t-border-color">
+    <div class="info-container py-3 text-center">
+        
+        <div class="text-center">
+            &copy;
+            
+              <span>2022</span>
+              -
+            
+            2026&nbsp;&nbsp;<i class="fa-solid fa-heart fa-beat" style="--fa-animation-duration: 0.5s; color: #f54545"></i>&nbsp;&nbsp;<a href="/">Charles</a>
+            
+                
+                <p class="post-count space-x-0.5">
+                    <span>
+                        601 posts in total
+                    </span>
+                    
+                        <span>
+                            2422.2k words in total
+                        </span>
+                    
+                </p>
+            
+        </div>
+        
+            <script data-swup-reload-script src="https://cn.vercount.one/js"></script>
+            <div class="relative text-center lg:absolute lg:right-[20px] lg:top-1/2 lg:-translate-y-1/2 lg:text-right">
+                
+                    <span id="busuanzi_container_site_uv" class="lg:!block">
+                        <span class="text-sm">VISITOR COUNT</span>
+                        <span id="busuanzi_value_site_uv"></span>
+                    </span>
+                
+                
+                    <span id="busuanzi_container_site_pv" class="lg:!block">
+                        <span class="text-sm">TOTAL PAGE VIEWS</span>
+                        <span id="busuanzi_value_site_pv"></span>
+                    </span>
+                
+            </div>
+        
+        <div class="relative text-center lg:absolute lg:left-[20px] lg:top-1/2 lg:-translate-y-1/2 lg:text-left">
+            <span class="lg:block text-sm">POWERED BY <?xml version="1.0" encoding="utf-8"?><!DOCTYPE svg PUBLIC "-//W3C//DTD SVG 1.1//EN" "http://www.w3.org/Graphics/SVG/1.1/DTD/svg11.dtd"><svg class="relative top-[2px] inline-block align-baseline" version="1.1" id="圖層_1" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" x="0px" y="0px" width="1rem" height="1rem" viewBox="0 0 512 512" enable-background="new 0 0 512 512" xml:space="preserve"><path fill="#0E83CD" d="M256.4,25.8l-200,115.5L56,371.5l199.6,114.7l200-115.5l0.4-230.2L256.4,25.8z M349,354.6l-18.4,10.7l-18.6-11V275H200v79.6l-18.4,10.7l-18.6-11v-197l18.5-10.6l18.5,10.8V237h112v-79.6l18.5-10.6l18.5,10.8V354.6z"/></svg><a target="_blank" class="text-base" href="https://hexo.io">Hexo</a></span>
+            <span class="text-sm lg:block">THEME&nbsp;<a class="text-base" target="_blank" href="https://github.com/EvanNotFound/hexo-theme-redefine">Redefine v2.9.0</a></span>
+        </div>
+        
+        
+            <div>
+                Blog up for <span class="odometer" id="runtime_days" ></span> days <span class="odometer" id="runtime_hours"></span> hrs <span class="odometer" id="runtime_minutes"></span> Min <span class="odometer" id="runtime_seconds"></span> Sec
+            </div>
+        
+        
+            <script data-swup-reload-script>
+                try {
+                    function odometer_init() {
+                    const elements = document.querySelectorAll('.odometer');
+                    elements.forEach(el => {
+                        new Odometer({
+                            el,
+                            format: '( ddd).dd',
+                            duration: 200
+                        });
+                    });
+                    }
+                    odometer_init();
+                } catch (error) {}
+            </script>
+        
+        
+            
+                
+        
+                
+        
+                
+
+                    
+                        <script data-swup-reload-script type="text/javascript" src="/js/love.js"></script>
+                    
+        
+        
+    </div>  
+</footer>
+		</div>
+	</div>
+
+	
+	<div class="post-tools">
+		<div class="post-tools-container">
+	<ul class="article-tools-list">
+		<!-- TOC aside toggle -->
+		
+		<li class="right-bottom-tools page-aside-toggle">
+			<i class="fa-regular fa-outdent"></i>
+		</li>
+		
+
+		<!-- go comment -->
+		
+		<li class="go-comment">
+			<i class="fa-regular fa-comments"></i>
+		</li>
+		
+	</ul>
+</div>
+	</div>
+	
+
+	<div class="right-side-tools-container">
+		<div class="side-tools-container">
+	<ul class="hidden-tools-list">
+		<li class="right-bottom-tools tool-font-adjust-plus flex justify-center items-center">
+			<i class="fa-regular fa-magnifying-glass-plus"></i>
+		</li>
+
+		<li class="right-bottom-tools tool-font-adjust-minus flex justify-center items-center">
+			<i class="fa-regular fa-magnifying-glass-minus"></i>
+		</li>
+
+		<li class="right-bottom-tools tool-dark-light-toggle flex justify-center items-center">
+			<i class="fa-regular fa-moon"></i>
+		</li>
+
+		<!-- rss -->
+		
+		<li class="right-bottom-tools rss flex justify-center items-center">
+			<a class="flex justify-center items-center" href="/atom.xml" target="_blank">
+				<i class="fa-regular fa-rss"></i>
+			</a>
+		</li>
+		
+
+		
+
+		<li class="right-bottom-tools tool-scroll-to-bottom flex justify-center items-center">
+			<i class="fa-regular fa-arrow-down"></i>
+		</li>
+	</ul>
+
+	<ul class="visible-tools-list">
+		<li class="right-bottom-tools toggle-tools-list flex justify-center items-center">
+			<i class="fa-regular fa-cog fa-spin"></i>
+		</li>
+		
+		<li class="right-bottom-tools tool-scroll-to-top flex justify-center items-center">
+			<i class="arrow-up fas fa-arrow-up"></i>
+			<span class="percent"></span>
+		</li>
+		
+		
+	</ul>
+</div>
+	</div>
+
+	<div class="image-viewer-container" role="dialog" aria-modal="true" aria-label="Image viewer">
+	<button class="image-viewer-close" type="button" aria-label="Close">
+		<i class="fa-solid fa-xmark"></i>
+	</button>
+	<button class="image-viewer-prev" type="button" aria-label="Prev">
+		<i class="fa-solid fa-chevron-left"></i>
+	</button>
+	<div class="image-viewer-frame">
+		<img src="" alt="">
+	</div>
+	<div class="image-viewer-exif-panel hidden absolute left-1/2 bottom-20 -translate-x-1/2 w-[min(92vw,420px)] max-h-[60vh] overflow-hidden rounded-2xl bg-background-color-transparent-80 p-4 text-left shadow-redefine-flat backdrop-blur-md" role="dialog" aria-label="EXIF" aria-hidden="true">
+		<div class="flex items-center justify-between mb-3">
+			<span class="text-sm font-semibold text-first-text-color">EXIF</span>
+			<button class="image-viewer-exif-close flex h-8 w-8 items-center justify-center rounded-full bg-background-color-transparent-80 text-first-text-color transition hover:bg-background-color-transparent-40" type="button" aria-label="Close">
+				<i class="fa-solid fa-xmark text-[0.65rem]"></i>
+			</button>
+		</div>
+		<div class="image-viewer-exif-cards grid grid-cols-1 sm:grid-cols-2 gap-3 max-h-[50vh] overflow-y-auto pr-1 scrollbar-hide"></div>
+		<template class="image-viewer-exif-card-template">
+			<div class="rounded-lg bg-background-color-transparent-40 px-3 py-2">
+				<div class="image-viewer-exif-card-header flex items-center gap-2 mb-1">
+					<i class="image-viewer-exif-card-icon fa-solid fa-circle-info text-xs text-third-text-color"></i>
+					<div class="image-viewer-exif-card-title text-xs font-semibold text-first-text-color"></div>
+				</div>
+				<div class="image-viewer-exif-card-items flex flex-col gap-1"></div>
+			</div>
+		</template>
+	</div>
+	<button class="image-viewer-exif-toggle flex items-center gap-2 hidden absolute left-1/2 bottom-6 -translate-x-1/2 rounded-full border border-border-color bg-background-color-transparent-80 px-4 py-2 text-first-text-color backdrop-blur-md transition hover:bg-background-color-transparent-40" type="button" aria-label="EXIF" aria-expanded="false">
+		<i class="fa-solid fa-circle-info text-xs"></i>
+		<span class="text-xs font-semibold uppercase tracking-wider">EXIF</span>
+	</button>
+	<button class="image-viewer-next" type="button" aria-label="Next">
+		<i class="fa-solid fa-chevron-right"></i>
+	</button>
+</div>
+
+
+	
+	<div class="search-pop-overlay">
+	<div class="popup search-popup">
+		<div class="search-header">
+			<span class="search-input-field-pre">
+				<i class="fa-solid fa-keyboard"></i>
+			</span>
+			<div class="search-input-container">
+				<input autocomplete="off" autocorrect="off" autocapitalize="off" placeholder="Search..." spellcheck="false" type="search" class="search-input">
+			</div>
+			<span class="popup-btn-close">
+				<i class="fa-solid fa-times"></i>
+			</span>
+		</div>
+		<div id="search-result">
+			<div id="no-result">
+				<i class="fa-solid fa-spinner fa-spin-pulse fa-5x fa-fw"></i>
+			</div>
+		</div>
+	</div>
+</div>
+	
+
+</main>
+
+
+
+<script src="/js/build/libs/Swup.min.js"></script>
+
+<script src="/js/build/libs/SwupSlideTheme.min.js"></script>
+
+<script src="/js/build/libs/SwupScriptsPlugin.min.js"></script>
+
+<script src="/js/build/libs/SwupProgressPlugin.min.js"></script>
+
+<script src="/js/build/libs/SwupScrollPlugin.min.js"></script>
+
+<script src="/js/build/libs/SwupPreloadPlugin.min.js"></script>
+
+<script>
+    window.swup = new Swup({
+        plugins: [
+            new SwupScriptsPlugin({
+                optin: true,
+            }),
+            new SwupProgressPlugin(),
+            new SwupScrollPlugin({
+                offset: 80,
+            }),
+            new SwupSlideTheme({
+                mainElement: ".main-content-body",
+            }),
+            new SwupPreloadPlugin(),
+        ],
+        containers: ["#swup"],
+    });
+
+    window.dispatchEvent(
+        new CustomEvent("redefine:swup:ready", {
+            detail: {
+                swup: window.swup,
+            },
+        }),
+    );
+</script>
+
+
+
+
+	
+<script src="/js/build/main.js" type="module"></script>
+
+
+
+    
+<script src="/js/build/libs/odometer.min.js"></script>
+
+    
+<link rel="stylesheet" href="/assets/odometer-theme-minimal.css">
+
+
+
+
+
+
+
+  
+<script src="/js/build/libs/Typed.min.js"></script>
+<script src="/js/build/libs/minimasonry.min.js" data-swup-reload-script=""></script>
+
+
+
+
+<script src="/js/build/libs/moment-with-locales.min.js" data-swup-reload-script=""></script>
+
+
+
+	
+</body>
+
+</html>

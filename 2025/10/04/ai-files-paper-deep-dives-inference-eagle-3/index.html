@@ -1,0 +1,1623 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="keywords" content="Charles">
+    
+    
+    <meta name="author" content="Charles">
+    
+    <!-- Completely eliminate flash of wrong theme -->
+    <script>
+        (function() {
+            const THEME_KEY = "REDEFINE-THEME-STATUS";
+            const DARK = "dark", LIGHT = "light";
+            
+            // Get preferred theme
+            function getTheme() {
+                try {
+                    const saved = localStorage.getItem(THEME_KEY);
+                    if (saved) {
+                        const { isDark } = JSON.parse(saved);
+                        return isDark ? DARK : LIGHT;
+                    }
+                } catch (e) {}
+                
+                return matchMedia("(prefers-color-scheme: dark)").matches ? DARK : LIGHT;
+            }
+            
+            // Apply theme to document
+            function applyTheme(theme) {
+                const isDark = theme === DARK;
+                const root = document.documentElement;
+                
+                // Set classes for compatibility
+                root.classList.add(theme);
+                root.classList.remove(isDark ? LIGHT : DARK);
+                root.style.colorScheme = theme;
+            }
+            
+            // Initial application
+            const theme = getTheme();
+            applyTheme(theme);
+            
+            // Listen for system preference changes
+            matchMedia("(prefers-color-scheme: dark)").addEventListener("change", ({ matches }) => {
+                // Only update if using system preference (no localStorage entry)
+                if (!localStorage.getItem(THEME_KEY)) {
+                    applyTheme(matches ? DARK : LIGHT);
+                }
+            });
+            
+            // Set body classes ASAP (before DOMContentLoaded)
+            (function() {
+                const addBodyClass = () => {
+                    const b = document.body;
+                    if (!b) return false;
+                    b.classList.add(theme + "-mode");
+                    return true;
+                };
+
+                // Try immediately
+                if (addBodyClass()) return;
+
+                // Observe until body exists
+                const mo = new MutationObserver(() => {
+                    if (addBodyClass()) mo.disconnect();
+                });
+                mo.observe(document.documentElement, { childList: true, subtree: true });
+            })();
+        })();
+    </script>
+    
+    <!-- preconnect -->
+<!--- Seo Part-->
+    
+    <link rel="canonical" href="https://charles2530.github.io/2025/10/04/ai-files-paper-deep-dives-inference-eagle-3/"/>
+    <meta name="robots" content="index,follow">
+    <meta name="googlebot" content="index,follow">
+    <meta name="revisit-after" content="1 days">
+    
+    
+        
+        <meta name="description" content="This is Charles&#39;s Castle.">
+<meta property="og:type" content="article">
+<meta property="og:title" content="论文专题讲解：EAGLE-3：为什么 draft model 要在训练时“见过自己犯错”">
+<meta property="og:url" content="https://charles2530.github.io/2025/10/04/ai-files-paper-deep-dives-inference-eagle-3/index.html">
+<meta property="og:site_name" content="Charles&#39;s Castle">
+<meta property="og:description" content="This is Charles&#39;s Castle.">
+<meta property="og:locale" content="en_US">
+<meta property="og:image" content="https://charles2530.github.io/image/background/logo.jpg">
+<meta property="article:published_time" content="2025-10-04T01:00:00.000Z">
+<meta property="article:modified_time" content="2025-10-04T01:00:00.000Z">
+<meta property="article:author" content="Du Jinyang">
+<meta property="article:tag" content="AI">
+<meta property="article:tag" content="推理">
+<meta property="article:tag" content="论文专题">
+<meta name="twitter:card" content="summary">
+<meta name="twitter:image" content="https://charles2530.github.io/image/background/logo.jpg">
+    
+    
+    <!--- Icon Part-->
+    <link rel="icon" type="image/png" href="https://charles2530.github.io/image/background/favicon.png" sizes="192x192">
+    <link rel="apple-touch-icon" sizes="180x180" href="https://charles2530.github.io/image/background/favicon.png">
+    <meta name="theme-color" content="#A31F34">
+    <link rel="shortcut icon" href="https://charles2530.github.io/image/background/favicon.png">
+    <!--- Page Info-->
+    
+    <title>
+        
+            论文专题讲解：EAGLE-3：为什么 draft model 要在训练时“见过自己犯错” | Charles&#39;s Castle
+        
+    </title>
+
+    
+<link rel="stylesheet" href="/fonts/Chillax/chillax.css">
+
+
+    <!--- Inject Part-->
+    
+        
+            
+    
+            
+    
+            
+                
+                    <link rel="stylesheet" href="/katex/katex.min.css">
+                
+    
+            
+                
+                    <link rel="stylesheet" href="/css/site-polish-v2.css">
+                
+    
+            
+                
+                    <script data-swup-reload-script>
+(function() {
+  function loadBaiduAnalytics() {
+    if (window.__baiduAnalyticsLoaded) return;
+    window.__baiduAnalyticsLoaded = true;
+    window._hmt = window._hmt || [];
+    var hm = document.createElement("script");
+    hm.async = true;
+    hm.src = "https://hm.baidu.com/hm.js?8e0e5f382d14d87cbeadc33a36e71e86";
+    document.head.appendChild(hm);
+  }
+  if ("requestIdleCallback" in window) {
+    requestIdleCallback(loadBaiduAnalytics, { timeout: 3000 });
+  } else {
+    window.addEventListener("load", function() {
+      setTimeout(loadBaiduAnalytics, 1500);
+    });
+  }
+})();
+</script>
+
+                
+    
+
+    
+<link rel="stylesheet" href="/css/style.css">
+
+
+    
+        
+<link rel="stylesheet" href="/css/build/tailwind.css">
+
+    
+
+    
+<link rel="stylesheet" href="/fonts/GeistMono/geist-mono.css">
+
+    
+<link rel="stylesheet" href="/fonts/Geist/geist.css">
+
+    <!--- Font Part-->
+    
+    
+    
+    
+    
+    
+        
+<script src="/js/build/libs/anime.min.js"></script>
+
+    
+
+    <script id="hexo-configurations">
+    window.config = {"hostname":"charles2530.github.io","root":"/","language":"en","path":"search.xml"};
+    window.theme = {"articles":{"style":{"font_size":"16px","line_height":1.5,"image_border_radius":"14px","image_alignment":"center","image_caption":false,"link_icon":true,"delete_mask":false,"title_alignment":"left","headings_top_spacing":{"h1":"5rem","h2":"4rem","h3":"2.8rem","h4":"2.5rem","h5":"2.2rem","h6":"2rem"}},"word_count":{"enable":true,"count":true,"min2read":true},"author_label":{"enable":true,"auto":true,"list":["lol","Neo","God"]},"code_block":{"copy":true,"style":"mac","highlight_theme":{"light":"github","dark":"vs2015"},"font":{"enable":false,"family":null,"url":null}},"toc":{"enable":true,"max_depth":6,"number":false,"expand":true,"init_open":true},"copyright":{"enable":true,"default":"cc_by_nc_sa"},"lazyload":true,"pangu_js":false,"recommendation":{"enable":false,"title":"recommend_articles","limit":3,"mobile_limit":2,"placeholder":"https://charles2530.github.io/image/background/p3.jfif","skip_dirs":[]}},"colors":{"primary":"#A31F34","secondary":"#1890ff","default_mode":"light"},"global":{"fonts":{"chinese":{"enable":false,"family":null,"url":null},"english":{"enable":false,"family":null,"url":null},"title":{"enable":false,"family":null,"url":null}},"content_max_width":"1000px","sidebar_width":"210px","hover":{"shadow":true,"scale":true},"scroll_progress":{"bar":true,"percentage":true},"website_counter":{"url":"https://cn.vercount.one/js","enable":true,"site_pv":true,"site_uv":true,"post_pv":true},"single_page":true,"preloader":{"enable":true,"custom_message":null},"side_tools":{"gear_rotation":true,"auto_expand":false},"open_graph":{"enable":true,"image":"https://charles2530.github.io/image/background/logo.jpg","description":"This is Charles's Castle."},"google_analytics":{"enable":false,"id":null}},"home_banner":{"enable":true,"style":"fixed","image":{"light":"https://charles2530.github.io/image/background/background-light1.jpg","dark":"https://charles2530.github.io/image/background/background-dark1.jpg"},"title":"Charles's Castle","subtitle":{"text":["Happiness is best!","Never give up!","Everyday is a gift!"],"hitokoto":{"enable":false,"show_author":false,"api":"https://v1.hitokoto.cn"},"typing_speed":100,"backing_speed":80,"starting_delay":500,"backing_delay":1500,"loop":true,"smart_backspace":true},"text_color":{"light":"#000000","dark":"#d1d1b6"},"text_style":{"title_size":"3.2rem","subtitle_size":"1.5rem","line_height":1.2},"custom_font":{"enable":false,"family":null,"url":null},"social_links":{"enable":true,"style":"center","links":[{"icon":"fa-brands fa-github","url":"https://github.com/Charles2530/"},{"icon":"fa-brands fa-zhihu","url":"https://www.zhihu.com/people/yang-guang-xiao-zi-55-55"},{"icon":"fa-solid fa-at","url":"mailto:charles2530@163.com"},{"icon":"fa-brands fa-telegram","url":null},{"icon":"/images/custom-icon.svg","url":null}],"qrs":[{"icon":"fa-brands fa-weixin","qr":"https://charles2530.github.io/image/background/Wechat_icon.png"},{"icon":"/images/custom-icon.svg","qr":null}]}},"plugins":{"feed":{"enable":true},"aplayer":{"enable":false,"type":"fixed","audios":[{"name":null,"artist":null,"url":null,"cover":null,"lrc":null}]},"mermaid":{"enable":false,"version":"11.4.1","theme":{"light":"default","dark":"dark"}}},"version":"2.9.0","navbar":{"auto_hide":true,"color":{"left":"#f78736","right":"#367df7","transparency":35},"width":{"home":"1200px","pages":"1000px"},"links":{"Home":{"path":"/","icon":"fa-regular fa-house"},"Categories":{"path":"/categories","icon":"fas fa-bookmark"},"Tags":{"path":"/tags","icon":"fas fa-tags"},"About":{"icon":"fa-regular fa-user","submenus":{"Me":"https://jinyang-du.github.io/","Github":"https://github.com/Charles2530/","Blog":"https://charles2530.github.io","Statistics":"https://tongji.baidu.com/"}}},"search":{"enable":true,"preload":false}},"page_templates":{"friends_column":2,"tags_style":"blur","masonry":{"batch_size":12,"initial_batch_size":24}},"home":{"sidebar":{"enable":true,"position":"left","first_item":"menu","announcement":"This is Charles's Castle","show_on_mobile":true,"links":{"Archives":{"path":"/archives","icon":"fa-regular fa-archive"},"Photos":{"icon":"fa-solid fa-image","path":"/masonry/"},"Essays":{"icon":"fa-solid fa-message-lines","path":"/essay/"},"Friends":{"icon":"fa-solid fa-user-group","path":"/friends/"}}},"article_date_format":"auto","excerpt_length":200,"categories":{"enable":true,"limit":3},"tags":{"enable":true,"limit":3}},"footer":{"runtime":true,"icon":"<i class=\"fa-solid fa-heart fa-beat\" style=\"--fa-animation-duration: 0.5s; color: #f54545\"></i>","start":"2022/12/27 00:00:00","statistics":true,"customize":null,"icp":{"enable":false,"number":null,"url":null}},"footerStart":"2022/12/27 00:00:00","mermaid":{"style":{"light":"default","dark":"dark"}}};
+    window.lang_ago = {"second":"%s seconds ago","minute":"%s minutes ago","hour":"%s hours ago","day":"%s days ago","week":"%s weeks ago","month":"%s months ago","year":"%s years ago"};
+    window.i18n = {"search":"Search...","toc":"On this page","prev":"Prev","next":"Next","prev_posts":"Prev posts","next_posts":"Next posts","page":"Page %d","recent_posts":"Recent Posts","share":"Share","powered_by":"POWERED BY %s","theme":"THEME","rss_feed":"RSS Feed","category":"Category","categories":"Categories","tag":"Tag","tags":"Tags","post":"Post","posts":"Posts","tagcloud":"Tag Cloud","comment":"Comment","comments":"Comments","home":"Home","archive":"Archive","archives":"Archives","top":"TOP","sticky":"Sticky","go-back-home":"Go Back Home","masonry_loading":"Loading photos...","image_viewer":"Image viewer","close":"Close","exif":{"title":"EXIF","cards":{"camera":"Camera","lens":"Lens","exposure":"Exposure","other":"Other"},"fields":{"make":"Brand","model":"Model","date_taken":"Date taken","lens_model":"Lens","focal_length":"Focal length","focus_mode":"Focus mode","shutter":"Shutter","aperture":"Aperture","iso":"ISO","exposure_program":"Exposure program","exposure_compensation":"Exposure compensation","metering_mode":"Metering mode","flash":"Flash","white_balance":"White balance","latitude":"Latitude","longitude":"Longitude","altitude":"Altitude"},"status":{"loading":"Loading...","no_exif":"No EXIF available","library_missing":"EXIF library not loaded","image_source_missing":"Image source unavailable","unavailable":"EXIF unavailable (blocked by CORS or missing metadata)","flag_unavailable":"EXIF unavailable"}},"about":"About","changelog":"Changelog","links":"Links","link":"Link","friends":"Friends","friend":"Friend","timeline":"Timeline","shuoshuo":"Shuoshuo","bookmarks":"Bookmarks","site_uv":"VISITOR COUNT","site_pv":"TOTAL PAGE VIEWS","read_more":"Read more","wordcount":"Words","min2read":"Mins","status":"Status","runtime":"Blog up for","days":"days","hours":"hrs","minutes":"Min","seconds":"Sec","optimized_by":"and Optimized by Evan","rights":"All Rights Reserved","site_posts":"%s posts in total","site_wordcount":"%s words in total","copyright":{"author":"Author","title":"Title","link":"Link","create_time":"Created at","update_time":"Updated at","license_title":"License","license_content":"This work is licensed under %s.","all_rights_reserved":"All Rights Reserved &#169; %s","public_domain":"This work is in the public domain."},"ago":{"second":"%s seconds ago","minute":"%s minutes ago","hour":"%s hours ago","day":"%s days ago","week":"%s weeks ago","month":"%s months ago","year":"%s years ago"},"create_time":"Created","update_time":"Updated","expired":"This post is written %s days ago, and the content may not be up to date."};
+    window.data = {"masonry":true};
+  </script>
+    
+    <!--- Fontawesome Part-->
+    
+<link rel="stylesheet" href="/fontawesome/fontawesome.min.css">
+
+    
+<link rel="stylesheet" href="/fontawesome/brands.min.css">
+
+    
+<link rel="stylesheet" href="/fontawesome/solid.min.css">
+
+    
+<link rel="stylesheet" href="/fontawesome/regular.min.css">
+
+    
+    
+    
+    
+<meta name="generator" content="Hexo 6.3.0"><link rel="alternate" href="/atom.xml" title="Charles's Castle" type="application/atom+xml">
+<link rel="stylesheet" href="/css/prism-tomorrow.css" type="text/css"></head>
+
+
+<body>
+	<div class="progress-bar-container">
+	
+	<span class="scroll-progress-bar"></span>
+	
+
+	
+	<span class="pjax-progress-bar"></span>
+	<!--        <span class="swup-progress-icon">-->
+	<!--            <i class="fa-solid fa-circle-notch fa-spin"></i>-->
+	<!--        </span>-->
+	
+</div>
+
+<style>
+    :root {
+        --preloader-background-color: #fff;
+        --preloader-text-color: #000;
+    }
+
+    @media (prefers-color-scheme: dark) {
+        :root {
+            --preloader-background-color: #202124;
+            --preloader-text-color: #fff;
+        }
+    }
+
+    @media (prefers-color-scheme: light) {
+        :root {
+            --preloader-background-color: #fff;
+            --preloader-text-color: #000;
+        }
+    }
+
+    @media (max-width: 600px) {
+        .ml13 {
+            font-size: 2.6rem !important; /* Adjust this value as needed */
+        }
+    }
+
+    .preloader {
+        display: flex;
+        flex-direction: column;
+        gap: 1rem; /* Tailwind 'gap-4' is 1rem */
+        align-items: center;
+        justify-content: center;
+        position: fixed;
+        padding: 12px;
+        top: 0;
+        right: 0;
+        bottom: 0;
+        left: 0;
+        width: 100vw;
+        height: 100vh; /* 'h-screen' is 100% of the viewport height */
+        background-color: var(--preloader-background-color);
+        z-index: 1100; /* 'z-[1100]' sets the z-index */
+        transition: opacity 0.2s ease-in-out;
+    }
+
+    .ml13 {
+        font-size: 3.2rem;
+        /* text-transform: uppercase; */
+        color: var(--preloader-text-color);
+        letter-spacing: -1px;
+        font-weight: 500;
+        font-family: 'Chillax-Variable', sans-serif;
+        text-align: center;
+    }
+
+    .ml13 .word {
+        display: inline-flex;
+        flex-wrap: wrap;
+        white-space: nowrap;
+    }
+
+    .ml13 .letter {
+        display: inline-block;
+        line-height: 1em;
+    }
+</style>
+
+<div class="preloader">
+    <h2 class="ml13">
+        Charles&#39;s Castle
+    </h2>
+    <script>
+        var textWrapper = document.querySelector('.ml13');
+        // Split text into words
+        var words = textWrapper.textContent.trim().split(' ');
+
+        // Clear the existing content
+        textWrapper.innerHTML = '';
+
+        // Wrap each word and its letters in spans
+        words.forEach(function(word) {
+            var wordSpan = document.createElement('span');
+            wordSpan.classList.add('word');
+            wordSpan.innerHTML = word.replace(/\S/g, "<span class='letter'>$&</span>");
+            textWrapper.appendChild(wordSpan);
+            textWrapper.appendChild(document.createTextNode(' ')); // Add space between words
+        });
+
+        var animation = anime.timeline({ loop: true })
+            .add({
+                targets: '.ml13 .letter',
+                translateY: [20, 0],
+                translateZ: 0,
+                opacity: [0, 1],
+                filter: ['blur(5px)', 'blur(0px)'],
+                easing: "easeOutExpo",
+                duration: 1200,
+                delay: (el, i) => 300 + 20 * i,
+            })
+            .add({
+                targets: '.ml13 .letter',
+                translateY: [0, -20],
+                opacity: [1, 0],
+                filter: ['blur(0px)', 'blur(5px)'],
+                easing: "easeInExpo",
+                duration: 1000,
+                delay: (el, i) => 15 * i,
+                complete: function() {
+                    hidePreloader();
+                }
+            }, '-=700');
+
+
+        let themeStatus = JSON.parse(localStorage.getItem('REDEFINE-THEME-STATUS'))?.isDark;
+
+        // If the theme status is not found in local storage, check the preferred color scheme
+        if (themeStatus === undefined || themeStatus === null) {
+            if (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) {
+                themeStatus = 'dark';
+            } else {
+                themeStatus = 'light';
+            }
+        }
+
+        // Now you can use the themeStatus variable in your code
+        if (themeStatus) {
+            document.documentElement.style.setProperty('--preloader-background-color', '#202124');
+            document.documentElement.style.setProperty('--preloader-text-color', '#fff');
+        } else {
+            document.documentElement.style.setProperty('--preloader-background-color', '#fff');
+            document.documentElement.style.setProperty('--preloader-text-color', '#000');
+        }
+
+        window.addEventListener('load', function () {
+            setTimeout(hidePreloader, 5000); // Call hidePreloader after 5000 milliseconds if not already called by animation
+        });
+
+        function hidePreloader() {
+            var preloader = document.querySelector('.preloader');
+            preloader.style.opacity = '0';
+            setTimeout(function () {
+                preloader.style.display = 'none';
+            }, 200);
+        }
+    </script>
+</div>
+
+<main class="page-container" id="swup">
+
+	
+
+	<div class="main-content-container flex flex-col justify-between min-h-dvh">
+		<div class="main-content-header">
+			<header class="navbar-container px-6 md:px-12">
+    <div class="navbar-content transition-navbar ">
+        <div class="left">
+            
+                <a class="logo-image h-8 w-8 sm:w-10 sm:h-10 mr-3" href="/">
+                    <img src="https://charles2530.github.io/image/background/logo.jpg" class="w-full h-full rounded-xs">
+                </a>
+            
+            <a class="logo-title" href="/">
+                
+                Charles&#39;s Castle
+                
+            </a>
+        </div>
+
+        <div class="right">
+            <!-- PC -->
+            <div class="desktop">
+                <ul class="navbar-list">
+                    
+                        
+                            
+
+                            <li class="navbar-item">
+                                <!-- Menu -->
+                                <a class=""
+                                   href="/"
+                                        >
+                                    <i class="fa-regular fa-house fa-fw"></i>
+                                    HOME
+                                    
+                                </a>
+
+                                <!-- Submenu -->
+                                
+                            </li>
+                    
+                        
+                            
+
+                            <li class="navbar-item">
+                                <!-- Menu -->
+                                <a class=""
+                                   href="/categories"
+                                        >
+                                    <i class="fas fa-bookmark fa-fw"></i>
+                                    CATEGORIES
+                                    
+                                </a>
+
+                                <!-- Submenu -->
+                                
+                            </li>
+                    
+                        
+                            
+
+                            <li class="navbar-item">
+                                <!-- Menu -->
+                                <a class=""
+                                   href="/tags"
+                                        >
+                                    <i class="fas fa-tags fa-fw"></i>
+                                    TAGS
+                                    
+                                </a>
+
+                                <!-- Submenu -->
+                                
+                            </li>
+                    
+                        
+                            
+
+                            <li class="navbar-item">
+                                <!-- Menu -->
+                                <a class="has-dropdown"
+                                   href="#"
+                                        onClick=&#34;return false;&#34;>
+                                    <i class="fa-regular fa-user fa-fw"></i>
+                                    ABOUT
+                                    <i class="fa-solid fa-chevron-down fa-fw"></i>
+                                </a>
+
+                                <!-- Submenu -->
+                                
+                                    <ul class="sub-menu">
+                                        
+                                            <li>
+                                                <a target="_blank" rel="noopener" href="https://jinyang-du.github.io/">
+                                                    ME
+                                                </a>
+                                            </li>
+                                        
+                                            <li>
+                                                <a target="_blank" rel="noopener" href="https://github.com/Charles2530/">
+                                                    GITHUB
+                                                </a>
+                                            </li>
+                                        
+                                            <li>
+                                                <a href="https://charles2530.github.io">
+                                                    BLOG
+                                                </a>
+                                            </li>
+                                        
+                                            <li>
+                                                <a target="_blank" rel="noopener" href="https://tongji.baidu.com/">
+                                                    STATISTICS
+                                                </a>
+                                            </li>
+                                        
+                                    </ul>
+                                
+                            </li>
+                    
+                    
+                        <li class="navbar-item search search-popup-trigger">
+                            <i class="fa-solid fa-magnifying-glass"></i>
+                        </li>
+                    
+                </ul>
+            </div>
+            <!-- Mobile -->
+            <div class="mobile">
+                
+                    <div class="icon-item search search-popup-trigger"><i class="fa-solid fa-magnifying-glass"></i>
+                    </div>
+                
+                <div class="icon-item navbar-bar">
+                    <div class="navbar-bar-middle"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Mobile sheet -->
+    <div class="navbar-drawer h-dvh w-full absolute top-0 left-0 bg-background-color flex flex-col justify-between">
+        <ul class="drawer-navbar-list flex flex-col px-4 justify-center items-start">
+            
+                
+                    
+
+                    <li class="drawer-navbar-item text-base my-1.5 flex flex-col w-full">
+                        
+                        <a class="py-1.5 px-2 flex flex-row items-center justify-between gap-1 hover:!text-primary active:!text-primary text-2xl font-semibold group border-b border-border-color hover:border-primary w-full "
+                           href="/"
+                        >
+                            <span>
+                                HOME
+                            </span>
+                            
+                                <i class="fa-regular fa-house fa-sm fa-fw"></i>
+                            
+                        </a>
+                        
+
+                        
+                    </li>
+            
+                
+                    
+
+                    <li class="drawer-navbar-item text-base my-1.5 flex flex-col w-full">
+                        
+                        <a class="py-1.5 px-2 flex flex-row items-center justify-between gap-1 hover:!text-primary active:!text-primary text-2xl font-semibold group border-b border-border-color hover:border-primary w-full "
+                           href="/categories"
+                        >
+                            <span>
+                                CATEGORIES
+                            </span>
+                            
+                                <i class="fas fa-bookmark fa-sm fa-fw"></i>
+                            
+                        </a>
+                        
+
+                        
+                    </li>
+            
+                
+                    
+
+                    <li class="drawer-navbar-item text-base my-1.5 flex flex-col w-full">
+                        
+                        <a class="py-1.5 px-2 flex flex-row items-center justify-between gap-1 hover:!text-primary active:!text-primary text-2xl font-semibold group border-b border-border-color hover:border-primary w-full "
+                           href="/tags"
+                        >
+                            <span>
+                                TAGS
+                            </span>
+                            
+                                <i class="fas fa-tags fa-sm fa-fw"></i>
+                            
+                        </a>
+                        
+
+                        
+                    </li>
+            
+                
+                    
+
+                    <li class="drawer-navbar-item-sub text-base my-1.5 flex flex-col w-full">
+                        
+                        <div class="py-1.5 px-2 flex flex-row items-center justify-between gap-1 hover:!text-primary active:!text-primary cursor-pointer text-2xl font-semibold group border-b border-border-color hover:border-primary w-full "
+                             navbar-data-toggle="submenu-About"
+                        >
+                            <span>
+                                ABOUT
+                            </span>
+                            
+                                <i class="fa-solid fa-chevron-right fa-sm fa-fw transition-all"></i>
+                            
+                        </div>
+                        
+
+                        
+                            <div class="flex-col items-start px-2 py-2 hidden" data-target="submenu-About">
+                                
+                                    <div class="drawer-navbar-item text-base flex flex-col justify-center items-start hover:underline active:underline hover:underline-offset-1 rounded-3xl">
+                                        <a class=" text-third-text-color text-xl"
+                                           target="_blank" rel="noopener" href="https://jinyang-du.github.io/">ME</a>
+                                    </div>
+                                
+                                    <div class="drawer-navbar-item text-base flex flex-col justify-center items-start hover:underline active:underline hover:underline-offset-1 rounded-3xl">
+                                        <a class=" text-third-text-color text-xl"
+                                           target="_blank" rel="noopener" href="https://github.com/Charles2530/">GITHUB</a>
+                                    </div>
+                                
+                                    <div class="drawer-navbar-item text-base flex flex-col justify-center items-start hover:underline active:underline hover:underline-offset-1 rounded-3xl">
+                                        <a class=" text-third-text-color text-xl"
+                                           href="https://charles2530.github.io">BLOG</a>
+                                    </div>
+                                
+                                    <div class="drawer-navbar-item text-base flex flex-col justify-center items-start hover:underline active:underline hover:underline-offset-1 rounded-3xl">
+                                        <a class=" text-third-text-color text-xl"
+                                           target="_blank" rel="noopener" href="https://tongji.baidu.com/">STATISTICS</a>
+                                    </div>
+                                
+                            </div>
+                        
+                    </li>
+            
+
+            
+            
+                
+                    
+                    <li class="drawer-navbar-item text-base my-1.5 flex flex-col w-full">
+                        <a class="py-1.5 px-2 flex flex-row items-center justify-between gap-1 hover:!text-primary active:!text-primary text-2xl font-semibold group border-b border-border-color hover:border-primary w-full active"
+                           href="/archives"
+                        >
+                            <span>Archives</span>
+                            <i class="fa-regular fa-archive fa-sm fa-fw"></i>
+                        </a>
+                    </li>
+                
+                    
+                    <li class="drawer-navbar-item text-base my-1.5 flex flex-col w-full">
+                        <a class="py-1.5 px-2 flex flex-row items-center justify-between gap-1 hover:!text-primary active:!text-primary text-2xl font-semibold group border-b border-border-color hover:border-primary w-full active"
+                           href="/masonry/"
+                        >
+                            <span>Photos</span>
+                            <i class="fa-solid fa-image fa-sm fa-fw"></i>
+                        </a>
+                    </li>
+                
+                    
+                    <li class="drawer-navbar-item text-base my-1.5 flex flex-col w-full">
+                        <a class="py-1.5 px-2 flex flex-row items-center justify-between gap-1 hover:!text-primary active:!text-primary text-2xl font-semibold group border-b border-border-color hover:border-primary w-full active"
+                           href="/essay/"
+                        >
+                            <span>Essays</span>
+                            <i class="fa-solid fa-message-lines fa-sm fa-fw"></i>
+                        </a>
+                    </li>
+                
+                    
+                    <li class="drawer-navbar-item text-base my-1.5 flex flex-col w-full">
+                        <a class="py-1.5 px-2 flex flex-row items-center justify-between gap-1 hover:!text-primary active:!text-primary text-2xl font-semibold group border-b border-border-color hover:border-primary w-full active"
+                           href="/friends/"
+                        >
+                            <span>Friends</span>
+                            <i class="fa-solid fa-user-group fa-sm fa-fw"></i>
+                        </a>
+                    </li>
+                
+            
+        </ul>
+
+        <div class="statistics flex justify-around my-2.5">
+    <a class="item tag-count-item flex flex-col justify-center items-center w-20" href="/tags">
+        <div class="number text-2xl sm:text-xl text-second-text-color font-semibold">47</div>
+        <div class="label text-third-text-color text-sm">Tags</div>
+    </a>
+    <a class="item tag-count-item flex flex-col justify-center items-center w-20" href="/categories">
+        <div class="number text-2xl sm:text-xl text-second-text-color font-semibold">94</div>
+        <div class="label text-third-text-color text-sm">Categories</div>
+    </a>
+    <a class="item tag-count-item flex flex-col justify-center items-center w-20" href="/archives">
+        <div class="number text-2xl sm:text-xl text-second-text-color font-semibold">601</div>
+        <div class="label text-third-text-color text-sm">Posts</div>
+    </a>
+</div>
+    </div>
+
+    <div class="window-mask"></div>
+
+</header>
+
+
+		</div>
+
+		<div class="main-content-body transition-fade-up">
+			
+
+			<div class="main-content">
+				<div class="post-page-container flex relative justify-between box-border w-full h-full">
+	<div class="article-content-container">
+
+		<div class="article-title relative w-full">
+			
+			
+			
+			<img src="https://charles2530.github.io/image/background/p3.png" alt="论文专题讲解：EAGLE-3：为什么 draft model 要在训练时“见过自己犯错”" class="w-full h-60 sm:h-72 md:h-80 object-cover sm:rounded-t-large dark:brightness-75" />
+			
+			<div class="w-full flex items-center absolute bottom-0 justify-start">
+				<h1 class="article-title-cover text-center mx-6 my-6 text-second-text-color bg-background-color-transparent px-4 py-3 text-3xl sm:text-4xl md:text-5xl font-semibold backdrop-blur-lg rounded-xl border border-border-color ">论文专题讲解：EAGLE-3：为什么 draft model 要在训练时“见过自己犯错”</h1>
+			</div>
+			
+		</div>
+
+		
+		<div class="article-header flex flex-row gap-2 items-center px-2 sm:px-6 md:px-8">
+			<div class="avatar w-[46px] h-[46px] shrink-0 rounded-medium border border-border-color p-px">
+				<img src="https://charles2530.github.io/image/background/logo2.jpg">
+			</div>
+			<div class="info flex flex-col justify-between">
+				<div class="author flex items-center">
+					<span class="name text-default-text-color text-lg font-semibold">Charles</span>
+					
+					<span class="author-label ml-1.5 text-xs px-2 py-0.5 rounded-small text-third-text-color border border-shadow-color-1">Lv8</span>
+					
+				</div>
+				<div class="meta-info">
+					<div class="article-meta-info">
+    <span class="article-date article-meta-item">
+        <i class="fa-regular fa-pen-fancy"></i>&nbsp;
+        <span class="desktop">2025-10-04 09:00</span>
+        <span class="mobile">2025-10-04 09:00</span>
+        <span class="hover-info">Created</span>
+    </span>
+    
+        <span class="article-date article-meta-item">
+            <i class="fa-regular fa-wrench"></i>&nbsp;
+            <span class="desktop">2025-10-04 09:00</span>
+            <span class="mobile">2025-10-04 09:00</span>
+            <span class="hover-info">Updated</span>
+        </span>
+    
+
+    
+        <span class="article-categories article-meta-item">
+            <i class="fa-regular fa-folders"></i>&nbsp;
+            <ul>
+                
+                
+                    
+                        
+                        <li>
+                            <a href="/categories/AI/">AI</a>&nbsp;
+                        </li>
+                    
+                    
+                
+                    
+                        
+                            <li>></li>
+                        
+                        <li>
+                            <a href="/categories/AI/%E8%AE%BA%E6%96%87%E4%B8%93%E9%A2%98%E8%AE%B2%E8%A7%A3/">论文专题讲解</a>&nbsp;
+                        </li>
+                    
+                    
+                
+            </ul>
+        </span>
+    
+    
+        <span class="article-tags article-meta-item">
+            <i class="fa-regular fa-tags"></i>&nbsp;
+            <ul>
+                
+                    <li>
+                        <a href="/tags/AI/">AI</a>&nbsp;
+                    </li>
+                
+                    <li>
+                        | <a href="/tags/%E6%8E%A8%E7%90%86/">推理</a>&nbsp;
+                    </li>
+                
+                    <li>
+                        | <a href="/tags/%E8%AE%BA%E6%96%87%E4%B8%93%E9%A2%98/">论文专题</a>&nbsp;
+                    </li>
+                
+            </ul>
+        </span>
+    
+
+    
+    
+        <span class="article-wordcount article-meta-item">
+            <i class="fa-regular fa-typewriter"></i>&nbsp;<span>4.6k Words</span>
+        </span>
+    
+    
+        <span class="article-min2read article-meta-item">
+            <i class="fa-regular fa-clock"></i>&nbsp;<span>18 Mins</span>
+        </span>
+    
+    
+        <span class="article-pv article-meta-item">
+            <i class="fa-regular fa-eye"></i>&nbsp;<span id="busuanzi_value_page_pv"></span>
+        </span>
+    
+</div>
+
+				</div>
+			</div>
+		</div>
+		
+
+		
+
+
+		<div class="article-content markdown-body px-2 sm:px-6 md:px-8 pb-8">
+			<div class="callout callout--titled info mb-4 rounded-small shadow-redefine-flat bg-(--callout-bg-color) p-3 pl-1 relative flex flex-row gap-2"><div role="none" class="rounded-full self-stretch w-0.5 bg-(--callout-primary-color) shrink-0 opacity-60"></div><div class="flex flex-col gap-2"><div class="callout__title flex items-center gap-2 font-semibold tracking-tight">论文信息</div><div class="callout__content markdown-body flex-1 min-w-0"><p><strong>论文题名：</strong> EAGLE-3: Scaling up Inference Acceleration of Large Language Models via Training-Time Test。<br><br />
+<strong>作者：</strong> Yuhui Li、Fangyun Wei、Chao Zhang、Hongyang Zhang。<br><br />
+<strong>机构：</strong> Peking University、Microsoft Research、University of Waterloo、Vector Institute。<br><br />
+<strong>时间 / 主题：</strong> 2025-03；高效推理。<br><br />
+<strong>arXiv / 官方报告：</strong> arXiv：<a class="link"   target="_blank" rel="noopener" href="https://arxiv.org/abs/2503.01840" >2503.01840<i class="fa-solid fa-arrow-up-right ml-[0.2em] font-light align-text-top text-[0.7em] link-icon"></i></a>。<br><br />
+<strong>GitHub / 项目：</strong> GitHub：<a class="link"   target="_blank" rel="noopener" href="https://github.com/SafeAILab/EAGLE" >github.com/SafeAILab/EAGLE<i class="fa-solid fa-arrow-up-right ml-[0.2em] font-light align-text-top text-[0.7em] link-icon"></i></a>。<br><br />
+<strong>元数据来源与核验口径：</strong> 来源：<a class="link"   target="_blank" rel="noopener" href="https://arxiv.org/abs/2503.01840" >arXiv<i class="fa-solid fa-arrow-up-right ml-[0.2em] font-light align-text-top text-[0.7em] link-icon"></i></a>；<a class="link"   target="_blank" rel="noopener" href="https://github.com/SafeAILab/EAGLE" >GitHub API / repo<i class="fa-solid fa-arrow-up-right ml-[0.2em] font-light align-text-top text-[0.7em] link-icon"></i></a>；Checked Date：2026-06-15；Repro Status：Paper / official materials reviewed, independent reproduction not claimed。</p></div></div></div>
+<h2 id="原论文故事线"><a class="markdownIt-Anchor" href="#原论文故事线"></a> 原论文故事线</h2>
+<h3 id="研究背景"><a class="markdownIt-Anchor" href="#研究背景"></a> 研究背景</h3>
+<p>原论文延续 EAGLE 系列的投机解码路线。EAGLE 证明 draft 不一定要是独立小 LLM，可以利用 target LLM 的 feature 预测候选 token；EAGLE-2 又把静态树改成动态树。但当 draft model 要连续递归生成多步候选时，一个更深的问题出现了：训练时它通常看真实 token 前缀，推理时却会把自己前一步生成的 token / feature 再喂给自己。</p>
+<h3 id="问题challenge"><a class="markdownIt-Anchor" href="#问题challenge"></a> 问题（Challenge）</h3>
+<p>EAGLE-3 要解决的是多步 draft 的 train-test mismatch。挑战在于 speculative decoding 的收益来自连续接受多个 token；如果 draft 第一步还不错，但第二步、第三步开始吃到自己生成的上下文，误差会沿 draft path 放大，acceptance length 很难随训练数据规模继续提升。这个问题有价值，因为 target model 越大，能多接受一个 token 的推理收益越高；draft 的稳定递归能力直接决定大模型部署加速上限。</p>
+<h3 id="finding"><a class="markdownIt-Anchor" href="#finding"></a> Finding</h3>
+<p>EAGLE-3 的 finding 是：draft model 应该在训练阶段经历测试阶段会遇到的递归生成过程，也就是 training-time test。作者把 exposure bias 从文本生成质量问题转写成推理加速问题：draft 不是要写出最终答案，而是要生成 target 最可能接受的候选；如果训练时从未见过自己的中间错误，它无法学会在这些状态上继续给出可接受候选。让训练过程模拟测试递归，就能把更多训练数据转化为更长 acceptance。</p>
+<h3 id="方法"><a class="markdownIt-Anchor" href="#方法"></a> 方法</h3>
+<p>方法包括三处变化。第一，EAGLE-3 放弃原 EAGLE 的 feature regression constraint，改为直接预测 token，使 draft 目标更贴近 acceptance。第二，引入 training-time test：训练时递归生成 draft steps，让后续 step 的输入包含 draft 自己产生的中间状态。第三，融合 target LLM 的低层、中层、高层 feature，而不是只依赖 single high-level feature。推理时仍由 target LLM 对 draft tree 做标准验证，因此输出分布保持不变。</p>
+<h3 id="结论"><a class="markdownIt-Anchor" href="#结论"></a> 结论</h3>
+<p>论文用 scaling、MT-bench 等任务和多模型设置展示：EAGLE-3 的 speedup 与 acceptance length 能随训练数据规模继续增长，而原 EAGLE 更早饱和。消融表明，去掉 feature constraint、引入 multi-layer feature fusion、使用 training-time test 都能提高 acceptance；递归步数下的接受率曲线说明 draft 在多步生成中更稳。边界是它仍依赖 target feature 可访问、draft/target 工程集成和验证 kernel 效率。</p>
+<h3 id="关键术语"><a class="markdownIt-Anchor" href="#关键术语"></a> 关键术语</h3>
+<ul>
+<li><strong>Training-Time Test（训练时测试）</strong>：训练阶段模拟推理时的递归 draft 过程，让模型见到自生成状态</li>
+<li><strong>Exposure Bias（暴露偏差）</strong>：训练输入分布与推理输入分布不一致，导致多步生成误差累积</li>
+<li><strong>Acceptance Length（接受长度）</strong>：target LLM 一次验证中连续接受的 draft token 数</li>
+<li><strong>Feature Regression Constraint（特征回归约束）</strong>：要求 draft 输出逼近 target hidden feature 的训练限制</li>
+<li><strong>Multi-layer Feature Fusion（多层特征融合）</strong>：融合 target LLM 不同层表征作为 draft 输入</li>
+</ul>
+<h2 id="从-eagle-到-eagle-3放弃-feature-regression-约束"><a class="markdownIt-Anchor" href="#从-eagle-到-eagle-3放弃-feature-regression-约束"></a> 从 EAGLE 到 EAGLE-3：放弃 feature regression 约束</h2>
+<p>EAGLE 用 target LLM 的 second-to-top-layer feature 做 draft。这个思路很聪明，但原版 EAGLE 要求 draft head 预测 target feature，本质上有一个 feature regression constraint。这个约束让第一步 draft 比较稳，但也把 draft model 的表达空间绑死在“像不像 target feature”上；训练数据继续变多时，speedup 和 acceptance 的提升会变钝。</p>
+<p>EAGLE-3 做了三件事：</p>
+<table>
+<thead>
+<tr>
+<th>改动</th>
+<th>解决什么</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Direct token prediction</td>
+<td>不再强迫 draft output 回归 target feature，直接服务 token acceptance</td>
+</tr>
+<tr>
+<td>Training-time test</td>
+<td>训练时模拟多步 draft，缓解推理时 exposure bias</td>
+</tr>
+<tr>
+<td>Multi-layer feature fusion</td>
+<td>不只看 top-layer feature，而是融合低层、中层、高层特征</td>
+</tr>
+</tbody>
+</table>
+<p><img  
+                     lazyload
+                     src="/images/loading.svg"
+                     data-src="/image/ai-notes/images/paper-deep-dives/inference/eagle-3/figure-1-scaling-law-eagle.png"
+                      alt="EAGLE 与 EAGLE-3 的 scaling law 原图" 
+                ></p>
+<p><img  
+                     lazyload
+                     src="/images/loading.svg"
+                     data-src="/image/ai-notes/images/paper-deep-dives/inference/eagle-3/figure-1-scaling-law-eagle3.png"
+                      alt="EAGLE-3 scaling law 原图" 
+                ></p>
+<p><small>图源：<a class="link"   target="_blank" rel="noopener" href="https://arxiv.org/abs/2503.01840" >EAGLE-3<i class="fa-solid fa-arrow-up-right ml-[0.2em] font-light align-text-top text-[0.7em] link-icon"></i></a>，Figure 1。原图表达：在 LLaMA-Instruct 3.1 8B + MT-bench 上，EAGLE 随 draft 训练数据增加收益有限，而 EAGLE-3 的 speedup 和 acceptance length 随数据规模继续提高。本站读法：这张图的关键是“数据规模能不能转成更多 accepted tokens”。</small></p>
+<h2 id="training-time-test-是什么"><a class="markdownIt-Anchor" href="#training-time-test-是什么"></a> Training-time test 是什么</h2>
+<p>普通训练类似 teacher forcing：模型总是看到真实前缀。投机解码的测试时刻不是这样。第 1 个 draft token 由 target feature 条件生成；第 2 个 draft token 的输入已经包含 draft model 自己刚才的输出；第 3 步又吃第 2 步的输出。越往后，输入越不像训练数据。</p>
+<p>EAGLE-3 把这个过程搬到训练里：</p>
+<div class="code-container" data-rel="Text"><figure class="iseeu highlight text"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br></pre></td><td class="code"><pre><span class="line">target features</span><br><span class="line">  -&gt; draft step 1 -&gt; draft hidden/output a1</span><br><span class="line">  -&gt; feed a1 and sampled token back</span><br><span class="line">  -&gt; draft step 2 -&gt; draft hidden/output a2</span><br><span class="line">  -&gt; feed a2 and sampled token back</span><br><span class="line">  -&gt; draft step 3 ...</span><br></pre></td></tr></table></figure></div>
+<p>训练时已经让 draft model 处理自己的中间输出，推理时多步递归就不再陌生。这就是 training-time test 的名字来源：把 test-time 的 draft 过程提前放进 training。</p>
+<p><img  
+                     lazyload
+                     src="/images/loading.svg"
+                     data-src="/image/ai-notes/images/paper-deep-dives/inference/eagle-3/figure-3-training-time-test.png"
+                      alt="Training-time test 原论文图" 
+                ></p>
+<p><small>图源：<a class="link"   target="_blank" rel="noopener" href="https://arxiv.org/abs/2503.01840" >EAGLE-3<i class="fa-solid fa-arrow-up-right ml-[0.2em] font-light align-text-top text-[0.7em] link-icon"></i></a>，Figure 3。原图表达：EAGLE-3 不再预测 target feature，而是直接预测 token；训练阶段模拟测试阶段的多步生成。本站读法：看箭头如何把 draft model 自己的输出继续喂回下一步。</small></p>
+<h2 id="多层-feature-fusion-为什么有用"><a class="markdownIt-Anchor" href="#多层-feature-fusion-为什么有用"></a> 多层 feature fusion 为什么有用</h2>
+<p>EAGLE-3 推理时仍然依赖 target LLM 的一次前向。target model 会产生低层、中层、高层 feature，论文记作 <span class="katex"><span class="katex-mathml"><math><semantics><mrow><mi>l</mi><mo separator="true">,</mo><mi>m</mi><mo separator="true">,</mo><mi>h</mi></mrow><annotation encoding="application/x-tex">l,m,h</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.8888799999999999em;vertical-align:-0.19444em;"></span><span class="mord mathdefault" style="margin-right:0.01968em;">l</span><span class="mpunct">,</span><span class="mspace" style="margin-right:0.16666666666666666em;"></span><span class="mord mathdefault">m</span><span class="mpunct">,</span><span class="mspace" style="margin-right:0.16666666666666666em;"></span><span class="mord mathdefault">h</span></span></span></span>。它把这些 feature 拼接后投影成融合 feature：</p>
+<p><span class="katex-display"><span class="katex"><span class="katex-mathml"><math><semantics><mrow><mi>g</mi><mo>=</mo><mi>W</mi><mo stretchy="false">[</mo><mi>l</mi><mo separator="true">;</mo><mi>m</mi><mo separator="true">;</mo><mi>h</mi><mo stretchy="false">]</mo></mrow><annotation encoding="application/x-tex">g = W[l;m;h]
+</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.625em;vertical-align:-0.19444em;"></span><span class="mord mathdefault" style="margin-right:0.03588em;">g</span><span class="mspace" style="margin-right:0.2777777777777778em;"></span><span class="mrel">=</span><span class="mspace" style="margin-right:0.2777777777777778em;"></span></span><span class="base"><span class="strut" style="height:1em;vertical-align:-0.25em;"></span><span class="mord mathdefault" style="margin-right:0.13889em;">W</span><span class="mopen">[</span><span class="mord mathdefault" style="margin-right:0.01968em;">l</span><span class="mpunct">;</span><span class="mspace" style="margin-right:0.16666666666666666em;"></span><span class="mord mathdefault">m</span><span class="mpunct">;</span><span class="mspace" style="margin-right:0.16666666666666666em;"></span><span class="mord mathdefault">h</span><span class="mclose">]</span></span></span></span></span></p>
+<p>这里 <span class="katex"><span class="katex-mathml"><math><semantics><mrow><mo stretchy="false">[</mo><mi>l</mi><mo separator="true">;</mo><mi>m</mi><mo separator="true">;</mo><mi>h</mi><mo stretchy="false">]</mo></mrow><annotation encoding="application/x-tex">[l;m;h]</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:1em;vertical-align:-0.25em;"></span><span class="mopen">[</span><span class="mord mathdefault" style="margin-right:0.01968em;">l</span><span class="mpunct">;</span><span class="mspace" style="margin-right:0.16666666666666666em;"></span><span class="mord mathdefault">m</span><span class="mpunct">;</span><span class="mspace" style="margin-right:0.16666666666666666em;"></span><span class="mord mathdefault">h</span><span class="mclose">]</span></span></span></span> 表示把三层 feature 串接，<span class="katex"><span class="katex-mathml"><math><semantics><mrow><mi>W</mi></mrow><annotation encoding="application/x-tex">W</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.68333em;vertical-align:0em;"></span><span class="mord mathdefault" style="margin-right:0.13889em;">W</span></span></span></span> 是全连接投影，<span class="katex"><span class="katex-mathml"><math><semantics><mrow><mi>g</mi></mrow><annotation encoding="application/x-tex">g</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.625em;vertical-align:-0.19444em;"></span><span class="mord mathdefault" style="margin-right:0.03588em;">g</span></span></span></span> 是给 draft model 的条件表示。读这行式子时，重点不是矩阵乘，而是信息来源：低层 feature 保留局部和词法线索，中层 feature 保留结构，高层 feature 更接近语义和 logits。</p>
+<p><img  
+                     lazyload
+                     src="/images/loading.svg"
+                     data-src="/image/ai-notes/images/paper-deep-dives/inference/eagle-3/figure-5-inference-pipeline.png"
+                      alt="EAGLE-3 inference pipeline 原论文图" 
+                ></p>
+<p><small>图源：<a class="link"   target="_blank" rel="noopener" href="https://arxiv.org/abs/2503.01840" >EAGLE-3<i class="fa-solid fa-arrow-up-right ml-[0.2em] font-light align-text-top text-[0.7em] link-icon"></i></a>，Figure 5。原图表达：target model 的低层、中层、高层 feature 被融合后送入 draft model；后续 draft step 使用 draft model 自己的中间输出继续递归生成。本站读法：第一步依赖 target feature，后续步骤逐渐转为 draft 自回归。</small></p>
+<p>相比只用 top-layer feature，多层融合给 draft model 更完整的上下文条件。再配合 direct token prediction，draft model 不必先“像 target feature”，而是直接学习“哪些 token 更可能被 target 接受”。</p>
+<h2 id="消融实验怎么读"><a class="markdownIt-Anchor" href="#消融实验怎么读"></a> 消融实验怎么读</h2>
+<p>论文 Table 2 清楚展示了三步增益。这里的 <span class="katex"><span class="katex-mathml"><math><semantics><mrow><mi>τ</mi></mrow><annotation encoding="application/x-tex">\tau</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.43056em;vertical-align:0em;"></span><span class="mord mathdefault" style="margin-right:0.1132em;">τ</span></span></span></span> 是 average acceptance length，也就是一次 target verification 平均能接受多少 draft token。</p>
+<table>
+<thead>
+<tr>
+<th>Method</th>
+<th style="text-align:right">MT-bench Speedup</th>
+<th style="text-align:right">MT-bench <span class="katex"><span class="katex-mathml"><math><semantics><mrow><mi>τ</mi></mrow><annotation encoding="application/x-tex">\tau</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.43056em;vertical-align:0em;"></span><span class="mord mathdefault" style="margin-right:0.1132em;">τ</span></span></span></span></th>
+<th style="text-align:right">GSM8K Speedup</th>
+<th style="text-align:right">GSM8K <span class="katex"><span class="katex-mathml"><math><semantics><mrow><mi>τ</mi></mrow><annotation encoding="application/x-tex">\tau</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.43056em;vertical-align:0em;"></span><span class="mord mathdefault" style="margin-right:0.1132em;">τ</span></span></span></span></th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>EAGLE-2</td>
+<td style="text-align:right">3.16x</td>
+<td style="text-align:right">4.05</td>
+<td style="text-align:right">3.39x</td>
+<td style="text-align:right">4.24</td>
+</tr>
+<tr>
+<td>+ remove feature constraint</td>
+<td style="text-align:right">3.82x</td>
+<td style="text-align:right">5.37</td>
+<td style="text-align:right">3.77x</td>
+<td style="text-align:right">5.22</td>
+</tr>
+<tr>
+<td>+ fused features (EAGLE-3)</td>
+<td style="text-align:right">4.40x</td>
+<td style="text-align:right">6.13</td>
+<td style="text-align:right">4.48x</td>
+<td style="text-align:right">6.23</td>
+</tr>
+</tbody>
+</table>
+<p><small>表源：<a class="link"   target="_blank" rel="noopener" href="https://arxiv.org/abs/2503.01840" >EAGLE-3<i class="fa-solid fa-arrow-up-right ml-[0.2em] font-light align-text-top text-[0.7em] link-icon"></i></a>，Table 2。原表表达：去掉 feature constraint 已经显著提高 acceptance length，多层 feature fusion 进一步提升 speedup。</small></p>
+<p>这张表的读法是：EAGLE-3 的核心收益先来自“解除 feature regression 约束”，再来自“用多层 feature 补足条件信息”。如果只看最终 speedup，很容易误以为是更大 draft 或更多数据；其实训练目标和输入分布才是关键。</p>
+<h2 id="接受率为什么没有随深度崩掉"><a class="markdownIt-Anchor" href="#接受率为什么没有随深度崩掉"></a> 接受率为什么没有随深度崩掉</h2>
+<p>投机解码最怕 draft 越往后越不准。EAGLE-3 的 Figure 7 比较了不同 draft 位置的接受率：EAGLE 随递归步数下降更明显，而 EAGLE-3 保持更平稳。</p>
+<p><img  
+                     lazyload
+                     src="/images/loading.svg"
+                     data-src="/image/ai-notes/images/paper-deep-dives/inference/eagle-3/figure-7-acceptance-rate.png"
+                      alt="EAGLE vs EAGLE-3 acceptance rate 原论文图" 
+                ></p>
+<p><small>图源：<a class="link"   target="_blank" rel="noopener" href="https://arxiv.org/abs/2503.01840" >EAGLE-3<i class="fa-solid fa-arrow-up-right ml-[0.2em] font-light align-text-top text-[0.7em] link-icon"></i></a>，Figure 7。原图表达：在 LLaMA-Instruct 3.1 8B + MT-bench 上，EAGLE-3 的 draft 接受率随递归步数增加仍保持稳定。本站读法：这张图是 training-time test 的机制证据，不只是速度结果。</small></p>
+<p>这里的直觉是：如果训练时已经模拟了第 2、第 3 步会看到的“draft 自己生成的输入”，推理时往后滚就不会快速偏离。接受率平稳意味着更深的 draft tree 变得值得验证。</p>
+<h2 id="runtime-结果不能只看单请求"><a class="markdownIt-Anchor" href="#runtime-结果不能只看单请求"></a> Runtime 结果不能只看单请求</h2>
+<p>EAGLE-3 报告了 SGLang 和 vLLM 的集成结果。SGLang 表中，LLaMA-Instruct 3.1 8B 在 batch size 64 时仍有约 1.38x throughput improvement；单请求下，SGLang + EAGLE-3 的 token/s 高于无投机和 EAGLE-2。</p>
+<p>这说明 EAGLE-3 不是只在离线 benchmark 上好看，它能进入 runtime 的 batch、KV、verify 路径。但线上判断仍然要分桶：</p>
+<table>
+<thead>
+<tr>
+<th>请求桶</th>
+<th>可能更适合 EAGLE-3 的原因</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>低温、长输出</td>
+<td>draft 更容易连续被接受</td>
+</tr>
+<tr>
+<td>数学/代码/格式稳定任务</td>
+<td>模式更强，acceptance 更高</td>
+</tr>
+<tr>
+<td>小 batch 交互请求</td>
+<td>target decode 更容易有空闲计算可利用</td>
+</tr>
+<tr>
+<td>高温创作、短输出、工具 agent</td>
+<td>draft 不确定性高，overhead 可能吃掉收益</td>
+</tr>
+</tbody>
+</table>
+<p>EAGLE-3 的 speedup 不是免费午餐。draft model 训练、feature export、tree attention、verification mask、KV 生命周期和 runtime 集成都要一起做。</p>
+<h2 id="和-eagle-eagle-2-的连续关系"><a class="markdownIt-Anchor" href="#和-eagle-eagle-2-的连续关系"></a> 和 EAGLE、EAGLE-2 的连续关系</h2>
+<table>
+<thead>
+<tr>
+<th>论文</th>
+<th>关键问题</th>
+<th>解法</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>EAGLE</td>
+<td>draft 不一定是完整小 LLM</td>
+<td>feature-level draft + shifted-token</td>
+</tr>
+<tr>
+<td>EAGLE-2</td>
+<td>静态 draft tree 浪费候选预算</td>
+<td>dynamic draft tree</td>
+</tr>
+<tr>
+<td>EAGLE-3</td>
+<td>draft 训练分布不像测试时多步输入</td>
+<td>direct token prediction + training-time test + fused features</td>
+</tr>
+</tbody>
+</table>
+<p>把三篇连起来看，主线很清楚：先找到 target feature 这个低成本接口，再把候选树按上下文动态分配，最后让 draft model 在训练时见过推理时的递归输入。</p>
+<h2 id="训练和推理接口要逐项对齐"><a class="markdownIt-Anchor" href="#训练和推理接口要逐项对齐"></a> 训练和推理接口要逐项对齐</h2>
+<p>EAGLE-3 最容易被讲成“训练时也做一次测试”，但工程上要拆成三个接口。第一个接口是 target feature export：target LLM 的低层、中层、高层 hidden states 必须在一次 forward 中稳定取出，并且和 LM head、position、attention mask 对齐。第二个接口是 draft recursion：draft model 第一轮吃 target fused feature，后续轮次吃自己的中间表示和采样 token。第三个接口是 target verification：候选树必须被构造成 target model 可以一次验证的 token/mask/KV 形状。</p>
+<p>这三个接口任何一个错位，都会让论文里的 acceptance length 变成线上 bug。例如 fused feature 的层号和训练不一致，draft 会看到分布外输入；tree mask 如果让候选分支互相泄漏，就会破坏 speculative decoding 的分布保持；verification 阶段如果没有正确处理被拒绝 token 后的 KV cache，下一步 decode 会带着错误上下文继续跑。</p>
+<p>可以把 EAGLE-3 的上线检查写成一条状态机：</p>
+<div class="code-container" data-rel="Text"><figure class="iseeu highlight text"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br></pre></td><td class="code"><pre><span class="line">prefill target LLM</span><br><span class="line">  -&gt; collect multi-layer features</span><br><span class="line">  -&gt; draft recursive candidates</span><br><span class="line">  -&gt; build tree attention mask</span><br><span class="line">  -&gt; target verifies all candidate paths</span><br><span class="line">  -&gt; accept prefix / reject branch</span><br><span class="line">  -&gt; commit only accepted KV and tokens</span><br></pre></td></tr></table></figure></div>
+<p>这个状态机解释了为什么论文同时报告 algorithm speedup 和 runtime integration。方法本身只让 draft 更准；真正落地还需要 scheduler 知道候选树占多少 token，KV manager 知道哪些 token 可以提交，sampling module 知道拒绝后从 target distribution 继续。</p>
+<h2 id="证据链不是一张速度图就够了"><a class="markdownIt-Anchor" href="#证据链不是一张速度图就够了"></a> 证据链：不是一张速度图就够了</h2>
+<p>EAGLE-3 的论文证据可以按“机制、规模、系统”三层读。</p>
+<table>
+<thead>
+<tr>
+<th>证据节点</th>
+<th>支撑的 claim</th>
+<th>不能证明什么</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Figure 1 scaling law</td>
+<td>direct token prediction 和 training-time test 能把更多数据转成 speedup / acceptance length</td>
+<td>不证明任意领域流量都能同样随数据扩展</td>
+</tr>
+<tr>
+<td>Figure 3 training-time test</td>
+<td>训练过程显式模拟多步 draft recursion</td>
+<td>不证明 draft 输出质量本身优于 target</td>
+</tr>
+<tr>
+<td>Table 2 ablation</td>
+<td>remove feature constraint 和 fused features 都贡献增益</td>
+<td>不证明多层 feature 的最优层组合已经穷尽</td>
+</tr>
+<tr>
+<td>Figure 7 acceptance by recursion step</td>
+<td>接受率随 draft 深度更稳定</td>
+<td>不证明无限深 tree 都值得扩展</td>
+</tr>
+<tr>
+<td>SGLang / vLLM runtime 表</td>
+<td>方法能嵌入真实 serving runtime</td>
+<td>不证明所有 batch size、所有硬件和所有 prompt 分布下都更快</td>
+</tr>
+</tbody>
+</table>
+<p>这个分层很重要。投机解码的质量保持来自 target verification，不来自 draft model “更聪明”。因此 EAGLE-3 的核心指标不是 perplexity 或回答分，而是 accepted tokens、verification overhead、end-to-end throughput / latency。读 speedup 时还要确认 baseline 是否包含同等 runtime 优化、是否启用 tree attention、是否相同 sampling temperature、是否同样 batch size。</p>
+<h2 id="部署时最容易踩的坑"><a class="markdownIt-Anchor" href="#部署时最容易踩的坑"></a> 部署时最容易踩的坑</h2>
+<p>第一类坑是 request mix。EAGLE-3 对低温、长输出、模式稳定的请求更友好；对短输出、工具调用、强随机采样和频繁 stop 的请求，draft 成本可能没有足够 token 可以摊销。线上不应只开全局开关，而应该按 route、temperature、max output、历史 acceptance rate 做 gating。</p>
+<p>第二类坑是 memory accounting。draft tree 会增加一次 verification 的 token 数，target KV cache 也会临时承载候选路径。即使最终只提交 accepted prefix，中间 verification 的显存和 kernel 时间仍是真实成本。长上下文服务里，PagedAttention、prefix cache、speculative tree 和 batch scheduler 会互相影响。</p>
+<p>第三类坑是训练域。论文使用公开对话和 benchmark 说明 scaling 趋势，但企业流量可能包含代码补全、结构化 JSON、检索引用、工具轨迹、数学证明和多语言文本。EAGLE-3 的 training-time test 解决 exposure bias，不自动解决 domain mismatch。更稳的做法是对目标流量采样，按任务桶统计 acceptance，再决定是否补训 draft。</p>
+<p>第四类坑是验证口径。只看单请求 latency 会低估 batch serving 的资源竞争；只看吞吐会掩盖 P95/P99 延迟；只看 accepted length 会忽略 tree construction 和 draft overhead。最终验收至少要同时看：target forward 次数、accepted tokens per verify、draft token cost、GPU memory peak、batch occupancy、P50/P95/P99 latency 和输出一致性。</p>
+<h2 id="最小复现实验应该怎么设计"><a class="markdownIt-Anchor" href="#最小复现实验应该怎么设计"></a> 最小复现实验应该怎么设计</h2>
+<p>复现 EAGLE-3 不必一开始就接完整线上 runtime。更稳的是先做三层小实验。</p>
+<p>第一层是离线 acceptance 实验。固定 target model、prompt 集合、temperature 和 max tokens，比较原始 EAGLE-2、去 feature constraint、加入 fused features、加入 training-time test 后的 average acceptance length。这个实验不追求最高 tokens/s，只验证机制是否按论文方向工作。</p>
+<p>第二层是单请求端到端 latency。把 draft、tree construction、target verification 和 sampling 都放进同一条推理路径，统计每个模块耗时。这里要防止“只测 target 少跑几步”而漏掉 draft overhead。若 acceptance length 提高但端到端 latency 不降，说明 bottleneck 已转移到实现。</p>
+<p>第三层是 batch serving。用真实或合成的请求长度分布测试 batch size 1、8、32、64 等不同并发。记录 throughput、P95 latency、peak KV memory 和 acceptance rate。EAGLE-3 的论文结论可以作为预期方向，但最终上线阈值应来自本地 workload。</p>
+<table>
+<thead>
+<tr>
+<th>实验层级</th>
+<th>必看指标</th>
+<th>失败信号</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>离线 acceptance</td>
+<td>accepted length、acceptance by depth</td>
+<td>training-time test 后深层接受率仍快速下滑</td>
+</tr>
+<tr>
+<td>单请求 latency</td>
+<td>draft time、verify time、total token/s</td>
+<td>draft overhead 超过 target step 节省</td>
+</tr>
+<tr>
+<td>Batch serving</td>
+<td>throughput、P95/P99、peak memory</td>
+<td>高并发下 tree verification 挤占 KV 或 scheduler</td>
+</tr>
+</tbody>
+</table>
+<p>这样设计的好处是能快速定位失败原因：机制没起作用、实现太慢、还是 workload 不适合。它也符合 EAGLE-3 的证据结构：先证明 draft 更会猜，再证明 runtime 真能获益。</p>
+<h2 id="和其他推理优化的组合边界"><a class="markdownIt-Anchor" href="#和其他推理优化的组合边界"></a> 和其他推理优化的组合边界</h2>
+<p>EAGLE-3 属于 decode-side acceleration，主要减少 target LLM 逐 token 前进的次数。它和 quantization、KV cache 压缩、PagedAttention、continuous batching 不是同一层优化。</p>
+<table>
+<thead>
+<tr>
+<th>优化</th>
+<th>作用层</th>
+<th>和 EAGLE-3 的关系</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Weight / activation quantization</td>
+<td>降低每次 forward 的算力和带宽</td>
+<td>target 和 draft 都可能受益，但量化误差会影响 acceptance，需要复测</td>
+</tr>
+<tr>
+<td>KV cache paging / prefix cache</td>
+<td>管理长上下文和多请求 KV</td>
+<td>draft tree 会增加临时候选 token，必须和 KV manager 协同</td>
+</tr>
+<tr>
+<td>Continuous batching</td>
+<td>提高 GPU 批处理利用率</td>
+<td>大 batch 下 target 已接近饱和，EAGLE-3 的边际收益可能下降</td>
+</tr>
+<tr>
+<td>Disaggregated prefill</td>
+<td>分离 prompt 和 decode 资源</td>
+<td>EAGLE-3 主要作用在 decode，prefill-heavy 流量收益有限</td>
+</tr>
+<tr>
+<td>Routing / model cascade</td>
+<td>按请求选不同模型或路径</td>
+<td>可以只给适合请求开启 EAGLE-3，避免全局 overhead</td>
+</tr>
+</tbody>
+</table>
+<p>这个表帮助避免一个常见误解：EAGLE-3 不会自动解决所有推理成本。它最擅长的是“target 每次 decode 很贵，而 draft 能连续猜中多个 token”的区间。若系统已经被 prefill、网络队列、工具调用或 CPU sampling 卡住，EAGLE-3 的接受率再高也不一定改善用户感知延迟。</p>
+<p>从项目取舍看，EAGLE-3 更像“decode path 的二级发动机”，不是新的 target model。它的评估要和容量规划放在一起：多一个 draft 模型意味着更多权重、更多调度路径和更多监控指标；少跑 target decode step 则意味着更低的高价模型调用成本。最终是否值得上线，取决于这两边的账能否在真实流量上闭合。</p>
+<p>一个合格的 EAGLE-3 实验报告最好不要只贴 speedup。它应该写清 target model、draft model、训练数据量、temperature、tree size、prompt/output 长度分布、runtime、batch size 和硬件；还要报告拒绝后的回退逻辑是否保持 target 分布。这样读者才能判断提升来自方法机制、实现优化，还是 benchmark 条件本身。</p>
+<p>如果这些条件没有列清，EAGLE-3 的结论只能作为方向参考，不能直接变成容量规划假设；真正的部署决策还要用本地请求回放验证。尤其是 agent 流量和代码流量，常常混合短回答、工具调用、长 JSON、重试和 stop sequence；它们的 acceptance pattern 可能和 MT-bench 完全不同，所以最好单独分桶统计，而不是把所有请求揉成一个平均 speedup。</p>
+<h2 id="外部精读"><a class="markdownIt-Anchor" href="#外部精读"></a> 外部精读</h2>
+<ul>
+<li><a class="link"   target="_blank" rel="noopener" href="https://arxiv.org/abs/2503.01840" >EAGLE-3 论文<i class="fa-solid fa-arrow-up-right ml-[0.2em] font-light align-text-top text-[0.7em] link-icon"></i></a>：方法、scaling、消融和 runtime 表。</li>
+<li><a class="link"   target="_blank" rel="noopener" href="https://github.com/SafeAILab/EAGLE" >EAGLE GitHub<i class="fa-solid fa-arrow-up-right ml-[0.2em] font-light align-text-top text-[0.7em] link-icon"></i></a>：系列实现入口。</li>
+<li><a href="/2026/05/11/ai-files-paper-deep-dives-inference-eagle/">EAGLE 原论文</a>：理解 feature-level draft 和 shifted-token 的起点。</li>
+<li><a href="/2026/05/11/ai-files-inference-caching-routing-and-speculative/">缓存、路由与投机解码</a>：把 EAGLE-3 放回服务系统的请求生命周期里看。</li>
+</ul>
+<h2 id="阅读结论"><a class="markdownIt-Anchor" href="#阅读结论"></a> 阅读结论</h2>
+<p>EAGLE-3 的核心不是“更强的草稿模型”，而是“draft 训练分布要像线上推理分布”。它放弃 feature regression 约束，直接服务 token acceptance；用多层 target feature 给 draft 更完整的条件；用 training-time test 让 draft model 在训练时就处理自己的递归输出。理解这三点后，EAGLE-3 的 speedup 表才有意义：收益来自 accepted tokens 增多，但能否落地还取决于请求桶、batch size、runtime 集成和 verification overhead。</p>
+
+		</div>
+
+		
+		<div class="post-copyright-info w-full my-8 px-2 sm:px-6 md:px-8">
+			<div class="article-copyright-info-container">
+    <ul>
+        <li><strong>Title:</strong> 论文专题讲解：EAGLE-3：为什么 draft model 要在训练时“见过自己犯错”</li>
+        <li><strong>Author:</strong> Charles</li>
+        <li><strong>Created at
+                :</strong> 2025-10-04 09:00:00</li>
+        
+            <li>
+                <strong>Updated at
+                    :</strong> 2025-10-04 09:00:00
+            </li>
+        
+        <li>
+            <strong>Link:</strong> https://charles2530.github.io/2025/10/04/ai-files-paper-deep-dives-inference-eagle-3/
+        </li>
+        <li>
+            <strong>
+                License:
+            </strong>
+            
+
+            
+                This work is licensed under <a class="license" target="_blank" rel="noopener" href="https://creativecommons.org/licenses/by-nc-sa/4.0">CC BY-NC-SA 4.0</a>.
+            
+        </li>
+    </ul>
+</div>
+
+		</div>
+		
+
+		
+		<ul class="post-tags-box text-lg mt-1.5 flex-wrap justify-center flex md:hidden">
+			
+			<li class="tag-item mx-0.5">
+				<a href="/tags/AI/">#AI</a>&nbsp;
+			</li>
+			
+			<li class="tag-item mx-0.5">
+				<a href="/tags/%E6%8E%A8%E7%90%86/">#推理</a>&nbsp;
+			</li>
+			
+			<li class="tag-item mx-0.5">
+				<a href="/tags/%E8%AE%BA%E6%96%87%E4%B8%93%E9%A2%98/">#论文专题</a>&nbsp;
+			</li>
+			
+		</ul>
+		
+
+		
+
+		
+		<div class="article-nav my-8 flex justify-between items-center px-2 sm:px-6 md:px-8">
+			
+			<div class="article-prev border-border-color shadow-redefine-flat shadow-shadow-color-2 rounded-medium px-4 py-2 hover:shadow-redefine-flat-hover hover:shadow-shadow-color-2">
+				<a class="prev" rel="prev" href="/2025/10/06/ai-files-paper-deep-dives-inference-eagle/">
+					<span class="left arrow-icon flex justify-center items-center">
+						<i class="fa-solid fa-chevron-left"></i>
+					</span>
+					<span class="title flex justify-center items-center">
+						<span class="post-nav-title-item truncate max-w-48">论文专题讲解：EAGLE：为什么 draft 不一定要是一个小模型</span>
+						<span class="post-nav-item">Prev posts</span>
+					</span>
+				</a>
+			</div>
+			
+			
+			<div class="article-next border-border-color shadow-redefine-flat shadow-shadow-color-2 rounded-medium px-4 py-2 hover:shadow-redefine-flat-hover hover:shadow-shadow-color-2">
+				<a class="next" rel="next" href="/2025/10/03/ai-files-paper-deep-dives-inference-eagle-2/">
+					<span class="title flex justify-center items-center">
+						<span class="post-nav-title-item truncate max-w-48">论文专题讲解：EAGLE-2：用动态 Draft Tree 加速投机解码</span>
+						<span class="post-nav-item">Next posts</span>
+					</span>
+					<span class="right arrow-icon flex justify-center items-center">
+						<i class="fa-solid fa-chevron-right"></i>
+					</span>
+				</a>
+			</div>
+			
+		</div>
+		
+
+
+		
+		<div class="comment-container px-2 sm:px-6 md:px-8 pb-8">
+			<div class="comments-container mt-10 w-full ">
+    <div id="comment-anchor" class="w-full h-2.5"></div>
+    <div class="comment-area-title w-full my-1.5 md:my-2.5 text-xl md:text-3xl font-bold">
+        Comments
+    </div>
+    
+
+        
+            
+    <div id="gitalk-container"></div>
+    <script data-swup-reload-script
+            src="https://cdnjs.cloudflare.com/ajax/libs/gitalk/1.8.0/gitalk.min.js"></script>
+    <script data-swup-reload-script>
+        (function() {
+            const startPath = location.pathname;
+            const startTime = Date.now();
+            const retryDelay = 200;
+            const retryLimit = 5000;
+
+            const runGitalk = () => {
+                if (location.pathname !== startPath) {
+                    return;
+                }
+
+                const container = document.getElementById('gitalk-container');
+                if (!container || typeof Gitalk === 'undefined') {
+                    if (Date.now() - startTime < retryLimit) {
+                        setTimeout(runGitalk, retryDelay);
+                    }
+                    return;
+                }
+
+                container.innerHTML = '';
+
+                let pageKey = decodeURI(location.pathname);
+                const maxLength = 50;
+                if (pageKey.length > maxLength) {
+                    pageKey = pageKey.substring(0, maxLength - 3) + '...';
+                }
+
+                try {
+                    new Gitalk({
+                        clientID: '8083299a8ee2aaf23879',
+                        clientSecret: 'a8161e81d4872181e884fdb69f7be24916b6a9d0',
+                        repo: 'Charles2530.github.io',
+                        owner: 'Charles2530',
+                        admin: ['Charles2530'],
+                        id: pageKey,
+                        language: 'en',
+                        proxy: 'https://github.com/login/oauth/access_token'
+                    }).render(container);
+                } catch (e) {
+                    window.Gitalk = null;
+                }
+            };
+
+            runGitalk();
+        })();
+    </script>
+
+
+
+        
+    
+</div>
+
+		</div>
+		
+	</div>
+
+	
+	<div class="toc-content-container">
+		<div class="post-toc-wrap">
+	<div class="post-toc">
+		<div class="toc-title">On this page</div>
+		<div class="page-title">论文专题讲解：EAGLE-3：为什么 draft model 要在训练时“见过自己犯错”</div>
+		<ol class="nav"><li class="nav-item nav-level-2"><a class="nav-link" href="#%E5%8E%9F%E8%AE%BA%E6%96%87%E6%95%85%E4%BA%8B%E7%BA%BF"><span class="nav-text"> 原论文故事线</span></a><ol class="nav-child"><li class="nav-item nav-level-3"><a class="nav-link" href="#%E7%A0%94%E7%A9%B6%E8%83%8C%E6%99%AF"><span class="nav-text"> 研究背景</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#%E9%97%AE%E9%A2%98challenge"><span class="nav-text"> 问题（Challenge）</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#finding"><span class="nav-text"> Finding</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#%E6%96%B9%E6%B3%95"><span class="nav-text"> 方法</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#%E7%BB%93%E8%AE%BA"><span class="nav-text"> 结论</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#%E5%85%B3%E9%94%AE%E6%9C%AF%E8%AF%AD"><span class="nav-text"> 关键术语</span></a></li></ol></li><li class="nav-item nav-level-2"><a class="nav-link" href="#%E4%BB%8E-eagle-%E5%88%B0-eagle-3%E6%94%BE%E5%BC%83-feature-regression-%E7%BA%A6%E6%9D%9F"><span class="nav-text"> 从 EAGLE 到 EAGLE-3：放弃 feature regression 约束</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#training-time-test-%E6%98%AF%E4%BB%80%E4%B9%88"><span class="nav-text"> Training-time test 是什么</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#%E5%A4%9A%E5%B1%82-feature-fusion-%E4%B8%BA%E4%BB%80%E4%B9%88%E6%9C%89%E7%94%A8"><span class="nav-text"> 多层 feature fusion 为什么有用</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#%E6%B6%88%E8%9E%8D%E5%AE%9E%E9%AA%8C%E6%80%8E%E4%B9%88%E8%AF%BB"><span class="nav-text"> 消融实验怎么读</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#%E6%8E%A5%E5%8F%97%E7%8E%87%E4%B8%BA%E4%BB%80%E4%B9%88%E6%B2%A1%E6%9C%89%E9%9A%8F%E6%B7%B1%E5%BA%A6%E5%B4%A9%E6%8E%89"><span class="nav-text"> 接受率为什么没有随深度崩掉</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#runtime-%E7%BB%93%E6%9E%9C%E4%B8%8D%E8%83%BD%E5%8F%AA%E7%9C%8B%E5%8D%95%E8%AF%B7%E6%B1%82"><span class="nav-text"> Runtime 结果不能只看单请求</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#%E5%92%8C-eagle-eagle-2-%E7%9A%84%E8%BF%9E%E7%BB%AD%E5%85%B3%E7%B3%BB"><span class="nav-text"> 和 EAGLE、EAGLE-2 的连续关系</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#%E8%AE%AD%E7%BB%83%E5%92%8C%E6%8E%A8%E7%90%86%E6%8E%A5%E5%8F%A3%E8%A6%81%E9%80%90%E9%A1%B9%E5%AF%B9%E9%BD%90"><span class="nav-text"> 训练和推理接口要逐项对齐</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#%E8%AF%81%E6%8D%AE%E9%93%BE%E4%B8%8D%E6%98%AF%E4%B8%80%E5%BC%A0%E9%80%9F%E5%BA%A6%E5%9B%BE%E5%B0%B1%E5%A4%9F%E4%BA%86"><span class="nav-text"> 证据链：不是一张速度图就够了</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#%E9%83%A8%E7%BD%B2%E6%97%B6%E6%9C%80%E5%AE%B9%E6%98%93%E8%B8%A9%E7%9A%84%E5%9D%91"><span class="nav-text"> 部署时最容易踩的坑</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#%E6%9C%80%E5%B0%8F%E5%A4%8D%E7%8E%B0%E5%AE%9E%E9%AA%8C%E5%BA%94%E8%AF%A5%E6%80%8E%E4%B9%88%E8%AE%BE%E8%AE%A1"><span class="nav-text"> 最小复现实验应该怎么设计</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#%E5%92%8C%E5%85%B6%E4%BB%96%E6%8E%A8%E7%90%86%E4%BC%98%E5%8C%96%E7%9A%84%E7%BB%84%E5%90%88%E8%BE%B9%E7%95%8C"><span class="nav-text"> 和其他推理优化的组合边界</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#%E5%A4%96%E9%83%A8%E7%B2%BE%E8%AF%BB"><span class="nav-text"> 外部精读</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#%E9%98%85%E8%AF%BB%E7%BB%93%E8%AE%BA"><span class="nav-text"> 阅读结论</span></a></li></ol>
+
+	</div>
+</div>
+	</div>
+	
+</div>
+
+			</div>
+
+			
+		</div>
+
+		<div class="main-content-footer">
+			<footer class="footer mt-5 py-5 h-auto text-base text-third-text-color relative border-t-2 border-t-border-color">
+    <div class="info-container py-3 text-center">
+        
+        <div class="text-center">
+            &copy;
+            
+              <span>2022</span>
+              -
+            
+            2026&nbsp;&nbsp;<i class="fa-solid fa-heart fa-beat" style="--fa-animation-duration: 0.5s; color: #f54545"></i>&nbsp;&nbsp;<a href="/">Charles</a>
+            
+                
+                <p class="post-count space-x-0.5">
+                    <span>
+                        601 posts in total
+                    </span>
+                    
+                        <span>
+                            2422.2k words in total
+                        </span>
+                    
+                </p>
+            
+        </div>
+        
+            <script data-swup-reload-script src="https://cn.vercount.one/js"></script>
+            <div class="relative text-center lg:absolute lg:right-[20px] lg:top-1/2 lg:-translate-y-1/2 lg:text-right">
+                
+                    <span id="busuanzi_container_site_uv" class="lg:!block">
+                        <span class="text-sm">VISITOR COUNT</span>
+                        <span id="busuanzi_value_site_uv"></span>
+                    </span>
+                
+                
+                    <span id="busuanzi_container_site_pv" class="lg:!block">
+                        <span class="text-sm">TOTAL PAGE VIEWS</span>
+                        <span id="busuanzi_value_site_pv"></span>
+                    </span>
+                
+            </div>
+        
+        <div class="relative text-center lg:absolute lg:left-[20px] lg:top-1/2 lg:-translate-y-1/2 lg:text-left">
+            <span class="lg:block text-sm">POWERED BY <?xml version="1.0" encoding="utf-8"?><!DOCTYPE svg PUBLIC "-//W3C//DTD SVG 1.1//EN" "http://www.w3.org/Graphics/SVG/1.1/DTD/svg11.dtd"><svg class="relative top-[2px] inline-block align-baseline" version="1.1" id="圖層_1" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" x="0px" y="0px" width="1rem" height="1rem" viewBox="0 0 512 512" enable-background="new 0 0 512 512" xml:space="preserve"><path fill="#0E83CD" d="M256.4,25.8l-200,115.5L56,371.5l199.6,114.7l200-115.5l0.4-230.2L256.4,25.8z M349,354.6l-18.4,10.7l-18.6-11V275H200v79.6l-18.4,10.7l-18.6-11v-197l18.5-10.6l18.5,10.8V237h112v-79.6l18.5-10.6l18.5,10.8V354.6z"/></svg><a target="_blank" class="text-base" href="https://hexo.io">Hexo</a></span>
+            <span class="text-sm lg:block">THEME&nbsp;<a class="text-base" target="_blank" href="https://github.com/EvanNotFound/hexo-theme-redefine">Redefine v2.9.0</a></span>
+        </div>
+        
+        
+            <div>
+                Blog up for <span class="odometer" id="runtime_days" ></span> days <span class="odometer" id="runtime_hours"></span> hrs <span class="odometer" id="runtime_minutes"></span> Min <span class="odometer" id="runtime_seconds"></span> Sec
+            </div>
+        
+        
+            <script data-swup-reload-script>
+                try {
+                    function odometer_init() {
+                    const elements = document.querySelectorAll('.odometer');
+                    elements.forEach(el => {
+                        new Odometer({
+                            el,
+                            format: '( ddd).dd',
+                            duration: 200
+                        });
+                    });
+                    }
+                    odometer_init();
+                } catch (error) {}
+            </script>
+        
+        
+            
+                
+        
+                
+        
+                
+
+                    
+                        <script data-swup-reload-script type="text/javascript" src="/js/love.js"></script>
+                    
+        
+        
+    </div>  
+</footer>
+		</div>
+	</div>
+
+	
+	<div class="post-tools">
+		<div class="post-tools-container">
+	<ul class="article-tools-list">
+		<!-- TOC aside toggle -->
+		
+		<li class="right-bottom-tools page-aside-toggle">
+			<i class="fa-regular fa-outdent"></i>
+		</li>
+		
+
+		<!-- go comment -->
+		
+		<li class="go-comment">
+			<i class="fa-regular fa-comments"></i>
+		</li>
+		
+	</ul>
+</div>
+	</div>
+	
+
+	<div class="right-side-tools-container">
+		<div class="side-tools-container">
+	<ul class="hidden-tools-list">
+		<li class="right-bottom-tools tool-font-adjust-plus flex justify-center items-center">
+			<i class="fa-regular fa-magnifying-glass-plus"></i>
+		</li>
+
+		<li class="right-bottom-tools tool-font-adjust-minus flex justify-center items-center">
+			<i class="fa-regular fa-magnifying-glass-minus"></i>
+		</li>
+
+		<li class="right-bottom-tools tool-dark-light-toggle flex justify-center items-center">
+			<i class="fa-regular fa-moon"></i>
+		</li>
+
+		<!-- rss -->
+		
+		<li class="right-bottom-tools rss flex justify-center items-center">
+			<a class="flex justify-center items-center" href="/atom.xml" target="_blank">
+				<i class="fa-regular fa-rss"></i>
+			</a>
+		</li>
+		
+
+		
+
+		<li class="right-bottom-tools tool-scroll-to-bottom flex justify-center items-center">
+			<i class="fa-regular fa-arrow-down"></i>
+		</li>
+	</ul>
+
+	<ul class="visible-tools-list">
+		<li class="right-bottom-tools toggle-tools-list flex justify-center items-center">
+			<i class="fa-regular fa-cog fa-spin"></i>
+		</li>
+		
+		<li class="right-bottom-tools tool-scroll-to-top flex justify-center items-center">
+			<i class="arrow-up fas fa-arrow-up"></i>
+			<span class="percent"></span>
+		</li>
+		
+		
+	</ul>
+</div>
+	</div>
+
+	<div class="image-viewer-container" role="dialog" aria-modal="true" aria-label="Image viewer">
+	<button class="image-viewer-close" type="button" aria-label="Close">
+		<i class="fa-solid fa-xmark"></i>
+	</button>
+	<button class="image-viewer-prev" type="button" aria-label="Prev">
+		<i class="fa-solid fa-chevron-left"></i>
+	</button>
+	<div class="image-viewer-frame">
+		<img src="" alt="">
+	</div>
+	<div class="image-viewer-exif-panel hidden absolute left-1/2 bottom-20 -translate-x-1/2 w-[min(92vw,420px)] max-h-[60vh] overflow-hidden rounded-2xl bg-background-color-transparent-80 p-4 text-left shadow-redefine-flat backdrop-blur-md" role="dialog" aria-label="EXIF" aria-hidden="true">
+		<div class="flex items-center justify-between mb-3">
+			<span class="text-sm font-semibold text-first-text-color">EXIF</span>
+			<button class="image-viewer-exif-close flex h-8 w-8 items-center justify-center rounded-full bg-background-color-transparent-80 text-first-text-color transition hover:bg-background-color-transparent-40" type="button" aria-label="Close">
+				<i class="fa-solid fa-xmark text-[0.65rem]"></i>
+			</button>
+		</div>
+		<div class="image-viewer-exif-cards grid grid-cols-1 sm:grid-cols-2 gap-3 max-h-[50vh] overflow-y-auto pr-1 scrollbar-hide"></div>
+		<template class="image-viewer-exif-card-template">
+			<div class="rounded-lg bg-background-color-transparent-40 px-3 py-2">
+				<div class="image-viewer-exif-card-header flex items-center gap-2 mb-1">
+					<i class="image-viewer-exif-card-icon fa-solid fa-circle-info text-xs text-third-text-color"></i>
+					<div class="image-viewer-exif-card-title text-xs font-semibold text-first-text-color"></div>
+				</div>
+				<div class="image-viewer-exif-card-items flex flex-col gap-1"></div>
+			</div>
+		</template>
+	</div>
+	<button class="image-viewer-exif-toggle flex items-center gap-2 hidden absolute left-1/2 bottom-6 -translate-x-1/2 rounded-full border border-border-color bg-background-color-transparent-80 px-4 py-2 text-first-text-color backdrop-blur-md transition hover:bg-background-color-transparent-40" type="button" aria-label="EXIF" aria-expanded="false">
+		<i class="fa-solid fa-circle-info text-xs"></i>
+		<span class="text-xs font-semibold uppercase tracking-wider">EXIF</span>
+	</button>
+	<button class="image-viewer-next" type="button" aria-label="Next">
+		<i class="fa-solid fa-chevron-right"></i>
+	</button>
+</div>
+
+
+	
+	<div class="search-pop-overlay">
+	<div class="popup search-popup">
+		<div class="search-header">
+			<span class="search-input-field-pre">
+				<i class="fa-solid fa-keyboard"></i>
+			</span>
+			<div class="search-input-container">
+				<input autocomplete="off" autocorrect="off" autocapitalize="off" placeholder="Search..." spellcheck="false" type="search" class="search-input">
+			</div>
+			<span class="popup-btn-close">
+				<i class="fa-solid fa-times"></i>
+			</span>
+		</div>
+		<div id="search-result">
+			<div id="no-result">
+				<i class="fa-solid fa-spinner fa-spin-pulse fa-5x fa-fw"></i>
+			</div>
+		</div>
+	</div>
+</div>
+	
+
+</main>
+
+
+
+<script src="/js/build/libs/Swup.min.js"></script>
+
+<script src="/js/build/libs/SwupSlideTheme.min.js"></script>
+
+<script src="/js/build/libs/SwupScriptsPlugin.min.js"></script>
+
+<script src="/js/build/libs/SwupProgressPlugin.min.js"></script>
+
+<script src="/js/build/libs/SwupScrollPlugin.min.js"></script>
+
+<script src="/js/build/libs/SwupPreloadPlugin.min.js"></script>
+
+<script>
+    window.swup = new Swup({
+        plugins: [
+            new SwupScriptsPlugin({
+                optin: true,
+            }),
+            new SwupProgressPlugin(),
+            new SwupScrollPlugin({
+                offset: 80,
+            }),
+            new SwupSlideTheme({
+                mainElement: ".main-content-body",
+            }),
+            new SwupPreloadPlugin(),
+        ],
+        containers: ["#swup"],
+    });
+
+    window.dispatchEvent(
+        new CustomEvent("redefine:swup:ready", {
+            detail: {
+                swup: window.swup,
+            },
+        }),
+    );
+</script>
+
+
+
+
+	
+<script src="/js/build/main.js" type="module"></script>
+
+
+
+    
+<script src="/js/build/libs/odometer.min.js"></script>
+
+    
+<link rel="stylesheet" href="/assets/odometer-theme-minimal.css">
+
+
+
+
+
+
+
+  
+<script src="/js/build/libs/Typed.min.js"></script>
+<script src="/js/build/libs/minimasonry.min.js" data-swup-reload-script=""></script>
+
+
+
+
+<script src="/js/build/libs/moment-with-locales.min.js" data-swup-reload-script=""></script>
+
+
+
+	
+</body>
+
+</html>
