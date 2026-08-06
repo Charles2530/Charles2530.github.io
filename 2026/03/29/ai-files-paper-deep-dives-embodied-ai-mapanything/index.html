@@ -1,0 +1,2365 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="keywords" content="Charles">
+    
+    
+    <meta name="author" content="Charles">
+    
+    <!-- Completely eliminate flash of wrong theme -->
+    <script>
+        (function() {
+            const THEME_KEY = "REDEFINE-THEME-STATUS";
+            const DARK = "dark", LIGHT = "light";
+            
+            // Get preferred theme
+            function getTheme() {
+                try {
+                    const saved = localStorage.getItem(THEME_KEY);
+                    if (saved) {
+                        const { isDark } = JSON.parse(saved);
+                        return isDark ? DARK : LIGHT;
+                    }
+                } catch (e) {}
+                
+                return matchMedia("(prefers-color-scheme: dark)").matches ? DARK : LIGHT;
+            }
+            
+            // Apply theme to document
+            function applyTheme(theme) {
+                const isDark = theme === DARK;
+                const root = document.documentElement;
+                
+                // Set classes for compatibility
+                root.classList.add(theme);
+                root.classList.remove(isDark ? LIGHT : DARK);
+                root.style.colorScheme = theme;
+            }
+            
+            // Initial application
+            const theme = getTheme();
+            applyTheme(theme);
+            
+            // Listen for system preference changes
+            matchMedia("(prefers-color-scheme: dark)").addEventListener("change", ({ matches }) => {
+                // Only update if using system preference (no localStorage entry)
+                if (!localStorage.getItem(THEME_KEY)) {
+                    applyTheme(matches ? DARK : LIGHT);
+                }
+            });
+            
+            // Set body classes ASAP (before DOMContentLoaded)
+            (function() {
+                const addBodyClass = () => {
+                    const b = document.body;
+                    if (!b) return false;
+                    b.classList.add(theme + "-mode");
+                    return true;
+                };
+
+                // Try immediately
+                if (addBodyClass()) return;
+
+                // Observe until body exists
+                const mo = new MutationObserver(() => {
+                    if (addBodyClass()) mo.disconnect();
+                });
+                mo.observe(document.documentElement, { childList: true, subtree: true });
+            })();
+        })();
+    </script>
+    
+    <!-- preconnect -->
+<!--- Seo Part-->
+    
+    <link rel="canonical" href="https://charles2530.github.io/2026/03/29/ai-files-paper-deep-dives-embodied-ai-mapanything/"/>
+    <meta name="robots" content="index,follow">
+    <meta name="googlebot" content="index,follow">
+    <meta name="revisit-after" content="1 days">
+    
+    
+        
+        <meta name="description" content="This is Charles&#39;s Castle.">
+<meta property="og:type" content="article">
+<meta property="og:title" content="论文专题讲解：MapAnything：统一前向 Metric 3D 重建骨干">
+<meta property="og:url" content="https://charles2530.github.io/2026/03/29/ai-files-paper-deep-dives-embodied-ai-mapanything/index.html">
+<meta property="og:site_name" content="Charles&#39;s Castle">
+<meta property="og:description" content="This is Charles&#39;s Castle.">
+<meta property="og:locale" content="en_US">
+<meta property="og:image" content="https://charles2530.github.io/image/background/logo.jpg">
+<meta property="article:published_time" content="2026-03-29T01:00:00.000Z">
+<meta property="article:modified_time" content="2026-03-29T01:00:00.000Z">
+<meta property="article:author" content="Du Jinyang">
+<meta property="article:tag" content="AI">
+<meta property="article:tag" content="具身智能">
+<meta property="article:tag" content="数据与评测">
+<meta property="article:tag" content="论文专题">
+<meta name="twitter:card" content="summary">
+<meta name="twitter:image" content="https://charles2530.github.io/image/background/logo.jpg">
+    
+    
+    <!--- Icon Part-->
+    <link rel="icon" type="image/png" href="https://charles2530.github.io/image/background/favicon.png" sizes="192x192">
+    <link rel="apple-touch-icon" sizes="180x180" href="https://charles2530.github.io/image/background/favicon.png">
+    <meta name="theme-color" content="#A31F34">
+    <link rel="shortcut icon" href="https://charles2530.github.io/image/background/favicon.png">
+    <!--- Page Info-->
+    
+    <title>
+        
+            论文专题讲解：MapAnything：统一前向 Metric 3D 重建骨干 | Charles&#39;s Castle
+        
+    </title>
+
+    
+<link rel="stylesheet" href="/fonts/Chillax/chillax.css">
+
+
+    <!--- Inject Part-->
+    
+        
+            
+    
+            
+    
+            
+                
+                    <link rel="stylesheet" href="/katex/katex.min.css">
+                
+    
+            
+                
+                    <link rel="stylesheet" href="/css/site-polish-v2.css">
+                
+    
+            
+                
+                    <script data-swup-reload-script>
+(function() {
+  function loadBaiduAnalytics() {
+    if (window.__baiduAnalyticsLoaded) return;
+    window.__baiduAnalyticsLoaded = true;
+    window._hmt = window._hmt || [];
+    var hm = document.createElement("script");
+    hm.async = true;
+    hm.src = "https://hm.baidu.com/hm.js?8e0e5f382d14d87cbeadc33a36e71e86";
+    document.head.appendChild(hm);
+  }
+  if ("requestIdleCallback" in window) {
+    requestIdleCallback(loadBaiduAnalytics, { timeout: 3000 });
+  } else {
+    window.addEventListener("load", function() {
+      setTimeout(loadBaiduAnalytics, 1500);
+    });
+  }
+})();
+</script>
+
+                
+    
+
+    
+<link rel="stylesheet" href="/css/style.css">
+
+
+    
+        
+<link rel="stylesheet" href="/css/build/tailwind.css">
+
+    
+
+    
+<link rel="stylesheet" href="/fonts/GeistMono/geist-mono.css">
+
+    
+<link rel="stylesheet" href="/fonts/Geist/geist.css">
+
+    <!--- Font Part-->
+    
+    
+    
+    
+    
+    
+        
+<script src="/js/build/libs/anime.min.js"></script>
+
+    
+
+    <script id="hexo-configurations">
+    window.config = {"hostname":"charles2530.github.io","root":"/","language":"en","path":"search.xml"};
+    window.theme = {"articles":{"style":{"font_size":"16px","line_height":1.5,"image_border_radius":"14px","image_alignment":"center","image_caption":false,"link_icon":true,"delete_mask":false,"title_alignment":"left","headings_top_spacing":{"h1":"5rem","h2":"4rem","h3":"2.8rem","h4":"2.5rem","h5":"2.2rem","h6":"2rem"}},"word_count":{"enable":true,"count":true,"min2read":true},"author_label":{"enable":true,"auto":true,"list":["lol","Neo","God"]},"code_block":{"copy":true,"style":"mac","highlight_theme":{"light":"github","dark":"vs2015"},"font":{"enable":false,"family":null,"url":null}},"toc":{"enable":true,"max_depth":6,"number":false,"expand":true,"init_open":true},"copyright":{"enable":true,"default":"cc_by_nc_sa"},"lazyload":true,"pangu_js":false,"recommendation":{"enable":false,"title":"recommend_articles","limit":3,"mobile_limit":2,"placeholder":"https://charles2530.github.io/image/background/p3.jfif","skip_dirs":[]}},"colors":{"primary":"#A31F34","secondary":"#1890ff","default_mode":"light"},"global":{"fonts":{"chinese":{"enable":false,"family":null,"url":null},"english":{"enable":false,"family":null,"url":null},"title":{"enable":false,"family":null,"url":null}},"content_max_width":"1000px","sidebar_width":"210px","hover":{"shadow":true,"scale":true},"scroll_progress":{"bar":true,"percentage":true},"website_counter":{"url":"https://cn.vercount.one/js","enable":true,"site_pv":true,"site_uv":true,"post_pv":true},"single_page":true,"preloader":{"enable":true,"custom_message":null},"side_tools":{"gear_rotation":true,"auto_expand":false},"open_graph":{"enable":true,"image":"https://charles2530.github.io/image/background/logo.jpg","description":"This is Charles's Castle."},"google_analytics":{"enable":false,"id":null}},"home_banner":{"enable":true,"style":"fixed","image":{"light":"https://charles2530.github.io/image/background/background-light1.jpg","dark":"https://charles2530.github.io/image/background/background-dark1.jpg"},"title":"Charles's Castle","subtitle":{"text":["Happiness is best!","Never give up!","Everyday is a gift!"],"hitokoto":{"enable":false,"show_author":false,"api":"https://v1.hitokoto.cn"},"typing_speed":100,"backing_speed":80,"starting_delay":500,"backing_delay":1500,"loop":true,"smart_backspace":true},"text_color":{"light":"#000000","dark":"#d1d1b6"},"text_style":{"title_size":"3.2rem","subtitle_size":"1.5rem","line_height":1.2},"custom_font":{"enable":false,"family":null,"url":null},"social_links":{"enable":true,"style":"center","links":[{"icon":"fa-brands fa-github","url":"https://github.com/Charles2530/"},{"icon":"fa-brands fa-zhihu","url":"https://www.zhihu.com/people/yang-guang-xiao-zi-55-55"},{"icon":"fa-solid fa-at","url":"mailto:charles2530@163.com"},{"icon":"fa-brands fa-telegram","url":null},{"icon":"/images/custom-icon.svg","url":null}],"qrs":[{"icon":"fa-brands fa-weixin","qr":"https://charles2530.github.io/image/background/Wechat_icon.png"},{"icon":"/images/custom-icon.svg","qr":null}]}},"plugins":{"feed":{"enable":true},"aplayer":{"enable":false,"type":"fixed","audios":[{"name":null,"artist":null,"url":null,"cover":null,"lrc":null}]},"mermaid":{"enable":true,"version":"11.4.1","theme":{"light":"default","dark":"dark"}}},"version":"2.9.0","navbar":{"auto_hide":true,"color":{"left":"#f78736","right":"#367df7","transparency":35},"width":{"home":"1200px","pages":"1000px"},"links":{"Home":{"path":"/","icon":"fa-regular fa-house"},"Categories":{"path":"/categories","icon":"fas fa-bookmark"},"Tags":{"path":"/tags","icon":"fas fa-tags"},"About":{"icon":"fa-regular fa-user","submenus":{"Me":"https://jinyang-du.github.io/","Github":"https://github.com/Charles2530/","Blog":"https://charles2530.github.io","Statistics":"https://tongji.baidu.com/"}}},"search":{"enable":true,"preload":false}},"page_templates":{"friends_column":2,"tags_style":"blur","masonry":{"batch_size":12,"initial_batch_size":24}},"home":{"sidebar":{"enable":true,"position":"left","first_item":"menu","announcement":"This is Charles's Castle","show_on_mobile":true,"links":{"Archives":{"path":"/archives","icon":"fa-regular fa-archive"},"Photos":{"icon":"fa-solid fa-image","path":"/masonry/"},"Essays":{"icon":"fa-solid fa-message-lines","path":"/essay/"},"Friends":{"icon":"fa-solid fa-user-group","path":"/friends/"}}},"article_date_format":"auto","excerpt_length":200,"categories":{"enable":true,"limit":3},"tags":{"enable":true,"limit":3}},"footer":{"runtime":true,"icon":"<i class=\"fa-solid fa-heart fa-beat\" style=\"--fa-animation-duration: 0.5s; color: #f54545\"></i>","start":"2022/12/27 00:00:00","statistics":true,"customize":null,"icp":{"enable":false,"number":null,"url":null}},"footerStart":"2022/12/27 00:00:00","mermaid":{"style":{"light":"default","dark":"dark"}}};
+    window.lang_ago = {"second":"%s seconds ago","minute":"%s minutes ago","hour":"%s hours ago","day":"%s days ago","week":"%s weeks ago","month":"%s months ago","year":"%s years ago"};
+    window.i18n = {"search":"Search...","toc":"On this page","prev":"Prev","next":"Next","prev_posts":"Prev posts","next_posts":"Next posts","page":"Page %d","recent_posts":"Recent Posts","share":"Share","powered_by":"POWERED BY %s","theme":"THEME","rss_feed":"RSS Feed","category":"Category","categories":"Categories","tag":"Tag","tags":"Tags","post":"Post","posts":"Posts","tagcloud":"Tag Cloud","comment":"Comment","comments":"Comments","home":"Home","archive":"Archive","archives":"Archives","top":"TOP","sticky":"Sticky","go-back-home":"Go Back Home","masonry_loading":"Loading photos...","image_viewer":"Image viewer","close":"Close","exif":{"title":"EXIF","cards":{"camera":"Camera","lens":"Lens","exposure":"Exposure","other":"Other"},"fields":{"make":"Brand","model":"Model","date_taken":"Date taken","lens_model":"Lens","focal_length":"Focal length","focus_mode":"Focus mode","shutter":"Shutter","aperture":"Aperture","iso":"ISO","exposure_program":"Exposure program","exposure_compensation":"Exposure compensation","metering_mode":"Metering mode","flash":"Flash","white_balance":"White balance","latitude":"Latitude","longitude":"Longitude","altitude":"Altitude"},"status":{"loading":"Loading...","no_exif":"No EXIF available","library_missing":"EXIF library not loaded","image_source_missing":"Image source unavailable","unavailable":"EXIF unavailable (blocked by CORS or missing metadata)","flag_unavailable":"EXIF unavailable"}},"about":"About","changelog":"Changelog","links":"Links","link":"Link","friends":"Friends","friend":"Friend","timeline":"Timeline","shuoshuo":"Shuoshuo","bookmarks":"Bookmarks","site_uv":"VISITOR COUNT","site_pv":"TOTAL PAGE VIEWS","read_more":"Read more","wordcount":"Words","min2read":"Mins","status":"Status","runtime":"Blog up for","days":"days","hours":"hrs","minutes":"Min","seconds":"Sec","optimized_by":"and Optimized by Evan","rights":"All Rights Reserved","site_posts":"%s posts in total","site_wordcount":"%s words in total","copyright":{"author":"Author","title":"Title","link":"Link","create_time":"Created at","update_time":"Updated at","license_title":"License","license_content":"This work is licensed under %s.","all_rights_reserved":"All Rights Reserved &#169; %s","public_domain":"This work is in the public domain."},"ago":{"second":"%s seconds ago","minute":"%s minutes ago","hour":"%s hours ago","day":"%s days ago","week":"%s weeks ago","month":"%s months ago","year":"%s years ago"},"create_time":"Created","update_time":"Updated","expired":"This post is written %s days ago, and the content may not be up to date."};
+    window.data = {"masonry":true};
+  </script>
+    
+    <!--- Fontawesome Part-->
+    
+<link rel="stylesheet" href="/fontawesome/fontawesome.min.css">
+
+    
+<link rel="stylesheet" href="/fontawesome/brands.min.css">
+
+    
+<link rel="stylesheet" href="/fontawesome/solid.min.css">
+
+    
+<link rel="stylesheet" href="/fontawesome/regular.min.css">
+
+    
+    
+    
+    
+<meta name="generator" content="Hexo 6.3.0"><link rel="alternate" href="/atom.xml" title="Charles's Castle" type="application/atom+xml">
+<link rel="stylesheet" href="/css/prism-tomorrow.css" type="text/css"></head>
+
+
+<body>
+	<div class="progress-bar-container">
+	
+	<span class="scroll-progress-bar"></span>
+	
+
+	
+	<span class="pjax-progress-bar"></span>
+	<!--        <span class="swup-progress-icon">-->
+	<!--            <i class="fa-solid fa-circle-notch fa-spin"></i>-->
+	<!--        </span>-->
+	
+</div>
+
+<style>
+    :root {
+        --preloader-background-color: #fff;
+        --preloader-text-color: #000;
+    }
+
+    @media (prefers-color-scheme: dark) {
+        :root {
+            --preloader-background-color: #202124;
+            --preloader-text-color: #fff;
+        }
+    }
+
+    @media (prefers-color-scheme: light) {
+        :root {
+            --preloader-background-color: #fff;
+            --preloader-text-color: #000;
+        }
+    }
+
+    @media (max-width: 600px) {
+        .ml13 {
+            font-size: 2.6rem !important; /* Adjust this value as needed */
+        }
+    }
+
+    .preloader {
+        display: flex;
+        flex-direction: column;
+        gap: 1rem; /* Tailwind 'gap-4' is 1rem */
+        align-items: center;
+        justify-content: center;
+        position: fixed;
+        padding: 12px;
+        top: 0;
+        right: 0;
+        bottom: 0;
+        left: 0;
+        width: 100vw;
+        height: 100vh; /* 'h-screen' is 100% of the viewport height */
+        background-color: var(--preloader-background-color);
+        z-index: 1100; /* 'z-[1100]' sets the z-index */
+        transition: opacity 0.2s ease-in-out;
+    }
+
+    .ml13 {
+        font-size: 3.2rem;
+        /* text-transform: uppercase; */
+        color: var(--preloader-text-color);
+        letter-spacing: -1px;
+        font-weight: 500;
+        font-family: 'Chillax-Variable', sans-serif;
+        text-align: center;
+    }
+
+    .ml13 .word {
+        display: inline-flex;
+        flex-wrap: wrap;
+        white-space: nowrap;
+    }
+
+    .ml13 .letter {
+        display: inline-block;
+        line-height: 1em;
+    }
+</style>
+
+<div class="preloader">
+    <h2 class="ml13">
+        Charles&#39;s Castle
+    </h2>
+    <script>
+        var textWrapper = document.querySelector('.ml13');
+        // Split text into words
+        var words = textWrapper.textContent.trim().split(' ');
+
+        // Clear the existing content
+        textWrapper.innerHTML = '';
+
+        // Wrap each word and its letters in spans
+        words.forEach(function(word) {
+            var wordSpan = document.createElement('span');
+            wordSpan.classList.add('word');
+            wordSpan.innerHTML = word.replace(/\S/g, "<span class='letter'>$&</span>");
+            textWrapper.appendChild(wordSpan);
+            textWrapper.appendChild(document.createTextNode(' ')); // Add space between words
+        });
+
+        var animation = anime.timeline({ loop: true })
+            .add({
+                targets: '.ml13 .letter',
+                translateY: [20, 0],
+                translateZ: 0,
+                opacity: [0, 1],
+                filter: ['blur(5px)', 'blur(0px)'],
+                easing: "easeOutExpo",
+                duration: 1200,
+                delay: (el, i) => 300 + 20 * i,
+            })
+            .add({
+                targets: '.ml13 .letter',
+                translateY: [0, -20],
+                opacity: [1, 0],
+                filter: ['blur(0px)', 'blur(5px)'],
+                easing: "easeInExpo",
+                duration: 1000,
+                delay: (el, i) => 15 * i,
+                complete: function() {
+                    hidePreloader();
+                }
+            }, '-=700');
+
+
+        let themeStatus = JSON.parse(localStorage.getItem('REDEFINE-THEME-STATUS'))?.isDark;
+
+        // If the theme status is not found in local storage, check the preferred color scheme
+        if (themeStatus === undefined || themeStatus === null) {
+            if (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) {
+                themeStatus = 'dark';
+            } else {
+                themeStatus = 'light';
+            }
+        }
+
+        // Now you can use the themeStatus variable in your code
+        if (themeStatus) {
+            document.documentElement.style.setProperty('--preloader-background-color', '#202124');
+            document.documentElement.style.setProperty('--preloader-text-color', '#fff');
+        } else {
+            document.documentElement.style.setProperty('--preloader-background-color', '#fff');
+            document.documentElement.style.setProperty('--preloader-text-color', '#000');
+        }
+
+        window.addEventListener('load', function () {
+            setTimeout(hidePreloader, 5000); // Call hidePreloader after 5000 milliseconds if not already called by animation
+        });
+
+        function hidePreloader() {
+            var preloader = document.querySelector('.preloader');
+            preloader.style.opacity = '0';
+            setTimeout(function () {
+                preloader.style.display = 'none';
+            }, 200);
+        }
+    </script>
+</div>
+
+<main class="page-container" id="swup">
+
+	
+
+	<div class="main-content-container flex flex-col justify-between min-h-dvh">
+		<div class="main-content-header">
+			<header class="navbar-container px-6 md:px-12">
+    <div class="navbar-content transition-navbar ">
+        <div class="left">
+            
+                <a class="logo-image h-8 w-8 sm:w-10 sm:h-10 mr-3" href="/">
+                    <img src="https://charles2530.github.io/image/background/logo.jpg" class="w-full h-full rounded-xs">
+                </a>
+            
+            <a class="logo-title" href="/">
+                
+                Charles&#39;s Castle
+                
+            </a>
+        </div>
+
+        <div class="right">
+            <!-- PC -->
+            <div class="desktop">
+                <ul class="navbar-list">
+                    
+                        
+                            
+
+                            <li class="navbar-item">
+                                <!-- Menu -->
+                                <a class=""
+                                   href="/"
+                                        >
+                                    <i class="fa-regular fa-house fa-fw"></i>
+                                    HOME
+                                    
+                                </a>
+
+                                <!-- Submenu -->
+                                
+                            </li>
+                    
+                        
+                            
+
+                            <li class="navbar-item">
+                                <!-- Menu -->
+                                <a class=""
+                                   href="/categories"
+                                        >
+                                    <i class="fas fa-bookmark fa-fw"></i>
+                                    CATEGORIES
+                                    
+                                </a>
+
+                                <!-- Submenu -->
+                                
+                            </li>
+                    
+                        
+                            
+
+                            <li class="navbar-item">
+                                <!-- Menu -->
+                                <a class=""
+                                   href="/tags"
+                                        >
+                                    <i class="fas fa-tags fa-fw"></i>
+                                    TAGS
+                                    
+                                </a>
+
+                                <!-- Submenu -->
+                                
+                            </li>
+                    
+                        
+                            
+
+                            <li class="navbar-item">
+                                <!-- Menu -->
+                                <a class="has-dropdown"
+                                   href="#"
+                                        onClick=&#34;return false;&#34;>
+                                    <i class="fa-regular fa-user fa-fw"></i>
+                                    ABOUT
+                                    <i class="fa-solid fa-chevron-down fa-fw"></i>
+                                </a>
+
+                                <!-- Submenu -->
+                                
+                                    <ul class="sub-menu">
+                                        
+                                            <li>
+                                                <a target="_blank" rel="noopener" href="https://jinyang-du.github.io/">
+                                                    ME
+                                                </a>
+                                            </li>
+                                        
+                                            <li>
+                                                <a target="_blank" rel="noopener" href="https://github.com/Charles2530/">
+                                                    GITHUB
+                                                </a>
+                                            </li>
+                                        
+                                            <li>
+                                                <a href="https://charles2530.github.io">
+                                                    BLOG
+                                                </a>
+                                            </li>
+                                        
+                                            <li>
+                                                <a target="_blank" rel="noopener" href="https://tongji.baidu.com/">
+                                                    STATISTICS
+                                                </a>
+                                            </li>
+                                        
+                                    </ul>
+                                
+                            </li>
+                    
+                    
+                        <li class="navbar-item search search-popup-trigger">
+                            <i class="fa-solid fa-magnifying-glass"></i>
+                        </li>
+                    
+                </ul>
+            </div>
+            <!-- Mobile -->
+            <div class="mobile">
+                
+                    <div class="icon-item search search-popup-trigger"><i class="fa-solid fa-magnifying-glass"></i>
+                    </div>
+                
+                <div class="icon-item navbar-bar">
+                    <div class="navbar-bar-middle"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Mobile sheet -->
+    <div class="navbar-drawer h-dvh w-full absolute top-0 left-0 bg-background-color flex flex-col justify-between">
+        <ul class="drawer-navbar-list flex flex-col px-4 justify-center items-start">
+            
+                
+                    
+
+                    <li class="drawer-navbar-item text-base my-1.5 flex flex-col w-full">
+                        
+                        <a class="py-1.5 px-2 flex flex-row items-center justify-between gap-1 hover:!text-primary active:!text-primary text-2xl font-semibold group border-b border-border-color hover:border-primary w-full "
+                           href="/"
+                        >
+                            <span>
+                                HOME
+                            </span>
+                            
+                                <i class="fa-regular fa-house fa-sm fa-fw"></i>
+                            
+                        </a>
+                        
+
+                        
+                    </li>
+            
+                
+                    
+
+                    <li class="drawer-navbar-item text-base my-1.5 flex flex-col w-full">
+                        
+                        <a class="py-1.5 px-2 flex flex-row items-center justify-between gap-1 hover:!text-primary active:!text-primary text-2xl font-semibold group border-b border-border-color hover:border-primary w-full "
+                           href="/categories"
+                        >
+                            <span>
+                                CATEGORIES
+                            </span>
+                            
+                                <i class="fas fa-bookmark fa-sm fa-fw"></i>
+                            
+                        </a>
+                        
+
+                        
+                    </li>
+            
+                
+                    
+
+                    <li class="drawer-navbar-item text-base my-1.5 flex flex-col w-full">
+                        
+                        <a class="py-1.5 px-2 flex flex-row items-center justify-between gap-1 hover:!text-primary active:!text-primary text-2xl font-semibold group border-b border-border-color hover:border-primary w-full "
+                           href="/tags"
+                        >
+                            <span>
+                                TAGS
+                            </span>
+                            
+                                <i class="fas fa-tags fa-sm fa-fw"></i>
+                            
+                        </a>
+                        
+
+                        
+                    </li>
+            
+                
+                    
+
+                    <li class="drawer-navbar-item-sub text-base my-1.5 flex flex-col w-full">
+                        
+                        <div class="py-1.5 px-2 flex flex-row items-center justify-between gap-1 hover:!text-primary active:!text-primary cursor-pointer text-2xl font-semibold group border-b border-border-color hover:border-primary w-full "
+                             navbar-data-toggle="submenu-About"
+                        >
+                            <span>
+                                ABOUT
+                            </span>
+                            
+                                <i class="fa-solid fa-chevron-right fa-sm fa-fw transition-all"></i>
+                            
+                        </div>
+                        
+
+                        
+                            <div class="flex-col items-start px-2 py-2 hidden" data-target="submenu-About">
+                                
+                                    <div class="drawer-navbar-item text-base flex flex-col justify-center items-start hover:underline active:underline hover:underline-offset-1 rounded-3xl">
+                                        <a class=" text-third-text-color text-xl"
+                                           target="_blank" rel="noopener" href="https://jinyang-du.github.io/">ME</a>
+                                    </div>
+                                
+                                    <div class="drawer-navbar-item text-base flex flex-col justify-center items-start hover:underline active:underline hover:underline-offset-1 rounded-3xl">
+                                        <a class=" text-third-text-color text-xl"
+                                           target="_blank" rel="noopener" href="https://github.com/Charles2530/">GITHUB</a>
+                                    </div>
+                                
+                                    <div class="drawer-navbar-item text-base flex flex-col justify-center items-start hover:underline active:underline hover:underline-offset-1 rounded-3xl">
+                                        <a class=" text-third-text-color text-xl"
+                                           href="https://charles2530.github.io">BLOG</a>
+                                    </div>
+                                
+                                    <div class="drawer-navbar-item text-base flex flex-col justify-center items-start hover:underline active:underline hover:underline-offset-1 rounded-3xl">
+                                        <a class=" text-third-text-color text-xl"
+                                           target="_blank" rel="noopener" href="https://tongji.baidu.com/">STATISTICS</a>
+                                    </div>
+                                
+                            </div>
+                        
+                    </li>
+            
+
+            
+            
+                
+                    
+                    <li class="drawer-navbar-item text-base my-1.5 flex flex-col w-full">
+                        <a class="py-1.5 px-2 flex flex-row items-center justify-between gap-1 hover:!text-primary active:!text-primary text-2xl font-semibold group border-b border-border-color hover:border-primary w-full active"
+                           href="/archives"
+                        >
+                            <span>Archives</span>
+                            <i class="fa-regular fa-archive fa-sm fa-fw"></i>
+                        </a>
+                    </li>
+                
+                    
+                    <li class="drawer-navbar-item text-base my-1.5 flex flex-col w-full">
+                        <a class="py-1.5 px-2 flex flex-row items-center justify-between gap-1 hover:!text-primary active:!text-primary text-2xl font-semibold group border-b border-border-color hover:border-primary w-full active"
+                           href="/masonry/"
+                        >
+                            <span>Photos</span>
+                            <i class="fa-solid fa-image fa-sm fa-fw"></i>
+                        </a>
+                    </li>
+                
+                    
+                    <li class="drawer-navbar-item text-base my-1.5 flex flex-col w-full">
+                        <a class="py-1.5 px-2 flex flex-row items-center justify-between gap-1 hover:!text-primary active:!text-primary text-2xl font-semibold group border-b border-border-color hover:border-primary w-full active"
+                           href="/essay/"
+                        >
+                            <span>Essays</span>
+                            <i class="fa-solid fa-message-lines fa-sm fa-fw"></i>
+                        </a>
+                    </li>
+                
+                    
+                    <li class="drawer-navbar-item text-base my-1.5 flex flex-col w-full">
+                        <a class="py-1.5 px-2 flex flex-row items-center justify-between gap-1 hover:!text-primary active:!text-primary text-2xl font-semibold group border-b border-border-color hover:border-primary w-full active"
+                           href="/friends/"
+                        >
+                            <span>Friends</span>
+                            <i class="fa-solid fa-user-group fa-sm fa-fw"></i>
+                        </a>
+                    </li>
+                
+            
+        </ul>
+
+        <div class="statistics flex justify-around my-2.5">
+    <a class="item tag-count-item flex flex-col justify-center items-center w-20" href="/tags">
+        <div class="number text-2xl sm:text-xl text-second-text-color font-semibold">47</div>
+        <div class="label text-third-text-color text-sm">Tags</div>
+    </a>
+    <a class="item tag-count-item flex flex-col justify-center items-center w-20" href="/categories">
+        <div class="number text-2xl sm:text-xl text-second-text-color font-semibold">94</div>
+        <div class="label text-third-text-color text-sm">Categories</div>
+    </a>
+    <a class="item tag-count-item flex flex-col justify-center items-center w-20" href="/archives">
+        <div class="number text-2xl sm:text-xl text-second-text-color font-semibold">607</div>
+        <div class="label text-third-text-color text-sm">Posts</div>
+    </a>
+</div>
+    </div>
+
+    <div class="window-mask"></div>
+
+</header>
+
+
+		</div>
+
+		<div class="main-content-body transition-fade-up">
+			
+
+			<div class="main-content">
+				<div class="post-page-container flex relative justify-between box-border w-full h-full">
+	<div class="article-content-container">
+
+		<div class="article-title relative w-full">
+			
+			
+			
+			<img src="https://charles2530.github.io/image/background/p6.jpg" alt="论文专题讲解：MapAnything：统一前向 Metric 3D 重建骨干" class="w-full h-60 sm:h-72 md:h-80 object-cover sm:rounded-t-large dark:brightness-75" />
+			
+			<div class="w-full flex items-center absolute bottom-0 justify-start">
+				<h1 class="article-title-cover text-center mx-6 my-6 text-second-text-color bg-background-color-transparent px-4 py-3 text-3xl sm:text-4xl md:text-5xl font-semibold backdrop-blur-lg rounded-xl border border-border-color ">论文专题讲解：MapAnything：统一前向 Metric 3D 重建骨干</h1>
+			</div>
+			
+		</div>
+
+		
+		<div class="article-header flex flex-row gap-2 items-center px-2 sm:px-6 md:px-8">
+			<div class="avatar w-[46px] h-[46px] shrink-0 rounded-medium border border-border-color p-px">
+				<img src="https://charles2530.github.io/image/background/logo2.jpg">
+			</div>
+			<div class="info flex flex-col justify-between">
+				<div class="author flex items-center">
+					<span class="name text-default-text-color text-lg font-semibold">Charles</span>
+					
+					<span class="author-label ml-1.5 text-xs px-2 py-0.5 rounded-small text-third-text-color border border-shadow-color-1">Lv8</span>
+					
+				</div>
+				<div class="meta-info">
+					<div class="article-meta-info">
+    <span class="article-date article-meta-item">
+        <i class="fa-regular fa-pen-fancy"></i>&nbsp;
+        <span class="desktop">2026-03-29 09:00</span>
+        <span class="mobile">2026-03-29 09:00</span>
+        <span class="hover-info">Created</span>
+    </span>
+    
+        <span class="article-date article-meta-item">
+            <i class="fa-regular fa-wrench"></i>&nbsp;
+            <span class="desktop">2026-03-29 09:00</span>
+            <span class="mobile">2026-03-29 09:00</span>
+            <span class="hover-info">Updated</span>
+        </span>
+    
+
+    
+        <span class="article-categories article-meta-item">
+            <i class="fa-regular fa-folders"></i>&nbsp;
+            <ul>
+                
+                
+                    
+                        
+                        <li>
+                            <a href="/categories/AI/">AI</a>&nbsp;
+                        </li>
+                    
+                    
+                
+                    
+                        
+                            <li>></li>
+                        
+                        <li>
+                            <a href="/categories/AI/%E8%AE%BA%E6%96%87%E4%B8%93%E9%A2%98%E8%AE%B2%E8%A7%A3/">论文专题讲解</a>&nbsp;
+                        </li>
+                    
+                    
+                
+            </ul>
+        </span>
+    
+    
+        <span class="article-tags article-meta-item">
+            <i class="fa-regular fa-tags"></i>&nbsp;
+            <ul>
+                
+                    <li>
+                        <a href="/tags/AI/">AI</a>&nbsp;
+                    </li>
+                
+                    <li>
+                        | <a href="/tags/%E5%85%B7%E8%BA%AB%E6%99%BA%E8%83%BD/">具身智能</a>&nbsp;
+                    </li>
+                
+                    <li>
+                        | <a href="/tags/%E6%95%B0%E6%8D%AE%E4%B8%8E%E8%AF%84%E6%B5%8B/">数据与评测</a>&nbsp;
+                    </li>
+                
+                    <li>
+                        | <a href="/tags/%E8%AE%BA%E6%96%87%E4%B8%93%E9%A2%98/">论文专题</a>&nbsp;
+                    </li>
+                
+            </ul>
+        </span>
+    
+
+    
+    
+        <span class="article-wordcount article-meta-item">
+            <i class="fa-regular fa-typewriter"></i>&nbsp;<span>7.5k Words</span>
+        </span>
+    
+    
+        <span class="article-min2read article-meta-item">
+            <i class="fa-regular fa-clock"></i>&nbsp;<span>33 Mins</span>
+        </span>
+    
+    
+        <span class="article-pv article-meta-item">
+            <i class="fa-regular fa-eye"></i>&nbsp;<span id="busuanzi_value_page_pv"></span>
+        </span>
+    
+</div>
+
+				</div>
+			</div>
+		</div>
+		
+
+		
+
+
+		<div class="article-content markdown-body px-2 sm:px-6 md:px-8 pb-8">
+			<div class="callout callout--titled info mb-4 rounded-small shadow-redefine-flat bg-(--callout-bg-color) p-3 pl-1 relative flex flex-row gap-2"><div role="none" class="rounded-full self-stretch w-0.5 bg-(--callout-primary-color) shrink-0 opacity-60"></div><div class="flex flex-col gap-2"><div class="callout__title flex items-center gap-2 font-semibold tracking-tight">论文信息</div><div class="callout__content markdown-body flex-1 min-w-0"><p><strong>论文题名：</strong> MapAnything: Universal Feed-Forward Metric 3D Reconstruction。<br><br />
+<strong>作者：</strong> Nikhil Keetha、Norman Müller、Johannes Schönberger、Lorenzo Porzi、Yuchen Zhang、Tobias Fischer、Arno Knapitsch、Duncan Zauss、Ethan Weber、Nelson Antunes 等（共 17 人）。<br><br />
+<strong>机构：</strong> Meta Reality Labs、Carnegie Mellon University。<br><br />
+<strong>时间 / 主题：</strong> 2025-09；具身智能。<br><br />
+<strong>arXiv / 官方报告：</strong> arXiv：<a class="link"   target="_blank" rel="noopener" href="https://arxiv.org/abs/2509.13414" >2509.13414<i class="fa-solid fa-arrow-up-right ml-[0.2em] font-light align-text-top text-[0.7em] link-icon"></i></a>；官方材料：<a class="link"   target="_blank" rel="noopener" href="https://map-anything.github.io/" >map-anything.github.io/<i class="fa-solid fa-arrow-up-right ml-[0.2em] font-light align-text-top text-[0.7em] link-icon"></i></a>。<br><br />
+<strong>GitHub / 项目：</strong> GitHub：<a class="link"   target="_blank" rel="noopener" href="https://github.com/facebookresearch/map-anything" >github.com/facebookresearch/map-anything<i class="fa-solid fa-arrow-up-right ml-[0.2em] font-light align-text-top text-[0.7em] link-icon"></i></a>；项目页：<a class="link"   target="_blank" rel="noopener" href="https://map-anything.github.io/" >map-anything.github.io/<i class="fa-solid fa-arrow-up-right ml-[0.2em] font-light align-text-top text-[0.7em] link-icon"></i></a>。<br><br />
+<strong>元数据来源与核验口径：</strong> 来源：<a class="link"   target="_blank" rel="noopener" href="https://arxiv.org/abs/2509.13414" >arXiv<i class="fa-solid fa-arrow-up-right ml-[0.2em] font-light align-text-top text-[0.7em] link-icon"></i></a>；<a class="link"   target="_blank" rel="noopener" href="https://github.com/facebookresearch/map-anything" >GitHub API / repo<i class="fa-solid fa-arrow-up-right ml-[0.2em] font-light align-text-top text-[0.7em] link-icon"></i></a>；<a class="link"   target="_blank" rel="noopener" href="https://map-anything.github.io/" >官方 / 项目材料<i class="fa-solid fa-arrow-up-right ml-[0.2em] font-light align-text-top text-[0.7em] link-icon"></i></a>；Checked Date：2026-06-15；Repro Status：Paper / official materials reviewed, independent reproduction not claimed。</p></div></div></div>
+<h2 id="原论文故事线"><a class="markdownIt-Anchor" href="#原论文故事线"></a> 原论文故事线</h2>
+<h3 id="研究背景"><a class="markdownIt-Anchor" href="#研究背景"></a> 研究背景</h3>
+<p>MapAnything 位于 image-based 3D reconstruction 和 feed-forward visual geometry 的交叉点。传统 3D 重建把问题拆成 feature matching、pose estimation、camera calibration、bundle adjustment、multi-view stereo、depth completion 等多个模块；每个模块都有专门假设和优化过程。近年的 DUSt3R、MASt3R、VGGT 等模型说明，很多几何任务可以由前向神经网络统一预测。</p>
+<p>但真实机器人、AR 和扫描系统的输入不是固定的：有时只有 RGB 图，有时知道内参，有时有 SLAM pose，有时有 RGB-D 深度或 partial reconstruction。已有 feed-forward 方法常只处理某一种输入配置，或者输出 up-to-scale pointmap，需要额外后处理恢复 metric scale。MapAnything 的背景就是：如果要做通用几何 backbone，模型必须能吃进可选几何先验，并直接输出 metric 3D reconstruction。</p>
+<h3 id="问题challenge"><a class="markdownIt-Anchor" href="#问题challenge"></a> 问题（Challenge）</h3>
+<p>论文要解决的问题是：<strong>如何用单个 feed-forward 模型，在任意图像数量和可选几何输入下，直接恢复 metric-scale 3D geometry 和 camera。</strong> 这个问题难在两个方向。输入端，intrinsics、poses、depth、partial reconstruction 可能存在也可能缺失，而且不同视角可用信息不一致；输出端，模型既要支持 uncalibrated SfM、calibrated MVS、camera localization、metric depth completion 等多任务，又要保持统一 metric frame。</p>
+<p>这个问题的价值在于减少几何系统的工程碎片化。对具身系统来说，机器人常常已有一部分几何信号，如果模型不能利用这些信号，就浪费了传感器和 SLAM 结果；如果每个输入组合都训练 specialist model，维护成本又很高。MapAnything 试图把这些输入输出组合统一成同一个表示学习问题。</p>
+<h3 id="finding"><a class="markdownIt-Anchor" href="#finding"></a> Finding</h3>
+<p>作者的 finding 是：<strong>通用 3D 重建的关键不是为每个任务加一个 head，而是把多视角几何分解成 depth maps、local raymaps、camera poses 和 global metric scale factor 这组 factored representation。</strong> 这个洞见把耦合的 pointmap / camera / scale 问题拆成可组合的几何因子。</p>
+<p>这个 finding 能解决挑战，是因为同一组 factored geometry 既能表达输入先验，也能表达输出目标。已知相机内参可以转成 ray direction，已知 pose 可以进入相机因子，已知 depth 或 partial reconstruction 可以作为几何输入；模型输出同样的 depth、ray、pose 和 scale 后，就能组合成全局 metric reconstruction。于是不同任务不再需要不同模型，只是“哪些因子已知、哪些因子要预测”的差别。</p>
+<h3 id="方法"><a class="markdownIt-Anchor" href="#方法"></a> 方法</h3>
+<p>MapAnything 是 transformer-based feed-forward model。输入是一组 <span class="katex"><span class="katex-mathml"><math><semantics><mrow><mi>N</mi></mrow><annotation encoding="application/x-tex">N</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.68333em;vertical-align:0em;"></span><span class="mord mathdefault" style="margin-right:0.10903em;">N</span></span></span></span> 张图像，以及可选的 intrinsics、poses、depth maps 或 partial reconstructions。模型使用 flexible input scheme 把这些几何信号标准化成统一 token / factor 表示，再输出 depth maps、local raymaps、camera poses 和 metric scale factor。metric scale factor 用来把局部重建升级到全局 metric frame。</p>
+<p>训练上，论文标准化了多数据集监督，聚合 13 个数据集，使用 covisibility-based multi-view sampling 保证输入视角属于同一可见连通组件；用 geometric input probability augmentation 让模型在训练时看到各种输入缺失/存在组合；用 log-space losses 和 two-stage view curriculum 提升 metric depth 与多视角稳定性。推理时，MapAnything 可以单次前向覆盖 uncalibrated SfM、calibrated SfM、MVS、camera localization、monocular depth 和 depth completion 等任务。</p>
+<h3 id="结论"><a class="markdownIt-Anchor" href="#结论"></a> 结论</h3>
+<p>实验显示，MapAnything 在 dense multi-view reconstruction、two-view reconstruction、single-view / multi-view metric estimation、camera localization 和 depth completion 等任务上，整体达到或超过 specialist feed-forward baselines。论文特别强调：只用图像输入时，MapAnything 已能与 VGGT 等强基线竞争；如果提供额外几何输入，重建性能还能进一步提升。消融支持 factored representation、flexible input augmentation 和统一训练的作用。</p>
+<p>边界是 MapAnything 仍然是静态或近静态几何重建 backbone，不解决动作、接触动力学、动态 scene flow 和控制安全；超大场景 memory、几何输入噪声和动态物体仍是未来方向。它对具身智能的贡献是提供统一 metric geometry interface，而不是替代机器人策略或世界动力学模型。</p>
+<h3 id="关键术语"><a class="markdownIt-Anchor" href="#关键术语"></a> 关键术语</h3>
+<ul>
+<li><strong>Feed-Forward 3D Reconstruction（前向三维重建）</strong>：不依赖迭代优化或重建 pipeline，单次模型前向直接预测几何结果。</li>
+<li><strong>Metric 3D Reconstruction（米制三维重建）</strong>：输出带真实尺度的 3D 几何，而不是只在相似变换下正确。</li>
+<li><strong>Factored Representation（分解式表示）</strong>：把场景几何拆成 depth、ray、pose、scale 等因子，而不是一个耦合输出。</li>
+<li><strong>Raymap（射线图）</strong>：每个像素对应的局部相机射线方向表示。</li>
+<li><strong>Structure-from-Motion, SfM（运动恢复结构）</strong>：从多视角图像估计相机运动和三维结构的经典任务。</li>
+<li><strong>Depth Completion（深度补全）</strong>：利用图像和稀疏/部分深度输入恢复稠密深度。</li>
+</ul>
+<p>MapAnything 的核心价值，是把原本分散在 SfM、MVS、相机标定、深度估计、定位和补全里的几何问题，压到一个统一的前向模型里：<strong>输入可以只有图像，也可以额外带 intrinsics、poses、depth 或 partial reconstruction；输出则是一套可合成 metric 3D reconstruction 的 factored geometry。</strong></p>
+<p>它和 <a href="/2026/05/11/ai-files-paper-deep-dives-embodied-ai-vggt/">VGGT</a> 很接近，但问题更“工程化”：VGGT 已经证明 camera、depth、point map、track 可以一起前向预测；MapAnything 继续追问，如果真实系统已经有一部分几何输入，比如机器人相机内参、SLAM 位姿、稀疏深度、RGB-D 深度，模型能不能把这些信息吃进去，并在同一个 metric scale 里输出更稳的重建。</p>
+<h2 id="它的效率贡献是什么"><a class="markdownIt-Anchor" href="#它的效率贡献是什么"></a> 它的效率贡献是什么</h2>
+<table>
+<thead>
+<tr>
+<th>Dimension</th>
+<th>Contribution</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Saved cost</td>
+<td>用一个 universal feed-forward model 覆盖 uncalibrated SfM、calibrated SfM、MVS、single-view calibration、camera localization、depth completion 等任务，减少为每种输入组合训练/维护 specialist model 的成本</td>
+</tr>
+<tr>
+<td>Core mechanism</td>
+<td>factored scene representation：ray directions、ray depths、poses、metric scaling factor；几何输入和输出都用同一套分解表示</td>
+</tr>
+<tr>
+<td>Training contribution</td>
+<td>13 datasets 的监督标准化、covisibility-based multi-view sampling、geometric input probability augmentation、log-space losses、two-stage view curriculum</td>
+</tr>
+<tr>
+<td>Embodied relevance</td>
+<td>机器人经常知道相机内参、局部 SLAM 位姿或稀疏深度；MapAnything 能把这些 partial geometric priors 接进 dense metric reconstruction</td>
+</tr>
+<tr>
+<td>Main risk</td>
+<td>它仍是几何感知骨干，不建模动作、接触动力学、动态 scene flow 或控制安全；几何输入噪声和超大场景 memory 仍是限制</td>
+</tr>
+</tbody>
+</table>
+<h2 id="论文位置"><a class="markdownIt-Anchor" href="#论文位置"></a> 论文位置</h2>
+<p>传统 3D 重建常拆成一条长 pipeline：</p>
+<div class="code-container" data-rel="Text"><figure class="iseeu highlight text"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br></pre></td><td class="code"><pre><span class="line">feature matching</span><br><span class="line">  -&gt; camera calibration / relative pose</span><br><span class="line">  -&gt; rotation &amp; translation averaging</span><br><span class="line">  -&gt; bundle adjustment</span><br><span class="line">  -&gt; multi-view stereo</span><br><span class="line">  -&gt; point cloud / mesh / map</span><br></pre></td></tr></table></figure></div>
+<p>VGGT、DUSt3R、MASt3R 这类 feed-forward 方法把 pipeline 里的很多优化步骤前移到了模型里。MapAnything 的新增问题是：真实系统的输入不是固定的。机器人、AR、自动驾驶或扫描设备常常有不同程度的先验：</p>
+<ol>
+<li>只有一组 RGB 图像；</li>
+<li>有 camera intrinsics / ray directions；</li>
+<li>有 camera poses；</li>
+<li>有 metric depth 或 sparse depth；</li>
+<li>有 partial reconstruction；</li>
+<li>有上述信号的一部分视角，而不是所有视角。</li>
+</ol>
+<p>这意味着模型不能只吃一种固定输入，也不能只输出 up-to-scale pointmaps。MapAnything 用 factored representation 同时解决两件事：<strong>输入端可选、输出端 metric。</strong></p>
+<p><img  
+                     lazyload
+                     src="/images/loading.svg"
+                     data-src="/image/ai-notes/images/paper-deep-dives/embodied-ai/mapanything/figure-1-overview.png"
+                      alt="MapAnything overview 原论文图" 
+                ></p>
+<p><small>图源：<code>MapAnything</code>，Figure 1。原论文图意：MapAnything 用同一个 feed-forward 模型支持多种 input configuration，并输出 metric-scale 3D reconstruction 与 cameras；图中列出 unconstrained SfM、calibrated SfM、posed SfM、MVS、RGB-D localization 和 depth completion 等任务。</small></p>
+<p><strong>MapAnything 总图先看可选几何输入。</strong><br />
+左侧不是简单的任务展示，而是在强调输入组合的可变性：Images、Calibration、Poses、Depth 都可能存在或缺失。右侧的关键是 <code>Metric-Scale 3D Reconstruction + Cameras</code>，说明论文想解决的不是相对几何漂亮不漂亮，而是能否把局部估计放进统一 metric frame。</p>
+<p>对具身系统来说，这点很实用。真实机器人通常已经有相机内参，移动机器人可能有 SLAM pose，RGB-D 相机有深度但会有洞；一个能融合这些输入的几何 backbone，比只能从 RGB 重建的模型更容易进入 episode schema 和规划系统。</p>
+<h2 id="核心问题为什么要-factored-geometry"><a class="markdownIt-Anchor" href="#核心问题为什么要-factored-geometry"></a> 核心问题：为什么要 factored geometry</h2>
+<p>MapAnything 不把场景直接表示成一组耦合 pointmaps，而是输出：</p>
+<p><span class="katex-display"><span class="katex"><span class="katex-mathml"><math><semantics><mrow><mo stretchy="false">{</mo><mi>m</mi><mo separator="true">,</mo><mo stretchy="false">(</mo><msub><mi>R</mi><mi>i</mi></msub><mo separator="true">,</mo><msub><mover accent="true"><mi>D</mi><mo>~</mo></mover><mi>i</mi></msub><mo separator="true">,</mo><msub><mover accent="true"><mi>P</mi><mo>~</mo></mover><mi>i</mi></msub><msubsup><mo stretchy="false">)</mo><mrow><mi>i</mi><mo>=</mo><mn>1</mn></mrow><mi>N</mi></msubsup><mo stretchy="false">}</mo></mrow><annotation encoding="application/x-tex">\{m, (R_i, \tilde D_i, \tilde P_i)_{i=1}^{N}\}
+</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:1.1701899999999998em;vertical-align:-0.25em;"></span><span class="mopen">{</span><span class="mord mathdefault">m</span><span class="mpunct">,</span><span class="mspace" style="margin-right:0.16666666666666666em;"></span><span class="mopen">(</span><span class="mord"><span class="mord mathdefault" style="margin-right:0.00773em;">R</span><span class="msupsub"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height:0.31166399999999994em;"><span style="top:-2.5500000000000003em;margin-left:-0.00773em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mathdefault mtight">i</span></span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height:0.15em;"><span></span></span></span></span></span></span><span class="mpunct">,</span><span class="mspace" style="margin-right:0.16666666666666666em;"></span><span class="mord"><span class="mord accent"><span class="vlist-t"><span class="vlist-r"><span class="vlist" style="height:0.9201899999999998em;"><span style="top:-3em;"><span class="pstrut" style="height:3em;"></span><span class="mord mathdefault" style="margin-right:0.02778em;">D</span></span><span style="top:-3.6023300000000003em;"><span class="pstrut" style="height:3em;"></span><span class="accent-body" style="left:-0.19444em;">~</span></span></span></span></span></span><span class="msupsub"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height:0.31166399999999994em;"><span style="top:-2.5500000000000003em;margin-left:-0.02778em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mathdefault mtight">i</span></span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height:0.15em;"><span></span></span></span></span></span></span><span class="mpunct">,</span><span class="mspace" style="margin-right:0.16666666666666666em;"></span><span class="mord"><span class="mord accent"><span class="vlist-t"><span class="vlist-r"><span class="vlist" style="height:0.9201899999999998em;"><span style="top:-3em;"><span class="pstrut" style="height:3em;"></span><span class="mord mathdefault" style="margin-right:0.13889em;">P</span></span><span style="top:-3.6023300000000003em;"><span class="pstrut" style="height:3em;"></span><span class="accent-body" style="left:-0.16666em;">~</span></span></span></span></span></span><span class="msupsub"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height:0.31166399999999994em;"><span style="top:-2.5500000000000003em;margin-left:-0.13889em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mathdefault mtight">i</span></span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height:0.15em;"><span></span></span></span></span></span></span><span class="mclose"><span class="mclose">)</span><span class="msupsub"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height:0.8913309999999999em;"><span style="top:-2.4530000000000003em;margin-left:0em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mtight"><span class="mord mathdefault mtight">i</span><span class="mrel mtight">=</span><span class="mord mtight">1</span></span></span></span><span style="top:-3.113em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mtight"><span class="mord mathdefault mtight" style="margin-right:0.10903em;">N</span></span></span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height:0.247em;"><span></span></span></span></span></span></span><span class="mclose">}</span></span></span></span></span></p>
+<p>其中：</p>
+<table>
+<thead>
+<tr>
+<th>Symbol</th>
+<th>Meaning</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><span class="katex"><span class="katex-mathml"><math><semantics><mrow><msub><mi>R</mi><mi>i</mi></msub></mrow><annotation encoding="application/x-tex">R_i</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.83333em;vertical-align:-0.15em;"></span><span class="mord"><span class="mord mathdefault" style="margin-right:0.00773em;">R</span><span class="msupsub"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height:0.31166399999999994em;"><span style="top:-2.5500000000000003em;margin-left:-0.00773em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mathdefault mtight">i</span></span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height:0.15em;"><span></span></span></span></span></span></span></span></span></span></td>
+<td>local ray directions，等价于每个像素沿哪个相机射线出发</td>
+</tr>
+<tr>
+<td><span class="katex"><span class="katex-mathml"><math><semantics><mrow><msub><mover accent="true"><mi>D</mi><mo>~</mo></mover><mi>i</mi></msub></mrow><annotation encoding="application/x-tex">\tilde D_i</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:1.0701899999999998em;vertical-align:-0.15em;"></span><span class="mord"><span class="mord accent"><span class="vlist-t"><span class="vlist-r"><span class="vlist" style="height:0.9201899999999998em;"><span style="top:-3em;"><span class="pstrut" style="height:3em;"></span><span class="mord mathdefault" style="margin-right:0.02778em;">D</span></span><span style="top:-3.6023300000000003em;"><span class="pstrut" style="height:3em;"></span><span class="accent-body" style="left:-0.19444em;">~</span></span></span></span></span></span><span class="msupsub"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height:0.31166399999999994em;"><span style="top:-2.5500000000000003em;margin-left:-0.02778em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mathdefault mtight">i</span></span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height:0.15em;"><span></span></span></span></span></span></span></span></span></span></td>
+<td>up-to-scale ray depths</td>
+</tr>
+<tr>
+<td><span class="katex"><span class="katex-mathml"><math><semantics><mrow><msub><mover accent="true"><mi>P</mi><mo>~</mo></mover><mi>i</mi></msub></mrow><annotation encoding="application/x-tex">\tilde P_i</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:1.0701899999999998em;vertical-align:-0.15em;"></span><span class="mord"><span class="mord accent"><span class="vlist-t"><span class="vlist-r"><span class="vlist" style="height:0.9201899999999998em;"><span style="top:-3em;"><span class="pstrut" style="height:3em;"></span><span class="mord mathdefault" style="margin-right:0.13889em;">P</span></span><span style="top:-3.6023300000000003em;"><span class="pstrut" style="height:3em;"></span><span class="accent-body" style="left:-0.16666em;">~</span></span></span></span></span></span><span class="msupsub"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height:0.31166399999999994em;"><span style="top:-2.5500000000000003em;margin-left:-0.13889em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mathdefault mtight">i</span></span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height:0.15em;"><span></span></span></span></span></span></span></span></span></span></td>
+<td>pose of image <span class="katex"><span class="katex-mathml"><math><semantics><mrow><mi>i</mi></mrow><annotation encoding="application/x-tex">i</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.65952em;vertical-align:0em;"></span><span class="mord mathdefault">i</span></span></span></span> in the frame of view 1，包含 quaternion <span class="katex"><span class="katex-mathml"><math><semantics><mrow><msub><mi>Q</mi><mi>i</mi></msub></mrow><annotation encoding="application/x-tex">Q_i</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.8777699999999999em;vertical-align:-0.19444em;"></span><span class="mord"><span class="mord mathdefault">Q</span><span class="msupsub"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height:0.31166399999999994em;"><span style="top:-2.5500000000000003em;margin-left:0em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mathdefault mtight">i</span></span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height:0.15em;"><span></span></span></span></span></span></span></span></span></span> 和 up-to-scale translation <span class="katex"><span class="katex-mathml"><math><semantics><mrow><msub><mover accent="true"><mi>T</mi><mo>~</mo></mover><mi>i</mi></msub></mrow><annotation encoding="application/x-tex">\tilde T_i</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:1.0701899999999998em;vertical-align:-0.15em;"></span><span class="mord"><span class="mord accent"><span class="vlist-t"><span class="vlist-r"><span class="vlist" style="height:0.9201899999999998em;"><span style="top:-3em;"><span class="pstrut" style="height:3em;"></span><span class="mord mathdefault" style="margin-right:0.13889em;">T</span></span><span style="top:-3.6023300000000003em;"><span class="pstrut" style="height:3em;"></span><span class="accent-body" style="left:-0.16666em;">~</span></span></span></span></span></span><span class="msupsub"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height:0.31166399999999994em;"><span style="top:-2.5500000000000003em;margin-left:-0.13889em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mathdefault mtight">i</span></span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height:0.15em;"><span></span></span></span></span></span></span></span></span></span></td>
+</tr>
+<tr>
+<td><span class="katex"><span class="katex-mathml"><math><semantics><mrow><mi>m</mi></mrow><annotation encoding="application/x-tex">m</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.43056em;vertical-align:0em;"></span><span class="mord mathdefault">m</span></span></span></span></td>
+<td>global metric scaling factor</td>
+</tr>
+</tbody>
+</table>
+<p>从这些量可以恢复局部点云和全局 metric 重建：</p>
+<p><span class="katex-display"><span class="katex"><span class="katex-mathml"><math><semantics><mrow><msub><mover accent="true"><mi>L</mi><mo>~</mo></mover><mi>i</mi></msub><mo>=</mo><msub><mi>R</mi><mi>i</mi></msub><mo>⋅</mo><msub><mover accent="true"><mi>D</mi><mo>~</mo></mover><mi>i</mi></msub></mrow><annotation encoding="application/x-tex">\tilde L_i = R_i \cdot \tilde D_i
+</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:1.0701899999999998em;vertical-align:-0.15em;"></span><span class="mord"><span class="mord accent"><span class="vlist-t"><span class="vlist-r"><span class="vlist" style="height:0.9201899999999998em;"><span style="top:-3em;"><span class="pstrut" style="height:3em;"></span><span class="mord mathdefault">L</span></span><span style="top:-3.6023300000000003em;"><span class="pstrut" style="height:3em;"></span><span class="accent-body" style="left:-0.22222em;">~</span></span></span></span></span></span><span class="msupsub"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height:0.31166399999999994em;"><span style="top:-2.5500000000000003em;margin-left:0em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mathdefault mtight">i</span></span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height:0.15em;"><span></span></span></span></span></span></span><span class="mspace" style="margin-right:0.2777777777777778em;"></span><span class="mrel">=</span><span class="mspace" style="margin-right:0.2777777777777778em;"></span></span><span class="base"><span class="strut" style="height:0.83333em;vertical-align:-0.15em;"></span><span class="mord"><span class="mord mathdefault" style="margin-right:0.00773em;">R</span><span class="msupsub"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height:0.31166399999999994em;"><span style="top:-2.5500000000000003em;margin-left:-0.00773em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mathdefault mtight">i</span></span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height:0.15em;"><span></span></span></span></span></span></span><span class="mspace" style="margin-right:0.2222222222222222em;"></span><span class="mbin">⋅</span><span class="mspace" style="margin-right:0.2222222222222222em;"></span></span><span class="base"><span class="strut" style="height:1.0701899999999998em;vertical-align:-0.15em;"></span><span class="mord"><span class="mord accent"><span class="vlist-t"><span class="vlist-r"><span class="vlist" style="height:0.9201899999999998em;"><span style="top:-3em;"><span class="pstrut" style="height:3em;"></span><span class="mord mathdefault" style="margin-right:0.02778em;">D</span></span><span style="top:-3.6023300000000003em;"><span class="pstrut" style="height:3em;"></span><span class="accent-body" style="left:-0.19444em;">~</span></span></span></span></span></span><span class="msupsub"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height:0.31166399999999994em;"><span style="top:-2.5500000000000003em;margin-left:-0.02778em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mathdefault mtight">i</span></span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height:0.15em;"><span></span></span></span></span></span></span></span></span></span></span></p>
+<p>这行式子在说：第 <span class="katex"><span class="katex-mathml"><math><semantics><mrow><mi>i</mi></mrow><annotation encoding="application/x-tex">i</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.65952em;vertical-align:0em;"></span><span class="mord mathdefault">i</span></span></span></span> 个视角的每条相机射线 <span class="katex"><span class="katex-mathml"><math><semantics><mrow><msub><mi>R</mi><mi>i</mi></msub></mrow><annotation encoding="application/x-tex">R_i</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.83333em;vertical-align:-0.15em;"></span><span class="mord"><span class="mord mathdefault" style="margin-right:0.00773em;">R</span><span class="msupsub"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height:0.31166399999999994em;"><span style="top:-2.5500000000000003em;margin-left:-0.00773em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mathdefault mtight">i</span></span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height:0.15em;"><span></span></span></span></span></span></span></span></span></span> 乘上 up-to-scale 深度 <span class="katex"><span class="katex-mathml"><math><semantics><mrow><msub><mover accent="true"><mi>D</mi><mo>~</mo></mover><mi>i</mi></msub></mrow><annotation encoding="application/x-tex">\tilde D_i</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:1.0701899999999998em;vertical-align:-0.15em;"></span><span class="mord"><span class="mord accent"><span class="vlist-t"><span class="vlist-r"><span class="vlist" style="height:0.9201899999999998em;"><span style="top:-3em;"><span class="pstrut" style="height:3em;"></span><span class="mord mathdefault" style="margin-right:0.02778em;">D</span></span><span style="top:-3.6023300000000003em;"><span class="pstrut" style="height:3em;"></span><span class="accent-body" style="left:-0.19444em;">~</span></span></span></span></span></span><span class="msupsub"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height:0.31166399999999994em;"><span style="top:-2.5500000000000003em;margin-left:-0.02778em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mathdefault mtight">i</span></span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height:0.15em;"><span></span></span></span></span></span></span></span></span></span>，得到局部坐标里的点 <span class="katex"><span class="katex-mathml"><math><semantics><mrow><msub><mover accent="true"><mi>L</mi><mo>~</mo></mover><mi>i</mi></msub></mrow><annotation encoding="application/x-tex">\tilde L_i</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:1.0701899999999998em;vertical-align:-0.15em;"></span><span class="mord"><span class="mord accent"><span class="vlist-t"><span class="vlist-r"><span class="vlist" style="height:0.9201899999999998em;"><span style="top:-3em;"><span class="pstrut" style="height:3em;"></span><span class="mord mathdefault">L</span></span><span style="top:-3.6023300000000003em;"><span class="pstrut" style="height:3em;"></span><span class="accent-body" style="left:-0.22222em;">~</span></span></span></span></span></span><span class="msupsub"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height:0.31166399999999994em;"><span style="top:-2.5500000000000003em;margin-left:0em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mathdefault mtight">i</span></span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height:0.15em;"><span></span></span></span></span></span></span></span></span></span>。</p>
+<p><span class="katex-display"><span class="katex"><span class="katex-mathml"><math><semantics><mrow><msub><mover accent="true"><mi>X</mi><mo>~</mo></mover><mi>i</mi></msub><mo>=</mo><msub><mi>O</mi><mi>i</mi></msub><mo>⋅</mo><msub><mover accent="true"><mi>L</mi><mo>~</mo></mover><mi>i</mi></msub><mo>+</mo><msub><mover accent="true"><mi>T</mi><mo>~</mo></mover><mi>i</mi></msub></mrow><annotation encoding="application/x-tex">\tilde X_i = O_i \cdot \tilde L_i + \tilde T_i
+</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:1.0701899999999998em;vertical-align:-0.15em;"></span><span class="mord"><span class="mord accent"><span class="vlist-t"><span class="vlist-r"><span class="vlist" style="height:0.9201899999999998em;"><span style="top:-3em;"><span class="pstrut" style="height:3em;"></span><span class="mord mathdefault" style="margin-right:0.07847em;">X</span></span><span style="top:-3.6023300000000003em;"><span class="pstrut" style="height:3em;"></span><span class="accent-body" style="left:-0.16666em;">~</span></span></span></span></span></span><span class="msupsub"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height:0.31166399999999994em;"><span style="top:-2.5500000000000003em;margin-left:-0.07847em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mathdefault mtight">i</span></span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height:0.15em;"><span></span></span></span></span></span></span><span class="mspace" style="margin-right:0.2777777777777778em;"></span><span class="mrel">=</span><span class="mspace" style="margin-right:0.2777777777777778em;"></span></span><span class="base"><span class="strut" style="height:0.83333em;vertical-align:-0.15em;"></span><span class="mord"><span class="mord mathdefault" style="margin-right:0.02778em;">O</span><span class="msupsub"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height:0.31166399999999994em;"><span style="top:-2.5500000000000003em;margin-left:-0.02778em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mathdefault mtight">i</span></span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height:0.15em;"><span></span></span></span></span></span></span><span class="mspace" style="margin-right:0.2222222222222222em;"></span><span class="mbin">⋅</span><span class="mspace" style="margin-right:0.2222222222222222em;"></span></span><span class="base"><span class="strut" style="height:1.0701899999999998em;vertical-align:-0.15em;"></span><span class="mord"><span class="mord accent"><span class="vlist-t"><span class="vlist-r"><span class="vlist" style="height:0.9201899999999998em;"><span style="top:-3em;"><span class="pstrut" style="height:3em;"></span><span class="mord mathdefault">L</span></span><span style="top:-3.6023300000000003em;"><span class="pstrut" style="height:3em;"></span><span class="accent-body" style="left:-0.22222em;">~</span></span></span></span></span></span><span class="msupsub"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height:0.31166399999999994em;"><span style="top:-2.5500000000000003em;margin-left:0em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mathdefault mtight">i</span></span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height:0.15em;"><span></span></span></span></span></span></span><span class="mspace" style="margin-right:0.2222222222222222em;"></span><span class="mbin">+</span><span class="mspace" style="margin-right:0.2222222222222222em;"></span></span><span class="base"><span class="strut" style="height:1.0701899999999998em;vertical-align:-0.15em;"></span><span class="mord"><span class="mord accent"><span class="vlist-t"><span class="vlist-r"><span class="vlist" style="height:0.9201899999999998em;"><span style="top:-3em;"><span class="pstrut" style="height:3em;"></span><span class="mord mathdefault" style="margin-right:0.13889em;">T</span></span><span style="top:-3.6023300000000003em;"><span class="pstrut" style="height:3em;"></span><span class="accent-body" style="left:-0.16666em;">~</span></span></span></span></span></span><span class="msupsub"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height:0.31166399999999994em;"><span style="top:-2.5500000000000003em;margin-left:-0.13889em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mathdefault mtight">i</span></span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height:0.15em;"><span></span></span></span></span></span></span></span></span></span></span></p>
+<p><span class="katex-display"><span class="katex"><span class="katex-mathml"><math><semantics><mrow><msubsup><mi>X</mi><mi>i</mi><mtext>metric</mtext></msubsup><mo>=</mo><mi>m</mi><mo>⋅</mo><msub><mover accent="true"><mi>X</mi><mo>~</mo></mover><mi>i</mi></msub></mrow><annotation encoding="application/x-tex">X_i^{\text{metric}} = m \cdot \tilde X_i
+</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:1.1275019999999998em;vertical-align:-0.247em;"></span><span class="mord"><span class="mord mathdefault" style="margin-right:0.07847em;">X</span><span class="msupsub"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height:0.8805019999999999em;"><span style="top:-2.4530000000000003em;margin-left:-0.07847em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mathdefault mtight">i</span></span></span><span style="top:-3.113em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mtight"><span class="mord text mtight"><span class="mord mtight">metric</span></span></span></span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height:0.247em;"><span></span></span></span></span></span></span><span class="mspace" style="margin-right:0.2777777777777778em;"></span><span class="mrel">=</span><span class="mspace" style="margin-right:0.2777777777777778em;"></span></span><span class="base"><span class="strut" style="height:0.44445em;vertical-align:0em;"></span><span class="mord mathdefault">m</span><span class="mspace" style="margin-right:0.2222222222222222em;"></span><span class="mbin">⋅</span><span class="mspace" style="margin-right:0.2222222222222222em;"></span></span><span class="base"><span class="strut" style="height:1.0701899999999998em;vertical-align:-0.15em;"></span><span class="mord"><span class="mord accent"><span class="vlist-t"><span class="vlist-r"><span class="vlist" style="height:0.9201899999999998em;"><span style="top:-3em;"><span class="pstrut" style="height:3em;"></span><span class="mord mathdefault" style="margin-right:0.07847em;">X</span></span><span style="top:-3.6023300000000003em;"><span class="pstrut" style="height:3em;"></span><span class="accent-body" style="left:-0.16666em;">~</span></span></span></span></span></span><span class="msupsub"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height:0.31166399999999994em;"><span style="top:-2.5500000000000003em;margin-left:-0.07847em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mathdefault mtight">i</span></span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height:0.15em;"><span></span></span></span></span></span></span></span></span></span></span></p>
+<p>这里 <span class="katex"><span class="katex-mathml"><math><semantics><mrow><msub><mi>O</mi><mi>i</mi></msub></mrow><annotation encoding="application/x-tex">O_i</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.83333em;vertical-align:-0.15em;"></span><span class="mord"><span class="mord mathdefault" style="margin-right:0.02778em;">O</span><span class="msupsub"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height:0.31166399999999994em;"><span style="top:-2.5500000000000003em;margin-left:-0.02778em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mathdefault mtight">i</span></span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height:0.15em;"><span></span></span></span></span></span></span></span></span></span> 由 quaternion <span class="katex"><span class="katex-mathml"><math><semantics><mrow><msub><mi>Q</mi><mi>i</mi></msub></mrow><annotation encoding="application/x-tex">Q_i</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.8777699999999999em;vertical-align:-0.19444em;"></span><span class="mord"><span class="mord mathdefault">Q</span><span class="msupsub"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height:0.31166399999999994em;"><span style="top:-2.5500000000000003em;margin-left:0em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mathdefault mtight">i</span></span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height:0.15em;"><span></span></span></span></span></span></span></span></span></span> 转成 rotation matrix。这个分解的好处有三层：</p>
+<ol>
+<li><strong>camera calibration 与 depth 分开</strong>：ray directions 可以表达更一般的 central camera，而不只是假设标准 pinhole；</li>
+<li><strong>pose 与 scale 分开</strong>：位姿的旋转、平移方向和 metric scale 不再强行耦合；</li>
+<li><strong>partial supervision 更好用</strong>：有些数据集只有 up-to-scale geometry，有些有 metric depth，有些有 pose，factored output 让不同数据都能贡献监督。</li>
+</ol>
+<h2 id="总体架构"><a class="markdownIt-Anchor" href="#总体架构"></a> 总体架构</h2>
+<p><img  
+                     lazyload
+                     src="/images/loading.svg"
+                     data-src="/image/ai-notes/images/paper-deep-dives/embodied-ai/mapanything/figure-2-architecture.png"
+                      alt="MapAnything architecture 原论文图" 
+                ></p>
+<p><small>图源：<code>MapAnything</code>，Figure 2。原论文图意：模型把 RGB 图像和可选几何输入编码到共同 latent space，加入 reference view embedding 与 scale token，通过 multi-view transformer 融合多视角信息，再由 DPT head、pose head 和 scale MLP 输出 factored metric 3D geometry。</small></p>
+<p><strong>这张架构图怎么读。</strong><br />
+上方每个 view 都有 <code>Visual Input</code> 和可选的 <code>Optional Geometric Inputs</code>。图像走 DINOv2，ray / depth 走浅层 convolutional encoder，pose rotation、normalized translation、pose scale、ray depth scale 走 MLP。所有特征先对齐到同一个 latent space，再相加，而不是把几何信号只作为 prompt。</p>
+<p>中间的 <code>Scale Token</code> 是 MapAnything 和普通 up-to-scale 重建的重要差异。局部几何和 pose 先在 up-to-scale 空间预测，scale token 再预测全局 metric scaling factor。这样既保留多视图相对几何，又能把结果拉回真实尺度。</p>
+<h3 id="encoder"><a class="markdownIt-Anchor" href="#encoder"></a> Encoder</h3>
+<p>MapAnything 的 image encoder 使用 DINOv2 ViT-G 的第 24 层 normalized patch features，特征维度是 1536，patch stride 对应 14。论文比较过 CroCoV2、DUSt3R image encoder、RADIO 和随机 patchification，认为 DINOv2 在下游性能、收敛速度和泛化上最好。</p>
+<p>可选几何输入被分成两类：</p>
+<table>
+<thead>
+<tr>
+<th>Input factor</th>
+<th>Encoder</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>ray directions</td>
+<td>shallow convolutional encoder with pixel unshuffle size 14</td>
+</tr>
+<tr>
+<td>normalized ray depths</td>
+<td>shallow convolutional encoder with pixel unshuffle size 14</td>
+</tr>
+<tr>
+<td>rotations as unit quaternions</td>
+<td>4-layer MLP with GeLU</td>
+</tr>
+<tr>
+<td>normalized translation directions</td>
+<td>4-layer MLP with GeLU</td>
+</tr>
+<tr>
+<td>depth scales</td>
+<td>4-layer MLP with GeLU after log-transform</td>
+</tr>
+<tr>
+<td>pose scales</td>
+<td>4-layer MLP with GeLU after log-transform</td>
+</tr>
+</tbody>
+</table>
+<p>这种输入分解很适合机器人：相机内参通常可靠，深度可能只对部分帧可靠，位姿可能来自 SLAM/odometry 且有尺度问题。把它们拆开编码，模型就能在不同输入可用性下保持同一套接口。</p>
+<h3 id="multi-view-transformer"><a class="markdownIt-Anchor" href="#multi-view-transformer"></a> Multi-View Transformer</h3>
+<p>所有 view 的 patch tokens 加上一个 learnable scale token 后，进入 multi-view transformer。论文使用：</p>
+<table>
+<thead>
+<tr>
+<th>Setting</th>
+<th>Value</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Transformer type</td>
+<td>16-layer Alternating-Attention transformer</td>
+</tr>
+<tr>
+<td>Attention heads</td>
+<td>24</td>
+</tr>
+<tr>
+<td>Latent dimension</td>
+<td>1536</td>
+</tr>
+<tr>
+<td>MLP ratio</td>
+<td>4</td>
+</tr>
+<tr>
+<td>Initialization</td>
+<td>last 16 layers of DINOv2 ViT-G</td>
+</tr>
+<tr>
+<td>Reference handling</td>
+<td>constant reference view embedding added to view 1 tokens</td>
+</tr>
+<tr>
+<td>RoPE</td>
+<td>not used</td>
+</tr>
+</tbody>
+</table>
+<p>Alternating-Attention 继承了 VGGT 的核心直觉：跨帧 global attention 建立多视角几何关系，frame-wise attention 稳定每帧内部结构。MapAnything 的附录还用 ablation 说明，<code>Global w/ View PE</code> 在 50 views 上明显更差。</p>
+<h3 id="heads"><a class="markdownIt-Anchor" href="#heads"></a> Heads</h3>
+<table>
+<thead>
+<tr>
+<th>Head</th>
+<th>Output</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Single DPT Head</td>
+<td><span class="katex"><span class="katex-mathml"><math><semantics><mrow><mi>N</mi></mrow><annotation encoding="application/x-tex">N</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.68333em;vertical-align:0em;"></span><span class="mord mathdefault" style="margin-right:0.10903em;">N</span></span></span></span>-ray directions、<span class="katex"><span class="katex-mathml"><math><semantics><mrow><mi>N</mi></mrow><annotation encoding="application/x-tex">N</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.68333em;vertical-align:0em;"></span><span class="mord mathdefault" style="margin-right:0.10903em;">N</span></span></span></span>-ray depths、<span class="katex"><span class="katex-mathml"><math><semantics><mrow><mi>N</mi></mrow><annotation encoding="application/x-tex">N</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.68333em;vertical-align:0em;"></span><span class="mord mathdefault" style="margin-right:0.10903em;">N</span></span></span></span>-masks、<span class="katex"><span class="katex-mathml"><math><semantics><mrow><mi>N</mi></mrow><annotation encoding="application/x-tex">N</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.68333em;vertical-align:0em;"></span><span class="mord mathdefault" style="margin-right:0.10903em;">N</span></span></span></span>-confidences</td>
+</tr>
+<tr>
+<td>Pose Head</td>
+<td><span class="katex"><span class="katex-mathml"><math><semantics><mrow><mi>N</mi></mrow><annotation encoding="application/x-tex">N</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.68333em;vertical-align:0em;"></span><span class="mord mathdefault" style="margin-right:0.10903em;">N</span></span></span></span>-poses in view 1 frame</td>
+</tr>
+<tr>
+<td>Scale MLP</td>
+<td>metric scaling factor</td>
+</tr>
+</tbody>
+</table>
+<p>DPT head 输出 local dense quantities；pose head 用 average-pooling-based convolutional design 输出 quaternion 和 up-to-scale translation；scale token 进入 2-layer MLP with ReLU，再通过 exponential scaling 得到 metric scaling factor。</p>
+<h2 id="训练目标"><a class="markdownIt-Anchor" href="#训练目标"></a> 训练目标</h2>
+<p>MapAnything 的训练目标很值得细读，因为它的“universal”不是靠一句多任务学习完成的，而是靠输出分解、loss 归一化、输入增强和数据标准化一起撑起来。</p>
+<p>对于不依赖 scene scale 的量，直接监督：</p>
+<p><span class="katex-display"><span class="katex"><span class="katex-mathml"><math><semantics><mrow><msub><mi>L</mi><mtext>rays</mtext></msub><mo>=</mo><munder><mo>∑</mo><mi>i</mi></munder><mi mathvariant="normal">∥</mi><msub><mover accent="true"><mi>R</mi><mo>^</mo></mover><mi>i</mi></msub><mo>−</mo><msub><mi>R</mi><mi>i</mi></msub><mi mathvariant="normal">∥</mi></mrow><annotation encoding="application/x-tex">L_{\text{rays}}=\sum_i\|\hat R_i-R_i\|
+</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.969438em;vertical-align:-0.286108em;"></span><span class="mord"><span class="mord mathdefault">L</span><span class="msupsub"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height:0.15139200000000003em;"><span style="top:-2.5500000000000003em;margin-left:0em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mtight"><span class="mord text mtight"><span class="mord mtight">rays</span></span></span></span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height:0.286108em;"><span></span></span></span></span></span></span><span class="mspace" style="margin-right:0.2777777777777778em;"></span><span class="mrel">=</span><span class="mspace" style="margin-right:0.2777777777777778em;"></span></span><span class="base"><span class="strut" style="height:2.327674em;vertical-align:-1.277669em;"></span><span class="mop op-limits"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height:1.0500050000000003em;"><span style="top:-1.872331em;margin-left:0em;"><span class="pstrut" style="height:3.05em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mathdefault mtight">i</span></span></span><span style="top:-3.050005em;"><span class="pstrut" style="height:3.05em;"></span><span><span class="mop op-symbol large-op">∑</span></span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height:1.277669em;"><span></span></span></span></span></span><span class="mspace" style="margin-right:0.16666666666666666em;"></span><span class="mord">∥</span><span class="mord"><span class="mord accent"><span class="vlist-t"><span class="vlist-r"><span class="vlist" style="height:0.9467699999999999em;"><span style="top:-3em;"><span class="pstrut" style="height:3em;"></span><span class="mord mathdefault" style="margin-right:0.00773em;">R</span></span><span style="top:-3.25233em;"><span class="pstrut" style="height:3em;"></span><span class="accent-body" style="left:-0.16666em;">^</span></span></span></span></span></span><span class="msupsub"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height:0.31166399999999994em;"><span style="top:-2.5500000000000003em;margin-left:-0.00773em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mathdefault mtight">i</span></span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height:0.15em;"><span></span></span></span></span></span></span><span class="mspace" style="margin-right:0.2222222222222222em;"></span><span class="mbin">−</span><span class="mspace" style="margin-right:0.2222222222222222em;"></span></span><span class="base"><span class="strut" style="height:1em;vertical-align:-0.25em;"></span><span class="mord"><span class="mord mathdefault" style="margin-right:0.00773em;">R</span><span class="msupsub"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height:0.31166399999999994em;"><span style="top:-2.5500000000000003em;margin-left:-0.00773em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mathdefault mtight">i</span></span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height:0.15em;"><span></span></span></span></span></span></span><span class="mord">∥</span></span></span></span></span></p>
+<p><span class="katex-display"><span class="katex"><span class="katex-mathml"><math><semantics><mrow><msub><mi>L</mi><mtext>rot</mtext></msub><mo>=</mo><munder><mo>∑</mo><mi>i</mi></munder><mi>min</mi><mo>⁡</mo><mo stretchy="false">(</mo><mi mathvariant="normal">∥</mi><msub><mover accent="true"><mi>Q</mi><mo>^</mo></mover><mi>i</mi></msub><mo>−</mo><msub><mi>Q</mi><mi>i</mi></msub><mi mathvariant="normal">∥</mi><mo separator="true">,</mo><mi mathvariant="normal">∥</mi><mo>−</mo><msub><mover accent="true"><mi>Q</mi><mo>^</mo></mover><mi>i</mi></msub><mo>−</mo><msub><mi>Q</mi><mi>i</mi></msub><mi mathvariant="normal">∥</mi><mo stretchy="false">)</mo></mrow><annotation encoding="application/x-tex">L_{\text{rot}}=\sum_i\min(\|\hat Q_i-Q_i\|,\|-\hat Q_i-Q_i\|)
+</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.83333em;vertical-align:-0.15em;"></span><span class="mord"><span class="mord mathdefault">L</span><span class="msupsub"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height:0.2805559999999999em;"><span style="top:-2.5500000000000003em;margin-left:0em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mtight"><span class="mord text mtight"><span class="mord mtight">rot</span></span></span></span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height:0.15em;"><span></span></span></span></span></span></span><span class="mspace" style="margin-right:0.2777777777777778em;"></span><span class="mrel">=</span><span class="mspace" style="margin-right:0.2777777777777778em;"></span></span><span class="base"><span class="strut" style="height:2.327674em;vertical-align:-1.277669em;"></span><span class="mop op-limits"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height:1.0500050000000003em;"><span style="top:-1.872331em;margin-left:0em;"><span class="pstrut" style="height:3.05em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mathdefault mtight">i</span></span></span><span style="top:-3.050005em;"><span class="pstrut" style="height:3.05em;"></span><span><span class="mop op-symbol large-op">∑</span></span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height:1.277669em;"><span></span></span></span></span></span><span class="mspace" style="margin-right:0.16666666666666666em;"></span><span class="mop">min</span><span class="mopen">(</span><span class="mord">∥</span><span class="mord"><span class="mord accent"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height:0.9467699999999999em;"><span style="top:-3em;"><span class="pstrut" style="height:3em;"></span><span class="mord mathdefault">Q</span></span><span style="top:-3.25233em;"><span class="pstrut" style="height:3em;"></span><span class="accent-body" style="left:-0.16666em;">^</span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height:0.19444em;"><span></span></span></span></span></span><span class="msupsub"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height:0.31166399999999994em;"><span style="top:-2.5500000000000003em;margin-left:0em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mathdefault mtight">i</span></span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height:0.15em;"><span></span></span></span></span></span></span><span class="mspace" style="margin-right:0.2222222222222222em;"></span><span class="mbin">−</span><span class="mspace" style="margin-right:0.2222222222222222em;"></span></span><span class="base"><span class="strut" style="height:1em;vertical-align:-0.25em;"></span><span class="mord"><span class="mord mathdefault">Q</span><span class="msupsub"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height:0.31166399999999994em;"><span style="top:-2.5500000000000003em;margin-left:0em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mathdefault mtight">i</span></span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height:0.15em;"><span></span></span></span></span></span></span><span class="mord">∥</span><span class="mpunct">,</span><span class="mspace" style="margin-right:0.16666666666666666em;"></span><span class="mord">∥</span><span class="mspace" style="margin-right:0.2222222222222222em;"></span><span class="mbin">−</span><span class="mspace" style="margin-right:0.2222222222222222em;"></span></span><span class="base"><span class="strut" style="height:1.1412099999999998em;vertical-align:-0.19444em;"></span><span class="mord"><span class="mord accent"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height:0.9467699999999999em;"><span style="top:-3em;"><span class="pstrut" style="height:3em;"></span><span class="mord mathdefault">Q</span></span><span style="top:-3.25233em;"><span class="pstrut" style="height:3em;"></span><span class="accent-body" style="left:-0.16666em;">^</span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height:0.19444em;"><span></span></span></span></span></span><span class="msupsub"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height:0.31166399999999994em;"><span style="top:-2.5500000000000003em;margin-left:0em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mathdefault mtight">i</span></span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height:0.15em;"><span></span></span></span></span></span></span><span class="mspace" style="margin-right:0.2222222222222222em;"></span><span class="mbin">−</span><span class="mspace" style="margin-right:0.2222222222222222em;"></span></span><span class="base"><span class="strut" style="height:1em;vertical-align:-0.25em;"></span><span class="mord"><span class="mord mathdefault">Q</span><span class="msupsub"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height:0.31166399999999994em;"><span style="top:-2.5500000000000003em;margin-left:0em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mathdefault mtight">i</span></span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height:0.15em;"><span></span></span></span></span></span></span><span class="mord">∥</span><span class="mclose">)</span></span></span></span></span></p>
+<p>这里 <span class="katex"><span class="katex-mathml"><math><semantics><mrow><msub><mi>L</mi><mtext>rays</mtext></msub></mrow><annotation encoding="application/x-tex">L_{\text{rays}}</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.969438em;vertical-align:-0.286108em;"></span><span class="mord"><span class="mord mathdefault">L</span><span class="msupsub"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height:0.15139200000000003em;"><span style="top:-2.5500000000000003em;margin-left:0em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mtight"><span class="mord text mtight"><span class="mord mtight">rays</span></span></span></span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height:0.286108em;"><span></span></span></span></span></span></span></span></span></span> 表示预测 ray direction <span class="katex"><span class="katex-mathml"><math><semantics><mrow><msub><mover accent="true"><mi>R</mi><mo>^</mo></mover><mi>i</mi></msub></mrow><annotation encoding="application/x-tex">\hat R_i</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:1.0967699999999998em;vertical-align:-0.15em;"></span><span class="mord"><span class="mord accent"><span class="vlist-t"><span class="vlist-r"><span class="vlist" style="height:0.9467699999999999em;"><span style="top:-3em;"><span class="pstrut" style="height:3em;"></span><span class="mord mathdefault" style="margin-right:0.00773em;">R</span></span><span style="top:-3.25233em;"><span class="pstrut" style="height:3em;"></span><span class="accent-body" style="left:-0.16666em;">^</span></span></span></span></span></span><span class="msupsub"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height:0.31166399999999994em;"><span style="top:-2.5500000000000003em;margin-left:-0.00773em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mathdefault mtight">i</span></span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height:0.15em;"><span></span></span></span></span></span></span></span></span></span> 和真值 <span class="katex"><span class="katex-mathml"><math><semantics><mrow><msub><mi>R</mi><mi>i</mi></msub></mrow><annotation encoding="application/x-tex">R_i</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.83333em;vertical-align:-0.15em;"></span><span class="mord"><span class="mord mathdefault" style="margin-right:0.00773em;">R</span><span class="msupsub"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height:0.31166399999999994em;"><span style="top:-2.5500000000000003em;margin-left:-0.00773em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mathdefault mtight">i</span></span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height:0.15em;"><span></span></span></span></span></span></span></span></span></span> 的误差和；<span class="katex"><span class="katex-mathml"><math><semantics><mrow><msub><mi>L</mi><mtext>rot</mtext></msub></mrow><annotation encoding="application/x-tex">L_{\text{rot}}</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.83333em;vertical-align:-0.15em;"></span><span class="mord"><span class="mord mathdefault">L</span><span class="msupsub"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height:0.2805559999999999em;"><span style="top:-2.5500000000000003em;margin-left:0em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mtight"><span class="mord text mtight"><span class="mord mtight">rot</span></span></span></span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height:0.15em;"><span></span></span></span></span></span></span></span></span></span> 表示旋转 quaternion 的误差和。quaternion 有 <span class="katex"><span class="katex-mathml"><math><semantics><mrow><mi>Q</mi></mrow><annotation encoding="application/x-tex">Q</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.8777699999999999em;vertical-align:-0.19444em;"></span><span class="mord mathdefault">Q</span></span></span></span> 和 <span class="katex"><span class="katex-mathml"><math><semantics><mrow><mo>−</mo><mi>Q</mi></mrow><annotation encoding="application/x-tex">-Q</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.8777699999999999em;vertical-align:-0.19444em;"></span><span class="mord">−</span><span class="mord mathdefault">Q</span></span></span></span> 表达同一旋转的问题，所以 rotation loss 取二者较小值。</p>
+<p>对于 ray depths、pose translations、local pointmaps、world-frame pointmaps，论文沿用 DUSt3R 风格的 scale-invariant normalization，并把 log-space loss 作为关键设计。论文定义：</p>
+<p><span class="katex-display"><span class="katex"><span class="katex-mathml"><math><semantics><mrow><msub><mi>f</mi><mi>log</mi><mo>⁡</mo></msub><mo stretchy="false">(</mo><mi>x</mi><mo stretchy="false">)</mo><mo>=</mo><mo stretchy="false">(</mo><mi>x</mi><mi mathvariant="normal">/</mi><mi mathvariant="normal">∥</mi><mi>x</mi><mi mathvariant="normal">∥</mi><mo stretchy="false">)</mo><mo>⋅</mo><mi>log</mi><mo>⁡</mo><mo stretchy="false">(</mo><mn>1</mn><mo>+</mo><mi mathvariant="normal">∥</mi><mi>x</mi><mi mathvariant="normal">∥</mi><mo stretchy="false">)</mo></mrow><annotation encoding="application/x-tex">f_{\log}(x) = (x / \|x\|)\cdot \log(1+\|x\|)
+</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:1.036108em;vertical-align:-0.286108em;"></span><span class="mord"><span class="mord mathdefault" style="margin-right:0.10764em;">f</span><span class="msupsub"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height:0.3361079999999999em;"><span style="top:-2.336108em;margin-left:-0.10764em;margin-right:0.05em;"><span class="pstrut" style="height:2.4861079999999998em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mtight"><span class="mop mtight">lo<span style="margin-right:0.01389em;">g</span></span></span></span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height:0.286108em;"><span></span></span></span></span></span></span><span class="mopen">(</span><span class="mord mathdefault">x</span><span class="mclose">)</span><span class="mspace" style="margin-right:0.2777777777777778em;"></span><span class="mrel">=</span><span class="mspace" style="margin-right:0.2777777777777778em;"></span></span><span class="base"><span class="strut" style="height:1em;vertical-align:-0.25em;"></span><span class="mopen">(</span><span class="mord mathdefault">x</span><span class="mord">/</span><span class="mord">∥</span><span class="mord mathdefault">x</span><span class="mord">∥</span><span class="mclose">)</span><span class="mspace" style="margin-right:0.2222222222222222em;"></span><span class="mbin">⋅</span><span class="mspace" style="margin-right:0.2222222222222222em;"></span></span><span class="base"><span class="strut" style="height:1em;vertical-align:-0.25em;"></span><span class="mop">lo<span style="margin-right:0.01389em;">g</span></span><span class="mopen">(</span><span class="mord">1</span><span class="mspace" style="margin-right:0.2222222222222222em;"></span><span class="mbin">+</span><span class="mspace" style="margin-right:0.2222222222222222em;"></span></span><span class="base"><span class="strut" style="height:1em;vertical-align:-0.25em;"></span><span class="mord">∥</span><span class="mord mathdefault">x</span><span class="mord">∥</span><span class="mclose">)</span></span></span></span></span></p>
+<p>并强调 ray depths、pointmaps 和 metric scale factor 都要在 log-space 里算 loss。为了避免 scale loss 的梯度污染 up-to-scale geometry，它使用：</p>
+<p><span class="katex-display"><span class="katex"><span class="katex-mathml"><math><semantics><mrow><msup><mi>z</mi><mtext>metric</mtext></msup><mo>=</mo><mi>m</mi><mo>⋅</mo><mtext>sg</mtext><mo stretchy="false">(</mo><mover accent="true"><mi>z</mi><mo>~</mo></mover><mo stretchy="false">)</mo></mrow><annotation encoding="application/x-tex">z^{\text{metric}}=m \cdot \text{sg}(\tilde z)
+</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.8805019999999999em;vertical-align:0em;"></span><span class="mord"><span class="mord mathdefault" style="margin-right:0.04398em;">z</span><span class="msupsub"><span class="vlist-t"><span class="vlist-r"><span class="vlist" style="height:0.8805019999999999em;"><span style="top:-3.113em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mtight"><span class="mord text mtight"><span class="mord mtight">metric</span></span></span></span></span></span></span></span></span></span><span class="mspace" style="margin-right:0.2777777777777778em;"></span><span class="mrel">=</span><span class="mspace" style="margin-right:0.2777777777777778em;"></span></span><span class="base"><span class="strut" style="height:0.44445em;vertical-align:0em;"></span><span class="mord mathdefault">m</span><span class="mspace" style="margin-right:0.2222222222222222em;"></span><span class="mbin">⋅</span><span class="mspace" style="margin-right:0.2222222222222222em;"></span></span><span class="base"><span class="strut" style="height:1em;vertical-align:-0.25em;"></span><span class="mord text"><span class="mord">sg</span></span><span class="mopen">(</span><span class="mord accent"><span class="vlist-t"><span class="vlist-r"><span class="vlist" style="height:0.6678599999999999em;"><span style="top:-3em;"><span class="pstrut" style="height:3em;"></span><span class="mord mathdefault" style="margin-right:0.04398em;">z</span></span><span style="top:-3.35em;"><span class="pstrut" style="height:3em;"></span><span class="accent-body" style="left:-0.19444em;">~</span></span></span></span></span></span><span class="mclose">)</span></span></span></span></span></p>
+<p>其中 <span class="katex"><span class="katex-mathml"><math><semantics><mrow><mtext>sg</mtext></mrow><annotation encoding="application/x-tex">\text{sg}</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.625em;vertical-align:-0.19444em;"></span><span class="mord text"><span class="mord">sg</span></span></span></span></span> 表示 stop-gradient。</p>
+<p>总 loss 为：</p>
+<p><span class="katex-display"><span class="katex"><span class="katex-mathml"><math><semantics><mrow><mi mathvariant="script">L</mi><mo>=</mo><mn>10</mn><mo>⋅</mo><msub><mi mathvariant="script">L</mi><mtext>pointmap</mtext></msub><mo>+</mo><msub><mi mathvariant="script">L</mi><mtext>rays</mtext></msub><mo>+</mo><msub><mi mathvariant="script">L</mi><mtext>rot</mtext></msub><mo>+</mo><msub><mi mathvariant="script">L</mi><mtext>translation</mtext></msub><mo>+</mo><msub><mi mathvariant="script">L</mi><mtext>depth</mtext></msub><mo>+</mo><msub><mi mathvariant="script">L</mi><mtext>lpm</mtext></msub><mo>+</mo><msub><mi mathvariant="script">L</mi><mtext>scale</mtext></msub><mo>+</mo><msub><mi mathvariant="script">L</mi><mtext>normal</mtext></msub><mo>+</mo><msub><mi mathvariant="script">L</mi><mtext>GM</mtext></msub><mo>+</mo><mn>0.1</mn><mo>⋅</mo><msub><mi mathvariant="script">L</mi><mtext>mask</mtext></msub></mrow><annotation encoding="application/x-tex">\mathcal{L}
+=10\cdot \mathcal{L}_{\text{pointmap}}
++\mathcal{L}_{\text{rays}}
++\mathcal{L}_{\text{rot}}
++\mathcal{L}_{\text{translation}}
++\mathcal{L}_{\text{depth}}
++\mathcal{L}_{\text{lpm}}
++\mathcal{L}_{\text{scale}}
++\mathcal{L}_{\text{normal}}
++\mathcal{L}_{\text{GM}}
++0.1\cdot \mathcal{L}_{\text{mask}}
+</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.68333em;vertical-align:0em;"></span><span class="mord"><span class="mord mathcal">L</span></span><span class="mspace" style="margin-right:0.2777777777777778em;"></span><span class="mrel">=</span><span class="mspace" style="margin-right:0.2777777777777778em;"></span></span><span class="base"><span class="strut" style="height:0.64444em;vertical-align:0em;"></span><span class="mord">1</span><span class="mord">0</span><span class="mspace" style="margin-right:0.2222222222222222em;"></span><span class="mbin">⋅</span><span class="mspace" style="margin-right:0.2222222222222222em;"></span></span><span class="base"><span class="strut" style="height:0.969438em;vertical-align:-0.286108em;"></span><span class="mord"><span class="mord"><span class="mord mathcal">L</span></span><span class="msupsub"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height:0.317502em;"><span style="top:-2.5500000000000003em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mtight"><span class="mord text mtight"><span class="mord mtight">pointmap</span></span></span></span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height:0.286108em;"><span></span></span></span></span></span></span><span class="mspace" style="margin-right:0.2222222222222222em;"></span><span class="mbin">+</span><span class="mspace" style="margin-right:0.2222222222222222em;"></span></span><span class="base"><span class="strut" style="height:0.969438em;vertical-align:-0.286108em;"></span><span class="mord"><span class="mord"><span class="mord mathcal">L</span></span><span class="msupsub"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height:0.15139200000000003em;"><span style="top:-2.5500000000000003em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mtight"><span class="mord text mtight"><span class="mord mtight">rays</span></span></span></span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height:0.286108em;"><span></span></span></span></span></span></span><span class="mspace" style="margin-right:0.2222222222222222em;"></span><span class="mbin">+</span><span class="mspace" style="margin-right:0.2222222222222222em;"></span></span><span class="base"><span class="strut" style="height:0.83333em;vertical-align:-0.15em;"></span><span class="mord"><span class="mord"><span class="mord mathcal">L</span></span><span class="msupsub"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height:0.2805559999999999em;"><span style="top:-2.5500000000000003em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mtight"><span class="mord text mtight"><span class="mord mtight">rot</span></span></span></span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height:0.15em;"><span></span></span></span></span></span></span><span class="mspace" style="margin-right:0.2222222222222222em;"></span><span class="mbin">+</span><span class="mspace" style="margin-right:0.2222222222222222em;"></span></span><span class="base"><span class="strut" style="height:0.83333em;vertical-align:-0.15em;"></span><span class="mord"><span class="mord"><span class="mord mathcal">L</span></span><span class="msupsub"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height:0.33610799999999996em;"><span style="top:-2.5500000000000003em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mtight"><span class="mord text mtight"><span class="mord mtight">translation</span></span></span></span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height:0.15em;"><span></span></span></span></span></span></span><span class="mspace" style="margin-right:0.2222222222222222em;"></span><span class="mbin">+</span><span class="mspace" style="margin-right:0.2222222222222222em;"></span></span><span class="base"><span class="strut" style="height:0.969438em;vertical-align:-0.286108em;"></span><span class="mord"><span class="mord"><span class="mord mathcal">L</span></span><span class="msupsub"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height:0.3361079999999999em;"><span style="top:-2.5500000000000003em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mtight"><span class="mord text mtight"><span class="mord mtight">depth</span></span></span></span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height:0.286108em;"><span></span></span></span></span></span></span><span class="mspace" style="margin-right:0.2222222222222222em;"></span><span class="mbin">+</span><span class="mspace" style="margin-right:0.2222222222222222em;"></span></span><span class="base"><span class="strut" style="height:0.969438em;vertical-align:-0.286108em;"></span><span class="mord"><span class="mord"><span class="mord mathcal">L</span></span><span class="msupsub"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height:0.3361079999999999em;"><span style="top:-2.5500000000000003em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mtight"><span class="mord text mtight"><span class="mord mtight">lpm</span></span></span></span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height:0.286108em;"><span></span></span></span></span></span></span><span class="mspace" style="margin-right:0.2222222222222222em;"></span><span class="mbin">+</span><span class="mspace" style="margin-right:0.2222222222222222em;"></span></span><span class="base"><span class="strut" style="height:0.83333em;vertical-align:-0.15em;"></span><span class="mord"><span class="mord"><span class="mord mathcal">L</span></span><span class="msupsub"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height:0.33610799999999996em;"><span style="top:-2.5500000000000003em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mtight"><span class="mord text mtight"><span class="mord mtight">scale</span></span></span></span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height:0.15em;"><span></span></span></span></span></span></span><span class="mspace" style="margin-right:0.2222222222222222em;"></span><span class="mbin">+</span><span class="mspace" style="margin-right:0.2222222222222222em;"></span></span><span class="base"><span class="strut" style="height:0.83333em;vertical-align:-0.15em;"></span><span class="mord"><span class="mord"><span class="mord mathcal">L</span></span><span class="msupsub"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height:0.33610799999999996em;"><span style="top:-2.5500000000000003em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mtight"><span class="mord text mtight"><span class="mord mtight">normal</span></span></span></span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height:0.15em;"><span></span></span></span></span></span></span><span class="mspace" style="margin-right:0.2222222222222222em;"></span><span class="mbin">+</span><span class="mspace" style="margin-right:0.2222222222222222em;"></span></span><span class="base"><span class="strut" style="height:0.83333em;vertical-align:-0.15em;"></span><span class="mord"><span class="mord"><span class="mord mathcal">L</span></span><span class="msupsub"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height:0.32833099999999993em;"><span style="top:-2.5500000000000003em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mtight"><span class="mord text mtight"><span class="mord mtight">GM</span></span></span></span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height:0.15em;"><span></span></span></span></span></span></span><span class="mspace" style="margin-right:0.2222222222222222em;"></span><span class="mbin">+</span><span class="mspace" style="margin-right:0.2222222222222222em;"></span></span><span class="base"><span class="strut" style="height:0.64444em;vertical-align:0em;"></span><span class="mord">0</span><span class="mord">.</span><span class="mord">1</span><span class="mspace" style="margin-right:0.2222222222222222em;"></span><span class="mbin">⋅</span><span class="mspace" style="margin-right:0.2222222222222222em;"></span></span><span class="base"><span class="strut" style="height:0.83333em;vertical-align:-0.15em;"></span><span class="mord"><span class="mord"><span class="mord mathcal">L</span></span><span class="msupsub"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height:0.33610799999999996em;"><span style="top:-2.5500000000000003em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mtight"><span class="mord text mtight"><span class="mord mtight">mask</span></span></span></span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height:0.15em;"><span></span></span></span></span></span></span></span></span></span></span></p>
+<p>训练细节里有几个很工程化的点：</p>
+<ol>
+<li>global pointmap loss 权重设为 <code>10</code>，mask loss 权重设为 <code>0.1</code>；</li>
+<li>regression losses 使用 adaptive robust loss，参数 <code>c = 0.05</code>、<span class="katex"><span class="katex-mathml"><math><semantics><mrow><mi>α</mi><mo>=</mo><mn>0.5</mn></mrow><annotation encoding="application/x-tex">\alpha = 0.5</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.43056em;vertical-align:0em;"></span><span class="mord mathdefault" style="margin-right:0.0037em;">α</span><span class="mspace" style="margin-right:0.2777777777777778em;"></span><span class="mrel">=</span><span class="mspace" style="margin-right:0.2777777777777778em;"></span></span><span class="base"><span class="strut" style="height:0.64444em;vertical-align:0em;"></span><span class="mord">0</span><span class="mord">.</span><span class="mord">5</span></span></span></span>；</li>
+<li>每个 pixel loss 里 top <code>5%</code> 被剔除，用于降低训练数据噪声和异常值影响；</li>
+<li>normal loss 和 multi-scale gradient matching loss 只用于 synthetic datasets，因为真实数据的几何可能粗糙或有噪声；</li>
+<li>mask 用 binary cross entropy，预测 non-ambiguous classes for depth。</li>
+</ol>
+<p>这部分对具身系统的启发是：几何监督不是“有 depth 就直接 L1”。真实数据经常有洞、噪声、尺度不一致和标注不完整；如果不在 loss 和输入 schema 上处理，模型会把数据集误差学成几何规律。</p>
+<h2 id="训练输入增强"><a class="markdownIt-Anchor" href="#训练输入增强"></a> 训练输入增强</h2>
+<p>为了让一个模型支持多种输入组合，MapAnything 在训练时随机提供或隐藏几何输入：</p>
+<table>
+<thead>
+<tr>
+<th>Training input choice</th>
+<th>Value</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Overall geometric input probability</td>
+<td>0.9</td>
+</tr>
+<tr>
+<td>Individual factor probability</td>
+<td>0.5 each for ray directions, ray depth, pose</td>
+</tr>
+<tr>
+<td>Depth input mode</td>
+<td>equal probability of dense depth or 90% randomly sparsified depth</td>
+</tr>
+<tr>
+<td>Per-view input probability</td>
+<td>0.95</td>
+</tr>
+<tr>
+<td>Metric scale input dropout</td>
+<td>not provide metric scale factors with probability 0.05</td>
+</tr>
+<tr>
+<td>Supported exhaustive combinations</td>
+<td>64 possible input combinations in supplement</td>
+</tr>
+</tbody>
+</table>
+<p>这里的关键不是做数据增强本身，而是让模型学会“几何输入是可选的”。这和机器人部署很像：某些帧有深度、某些帧深度失效；某些相机标定可靠、某些外参刚重标定；SLAM 位姿有时漂移，有时可用。训练时把输入可用性打散，能减少模型对单一传感器契约的依赖。</p>
+<h2 id="训练数据"><a class="markdownIt-Anchor" href="#训练数据"></a> 训练数据</h2>
+<p>Table 1 is redrawn below with the original English fields.</p>
+<table>
+<thead>
+<tr>
+<th>Dataset</th>
+<th>License</th>
+<th style="text-align:right"># Scenes</th>
+<th style="text-align:center">Metric</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>BlendedMVS [80]</td>
+<td>CC BY 4.0</td>
+<td style="text-align:right">493</td>
+<td style="text-align:center">✗</td>
+</tr>
+<tr>
+<td>Mapillary Planet-Scale Depth [36]</td>
+<td>CC BY-NC-SA</td>
+<td style="text-align:right">71,428</td>
+<td style="text-align:center">✓</td>
+</tr>
+<tr>
+<td>ScanNet++ v2 [81]</td>
+<td>Non-commercial</td>
+<td style="text-align:right">926</td>
+<td style="text-align:center">✓</td>
+</tr>
+<tr>
+<td>Spring [37]</td>
+<td>CC BY 4.0</td>
+<td style="text-align:right">37</td>
+<td style="text-align:center">✓</td>
+</tr>
+<tr>
+<td>TartanAirV2-WB [73, 86]</td>
+<td>CC BY 4.0</td>
+<td style="text-align:right">49</td>
+<td style="text-align:center">✓</td>
+</tr>
+<tr>
+<td>UnrealStereo4K [59]</td>
+<td>MIT</td>
+<td style="text-align:right">9</td>
+<td style="text-align:center">✓</td>
+</tr>
+<tr>
+<td>Additionally used for our CC BY-NC model:</td>
+<td></td>
+<td style="text-align:right"></td>
+<td style="text-align:center"></td>
+</tr>
+<tr>
+<td>Aria Synthetic Environments [2]</td>
+<td>Non-commercial</td>
+<td style="text-align:right">103,890</td>
+<td style="text-align:center">✓</td>
+</tr>
+<tr>
+<td>DL3DV-10K [32]</td>
+<td>CC BY-NC 4.0</td>
+<td style="text-align:right">10,109</td>
+<td style="text-align:center">✗</td>
+</tr>
+<tr>
+<td>Dynamic Replica [25]</td>
+<td>Non-commercial</td>
+<td style="text-align:right">523</td>
+<td style="text-align:center">✓</td>
+</tr>
+<tr>
+<td>MegaDepth [30]</td>
+<td>CC BY 4.0</td>
+<td style="text-align:right">269</td>
+<td style="text-align:center">✗</td>
+</tr>
+<tr>
+<td>MVS-Synth [21]</td>
+<td>Non-commercial</td>
+<td style="text-align:right">120</td>
+<td style="text-align:center">✓</td>
+</tr>
+<tr>
+<td>ParallelDomain-4D [62]</td>
+<td>Non-commercial</td>
+<td style="text-align:right">1,528</td>
+<td style="text-align:center">✓</td>
+</tr>
+<tr>
+<td>SAIL-VOS 3D [20]</td>
+<td>Non-commercial</td>
+<td style="text-align:right">171</td>
+<td style="text-align:center">✓</td>
+</tr>
+<tr>
+<td>Unique held-out scenes for dense up-to-N-view benchmarking:</td>
+<td></td>
+<td style="text-align:right"></td>
+<td style="text-align:center"></td>
+</tr>
+<tr>
+<td>ETH3D [54]</td>
+<td>CC BY-NC-SA 4.0</td>
+<td style="text-align:right">13</td>
+<td style="text-align:center">✓</td>
+</tr>
+<tr>
+<td>ScanNet++ v2 [81]</td>
+<td>Non-commercial</td>
+<td style="text-align:right">30</td>
+<td style="text-align:center">✓</td>
+</tr>
+<tr>
+<td>TartanAirV2-WB [73, 86]</td>
+<td>CC BY 4.0</td>
+<td style="text-align:right">5</td>
+<td style="text-align:center">✓</td>
+</tr>
+</tbody>
+</table>
+<p><small>表源：<code>MapAnything</code>，Table 1。原论文表格要点：训练数据覆盖真实室内、户外、合成、in-the-wild 和 metric / up-to-scale 场景；Apache 2.0 模型使用前 6 个数据集，CC BY-NC 4.0 模型额外使用后 7 个数据集。</small></p>
+<p>论文还补了一个细节：Mapillary Planet-Scale Depth 原本是 monocular metric depth dataset，作者额外获取 pose 和 camera information，使其变成约 <code>72K</code> scenes 的 real-world multi-view metric scale dataset，并开源这部分 metadata。</p>
+<h3 id="multi-view-sampling"><a class="markdownIt-Anchor" href="#multi-view-sampling"></a> Multi-View Sampling</h3>
+<p>训练时，作者对每个 dataset 预计算同一 scene 内所有 image pair 的 covisibility。covisibility 用 ground-truth depth 和 pose 做 reprojection error check 得到。训练采样时使用 <code>25%</code> covisibility threshold，通过 random walk sampling 得到单连通的 covisible view graph。</p>
+<p>这一步对具身数据也很重要。如果直接随机抽图，模型可能拿到彼此几乎不重叠的视角，训练信号会混乱；如果只抽高度重叠视角，模型又学不到大 baseline、遮挡和场景覆盖。covisibility graph 是把“多视角可对齐”变成训练样本约束。</p>
+<h2 id="训练配方"><a class="markdownIt-Anchor" href="#训练配方"></a> 训练配方</h2>
+<p>Supplementary implementation details are redrawn below with the original English setting names.</p>
+<table>
+<thead>
+<tr>
+<th>Setting</th>
+<th>Value</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Optimizer</td>
+<td>AdamW</td>
+</tr>
+<tr>
+<td>Peak LR for pre-trained DINOv2 encoder</td>
+<td><span class="katex"><span class="katex-mathml"><math><semantics><mrow><mn>5</mn><mo>⋅</mo><mn>1</mn><msup><mn>0</mn><mrow><mo>−</mo><mn>6</mn></mrow></msup></mrow><annotation encoding="application/x-tex">5 \cdot 10^{-6}</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.64444em;vertical-align:0em;"></span><span class="mord">5</span><span class="mspace" style="margin-right:0.2222222222222222em;"></span><span class="mbin">⋅</span><span class="mspace" style="margin-right:0.2222222222222222em;"></span></span><span class="base"><span class="strut" style="height:0.8141079999999999em;vertical-align:0em;"></span><span class="mord">1</span><span class="mord"><span class="mord">0</span><span class="msupsub"><span class="vlist-t"><span class="vlist-r"><span class="vlist" style="height:0.8141079999999999em;"><span style="top:-3.063em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mtight"><span class="mord mtight">−</span><span class="mord mtight">6</span></span></span></span></span></span></span></span></span></span></span></span></td>
+</tr>
+<tr>
+<td>Peak LR for everything else</td>
+<td><span class="katex"><span class="katex-mathml"><math><semantics><mrow><mn>1</mn><msup><mn>0</mn><mrow><mo>−</mo><mn>4</mn></mrow></msup></mrow><annotation encoding="application/x-tex">10^{-4}</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.8141079999999999em;vertical-align:0em;"></span><span class="mord">1</span><span class="mord"><span class="mord">0</span><span class="msupsub"><span class="vlist-t"><span class="vlist-r"><span class="vlist" style="height:0.8141079999999999em;"><span style="top:-3.063em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mtight"><span class="mord mtight">−</span><span class="mord mtight">4</span></span></span></span></span></span></span></span></span></span></span></span></td>
+</tr>
+<tr>
+<td>LR schedule</td>
+<td>10% linear warmup, then half-cycle cosine decay to 100x lower value</td>
+</tr>
+<tr>
+<td>Weight decay</td>
+<td>0.05</td>
+</tr>
+<tr>
+<td>AdamW <span class="katex"><span class="katex-mathml"><math><semantics><mrow><msub><mi>β</mi><mn>1</mn></msub><mo separator="true">,</mo><msub><mi>β</mi><mn>2</mn></msub></mrow><annotation encoding="application/x-tex">\beta_1, \beta_2</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.8888799999999999em;vertical-align:-0.19444em;"></span><span class="mord"><span class="mord mathdefault" style="margin-right:0.05278em;">β</span><span class="msupsub"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height:0.30110799999999993em;"><span style="top:-2.5500000000000003em;margin-left:-0.05278em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mtight">1</span></span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height:0.15em;"><span></span></span></span></span></span></span><span class="mpunct">,</span><span class="mspace" style="margin-right:0.16666666666666666em;"></span><span class="mord"><span class="mord mathdefault" style="margin-right:0.05278em;">β</span><span class="msupsub"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height:0.30110799999999993em;"><span style="top:-2.5500000000000003em;margin-left:-0.05278em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mtight">2</span></span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height:0.15em;"><span></span></span></span></span></span></span></span></span></span></td>
+<td>0.9, 0.95</td>
+</tr>
+<tr>
+<td>Max image dimension</td>
+<td>518 pixels</td>
+</tr>
+<tr>
+<td>Aspect ratio augmentation</td>
+<td>randomized from 3:1 to 1:2</td>
+</tr>
+<tr>
+<td>Data augmentation</td>
+<td>color jitter, Gaussian blur, grayscale conversion</td>
+</tr>
+<tr>
+<td>Efficiency</td>
+<td>mixed precision training, gradient checkpointing for DINOv2 encoder</td>
+</tr>
+<tr>
+<td>Gradient clipping</td>
+<td>norm threshold 1</td>
+</tr>
+<tr>
+<td>Batch scheme</td>
+<td>dynamic batching based on number of views</td>
+</tr>
+<tr>
+<td>Curriculum</td>
+<td>two-stage curriculum, 420K steps</td>
+</tr>
+<tr>
+<td>Stage 1</td>
+<td>6 days on 64 H200-140GB GPUs, effective batch size 768-1536, views 4 to 2</td>
+</tr>
+<tr>
+<td>Stage 2</td>
+<td>4 days on 64 H200-140GB GPUs, 10x lower peak LR, effective batch size 128-1536, views 24 to 2</td>
+</tr>
+<tr>
+<td>Ablation setup</td>
+<td>same as above, but 8x lower effective batch size</td>
+</tr>
+</tbody>
+</table>
+<p><small>信息源：<code>MapAnything</code>，Supplementary Material B。原论文要点：训练采用 DINOv2 小学习率微调、其他模块较大学习率、动态 batch 和两阶段 view curriculum；先在少视图上建立能力，再扩到更多 views。</small></p>
+<p>这份训练配方有三个值得记住的工程判断。</p>
+<p>第一，DINOv2 不是冻死不用，而是用很小 LR 微调。几何任务需要保留视觉语义和纹理先验，但 ray、depth、pose 监督会改变特征的使用方式，小步微调比完全冻结更灵活。</p>
+<p>第二，view curriculum 很关键。Stage 1 只在 <code>2-4</code> views 上训练，先把局部多视图几何学稳；Stage 2 扩到最多 <code>24</code> views，并降低 peak LR，让模型在更多视角下维持一致性。附录 Figure S.2 还显示，最多只训练到 4 views 的阶段模型，已经能泛化到更多 views，但最终模型明显更稳。</p>
+<p>第三，动态 batch 不是小实现细节。多视图 Transformer 的 token 数随 views 增长，dense DPT head 还要输出每个 view 的像素级结果。固定 batch 很容易要么爆显存，要么浪费吞吐；按 views 调 batch 是这类模型训练的基本工程动作。</p>
+<p>官方代码的 <code>train.md</code> 还把训练脚本拆成 Stage 1、Stage 2 和 Stage 3 confidence training。论文附录的主训练叙述是 two-stage curriculum；代码侧额外暴露 confidence 相关训练脚本，复现实验时应以具体 checkpoint / config 为准。</p>
+<h2 id="实验重建质量与输入组合"><a class="markdownIt-Anchor" href="#实验重建质量与输入组合"></a> 实验：重建质量与输入组合</h2>
+<p><img  
+                     lazyload
+                     src="/images/loading.svg"
+                     data-src="/image/ai-notes/images/paper-deep-dives/embodied-ai/mapanything/figure-3-qualitative-vggt.png"
+                      alt="MapAnything qualitative comparison 原论文图" 
+                ></p>
+<p><small>图源：<code>MapAnything</code>，Figure 3。原论文图意：只用 in-the-wild images 作为输入时，MapAnything 与 VGGT 的 qualitative comparison；论文说明 MapAnything 在大视差变化、季节变化、无纹理表面、水体和大场景上更稳。</small></p>
+<p><strong>Qualitative 图看几何连续性和断裂。</strong><br />
+这不是闭环机器人实验，而是几何重建鲁棒性样例。绿色箭头强调 MapAnything 在大场景和困难表面上的连续性，红色箭头指出 VGGT 的 disjoint 或几何断裂。它支撑的是 feed-forward metric reconstruction 的视觉质量证据，不能证明动作规划或动态交互能力。</p>
+<p><img  
+                     lazyload
+                     src="/images/loading.svg"
+                     data-src="/image/ai-notes/images/paper-deep-dives/embodied-ai/mapanything/figure-4-multiview-results.png"
+                      alt="MapAnything multi-view results 原论文图" 
+                ></p>
+<p><small>图源：<code>MapAnything</code>，Figure 4。原论文图意：MapAnything 在 2 到 100 views 以及不同 input configurations 下做 dense multi-view reconstruction，对比 VGGT 和 Pow3R-BA；指标覆盖 pointmaps、pose、depth、ray directions 和 metric scale。</small></p>
+<p><strong>Figure 4 的正确读法。</strong><br />
+先看横轴：views 从 <code>2</code> 增到 <code>100</code>。再看线型：同一个 MapAnything 在 <code>Input: Imgs</code>、<code>Input: Imgs, Calibration &amp; Poses</code>、<code>Input: Imgs, Calibration, Poses &amp; Sparse Depth</code> 下表现不同。结论不是“图像输入就够了”，而是模型能在同一 forward interface 里吸收额外几何信号；真实机器人越能提供可靠几何先验，MapAnything 越像一个融合器。</p>
+<h3 id="two-view-dense-reconstruction"><a class="markdownIt-Anchor" href="#two-view-dense-reconstruction"></a> Two-View Dense Reconstruction</h3>
+<p>Table 2 is redrawn below with the original English fields.</p>
+<table>
+<thead>
+<tr>
+<th>Average across ETH3D, SN++v2 &amp; TAV2</th>
+<th>Methods</th>
+<th style="text-align:right">Scale rel↓</th>
+<th style="text-align:right">Points rel↓</th>
+<th style="text-align:right">Points τ↑</th>
+<th style="text-align:right">Pose ATE↓</th>
+<th style="text-align:right">Pose AUC↑</th>
+<th style="text-align:right">Depth rel↓</th>
+<th style="text-align:right">Depth τ↑</th>
+<th style="text-align:right">Rays err°↓</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>a) Input: Images</td>
+<td>DUSt3R [72]</td>
+<td style="text-align:right">–</td>
+<td style="text-align:right">0.21</td>
+<td style="text-align:right">43.9</td>
+<td style="text-align:right">0.08</td>
+<td style="text-align:right">35.5</td>
+<td style="text-align:right">0.17</td>
+<td style="text-align:right">32.6</td>
+<td style="text-align:right">2.55</td>
+</tr>
+<tr>
+<td>a) Input: Images</td>
+<td>MASt3R [29]</td>
+<td style="text-align:right">0.38</td>
+<td style="text-align:right">0.25</td>
+<td style="text-align:right">30.2</td>
+<td style="text-align:right">0.07</td>
+<td style="text-align:right">37.3</td>
+<td style="text-align:right">0.19</td>
+<td style="text-align:right">24.8</td>
+<td style="text-align:right">7.03</td>
+</tr>
+<tr>
+<td>a) Input: Images</td>
+<td>Pow3R [23]</td>
+<td style="text-align:right">–</td>
+<td style="text-align:right">0.22</td>
+<td style="text-align:right">43.1</td>
+<td style="text-align:right">0.09</td>
+<td style="text-align:right">36.9</td>
+<td style="text-align:right">0.19</td>
+<td style="text-align:right">35.0</td>
+<td style="text-align:right">2.06</td>
+</tr>
+<tr>
+<td>a) Input: Images</td>
+<td>VGGT [67]</td>
+<td style="text-align:right">–</td>
+<td style="text-align:right">0.20</td>
+<td style="text-align:right">43.2</td>
+<td style="text-align:right">0.07</td>
+<td style="text-align:right">34.2</td>
+<td style="text-align:right">0.13</td>
+<td style="text-align:right">29.3</td>
+<td style="text-align:right">2.34</td>
+</tr>
+<tr>
+<td>a) Input: Images</td>
+<td>MapAnything</td>
+<td style="text-align:right"><strong>0.13</strong></td>
+<td style="text-align:right"><strong>0.08</strong></td>
+<td style="text-align:right"><strong>57.5</strong></td>
+<td style="text-align:right"><strong>0.02</strong></td>
+<td style="text-align:right"><strong>56.0</strong></td>
+<td style="text-align:right"><strong>0.07</strong></td>
+<td style="text-align:right"><strong>49.3</strong></td>
+<td style="text-align:right"><strong>0.85</strong></td>
+</tr>
+<tr>
+<td>b) Input: Images &amp; Intrinsics</td>
+<td>Pow3R [23]</td>
+<td style="text-align:right">–</td>
+<td style="text-align:right">0.20</td>
+<td style="text-align:right">46.0</td>
+<td style="text-align:right">0.08</td>
+<td style="text-align:right">51.3</td>
+<td style="text-align:right">0.15</td>
+<td style="text-align:right">43.2</td>
+<td style="text-align:right">0.40</td>
+</tr>
+<tr>
+<td>b) Input: Images &amp; Intrinsics</td>
+<td>MapAnything</td>
+<td style="text-align:right"><strong>0.13</strong></td>
+<td style="text-align:right"><strong>0.07</strong></td>
+<td style="text-align:right"><strong>59.3</strong></td>
+<td style="text-align:right"><strong>0.01</strong></td>
+<td style="text-align:right"><strong>64.7</strong></td>
+<td style="text-align:right"><strong>0.06</strong></td>
+<td style="text-align:right"><strong>55.1</strong></td>
+<td style="text-align:right"><strong>0.19</strong></td>
+</tr>
+<tr>
+<td>c) Input: Images, Intrinsics &amp; Poses</td>
+<td>Pow3R [23]</td>
+<td style="text-align:right">–</td>
+<td style="text-align:right">0.13</td>
+<td style="text-align:right">50.9</td>
+<td style="text-align:right">0.05</td>
+<td style="text-align:right">67.5</td>
+<td style="text-align:right">0.11</td>
+<td style="text-align:right">47.2</td>
+<td style="text-align:right">0.38</td>
+</tr>
+<tr>
+<td>c) Input: Images, Intrinsics &amp; Poses</td>
+<td>MapAnything</td>
+<td style="text-align:right"><strong>0.05</strong></td>
+<td style="text-align:right"><strong>0.06</strong></td>
+<td style="text-align:right"><strong>60.4</strong></td>
+<td style="text-align:right"><strong>0.01</strong></td>
+<td style="text-align:right"><strong>93.6</strong></td>
+<td style="text-align:right"><strong>0.06</strong></td>
+<td style="text-align:right"><strong>57.5</strong></td>
+<td style="text-align:right"><strong>0.18</strong></td>
+</tr>
+<tr>
+<td>d) Input: Images, Intrinsics &amp; Depth</td>
+<td>Pow3R [23]</td>
+<td style="text-align:right">–</td>
+<td style="text-align:right">0.13</td>
+<td style="text-align:right"><strong>77.9</strong></td>
+<td style="text-align:right">0.04</td>
+<td style="text-align:right">66.5</td>
+<td style="text-align:right">0.07</td>
+<td style="text-align:right"><strong>77.3</strong></td>
+<td style="text-align:right">0.29</td>
+</tr>
+<tr>
+<td>d) Input: Images, Intrinsics &amp; Depth</td>
+<td>MapAnything</td>
+<td style="text-align:right"><strong>0.02</strong></td>
+<td style="text-align:right"><strong>0.04</strong></td>
+<td style="text-align:right">77.8</td>
+<td style="text-align:right"><strong>0.01</strong></td>
+<td style="text-align:right"><strong>73.1</strong></td>
+<td style="text-align:right"><strong>0.03</strong></td>
+<td style="text-align:right">76.6</td>
+<td style="text-align:right"><strong>0.18</strong></td>
+</tr>
+<tr>
+<td>e) Input: Images, Intrinsics, Poses &amp; Depth</td>
+<td>Pow3R [23]</td>
+<td style="text-align:right">–</td>
+<td style="text-align:right">0.03</td>
+<td style="text-align:right"><strong>90.1</strong></td>
+<td style="text-align:right">0.01</td>
+<td style="text-align:right">81.3</td>
+<td style="text-align:right">0.02</td>
+<td style="text-align:right"><strong>89.0</strong></td>
+<td style="text-align:right">0.29</td>
+</tr>
+<tr>
+<td>e) Input: Images, Intrinsics, Poses &amp; Depth</td>
+<td>MapAnything</td>
+<td style="text-align:right"><strong>0.01</strong></td>
+<td style="text-align:right"><strong>0.02</strong></td>
+<td style="text-align:right">82.0</td>
+<td style="text-align:right"><strong>0.00</strong></td>
+<td style="text-align:right"><strong>94.8</strong></td>
+<td style="text-align:right"><strong>0.02</strong></td>
+<td style="text-align:right">81.5</td>
+<td style="text-align:right"><strong>0.16</strong></td>
+</tr>
+</tbody>
+</table>
+<p><small>表源：<code>MapAnything</code>，Table 2。原论文表格要点：在 two-view reconstruction 上，MapAnything 在 images-only 和带几何输入时整体优于或匹配 specialist baselines；额外几何输入尤其改善 scale、pose 和 dense geometry。</small></p>
+<p>这张表最该关注的是输入组合。MapAnything 不是只在 <code>Images</code> 下和 VGGT 比，而是展示了一个统一模型如何随着 <code>Intrinsics</code>、<code>Poses</code>、<code>Depth</code> 增加而改变输出质量。这对具身智能的启发是：不要把几何模型只当 RGB 网络；如果系统已有 calibration、odometry、sparse depth，应该让模型把它们作为一等输入。</p>
+<h2 id="辅助几何输入为什么重要"><a class="markdownIt-Anchor" href="#辅助几何输入为什么重要"></a> 辅助几何输入为什么重要</h2>
+<p><img  
+                     lazyload
+                     src="/images/loading.svg"
+                     data-src="/image/ai-notes/images/paper-deep-dives/embodied-ai/mapanything/figure-s5-auxiliary-inputs.png"
+                      alt="MapAnything auxiliary inputs 原论文图" 
+                ></p>
+<p><small>图源：<code>MapAnything</code>，Figure S.5。原论文图意：辅助几何输入可以改善 MapAnything 的 feed-forward performance；包括用 calibration 和 metric poses 改善 alignment / metric scale，用 sparse metric point cloud 做 dense metric depth completion，以及输入 calibration 后改变物体中心场景的预测。</small></p>
+<p><strong>这张补充图怎么读。</strong><br />
+上半部分说明，只靠 100 张图像时模型仍可能出现重复结构；加入 camera calibration 和 poses 后，几何对齐明显改善。中间展示 metric scale：images-only 的尺度估计不够准，加入 calibration 和 metric poses 后接近 ground truth。下半部分说明 sparse depth / calibration 不是装饰输入，它们会实际改变 dense reconstruction。</p>
+<p>对机器人来说，这张图很关键：如果相机标定和局部位姿已经在系统里存在，就不该在模型输入层丢掉。MapAnything 的价值之一，就是把这些传统几何模块的输出重新变成 foundation model 的条件。</p>
+<h2 id="关键消融"><a class="markdownIt-Anchor" href="#关键消融"></a> 关键消融</h2>
+<p>Table 5 is redrawn below with the original English fields.</p>
+<table>
+<thead>
+<tr>
+<th>(a) Scene Representation</th>
+<th style="text-align:right">Metric Scale rel↓</th>
+<th style="text-align:right">Pointmaps rel↓</th>
+<th style="text-align:right">Pointmaps τ↑</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Input: Images Only</td>
+<td style="text-align:right"></td>
+<td style="text-align:right"></td>
+<td style="text-align:right"></td>
+</tr>
+<tr>
+<td>Local PM + Pose</td>
+<td style="text-align:right">0.14</td>
+<td style="text-align:right">0.32</td>
+<td style="text-align:right">33.2</td>
+</tr>
+<tr>
+<td>RDP</td>
+<td style="text-align:right">0.17</td>
+<td style="text-align:right">0.33</td>
+<td style="text-align:right">32.6</td>
+</tr>
+<tr>
+<td>LPMP &amp; Scale</td>
+<td style="text-align:right">0.16</td>
+<td style="text-align:right">0.30</td>
+<td style="text-align:right">38.7</td>
+</tr>
+<tr>
+<td>RDP &amp; Scale (ours)</td>
+<td style="text-align:right"><strong>0.16</strong></td>
+<td style="text-align:right"><strong>0.28</strong></td>
+<td style="text-align:right"><strong>40.7</strong></td>
+</tr>
+<tr>
+<td>Input: Images, Intrinsics &amp; Metric Poses</td>
+<td style="text-align:right"></td>
+<td style="text-align:right"></td>
+<td style="text-align:right"></td>
+</tr>
+<tr>
+<td>Local PM + Pose</td>
+<td style="text-align:right"><strong>0.04</strong></td>
+<td style="text-align:right">0.08</td>
+<td style="text-align:right">53.5</td>
+</tr>
+<tr>
+<td>RDP</td>
+<td style="text-align:right">0.06</td>
+<td style="text-align:right">0.09</td>
+<td style="text-align:right">46.7</td>
+</tr>
+<tr>
+<td>LPMP &amp; Scale</td>
+<td style="text-align:right">0.06</td>
+<td style="text-align:right"><strong>0.07</strong></td>
+<td style="text-align:right">55.9</td>
+</tr>
+<tr>
+<td>RDP &amp; Scale (ours)</td>
+<td style="text-align:right">0.05</td>
+<td style="text-align:right"><strong>0.07</strong></td>
+<td style="text-align:right"><strong>57.8</strong></td>
+</tr>
+</tbody>
+</table>
+<table>
+<thead>
+<tr>
+<th>(b) Expert vs Universal Training</th>
+<th style="text-align:right">Metric Scale rel↓</th>
+<th style="text-align:right">Pointmaps rel↓</th>
+<th style="text-align:right">Pointmaps τ↑</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Input: Images Only</td>
+<td style="text-align:right"></td>
+<td style="text-align:right"></td>
+<td style="text-align:right"></td>
+</tr>
+<tr>
+<td>Expert Training</td>
+<td style="text-align:right">0.16</td>
+<td style="text-align:right">0.29</td>
+<td style="text-align:right">31.8</td>
+</tr>
+<tr>
+<td>Universal Training</td>
+<td style="text-align:right"><strong>0.16</strong></td>
+<td style="text-align:right"><strong>0.28</strong></td>
+<td style="text-align:right"><strong>40.7</strong></td>
+</tr>
+<tr>
+<td>Input: Images, Intrinsics &amp; Metric Poses</td>
+<td style="text-align:right"></td>
+<td style="text-align:right"></td>
+<td style="text-align:right"></td>
+</tr>
+<tr>
+<td>Expert Training</td>
+<td style="text-align:right"><strong>0.03</strong></td>
+<td style="text-align:right"><strong>0.07</strong></td>
+<td style="text-align:right">56.2</td>
+</tr>
+<tr>
+<td>Universal Training</td>
+<td style="text-align:right">0.05</td>
+<td style="text-align:right"><strong>0.07</strong></td>
+<td style="text-align:right"><strong>57.8</strong></td>
+</tr>
+<tr>
+<td>Input: Images &amp; Metric Depth</td>
+<td style="text-align:right"></td>
+<td style="text-align:right"></td>
+<td style="text-align:right"></td>
+</tr>
+<tr>
+<td>Expert Training</td>
+<td style="text-align:right"><strong>0.06</strong></td>
+<td style="text-align:right"><strong>0.24</strong></td>
+<td style="text-align:right">53.0</td>
+</tr>
+<tr>
+<td>Universal Training</td>
+<td style="text-align:right"><strong>0.06</strong></td>
+<td style="text-align:right">0.25</td>
+<td style="text-align:right"><strong>54.0</strong></td>
+</tr>
+</tbody>
+</table>
+<p><small>表源：<code>MapAnything</code>，Table 5。原论文表格要点：<code>RDP &amp; Scale</code> 的 factored representation 是关键；universal training 在多个输入配置上的表现接近或优于为特定输入配置训练的 expert models。</small></p>
+<p>这张表支撑论文最核心的两个 claim：</p>
+<ol>
+<li><strong>表示法重要</strong>：只预测 local pointmap + pose，或者只做 RDP 而没有 metric scale，都不如 <code>RDP &amp; Scale</code> 稳；</li>
+<li><strong>universal training 不只是省事</strong>：一个统一模型不是明显弱于 specialist，反而在一些输入组合上更好。</li>
+</ol>
+<p>Supplementary Table S.2 进一步显示：</p>
+<table>
+<thead>
+<tr>
+<th>(a) Loss Scheme</th>
+<th style="text-align:right">Metric Scale rel↓</th>
+<th style="text-align:right">Pointmaps rel↓</th>
+<th style="text-align:right">Pointmaps τ↑</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Overall Factored Loss</td>
+<td style="text-align:right"><strong>0.16</strong></td>
+<td style="text-align:right"><strong>0.29</strong></td>
+<td style="text-align:right"><strong>31.8</strong></td>
+</tr>
+<tr>
+<td>No Log Loss</td>
+<td style="text-align:right">0.17</td>
+<td style="text-align:right">0.39</td>
+<td style="text-align:right">27.3</td>
+</tr>
+</tbody>
+</table>
+<table>
+<thead>
+<tr>
+<th>(b) Attention Scheme</th>
+<th style="text-align:right">Metric Scale rel↓</th>
+<th style="text-align:right">Pointmaps rel↓</th>
+<th style="text-align:right">Pointmaps τ↑</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Alternating [67]</td>
+<td style="text-align:right"><strong>0.16</strong></td>
+<td style="text-align:right"><strong>0.29</strong></td>
+<td style="text-align:right"><strong>31.8</strong></td>
+</tr>
+<tr>
+<td>Global w/ View PE [78]</td>
+<td style="text-align:right">0.20</td>
+<td style="text-align:right">0.53</td>
+<td style="text-align:right">19.7</td>
+</tr>
+</tbody>
+</table>
+<p><small>表源：<code>MapAnything</code>，Table S.2。原论文表格要点：log scaling 和 Alternating-Attention 对 50-view reconstruction 很关键，尤其是模型训练视角数少于评测视角数时。</small></p>
+<h2 id="推理速度与显存"><a class="markdownIt-Anchor" href="#推理速度与显存"></a> 推理速度与显存</h2>
+<p><img  
+                     lazyload
+                     src="/images/loading.svg"
+                     data-src="/image/ai-notes/images/paper-deep-dives/embodied-ai/mapanything/figure-s1-speed-memory.png"
+                      alt="MapAnything speed memory 原论文图" 
+                ></p>
+<p><small>图源：<code>MapAnything</code>，Figure S.1。原论文图意：在 H200-140GB GPU 上对比多视图 feed-forward reconstruction 模型的 inference speed 和 peak GPU memory；MapAnything 的 dense per-pixel regression 存在显存瓶颈，Mem Efficient 版本用 per-view decoding mini-batch loop 显著降低显存，速度损失很小。</small></p>
+<p><strong>推理图怎么读。</strong><br />
+左图看 view 数增加后 inference frequency 如何下降；右图看 peak GPU memory 如何上升。MapAnything 不是没有显存压力，瓶颈主要来自 dense per-pixel DPT decoding across views。论文的工程处理是把 per-view decoding 放进 mini-batched loop，降低显存峰值。</p>
+<p>这对机器人部署有现实含义：如果只是少量相机或短窗口，feed-forward geometry 很有吸引力；如果要把 100+ views、长期 map、dense depth 和在线规划放在一起，必须设计 memory-efficient decoding、滑动窗口、关键帧筛选或 scene memory。</p>
+<h2 id="它和-vggt-depth-anything-3-的关系"><a class="markdownIt-Anchor" href="#它和-vggt-depth-anything-3-的关系"></a> 它和 VGGT / Depth Anything 3 的关系</h2>
+<table>
+<thead>
+<tr>
+<th>Method</th>
+<th>Main state</th>
+<th>Input flexibility</th>
+<th>Metric scale</th>
+<th>Embodied use</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><a href="/2026/05/11/ai-files-paper-deep-dives-embodied-ai-vggt/">VGGT</a></td>
+<td>camera、depth、point map、tracks</td>
+<td>主要从多张 RGB 图像前向预测</td>
+<td>通过训练规范和输出估计处理几何尺度</td>
+<td>快速多视图几何状态和 tracking features</td>
+</tr>
+<tr>
+<td><a href="/2026/05/11/ai-files-paper-deep-dives-embodied-ai-depth-anything-3/">Depth Anything 3</a></td>
+<td>depth、ray、camera、3DGS-friendly geometry</td>
+<td>任意视角图像，强调 depth-ray / cross-view geometry</td>
+<td>面向多视角几何和渲染式输出</td>
+<td>3D 几何底座、重建与渲染接口</td>
+</tr>
+<tr>
+<td>MapAnything</td>
+<td>ray directions、ray depths、poses、metric scale</td>
+<td>RGB + 可选 intrinsics / poses / depth / partial reconstruction</td>
+<td>显式 global metric scaling factor</td>
+<td>统一几何融合器，适合接机器人已有 calibration、odometry、RGB-D 或 sparse depth</td>
+</tr>
+</tbody>
+</table>
+<p>MapAnything 最值得补进具身主线的原因，是它承认真实系统并不是“纯 RGB benchmark”。一个实际机器人 episode 里，常见字段会长这样：</p>
+<div class="code-container" data-rel="Text"><figure class="iseeu highlight text"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br></pre></td><td class="code"><pre><span class="line">timestamp</span><br><span class="line">rgb_images</span><br><span class="line">camera_intrinsics / ray_directions</span><br><span class="line">camera_extrinsics / odometry / SLAM poses</span><br><span class="line">depth_or_sparse_depth</span><br><span class="line">validity_mask</span><br><span class="line">robot_base_to_camera</span><br><span class="line">task_state</span><br><span class="line">action</span><br><span class="line">success_checker</span><br></pre></td></tr></table></figure></div>
+<p>VGGT 这类模型告诉我们多视角 feed-forward 几何可行；MapAnything 进一步告诉我们，模型接口应该允许这些几何字段缺失、部分存在、带 metric scale 或只 up-to-scale。这个接口设计比单个 benchmark 分数更值得工程系统吸收。</p>
+<h2 id="不能外推什么"><a class="markdownIt-Anchor" href="#不能外推什么"></a> 不能外推什么</h2>
+<p>MapAnything 的边界也很清楚：</p>
+<ol>
+<li><strong>不建模动作和动力学</strong>：它输出静态或准静态几何状态，不预测动作后果；</li>
+<li><strong>不处理 scene flow</strong>：论文明确说当前 scene parameterization 不捕获 dynamic motion 或 scene flow；</li>
+<li><strong>不显式建模输入噪声</strong>：几何输入可能来自 noisy SLAM、错误深度或漂移外参，论文把它列为未来方向；</li>
+<li><strong>大场景 memory 仍是问题</strong>：一对一的 input pixels 到 output scene representation 会限制 scalability；</li>
+<li><strong>test-time compute scaling 未探索</strong>：虽然架构可支持 iterative inference，但论文没有证明 test-time compute 如何稳定提升 3D reconstruction；</li>
+<li><strong>不能替代控制器</strong>：metric geometry 能帮助 planning，但速度、力、碰撞、安全回退仍要由 planner/controller/safety layer 处理。</li>
+</ol>
+<h2 id="项目启发"><a class="markdownIt-Anchor" href="#项目启发"></a> 项目启发</h2>
+<p>如果把 MapAnything 接入具身系统，我会把它放在“几何状态融合器”位置，而不是直接当策略。</p>
+<pre class="mermaid">flowchart LR
+    A["RGB / RGB-D / multi-camera"] --> B["MapAnything geometry backbone"]
+    C["camera intrinsics / rays"] --> B
+    D["SLAM poses / odometry"] --> B
+    E["sparse depth / partial map"] --> B
+    B --> F["metric pointmaps + poses + confidence"]
+    F --> G["VLA state encoder / planner / world model"]
+    G --> H["controller + safety checker"]</pre>
+<p>最有价值的工程动作不是“替换掉所有传统几何模块”，而是把传统几何输出变成模型输入：</p>
+<table>
+<thead>
+<tr>
+<th>System signal</th>
+<th>How MapAnything can use it</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>calibrated camera intrinsics</td>
+<td>encode as ray directions</td>
+</tr>
+<tr>
+<td>known / estimated camera poses</td>
+<td>encode as pose rotation and normalized translation</td>
+</tr>
+<tr>
+<td>RGB-D or LiDAR-projected sparse depth</td>
+<td>encode as dense or 90% sparsified depth-style input</td>
+</tr>
+<tr>
+<td>partial reconstruction</td>
+<td>condition dense metric completion</td>
+</tr>
+<tr>
+<td>uncertain geometry</td>
+<td>current paper does not explicitly model it; should add uncertainty filtering before input</td>
+</tr>
+</tbody>
+</table>
+<p>对 VLA 和世界模型来说，MapAnything 的输出可以作为 state，而不是直接作为 action。比如抓取前先把多相机 RGB-D 转成统一 metric pointmap，再让 planner 判断可达性、遮挡和碰撞；或者在世界模型里把 <code>metric geometry state + candidate action</code> 作为预测条件，而不是只用 RGB latent。</p>
+<p>MapAnything 属于“前沿但很工程化的几何 foundation model”。它的成熟证据主要来自官方论文、开源代码/模型、跨数据集 benchmark、输入组合消融、训练配方和速度显存 profiling；它尚未证明真实机器人闭环收益。</p>
+<p>最值得复用的是三件事：<strong>factored scene representation、geometric input probability augmentation、two-stage view curriculum</strong>。如果做具身项目，可以先把它作为几何状态层 baseline，而不是把它包装成完整具身智能方案。下一步最需要的证据，是带 noisy sensor / SLAM drift 的真实机器人 episode、与 planner/VLA/world model 的闭环 ablation，以及动态场景和失败恢复数据。</p>
+<h2 id="阅读结论"><a class="markdownIt-Anchor" href="#阅读结论"></a> 阅读结论</h2>
+<p>MapAnything 的方法证据来自 factored scene representation、几何输入增强和 view curriculum；实验要看多视图重建、速度显存和辅助输入消融。把它接入机器人时先作为几何状态层验收，再接 planner/VLA，不要直接当动作策略。</p>
+<h2 id="相关阅读与下一步"><a class="markdownIt-Anchor" href="#相关阅读与下一步"></a> 相关阅读与下一步</h2>
+<ul>
+<li>外部材料：<a class="link"   target="_blank" rel="noopener" href="https://arxiv.org/search/?query=MapAnything%3A+Universal+Feed-Forward+Metric+3D+Reconstruction&amp;searchtype=title" >论文标题 arXiv 检索<i class="fa-solid fa-arrow-up-right ml-[0.2em] font-light align-text-top text-[0.7em] link-icon"></i></a>。</li>
+<li>外部材料：<a class="link"   target="_blank" rel="noopener" href="https://www.semanticscholar.org/search?q=MapAnything%3A+Universal+Feed-Forward+Metric+3D+Reconstruction" >Semantic Scholar 标题检索<i class="fa-solid fa-arrow-up-right ml-[0.2em] font-light align-text-top text-[0.7em] link-icon"></i></a>。</li>
+<li>外部材料：<a class="link"   target="_blank" rel="noopener" href="https://paperswithcode.com/search?q=MapAnything%3A+Universal+Feed-Forward+Metric+3D+Reconstruction" >Papers with Code 检索<i class="fa-solid fa-arrow-up-right ml-[0.2em] font-light align-text-top text-[0.7em] link-icon"></i></a>。</li>
+<li>站内下一步：论文精读专题。</li>
+</ul>
+
+		</div>
+
+		
+		<div class="post-copyright-info w-full my-8 px-2 sm:px-6 md:px-8">
+			<div class="article-copyright-info-container">
+    <ul>
+        <li><strong>Title:</strong> 论文专题讲解：MapAnything：统一前向 Metric 3D 重建骨干</li>
+        <li><strong>Author:</strong> Charles</li>
+        <li><strong>Created at
+                :</strong> 2026-03-29 09:00:00</li>
+        
+            <li>
+                <strong>Updated at
+                    :</strong> 2026-03-29 09:00:00
+            </li>
+        
+        <li>
+            <strong>Link:</strong> https://charles2530.github.io/2026/03/29/ai-files-paper-deep-dives-embodied-ai-mapanything/
+        </li>
+        <li>
+            <strong>
+                License:
+            </strong>
+            
+
+            
+                This work is licensed under <a class="license" target="_blank" rel="noopener" href="https://creativecommons.org/licenses/by-nc-sa/4.0">CC BY-NC-SA 4.0</a>.
+            
+        </li>
+    </ul>
+</div>
+
+		</div>
+		
+
+		
+		<ul class="post-tags-box text-lg mt-1.5 flex-wrap justify-center flex md:hidden">
+			
+			<li class="tag-item mx-0.5">
+				<a href="/tags/AI/">#AI</a>&nbsp;
+			</li>
+			
+			<li class="tag-item mx-0.5">
+				<a href="/tags/%E5%85%B7%E8%BA%AB%E6%99%BA%E8%83%BD/">#具身智能</a>&nbsp;
+			</li>
+			
+			<li class="tag-item mx-0.5">
+				<a href="/tags/%E6%95%B0%E6%8D%AE%E4%B8%8E%E8%AF%84%E6%B5%8B/">#数据与评测</a>&nbsp;
+			</li>
+			
+			<li class="tag-item mx-0.5">
+				<a href="/tags/%E8%AE%BA%E6%96%87%E4%B8%93%E9%A2%98/">#论文专题</a>&nbsp;
+			</li>
+			
+		</ul>
+		
+
+		
+
+		
+		<div class="article-nav my-8 flex justify-between items-center px-2 sm:px-6 md:px-8">
+			
+			<div class="article-prev border-border-color shadow-redefine-flat shadow-shadow-color-2 rounded-medium px-4 py-2 hover:shadow-redefine-flat-hover hover:shadow-shadow-color-2">
+				<a class="prev" rel="prev" href="/2026/03/30/ai-files-paper-deep-dives-technical-reports-incoder-32b/">
+					<span class="left arrow-icon flex justify-center items-center">
+						<i class="fa-solid fa-chevron-left"></i>
+					</span>
+					<span class="title flex justify-center items-center">
+						<span class="post-nav-title-item truncate max-w-48">论文专题讲解：InCoder-32B：工业代码基础模型与执行验证训练</span>
+						<span class="post-nav-item">Prev posts</span>
+					</span>
+				</a>
+			</div>
+			
+			
+			<div class="article-next border-border-color shadow-redefine-flat shadow-shadow-color-2 rounded-medium px-4 py-2 hover:shadow-redefine-flat-hover hover:shadow-shadow-color-2">
+				<a class="next" rel="next" href="/2026/03/27/ai-files-paper-deep-dives-diffusion-score-sde/">
+					<span class="title flex justify-center items-center">
+						<span class="post-nav-title-item truncate max-w-48">论文专题讲解：Score SDE：把扩散模型写成连续时间生成过程</span>
+						<span class="post-nav-item">Next posts</span>
+					</span>
+					<span class="right arrow-icon flex justify-center items-center">
+						<i class="fa-solid fa-chevron-right"></i>
+					</span>
+				</a>
+			</div>
+			
+		</div>
+		
+
+
+		
+		<div class="comment-container px-2 sm:px-6 md:px-8 pb-8">
+			<div class="comments-container mt-10 w-full ">
+    <div id="comment-anchor" class="w-full h-2.5"></div>
+    <div class="comment-area-title w-full my-1.5 md:my-2.5 text-xl md:text-3xl font-bold">
+        Comments
+    </div>
+    
+
+        
+            
+    <div id="gitalk-container"></div>
+    <script data-swup-reload-script
+            src="https://cdnjs.cloudflare.com/ajax/libs/gitalk/1.8.0/gitalk.min.js"></script>
+    <script data-swup-reload-script>
+        (function() {
+            const startPath = location.pathname;
+            const startTime = Date.now();
+            const retryDelay = 200;
+            const retryLimit = 5000;
+
+            const runGitalk = () => {
+                if (location.pathname !== startPath) {
+                    return;
+                }
+
+                const container = document.getElementById('gitalk-container');
+                if (!container || typeof Gitalk === 'undefined') {
+                    if (Date.now() - startTime < retryLimit) {
+                        setTimeout(runGitalk, retryDelay);
+                    }
+                    return;
+                }
+
+                container.innerHTML = '';
+
+                let pageKey = decodeURI(location.pathname);
+                const maxLength = 50;
+                if (pageKey.length > maxLength) {
+                    pageKey = pageKey.substring(0, maxLength - 3) + '...';
+                }
+
+                try {
+                    new Gitalk({
+                        clientID: '8083299a8ee2aaf23879',
+                        clientSecret: 'a8161e81d4872181e884fdb69f7be24916b6a9d0',
+                        repo: 'Charles2530.github.io',
+                        owner: 'Charles2530',
+                        admin: ['Charles2530'],
+                        id: pageKey,
+                        language: 'en',
+                        proxy: 'https://github.com/login/oauth/access_token'
+                    }).render(container);
+                } catch (e) {
+                    window.Gitalk = null;
+                }
+            };
+
+            runGitalk();
+        })();
+    </script>
+
+
+
+        
+    
+</div>
+
+		</div>
+		
+	</div>
+
+	
+	<div class="toc-content-container">
+		<div class="post-toc-wrap">
+	<div class="post-toc">
+		<div class="toc-title">On this page</div>
+		<div class="page-title">论文专题讲解：MapAnything：统一前向 Metric 3D 重建骨干</div>
+		<ol class="nav"><li class="nav-item nav-level-2"><a class="nav-link" href="#%E5%8E%9F%E8%AE%BA%E6%96%87%E6%95%85%E4%BA%8B%E7%BA%BF"><span class="nav-text"> 原论文故事线</span></a><ol class="nav-child"><li class="nav-item nav-level-3"><a class="nav-link" href="#%E7%A0%94%E7%A9%B6%E8%83%8C%E6%99%AF"><span class="nav-text"> 研究背景</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#%E9%97%AE%E9%A2%98challenge"><span class="nav-text"> 问题（Challenge）</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#finding"><span class="nav-text"> Finding</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#%E6%96%B9%E6%B3%95"><span class="nav-text"> 方法</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#%E7%BB%93%E8%AE%BA"><span class="nav-text"> 结论</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#%E5%85%B3%E9%94%AE%E6%9C%AF%E8%AF%AD"><span class="nav-text"> 关键术语</span></a></li></ol></li><li class="nav-item nav-level-2"><a class="nav-link" href="#%E5%AE%83%E7%9A%84%E6%95%88%E7%8E%87%E8%B4%A1%E7%8C%AE%E6%98%AF%E4%BB%80%E4%B9%88"><span class="nav-text"> 它的效率贡献是什么</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#%E8%AE%BA%E6%96%87%E4%BD%8D%E7%BD%AE"><span class="nav-text"> 论文位置</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#%E6%A0%B8%E5%BF%83%E9%97%AE%E9%A2%98%E4%B8%BA%E4%BB%80%E4%B9%88%E8%A6%81-factored-geometry"><span class="nav-text"> 核心问题：为什么要 factored geometry</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#%E6%80%BB%E4%BD%93%E6%9E%B6%E6%9E%84"><span class="nav-text"> 总体架构</span></a><ol class="nav-child"><li class="nav-item nav-level-3"><a class="nav-link" href="#encoder"><span class="nav-text"> Encoder</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#multi-view-transformer"><span class="nav-text"> Multi-View Transformer</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#heads"><span class="nav-text"> Heads</span></a></li></ol></li><li class="nav-item nav-level-2"><a class="nav-link" href="#%E8%AE%AD%E7%BB%83%E7%9B%AE%E6%A0%87"><span class="nav-text"> 训练目标</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#%E8%AE%AD%E7%BB%83%E8%BE%93%E5%85%A5%E5%A2%9E%E5%BC%BA"><span class="nav-text"> 训练输入增强</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#%E8%AE%AD%E7%BB%83%E6%95%B0%E6%8D%AE"><span class="nav-text"> 训练数据</span></a><ol class="nav-child"><li class="nav-item nav-level-3"><a class="nav-link" href="#multi-view-sampling"><span class="nav-text"> Multi-View Sampling</span></a></li></ol></li><li class="nav-item nav-level-2"><a class="nav-link" href="#%E8%AE%AD%E7%BB%83%E9%85%8D%E6%96%B9"><span class="nav-text"> 训练配方</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#%E5%AE%9E%E9%AA%8C%E9%87%8D%E5%BB%BA%E8%B4%A8%E9%87%8F%E4%B8%8E%E8%BE%93%E5%85%A5%E7%BB%84%E5%90%88"><span class="nav-text"> 实验：重建质量与输入组合</span></a><ol class="nav-child"><li class="nav-item nav-level-3"><a class="nav-link" href="#two-view-dense-reconstruction"><span class="nav-text"> Two-View Dense Reconstruction</span></a></li></ol></li><li class="nav-item nav-level-2"><a class="nav-link" href="#%E8%BE%85%E5%8A%A9%E5%87%A0%E4%BD%95%E8%BE%93%E5%85%A5%E4%B8%BA%E4%BB%80%E4%B9%88%E9%87%8D%E8%A6%81"><span class="nav-text"> 辅助几何输入为什么重要</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#%E5%85%B3%E9%94%AE%E6%B6%88%E8%9E%8D"><span class="nav-text"> 关键消融</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#%E6%8E%A8%E7%90%86%E9%80%9F%E5%BA%A6%E4%B8%8E%E6%98%BE%E5%AD%98"><span class="nav-text"> 推理速度与显存</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#%E5%AE%83%E5%92%8C-vggt-depth-anything-3-%E7%9A%84%E5%85%B3%E7%B3%BB"><span class="nav-text"> 它和 VGGT &#x2F; Depth Anything 3 的关系</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#%E4%B8%8D%E8%83%BD%E5%A4%96%E6%8E%A8%E4%BB%80%E4%B9%88"><span class="nav-text"> 不能外推什么</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#%E9%A1%B9%E7%9B%AE%E5%90%AF%E5%8F%91"><span class="nav-text"> 项目启发</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#%E9%98%85%E8%AF%BB%E7%BB%93%E8%AE%BA"><span class="nav-text"> 阅读结论</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#%E7%9B%B8%E5%85%B3%E9%98%85%E8%AF%BB%E4%B8%8E%E4%B8%8B%E4%B8%80%E6%AD%A5"><span class="nav-text"> 相关阅读与下一步</span></a></li></ol>
+
+	</div>
+</div>
+	</div>
+	
+</div>
+
+			</div>
+
+			
+		</div>
+
+		<div class="main-content-footer">
+			<footer class="footer mt-5 py-5 h-auto text-base text-third-text-color relative border-t-2 border-t-border-color">
+    <div class="info-container py-3 text-center">
+        
+        <div class="text-center">
+            &copy;
+            
+              <span>2022</span>
+              -
+            
+            2026&nbsp;&nbsp;<i class="fa-solid fa-heart fa-beat" style="--fa-animation-duration: 0.5s; color: #f54545"></i>&nbsp;&nbsp;<a href="/">Charles</a>
+            
+                
+                <p class="post-count space-x-0.5">
+                    <span>
+                        607 posts in total
+                    </span>
+                    
+                        <span>
+                            2449.4k words in total
+                        </span>
+                    
+                </p>
+            
+        </div>
+        
+            <script data-swup-reload-script src="https://cn.vercount.one/js"></script>
+            <div class="relative text-center lg:absolute lg:right-[20px] lg:top-1/2 lg:-translate-y-1/2 lg:text-right">
+                
+                    <span id="busuanzi_container_site_uv" class="lg:!block">
+                        <span class="text-sm">VISITOR COUNT</span>
+                        <span id="busuanzi_value_site_uv"></span>
+                    </span>
+                
+                
+                    <span id="busuanzi_container_site_pv" class="lg:!block">
+                        <span class="text-sm">TOTAL PAGE VIEWS</span>
+                        <span id="busuanzi_value_site_pv"></span>
+                    </span>
+                
+            </div>
+        
+        <div class="relative text-center lg:absolute lg:left-[20px] lg:top-1/2 lg:-translate-y-1/2 lg:text-left">
+            <span class="lg:block text-sm">POWERED BY <?xml version="1.0" encoding="utf-8"?><!DOCTYPE svg PUBLIC "-//W3C//DTD SVG 1.1//EN" "http://www.w3.org/Graphics/SVG/1.1/DTD/svg11.dtd"><svg class="relative top-[2px] inline-block align-baseline" version="1.1" id="圖層_1" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" x="0px" y="0px" width="1rem" height="1rem" viewBox="0 0 512 512" enable-background="new 0 0 512 512" xml:space="preserve"><path fill="#0E83CD" d="M256.4,25.8l-200,115.5L56,371.5l199.6,114.7l200-115.5l0.4-230.2L256.4,25.8z M349,354.6l-18.4,10.7l-18.6-11V275H200v79.6l-18.4,10.7l-18.6-11v-197l18.5-10.6l18.5,10.8V237h112v-79.6l18.5-10.6l18.5,10.8V354.6z"/></svg><a target="_blank" class="text-base" href="https://hexo.io">Hexo</a></span>
+            <span class="text-sm lg:block">THEME&nbsp;<a class="text-base" target="_blank" href="https://github.com/EvanNotFound/hexo-theme-redefine">Redefine v2.9.0</a></span>
+        </div>
+        
+        
+            <div>
+                Blog up for <span class="odometer" id="runtime_days" ></span> days <span class="odometer" id="runtime_hours"></span> hrs <span class="odometer" id="runtime_minutes"></span> Min <span class="odometer" id="runtime_seconds"></span> Sec
+            </div>
+        
+        
+            <script data-swup-reload-script>
+                try {
+                    function odometer_init() {
+                    const elements = document.querySelectorAll('.odometer');
+                    elements.forEach(el => {
+                        new Odometer({
+                            el,
+                            format: '( ddd).dd',
+                            duration: 200
+                        });
+                    });
+                    }
+                    odometer_init();
+                } catch (error) {}
+            </script>
+        
+        
+            
+                
+        
+                
+        
+                
+
+                    
+                        <script data-swup-reload-script type="text/javascript" src="/js/love.js"></script>
+                    
+        
+        
+    </div>  
+</footer>
+		</div>
+	</div>
+
+	
+	<div class="post-tools">
+		<div class="post-tools-container">
+	<ul class="article-tools-list">
+		<!-- TOC aside toggle -->
+		
+		<li class="right-bottom-tools page-aside-toggle">
+			<i class="fa-regular fa-outdent"></i>
+		</li>
+		
+
+		<!-- go comment -->
+		
+		<li class="go-comment">
+			<i class="fa-regular fa-comments"></i>
+		</li>
+		
+	</ul>
+</div>
+	</div>
+	
+
+	<div class="right-side-tools-container">
+		<div class="side-tools-container">
+	<ul class="hidden-tools-list">
+		<li class="right-bottom-tools tool-font-adjust-plus flex justify-center items-center">
+			<i class="fa-regular fa-magnifying-glass-plus"></i>
+		</li>
+
+		<li class="right-bottom-tools tool-font-adjust-minus flex justify-center items-center">
+			<i class="fa-regular fa-magnifying-glass-minus"></i>
+		</li>
+
+		<li class="right-bottom-tools tool-dark-light-toggle flex justify-center items-center">
+			<i class="fa-regular fa-moon"></i>
+		</li>
+
+		<!-- rss -->
+		
+		<li class="right-bottom-tools rss flex justify-center items-center">
+			<a class="flex justify-center items-center" href="/atom.xml" target="_blank">
+				<i class="fa-regular fa-rss"></i>
+			</a>
+		</li>
+		
+
+		
+
+		<li class="right-bottom-tools tool-scroll-to-bottom flex justify-center items-center">
+			<i class="fa-regular fa-arrow-down"></i>
+		</li>
+	</ul>
+
+	<ul class="visible-tools-list">
+		<li class="right-bottom-tools toggle-tools-list flex justify-center items-center">
+			<i class="fa-regular fa-cog fa-spin"></i>
+		</li>
+		
+		<li class="right-bottom-tools tool-scroll-to-top flex justify-center items-center">
+			<i class="arrow-up fas fa-arrow-up"></i>
+			<span class="percent"></span>
+		</li>
+		
+		
+	</ul>
+</div>
+	</div>
+
+	<div class="image-viewer-container" role="dialog" aria-modal="true" aria-label="Image viewer">
+	<button class="image-viewer-close" type="button" aria-label="Close">
+		<i class="fa-solid fa-xmark"></i>
+	</button>
+	<button class="image-viewer-prev" type="button" aria-label="Prev">
+		<i class="fa-solid fa-chevron-left"></i>
+	</button>
+	<div class="image-viewer-frame">
+		<img src="" alt="">
+	</div>
+	<div class="image-viewer-exif-panel hidden absolute left-1/2 bottom-20 -translate-x-1/2 w-[min(92vw,420px)] max-h-[60vh] overflow-hidden rounded-2xl bg-background-color-transparent-80 p-4 text-left shadow-redefine-flat backdrop-blur-md" role="dialog" aria-label="EXIF" aria-hidden="true">
+		<div class="flex items-center justify-between mb-3">
+			<span class="text-sm font-semibold text-first-text-color">EXIF</span>
+			<button class="image-viewer-exif-close flex h-8 w-8 items-center justify-center rounded-full bg-background-color-transparent-80 text-first-text-color transition hover:bg-background-color-transparent-40" type="button" aria-label="Close">
+				<i class="fa-solid fa-xmark text-[0.65rem]"></i>
+			</button>
+		</div>
+		<div class="image-viewer-exif-cards grid grid-cols-1 sm:grid-cols-2 gap-3 max-h-[50vh] overflow-y-auto pr-1 scrollbar-hide"></div>
+		<template class="image-viewer-exif-card-template">
+			<div class="rounded-lg bg-background-color-transparent-40 px-3 py-2">
+				<div class="image-viewer-exif-card-header flex items-center gap-2 mb-1">
+					<i class="image-viewer-exif-card-icon fa-solid fa-circle-info text-xs text-third-text-color"></i>
+					<div class="image-viewer-exif-card-title text-xs font-semibold text-first-text-color"></div>
+				</div>
+				<div class="image-viewer-exif-card-items flex flex-col gap-1"></div>
+			</div>
+		</template>
+	</div>
+	<button class="image-viewer-exif-toggle flex items-center gap-2 hidden absolute left-1/2 bottom-6 -translate-x-1/2 rounded-full border border-border-color bg-background-color-transparent-80 px-4 py-2 text-first-text-color backdrop-blur-md transition hover:bg-background-color-transparent-40" type="button" aria-label="EXIF" aria-expanded="false">
+		<i class="fa-solid fa-circle-info text-xs"></i>
+		<span class="text-xs font-semibold uppercase tracking-wider">EXIF</span>
+	</button>
+	<button class="image-viewer-next" type="button" aria-label="Next">
+		<i class="fa-solid fa-chevron-right"></i>
+	</button>
+</div>
+
+
+	
+	<div class="search-pop-overlay">
+	<div class="popup search-popup">
+		<div class="search-header">
+			<span class="search-input-field-pre">
+				<i class="fa-solid fa-keyboard"></i>
+			</span>
+			<div class="search-input-container">
+				<input autocomplete="off" autocorrect="off" autocapitalize="off" placeholder="Search..." spellcheck="false" type="search" class="search-input">
+			</div>
+			<span class="popup-btn-close">
+				<i class="fa-solid fa-times"></i>
+			</span>
+		</div>
+		<div id="search-result">
+			<div id="no-result">
+				<i class="fa-solid fa-spinner fa-spin-pulse fa-5x fa-fw"></i>
+			</div>
+		</div>
+	</div>
+</div>
+	
+
+</main>
+
+
+
+<script src="/js/build/libs/Swup.min.js"></script>
+
+<script src="/js/build/libs/SwupSlideTheme.min.js"></script>
+
+<script src="/js/build/libs/SwupScriptsPlugin.min.js"></script>
+
+<script src="/js/build/libs/SwupProgressPlugin.min.js"></script>
+
+<script src="/js/build/libs/SwupScrollPlugin.min.js"></script>
+
+<script src="/js/build/libs/SwupPreloadPlugin.min.js"></script>
+
+<script>
+    window.swup = new Swup({
+        plugins: [
+            new SwupScriptsPlugin({
+                optin: true,
+            }),
+            new SwupProgressPlugin(),
+            new SwupScrollPlugin({
+                offset: 80,
+            }),
+            new SwupSlideTheme({
+                mainElement: ".main-content-body",
+            }),
+            new SwupPreloadPlugin(),
+        ],
+        containers: ["#swup"],
+    });
+
+    window.dispatchEvent(
+        new CustomEvent("redefine:swup:ready", {
+            detail: {
+                swup: window.swup,
+            },
+        }),
+    );
+</script>
+
+
+
+
+	
+<script src="/js/build/main.js" type="module"></script>
+
+
+
+    
+<script src="/js/build/libs/odometer.min.js"></script>
+
+    
+<link rel="stylesheet" href="/assets/odometer-theme-minimal.css">
+
+
+
+
+
+
+
+  
+<script src="/js/build/libs/Typed.min.js"></script>
+
+
+
+
+    
+        
+<script src="/js/build/libs/mermaid.min.js"></script>
+
+    
+
+
+
+
+
+    
+<script src="/js/build/libs/minimasonry.min.js" data-swup-reload-script=""></script>
+
+
+
+
+<script src="/js/build/libs/moment-with-locales.min.js" data-swup-reload-script=""></script>
+
+
+
+	
+</body>
+
+</html>

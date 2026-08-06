@@ -1,0 +1,1752 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="keywords" content="Charles">
+    
+    
+    <meta name="author" content="Charles">
+    
+    <!-- Completely eliminate flash of wrong theme -->
+    <script>
+        (function() {
+            const THEME_KEY = "REDEFINE-THEME-STATUS";
+            const DARK = "dark", LIGHT = "light";
+            
+            // Get preferred theme
+            function getTheme() {
+                try {
+                    const saved = localStorage.getItem(THEME_KEY);
+                    if (saved) {
+                        const { isDark } = JSON.parse(saved);
+                        return isDark ? DARK : LIGHT;
+                    }
+                } catch (e) {}
+                
+                return matchMedia("(prefers-color-scheme: dark)").matches ? DARK : LIGHT;
+            }
+            
+            // Apply theme to document
+            function applyTheme(theme) {
+                const isDark = theme === DARK;
+                const root = document.documentElement;
+                
+                // Set classes for compatibility
+                root.classList.add(theme);
+                root.classList.remove(isDark ? LIGHT : DARK);
+                root.style.colorScheme = theme;
+            }
+            
+            // Initial application
+            const theme = getTheme();
+            applyTheme(theme);
+            
+            // Listen for system preference changes
+            matchMedia("(prefers-color-scheme: dark)").addEventListener("change", ({ matches }) => {
+                // Only update if using system preference (no localStorage entry)
+                if (!localStorage.getItem(THEME_KEY)) {
+                    applyTheme(matches ? DARK : LIGHT);
+                }
+            });
+            
+            // Set body classes ASAP (before DOMContentLoaded)
+            (function() {
+                const addBodyClass = () => {
+                    const b = document.body;
+                    if (!b) return false;
+                    b.classList.add(theme + "-mode");
+                    return true;
+                };
+
+                // Try immediately
+                if (addBodyClass()) return;
+
+                // Observe until body exists
+                const mo = new MutationObserver(() => {
+                    if (addBodyClass()) mo.disconnect();
+                });
+                mo.observe(document.documentElement, { childList: true, subtree: true });
+            })();
+        })();
+    </script>
+    
+    <!-- preconnect -->
+<!--- Seo Part-->
+    
+    <link rel="canonical" href="https://charles2530.github.io/2026/04/01/ai-files-paper-deep-dives-foundations-gpu-utilization-misleading/"/>
+    <meta name="robots" content="index,follow">
+    <meta name="googlebot" content="index,follow">
+    <meta name="revisit-after" content="1 days">
+    
+    
+        
+        <meta name="description" content="This is Charles&#39;s Castle.">
+<meta property="og:type" content="article">
+<meta property="og:title" content="论文专题讲解：GPU Utilization：为什么 100％ 不等于训练跑满">
+<meta property="og:url" content="https://charles2530.github.io/2026/04/01/ai-files-paper-deep-dives-foundations-gpu-utilization-misleading/index.html">
+<meta property="og:site_name" content="Charles&#39;s Castle">
+<meta property="og:description" content="This is Charles&#39;s Castle.">
+<meta property="og:locale" content="en_US">
+<meta property="og:image" content="https://charles2530.github.io/image/background/logo.jpg">
+<meta property="article:published_time" content="2026-04-01T01:00:00.000Z">
+<meta property="article:modified_time" content="2026-04-01T01:00:00.000Z">
+<meta property="article:author" content="Du Jinyang">
+<meta property="article:tag" content="AI">
+<meta property="article:tag" content="基础知识">
+<meta property="article:tag" content="论文专题">
+<meta name="twitter:card" content="summary">
+<meta name="twitter:image" content="https://charles2530.github.io/image/background/logo.jpg">
+    
+    
+    <!--- Icon Part-->
+    <link rel="icon" type="image/png" href="https://charles2530.github.io/image/background/favicon.png" sizes="192x192">
+    <link rel="apple-touch-icon" sizes="180x180" href="https://charles2530.github.io/image/background/favicon.png">
+    <meta name="theme-color" content="#A31F34">
+    <link rel="shortcut icon" href="https://charles2530.github.io/image/background/favicon.png">
+    <!--- Page Info-->
+    
+    <title>
+        
+            论文专题讲解：GPU Utilization：为什么 100％ 不等于训练跑满 | Charles&#39;s Castle
+        
+    </title>
+
+    
+<link rel="stylesheet" href="/fonts/Chillax/chillax.css">
+
+
+    <!--- Inject Part-->
+    
+        
+            
+    
+            
+    
+            
+                
+                    <link rel="stylesheet" href="/katex/katex.min.css">
+                
+    
+            
+                
+                    <link rel="stylesheet" href="/css/site-polish-v2.css">
+                
+    
+            
+                
+                    <script data-swup-reload-script>
+(function() {
+  function loadBaiduAnalytics() {
+    if (window.__baiduAnalyticsLoaded) return;
+    window.__baiduAnalyticsLoaded = true;
+    window._hmt = window._hmt || [];
+    var hm = document.createElement("script");
+    hm.async = true;
+    hm.src = "https://hm.baidu.com/hm.js?8e0e5f382d14d87cbeadc33a36e71e86";
+    document.head.appendChild(hm);
+  }
+  if ("requestIdleCallback" in window) {
+    requestIdleCallback(loadBaiduAnalytics, { timeout: 3000 });
+  } else {
+    window.addEventListener("load", function() {
+      setTimeout(loadBaiduAnalytics, 1500);
+    });
+  }
+})();
+</script>
+
+                
+    
+
+    
+<link rel="stylesheet" href="/css/style.css">
+
+
+    
+        
+<link rel="stylesheet" href="/css/build/tailwind.css">
+
+    
+
+    
+<link rel="stylesheet" href="/fonts/GeistMono/geist-mono.css">
+
+    
+<link rel="stylesheet" href="/fonts/Geist/geist.css">
+
+    <!--- Font Part-->
+    
+    
+    
+    
+    
+    
+        
+<script src="/js/build/libs/anime.min.js"></script>
+
+    
+
+    <script id="hexo-configurations">
+    window.config = {"hostname":"charles2530.github.io","root":"/","language":"en","path":"search.xml"};
+    window.theme = {"articles":{"style":{"font_size":"16px","line_height":1.5,"image_border_radius":"14px","image_alignment":"center","image_caption":false,"link_icon":true,"delete_mask":false,"title_alignment":"left","headings_top_spacing":{"h1":"5rem","h2":"4rem","h3":"2.8rem","h4":"2.5rem","h5":"2.2rem","h6":"2rem"}},"word_count":{"enable":true,"count":true,"min2read":true},"author_label":{"enable":true,"auto":true,"list":["lol","Neo","God"]},"code_block":{"copy":true,"style":"mac","highlight_theme":{"light":"github","dark":"vs2015"},"font":{"enable":false,"family":null,"url":null}},"toc":{"enable":true,"max_depth":6,"number":false,"expand":true,"init_open":true},"copyright":{"enable":true,"default":"cc_by_nc_sa"},"lazyload":true,"pangu_js":false,"recommendation":{"enable":false,"title":"recommend_articles","limit":3,"mobile_limit":2,"placeholder":"https://charles2530.github.io/image/background/p3.jfif","skip_dirs":[]}},"colors":{"primary":"#A31F34","secondary":"#1890ff","default_mode":"light"},"global":{"fonts":{"chinese":{"enable":false,"family":null,"url":null},"english":{"enable":false,"family":null,"url":null},"title":{"enable":false,"family":null,"url":null}},"content_max_width":"1000px","sidebar_width":"210px","hover":{"shadow":true,"scale":true},"scroll_progress":{"bar":true,"percentage":true},"website_counter":{"url":"https://cn.vercount.one/js","enable":true,"site_pv":true,"site_uv":true,"post_pv":true},"single_page":true,"preloader":{"enable":true,"custom_message":null},"side_tools":{"gear_rotation":true,"auto_expand":false},"open_graph":{"enable":true,"image":"https://charles2530.github.io/image/background/logo.jpg","description":"This is Charles's Castle."},"google_analytics":{"enable":false,"id":null}},"home_banner":{"enable":true,"style":"fixed","image":{"light":"https://charles2530.github.io/image/background/background-light1.jpg","dark":"https://charles2530.github.io/image/background/background-dark1.jpg"},"title":"Charles's Castle","subtitle":{"text":["Happiness is best!","Never give up!","Everyday is a gift!"],"hitokoto":{"enable":false,"show_author":false,"api":"https://v1.hitokoto.cn"},"typing_speed":100,"backing_speed":80,"starting_delay":500,"backing_delay":1500,"loop":true,"smart_backspace":true},"text_color":{"light":"#000000","dark":"#d1d1b6"},"text_style":{"title_size":"3.2rem","subtitle_size":"1.5rem","line_height":1.2},"custom_font":{"enable":false,"family":null,"url":null},"social_links":{"enable":true,"style":"center","links":[{"icon":"fa-brands fa-github","url":"https://github.com/Charles2530/"},{"icon":"fa-brands fa-zhihu","url":"https://www.zhihu.com/people/yang-guang-xiao-zi-55-55"},{"icon":"fa-solid fa-at","url":"mailto:charles2530@163.com"},{"icon":"fa-brands fa-telegram","url":null},{"icon":"/images/custom-icon.svg","url":null}],"qrs":[{"icon":"fa-brands fa-weixin","qr":"https://charles2530.github.io/image/background/Wechat_icon.png"},{"icon":"/images/custom-icon.svg","qr":null}]}},"plugins":{"feed":{"enable":true},"aplayer":{"enable":false,"type":"fixed","audios":[{"name":null,"artist":null,"url":null,"cover":null,"lrc":null}]},"mermaid":{"enable":false,"version":"11.4.1","theme":{"light":"default","dark":"dark"}}},"version":"2.9.0","navbar":{"auto_hide":true,"color":{"left":"#f78736","right":"#367df7","transparency":35},"width":{"home":"1200px","pages":"1000px"},"links":{"Home":{"path":"/","icon":"fa-regular fa-house"},"Categories":{"path":"/categories","icon":"fas fa-bookmark"},"Tags":{"path":"/tags","icon":"fas fa-tags"},"About":{"icon":"fa-regular fa-user","submenus":{"Me":"https://jinyang-du.github.io/","Github":"https://github.com/Charles2530/","Blog":"https://charles2530.github.io","Statistics":"https://tongji.baidu.com/"}}},"search":{"enable":true,"preload":false}},"page_templates":{"friends_column":2,"tags_style":"blur","masonry":{"batch_size":12,"initial_batch_size":24}},"home":{"sidebar":{"enable":true,"position":"left","first_item":"menu","announcement":"This is Charles's Castle","show_on_mobile":true,"links":{"Archives":{"path":"/archives","icon":"fa-regular fa-archive"},"Photos":{"icon":"fa-solid fa-image","path":"/masonry/"},"Essays":{"icon":"fa-solid fa-message-lines","path":"/essay/"},"Friends":{"icon":"fa-solid fa-user-group","path":"/friends/"}}},"article_date_format":"auto","excerpt_length":200,"categories":{"enable":true,"limit":3},"tags":{"enable":true,"limit":3}},"footer":{"runtime":true,"icon":"<i class=\"fa-solid fa-heart fa-beat\" style=\"--fa-animation-duration: 0.5s; color: #f54545\"></i>","start":"2022/12/27 00:00:00","statistics":true,"customize":null,"icp":{"enable":false,"number":null,"url":null}},"footerStart":"2022/12/27 00:00:00","mermaid":{"style":{"light":"default","dark":"dark"}}};
+    window.lang_ago = {"second":"%s seconds ago","minute":"%s minutes ago","hour":"%s hours ago","day":"%s days ago","week":"%s weeks ago","month":"%s months ago","year":"%s years ago"};
+    window.i18n = {"search":"Search...","toc":"On this page","prev":"Prev","next":"Next","prev_posts":"Prev posts","next_posts":"Next posts","page":"Page %d","recent_posts":"Recent Posts","share":"Share","powered_by":"POWERED BY %s","theme":"THEME","rss_feed":"RSS Feed","category":"Category","categories":"Categories","tag":"Tag","tags":"Tags","post":"Post","posts":"Posts","tagcloud":"Tag Cloud","comment":"Comment","comments":"Comments","home":"Home","archive":"Archive","archives":"Archives","top":"TOP","sticky":"Sticky","go-back-home":"Go Back Home","masonry_loading":"Loading photos...","image_viewer":"Image viewer","close":"Close","exif":{"title":"EXIF","cards":{"camera":"Camera","lens":"Lens","exposure":"Exposure","other":"Other"},"fields":{"make":"Brand","model":"Model","date_taken":"Date taken","lens_model":"Lens","focal_length":"Focal length","focus_mode":"Focus mode","shutter":"Shutter","aperture":"Aperture","iso":"ISO","exposure_program":"Exposure program","exposure_compensation":"Exposure compensation","metering_mode":"Metering mode","flash":"Flash","white_balance":"White balance","latitude":"Latitude","longitude":"Longitude","altitude":"Altitude"},"status":{"loading":"Loading...","no_exif":"No EXIF available","library_missing":"EXIF library not loaded","image_source_missing":"Image source unavailable","unavailable":"EXIF unavailable (blocked by CORS or missing metadata)","flag_unavailable":"EXIF unavailable"}},"about":"About","changelog":"Changelog","links":"Links","link":"Link","friends":"Friends","friend":"Friend","timeline":"Timeline","shuoshuo":"Shuoshuo","bookmarks":"Bookmarks","site_uv":"VISITOR COUNT","site_pv":"TOTAL PAGE VIEWS","read_more":"Read more","wordcount":"Words","min2read":"Mins","status":"Status","runtime":"Blog up for","days":"days","hours":"hrs","minutes":"Min","seconds":"Sec","optimized_by":"and Optimized by Evan","rights":"All Rights Reserved","site_posts":"%s posts in total","site_wordcount":"%s words in total","copyright":{"author":"Author","title":"Title","link":"Link","create_time":"Created at","update_time":"Updated at","license_title":"License","license_content":"This work is licensed under %s.","all_rights_reserved":"All Rights Reserved &#169; %s","public_domain":"This work is in the public domain."},"ago":{"second":"%s seconds ago","minute":"%s minutes ago","hour":"%s hours ago","day":"%s days ago","week":"%s weeks ago","month":"%s months ago","year":"%s years ago"},"create_time":"Created","update_time":"Updated","expired":"This post is written %s days ago, and the content may not be up to date."};
+    window.data = {"masonry":true};
+  </script>
+    
+    <!--- Fontawesome Part-->
+    
+<link rel="stylesheet" href="/fontawesome/fontawesome.min.css">
+
+    
+<link rel="stylesheet" href="/fontawesome/brands.min.css">
+
+    
+<link rel="stylesheet" href="/fontawesome/solid.min.css">
+
+    
+<link rel="stylesheet" href="/fontawesome/regular.min.css">
+
+    
+    
+    
+    
+<meta name="generator" content="Hexo 6.3.0"><link rel="alternate" href="/atom.xml" title="Charles's Castle" type="application/atom+xml">
+<link rel="stylesheet" href="/css/prism-tomorrow.css" type="text/css"></head>
+
+
+<body>
+	<div class="progress-bar-container">
+	
+	<span class="scroll-progress-bar"></span>
+	
+
+	
+	<span class="pjax-progress-bar"></span>
+	<!--        <span class="swup-progress-icon">-->
+	<!--            <i class="fa-solid fa-circle-notch fa-spin"></i>-->
+	<!--        </span>-->
+	
+</div>
+
+<style>
+    :root {
+        --preloader-background-color: #fff;
+        --preloader-text-color: #000;
+    }
+
+    @media (prefers-color-scheme: dark) {
+        :root {
+            --preloader-background-color: #202124;
+            --preloader-text-color: #fff;
+        }
+    }
+
+    @media (prefers-color-scheme: light) {
+        :root {
+            --preloader-background-color: #fff;
+            --preloader-text-color: #000;
+        }
+    }
+
+    @media (max-width: 600px) {
+        .ml13 {
+            font-size: 2.6rem !important; /* Adjust this value as needed */
+        }
+    }
+
+    .preloader {
+        display: flex;
+        flex-direction: column;
+        gap: 1rem; /* Tailwind 'gap-4' is 1rem */
+        align-items: center;
+        justify-content: center;
+        position: fixed;
+        padding: 12px;
+        top: 0;
+        right: 0;
+        bottom: 0;
+        left: 0;
+        width: 100vw;
+        height: 100vh; /* 'h-screen' is 100% of the viewport height */
+        background-color: var(--preloader-background-color);
+        z-index: 1100; /* 'z-[1100]' sets the z-index */
+        transition: opacity 0.2s ease-in-out;
+    }
+
+    .ml13 {
+        font-size: 3.2rem;
+        /* text-transform: uppercase; */
+        color: var(--preloader-text-color);
+        letter-spacing: -1px;
+        font-weight: 500;
+        font-family: 'Chillax-Variable', sans-serif;
+        text-align: center;
+    }
+
+    .ml13 .word {
+        display: inline-flex;
+        flex-wrap: wrap;
+        white-space: nowrap;
+    }
+
+    .ml13 .letter {
+        display: inline-block;
+        line-height: 1em;
+    }
+</style>
+
+<div class="preloader">
+    <h2 class="ml13">
+        Charles&#39;s Castle
+    </h2>
+    <script>
+        var textWrapper = document.querySelector('.ml13');
+        // Split text into words
+        var words = textWrapper.textContent.trim().split(' ');
+
+        // Clear the existing content
+        textWrapper.innerHTML = '';
+
+        // Wrap each word and its letters in spans
+        words.forEach(function(word) {
+            var wordSpan = document.createElement('span');
+            wordSpan.classList.add('word');
+            wordSpan.innerHTML = word.replace(/\S/g, "<span class='letter'>$&</span>");
+            textWrapper.appendChild(wordSpan);
+            textWrapper.appendChild(document.createTextNode(' ')); // Add space between words
+        });
+
+        var animation = anime.timeline({ loop: true })
+            .add({
+                targets: '.ml13 .letter',
+                translateY: [20, 0],
+                translateZ: 0,
+                opacity: [0, 1],
+                filter: ['blur(5px)', 'blur(0px)'],
+                easing: "easeOutExpo",
+                duration: 1200,
+                delay: (el, i) => 300 + 20 * i,
+            })
+            .add({
+                targets: '.ml13 .letter',
+                translateY: [0, -20],
+                opacity: [1, 0],
+                filter: ['blur(0px)', 'blur(5px)'],
+                easing: "easeInExpo",
+                duration: 1000,
+                delay: (el, i) => 15 * i,
+                complete: function() {
+                    hidePreloader();
+                }
+            }, '-=700');
+
+
+        let themeStatus = JSON.parse(localStorage.getItem('REDEFINE-THEME-STATUS'))?.isDark;
+
+        // If the theme status is not found in local storage, check the preferred color scheme
+        if (themeStatus === undefined || themeStatus === null) {
+            if (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) {
+                themeStatus = 'dark';
+            } else {
+                themeStatus = 'light';
+            }
+        }
+
+        // Now you can use the themeStatus variable in your code
+        if (themeStatus) {
+            document.documentElement.style.setProperty('--preloader-background-color', '#202124');
+            document.documentElement.style.setProperty('--preloader-text-color', '#fff');
+        } else {
+            document.documentElement.style.setProperty('--preloader-background-color', '#fff');
+            document.documentElement.style.setProperty('--preloader-text-color', '#000');
+        }
+
+        window.addEventListener('load', function () {
+            setTimeout(hidePreloader, 5000); // Call hidePreloader after 5000 milliseconds if not already called by animation
+        });
+
+        function hidePreloader() {
+            var preloader = document.querySelector('.preloader');
+            preloader.style.opacity = '0';
+            setTimeout(function () {
+                preloader.style.display = 'none';
+            }, 200);
+        }
+    </script>
+</div>
+
+<main class="page-container" id="swup">
+
+	
+
+	<div class="main-content-container flex flex-col justify-between min-h-dvh">
+		<div class="main-content-header">
+			<header class="navbar-container px-6 md:px-12">
+    <div class="navbar-content transition-navbar ">
+        <div class="left">
+            
+                <a class="logo-image h-8 w-8 sm:w-10 sm:h-10 mr-3" href="/">
+                    <img src="https://charles2530.github.io/image/background/logo.jpg" class="w-full h-full rounded-xs">
+                </a>
+            
+            <a class="logo-title" href="/">
+                
+                Charles&#39;s Castle
+                
+            </a>
+        </div>
+
+        <div class="right">
+            <!-- PC -->
+            <div class="desktop">
+                <ul class="navbar-list">
+                    
+                        
+                            
+
+                            <li class="navbar-item">
+                                <!-- Menu -->
+                                <a class=""
+                                   href="/"
+                                        >
+                                    <i class="fa-regular fa-house fa-fw"></i>
+                                    HOME
+                                    
+                                </a>
+
+                                <!-- Submenu -->
+                                
+                            </li>
+                    
+                        
+                            
+
+                            <li class="navbar-item">
+                                <!-- Menu -->
+                                <a class=""
+                                   href="/categories"
+                                        >
+                                    <i class="fas fa-bookmark fa-fw"></i>
+                                    CATEGORIES
+                                    
+                                </a>
+
+                                <!-- Submenu -->
+                                
+                            </li>
+                    
+                        
+                            
+
+                            <li class="navbar-item">
+                                <!-- Menu -->
+                                <a class=""
+                                   href="/tags"
+                                        >
+                                    <i class="fas fa-tags fa-fw"></i>
+                                    TAGS
+                                    
+                                </a>
+
+                                <!-- Submenu -->
+                                
+                            </li>
+                    
+                        
+                            
+
+                            <li class="navbar-item">
+                                <!-- Menu -->
+                                <a class="has-dropdown"
+                                   href="#"
+                                        onClick=&#34;return false;&#34;>
+                                    <i class="fa-regular fa-user fa-fw"></i>
+                                    ABOUT
+                                    <i class="fa-solid fa-chevron-down fa-fw"></i>
+                                </a>
+
+                                <!-- Submenu -->
+                                
+                                    <ul class="sub-menu">
+                                        
+                                            <li>
+                                                <a target="_blank" rel="noopener" href="https://jinyang-du.github.io/">
+                                                    ME
+                                                </a>
+                                            </li>
+                                        
+                                            <li>
+                                                <a target="_blank" rel="noopener" href="https://github.com/Charles2530/">
+                                                    GITHUB
+                                                </a>
+                                            </li>
+                                        
+                                            <li>
+                                                <a href="https://charles2530.github.io">
+                                                    BLOG
+                                                </a>
+                                            </li>
+                                        
+                                            <li>
+                                                <a target="_blank" rel="noopener" href="https://tongji.baidu.com/">
+                                                    STATISTICS
+                                                </a>
+                                            </li>
+                                        
+                                    </ul>
+                                
+                            </li>
+                    
+                    
+                        <li class="navbar-item search search-popup-trigger">
+                            <i class="fa-solid fa-magnifying-glass"></i>
+                        </li>
+                    
+                </ul>
+            </div>
+            <!-- Mobile -->
+            <div class="mobile">
+                
+                    <div class="icon-item search search-popup-trigger"><i class="fa-solid fa-magnifying-glass"></i>
+                    </div>
+                
+                <div class="icon-item navbar-bar">
+                    <div class="navbar-bar-middle"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Mobile sheet -->
+    <div class="navbar-drawer h-dvh w-full absolute top-0 left-0 bg-background-color flex flex-col justify-between">
+        <ul class="drawer-navbar-list flex flex-col px-4 justify-center items-start">
+            
+                
+                    
+
+                    <li class="drawer-navbar-item text-base my-1.5 flex flex-col w-full">
+                        
+                        <a class="py-1.5 px-2 flex flex-row items-center justify-between gap-1 hover:!text-primary active:!text-primary text-2xl font-semibold group border-b border-border-color hover:border-primary w-full "
+                           href="/"
+                        >
+                            <span>
+                                HOME
+                            </span>
+                            
+                                <i class="fa-regular fa-house fa-sm fa-fw"></i>
+                            
+                        </a>
+                        
+
+                        
+                    </li>
+            
+                
+                    
+
+                    <li class="drawer-navbar-item text-base my-1.5 flex flex-col w-full">
+                        
+                        <a class="py-1.5 px-2 flex flex-row items-center justify-between gap-1 hover:!text-primary active:!text-primary text-2xl font-semibold group border-b border-border-color hover:border-primary w-full "
+                           href="/categories"
+                        >
+                            <span>
+                                CATEGORIES
+                            </span>
+                            
+                                <i class="fas fa-bookmark fa-sm fa-fw"></i>
+                            
+                        </a>
+                        
+
+                        
+                    </li>
+            
+                
+                    
+
+                    <li class="drawer-navbar-item text-base my-1.5 flex flex-col w-full">
+                        
+                        <a class="py-1.5 px-2 flex flex-row items-center justify-between gap-1 hover:!text-primary active:!text-primary text-2xl font-semibold group border-b border-border-color hover:border-primary w-full "
+                           href="/tags"
+                        >
+                            <span>
+                                TAGS
+                            </span>
+                            
+                                <i class="fas fa-tags fa-sm fa-fw"></i>
+                            
+                        </a>
+                        
+
+                        
+                    </li>
+            
+                
+                    
+
+                    <li class="drawer-navbar-item-sub text-base my-1.5 flex flex-col w-full">
+                        
+                        <div class="py-1.5 px-2 flex flex-row items-center justify-between gap-1 hover:!text-primary active:!text-primary cursor-pointer text-2xl font-semibold group border-b border-border-color hover:border-primary w-full "
+                             navbar-data-toggle="submenu-About"
+                        >
+                            <span>
+                                ABOUT
+                            </span>
+                            
+                                <i class="fa-solid fa-chevron-right fa-sm fa-fw transition-all"></i>
+                            
+                        </div>
+                        
+
+                        
+                            <div class="flex-col items-start px-2 py-2 hidden" data-target="submenu-About">
+                                
+                                    <div class="drawer-navbar-item text-base flex flex-col justify-center items-start hover:underline active:underline hover:underline-offset-1 rounded-3xl">
+                                        <a class=" text-third-text-color text-xl"
+                                           target="_blank" rel="noopener" href="https://jinyang-du.github.io/">ME</a>
+                                    </div>
+                                
+                                    <div class="drawer-navbar-item text-base flex flex-col justify-center items-start hover:underline active:underline hover:underline-offset-1 rounded-3xl">
+                                        <a class=" text-third-text-color text-xl"
+                                           target="_blank" rel="noopener" href="https://github.com/Charles2530/">GITHUB</a>
+                                    </div>
+                                
+                                    <div class="drawer-navbar-item text-base flex flex-col justify-center items-start hover:underline active:underline hover:underline-offset-1 rounded-3xl">
+                                        <a class=" text-third-text-color text-xl"
+                                           href="https://charles2530.github.io">BLOG</a>
+                                    </div>
+                                
+                                    <div class="drawer-navbar-item text-base flex flex-col justify-center items-start hover:underline active:underline hover:underline-offset-1 rounded-3xl">
+                                        <a class=" text-third-text-color text-xl"
+                                           target="_blank" rel="noopener" href="https://tongji.baidu.com/">STATISTICS</a>
+                                    </div>
+                                
+                            </div>
+                        
+                    </li>
+            
+
+            
+            
+                
+                    
+                    <li class="drawer-navbar-item text-base my-1.5 flex flex-col w-full">
+                        <a class="py-1.5 px-2 flex flex-row items-center justify-between gap-1 hover:!text-primary active:!text-primary text-2xl font-semibold group border-b border-border-color hover:border-primary w-full active"
+                           href="/archives"
+                        >
+                            <span>Archives</span>
+                            <i class="fa-regular fa-archive fa-sm fa-fw"></i>
+                        </a>
+                    </li>
+                
+                    
+                    <li class="drawer-navbar-item text-base my-1.5 flex flex-col w-full">
+                        <a class="py-1.5 px-2 flex flex-row items-center justify-between gap-1 hover:!text-primary active:!text-primary text-2xl font-semibold group border-b border-border-color hover:border-primary w-full active"
+                           href="/masonry/"
+                        >
+                            <span>Photos</span>
+                            <i class="fa-solid fa-image fa-sm fa-fw"></i>
+                        </a>
+                    </li>
+                
+                    
+                    <li class="drawer-navbar-item text-base my-1.5 flex flex-col w-full">
+                        <a class="py-1.5 px-2 flex flex-row items-center justify-between gap-1 hover:!text-primary active:!text-primary text-2xl font-semibold group border-b border-border-color hover:border-primary w-full active"
+                           href="/essay/"
+                        >
+                            <span>Essays</span>
+                            <i class="fa-solid fa-message-lines fa-sm fa-fw"></i>
+                        </a>
+                    </li>
+                
+                    
+                    <li class="drawer-navbar-item text-base my-1.5 flex flex-col w-full">
+                        <a class="py-1.5 px-2 flex flex-row items-center justify-between gap-1 hover:!text-primary active:!text-primary text-2xl font-semibold group border-b border-border-color hover:border-primary w-full active"
+                           href="/friends/"
+                        >
+                            <span>Friends</span>
+                            <i class="fa-solid fa-user-group fa-sm fa-fw"></i>
+                        </a>
+                    </li>
+                
+            
+        </ul>
+
+        <div class="statistics flex justify-around my-2.5">
+    <a class="item tag-count-item flex flex-col justify-center items-center w-20" href="/tags">
+        <div class="number text-2xl sm:text-xl text-second-text-color font-semibold">47</div>
+        <div class="label text-third-text-color text-sm">Tags</div>
+    </a>
+    <a class="item tag-count-item flex flex-col justify-center items-center w-20" href="/categories">
+        <div class="number text-2xl sm:text-xl text-second-text-color font-semibold">94</div>
+        <div class="label text-third-text-color text-sm">Categories</div>
+    </a>
+    <a class="item tag-count-item flex flex-col justify-center items-center w-20" href="/archives">
+        <div class="number text-2xl sm:text-xl text-second-text-color font-semibold">607</div>
+        <div class="label text-third-text-color text-sm">Posts</div>
+    </a>
+</div>
+    </div>
+
+    <div class="window-mask"></div>
+
+</header>
+
+
+		</div>
+
+		<div class="main-content-body transition-fade-up">
+			
+
+			<div class="main-content">
+				<div class="post-page-container flex relative justify-between box-border w-full h-full">
+	<div class="article-content-container">
+
+		<div class="article-title relative w-full">
+			
+			
+			
+			<img src="https://charles2530.github.io/image/background/p2.png" alt="论文专题讲解：GPU Utilization：为什么 100％ 不等于训练跑满" class="w-full h-60 sm:h-72 md:h-80 object-cover sm:rounded-t-large dark:brightness-75" />
+			
+			<div class="w-full flex items-center absolute bottom-0 justify-start">
+				<h1 class="article-title-cover text-center mx-6 my-6 text-second-text-color bg-background-color-transparent px-4 py-3 text-3xl sm:text-4xl md:text-5xl font-semibold backdrop-blur-lg rounded-xl border border-border-color ">论文专题讲解：GPU Utilization：为什么 100％ 不等于训练跑满</h1>
+			</div>
+			
+		</div>
+
+		
+		<div class="article-header flex flex-row gap-2 items-center px-2 sm:px-6 md:px-8">
+			<div class="avatar w-[46px] h-[46px] shrink-0 rounded-medium border border-border-color p-px">
+				<img src="https://charles2530.github.io/image/background/logo2.jpg">
+			</div>
+			<div class="info flex flex-col justify-between">
+				<div class="author flex items-center">
+					<span class="name text-default-text-color text-lg font-semibold">Charles</span>
+					
+					<span class="author-label ml-1.5 text-xs px-2 py-0.5 rounded-small text-third-text-color border border-shadow-color-1">Lv8</span>
+					
+				</div>
+				<div class="meta-info">
+					<div class="article-meta-info">
+    <span class="article-date article-meta-item">
+        <i class="fa-regular fa-pen-fancy"></i>&nbsp;
+        <span class="desktop">2026-04-01 09:00</span>
+        <span class="mobile">2026-04-01 09:00</span>
+        <span class="hover-info">Created</span>
+    </span>
+    
+        <span class="article-date article-meta-item">
+            <i class="fa-regular fa-wrench"></i>&nbsp;
+            <span class="desktop">2026-04-01 09:00</span>
+            <span class="mobile">2026-04-01 09:00</span>
+            <span class="hover-info">Updated</span>
+        </span>
+    
+
+    
+        <span class="article-categories article-meta-item">
+            <i class="fa-regular fa-folders"></i>&nbsp;
+            <ul>
+                
+                
+                    
+                        
+                        <li>
+                            <a href="/categories/AI/">AI</a>&nbsp;
+                        </li>
+                    
+                    
+                
+                    
+                        
+                            <li>></li>
+                        
+                        <li>
+                            <a href="/categories/AI/%E8%AE%BA%E6%96%87%E4%B8%93%E9%A2%98%E8%AE%B2%E8%A7%A3/">论文专题讲解</a>&nbsp;
+                        </li>
+                    
+                    
+                
+            </ul>
+        </span>
+    
+    
+        <span class="article-tags article-meta-item">
+            <i class="fa-regular fa-tags"></i>&nbsp;
+            <ul>
+                
+                    <li>
+                        <a href="/tags/AI/">AI</a>&nbsp;
+                    </li>
+                
+                    <li>
+                        | <a href="/tags/%E5%9F%BA%E7%A1%80%E7%9F%A5%E8%AF%86/">基础知识</a>&nbsp;
+                    </li>
+                
+                    <li>
+                        | <a href="/tags/%E8%AE%BA%E6%96%87%E4%B8%93%E9%A2%98/">论文专题</a>&nbsp;
+                    </li>
+                
+            </ul>
+        </span>
+    
+
+    
+    
+        <span class="article-wordcount article-meta-item">
+            <i class="fa-regular fa-typewriter"></i>&nbsp;<span>5.5k Words</span>
+        </span>
+    
+    
+        <span class="article-min2read article-meta-item">
+            <i class="fa-regular fa-clock"></i>&nbsp;<span>24 Mins</span>
+        </span>
+    
+    
+        <span class="article-pv article-meta-item">
+            <i class="fa-regular fa-eye"></i>&nbsp;<span id="busuanzi_value_page_pv"></span>
+        </span>
+    
+</div>
+
+				</div>
+			</div>
+		</div>
+		
+
+		
+
+
+		<div class="article-content markdown-body px-2 sm:px-6 md:px-8 pb-8">
+			<div class="callout callout--titled info mb-4 rounded-small shadow-redefine-flat bg-(--callout-bg-color) p-3 pl-1 relative flex flex-row gap-2"><div role="none" class="rounded-full self-stretch w-0.5 bg-(--callout-primary-color) shrink-0 opacity-60"></div><div class="flex flex-col gap-2"><div class="callout__title flex items-center gap-2 font-semibold tracking-tight">论文信息</div><div class="callout__content markdown-body flex-1 min-w-0"><p><strong>论文题名：</strong> GPU Utilization is a Misleading Metric。<br><br />
+<strong>作者：</strong> Trainy。<br><br />
+<strong>机构：</strong> Trainy。<br><br />
+<strong>时间 / 主题：</strong> 2025-02；高效训练。<br><br />
+<strong>arXiv / 官方报告：</strong> arXiv：未找到专门条目；官方材料：<a class="link"   target="_blank" rel="noopener" href="https://www.trainy.ai/blog/gpu-utilization-misleading" >www.trainy.ai/blog/gpu-utilization-misleading<i class="fa-solid fa-arrow-up-right ml-[0.2em] font-light align-text-top text-[0.7em] link-icon"></i></a>。<br><br />
+<strong>GitHub / 项目：</strong> GitHub：未找到官方链接；项目页：<a class="link"   target="_blank" rel="noopener" href="https://www.trainy.ai/blog/gpu-utilization-misleading" >www.trainy.ai/blog/gpu-utilization-misleading<i class="fa-solid fa-arrow-up-right ml-[0.2em] font-light align-text-top text-[0.7em] link-icon"></i></a>。<br><br />
+<strong>元数据来源与核验口径：</strong> 来源：<a class="link"   target="_blank" rel="noopener" href="https://www.trainy.ai/blog/gpu-utilization-misleading" >官方 / 项目材料<i class="fa-solid fa-arrow-up-right ml-[0.2em] font-light align-text-top text-[0.7em] link-icon"></i></a>；Checked Date：2026-06-04；Repro Status：Paper / official materials reviewed, independent reproduction not claimed。</p></div></div></div>
+<h2 id="原文故事线"><a class="markdownIt-Anchor" href="#原文故事线"></a> 原文故事线</h2>
+<h3 id="研究背景"><a class="markdownIt-Anchor" href="#研究背景"></a> 研究背景</h3>
+<p>这篇 Trainy 技术文章讨论的是训练性能观测。很多团队用 <code>nvidia-smi</code> 的 GPU Utilization 判断 GPU 是否跑满，也会把它作为集群监控的核心指标；但大模型训练真正关心的是 GPU 峰值算力中有多少被模型计算转化为 tokens/s，也就是 MFU、SM efficiency、kernel timeline 等更具体的指标。</p>
+<h3 id="问题challenge"><a class="markdownIt-Anchor" href="#问题challenge"></a> 问题（Challenge）</h3>
+<p>文章要解决的问题是：为什么 GPU Utilization 已经 100%，训练仍然可能很慢。挑战在于 GPU Utilization 只说明 GPU 某些 compute 或 memory interface 正在活动，并不区分是在做高效 tensor core GEMM、低效 memory copy，还是 launch-heavy / memory-bound kernel。这个问题有价值，因为如果团队把 100% utilization 当作优化终点，就会错过 kernel fusion、并行切分、通信重叠和模型结构层面的真实瓶颈。</p>
+<h3 id="finding"><a class="markdownIt-Anchor" href="#finding"></a> Finding</h3>
+<p>文章的 finding 是：GPU Utilization 衡量的是“忙不忙”，不是“算得好不好”。Trainy 案例中，训练已经达到 100% GPU utilization 和较高功耗，但 MFU 只有约 20%；profile 后发现 softmax 等 kernel 能让 GPU 看起来繁忙，却没有高效使用 SM 和 tensor core。这个 insight 把性能诊断从单一表盘翻转成多指标证据链：先看端到端 MFU，再用 profiler 追 kernel 级 SM efficiency、memory bottleneck 和并行策略。</p>
+<h3 id="方法"><a class="markdownIt-Anchor" href="#方法"></a> 方法</h3>
+<p>文章的方法是一次性能排查流程：先做常规优化，如 dataloader、batch size、pin memory、mixed precision、fused optimizer、合适实例类型；然后计算 MFU，把实际 tokens/s 与理论峰值 FLOPs 对齐；接着用 profiler 检查 kernel timeline、SM efficiency、SM activity 和具体慢 kernel；最后通过 fused kernels 与更合适的 model parallelism 调整训练路径。输入是训练 workload 与硬件峰值，输出不是一个模型，而是一套诊断和优化决策。</p>
+<h3 id="结论"><a class="markdownIt-Anchor" href="#结论"></a> 结论</h3>
+<p>Trainy 报告的案例里，GPU utilization 达到 100% 后，MFU 仍只有约 20%；经过 profiling、kernel fusion 和 model parallelism 调整，训练时间获得约 4x 加速，MFU 提升到约 38%。额外结论是：功耗、GPU utilization、SM activity、SM efficiency、MFU 各自回答不同问题，不能互相替代。本站引用中文辅助材料时，以 Trainy 原文数字为准：MFU 是从约 20% 到 38%，不是更高的二次转述数字。</p>
+<h3 id="关键术语"><a class="markdownIt-Anchor" href="#关键术语"></a> 关键术语</h3>
+<ul>
+<li><strong>GPU Utilization（GPU 利用率）</strong>：GPU compute 或 memory interface 处于活动状态的比例，不能直接代表有效算力利用</li>
+<li><strong>MFU（Model FLOPs Utilization，模型 FLOPs 利用率）</strong>：模型实际吞吐相对硬件理论峰值 FLOPs 的比例</li>
+<li><strong>SM Efficiency（流多处理器效率）</strong>：GPU SM 实际执行有效工作的程度，用于判断 kernel 是否铺满计算资源</li>
+<li><strong>Kernel Fusion（算子融合）</strong>：把多个小算子合成更少 kernel，降低访存和 launch 开销</li>
+<li><strong>Model Parallelism（模型并行）</strong>：把模型计算或参数切到多 GPU，改变单卡计算/通信形态</li>
+</ul>
+<h2 id="它的效率贡献是什么"><a class="markdownIt-Anchor" href="#它的效率贡献是什么"></a> 它的效率贡献是什么</h2>
+<table>
+<thead>
+<tr>
+<th>维度</th>
+<th>贡献</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>节省的成本</td>
+<td>避免把 100% GPU utilization 误读成训练已经吃满算力，从而把优化停在数据加载、混合精度和基础并行配置之后</td>
+</tr>
+<tr>
+<td>核心机制</td>
+<td>用 MFU 判断端到端计算效率，用 SM efficiency / SM activity 定位 kernel 是否真正铺满 SM，再用 profiler 找到 memory-bound 或 launch-heavy 层</td>
+</tr>
+<tr>
+<td>对世界模型主线的意义</td>
+<td>视频 DiT、LLM、VLA 和世界模型训练都容易被 attention、softmax、通信和数据管线卡住；GPU utilization 只能做 idle signal，不能做效率验收</td>
+</tr>
+<tr>
+<td>主要风险</td>
+<td>SM efficiency 也不是最终答案；SM 活跃不代表 Tensor Core、内存带宽、occupancy、NCCL 和端到端 step time 都健康</td>
+</tr>
+<tr>
+<td>应接到本站哪里</td>
+<td>训练路线图、<a href="/2026/05/11/ai-files-training-data-systems-and-optimization/">训练数据系统与吞吐优化</a>、<a href="/2026/05/11/ai-files-operators-gemm-attention-and-fused-kernels/">GEMM 与 Attention Kernel</a>、<a href="/2026/05/11/ai-files-world-models-efficient-training-roadmap/">世界模型高效训练技术路线图</a></td>
+</tr>
+</tbody>
+</table>
+<h2 id="证据等级与外推边界"><a class="markdownIt-Anchor" href="#证据等级与外推边界"></a> 证据等级与外推边界</h2>
+<p>这篇文章的证据来自一个 LLM 训练优化项目、PyTorch Profiler 截图、指标定义解释和优化后 MFU/训练时间变化。它能支撑“GPU utilization 会误导训练性能判断”，但不能替代完整 benchmark 或严格消融。</p>
+<table>
+<thead>
+<tr>
+<th>Claim</th>
+<th>Evidence</th>
+<th>Evidence level</th>
+<th>Can reuse for training systems</th>
+<th>Cannot directly infer</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>100% GPU utilization can still waste compute</td>
+<td>100% utilization with about 20% MFU in the case study</td>
+<td>Engineering case</td>
+<td>Treat GPU utilization as an idle detector, not a compute-efficiency metric</td>
+<td>All 100% utilization jobs are inefficient</td>
+</tr>
+<tr>
+<td>SM efficiency helps expose underused kernels</td>
+<td>PyTorch Profiler shows low SM efficiency during Softmax</td>
+<td>Profiler evidence</td>
+<td>Add SM activity / SM efficiency to cluster observability and per-layer profiling</td>
+<td>High SM efficiency alone means the workload is optimal</td>
+</tr>
+<tr>
+<td>Fused kernels matter for Transformer training</td>
+<td>Softmax, FlashAttention, MLP, dropout-layernorm-residual fusion discussion</td>
+<td>System mechanism</td>
+<td>Replace memory-bound PyTorch-native layer stacks with fused CUDA/Triton implementations when profiling supports it</td>
+<td>Kernel fusion always improves every model or batch shape</td>
+</tr>
+<tr>
+<td>MFU is a better top-level training efficiency metric</td>
+<td>MFU moved from about 20% to 38% after optimization</td>
+<td>Case result</td>
+<td>Use MFU with tokens/s, step time and peak FLOPs to judge whether more optimization is worth pursuing</td>
+<td>MFU can localize the bottleneck by itself</td>
+</tr>
+<tr>
+<td>Model parallelism must match model and network</td>
+<td>Case mentions tuning model-parallel level under 3.2 Tbps InfiniBand</td>
+<td>System tuning</td>
+<td>Profile communication and compute together instead of only changing batch size</td>
+<td>A fixed TP/PP/FSDP layout is best across models and clusters</td>
+</tr>
+</tbody>
+</table>
+<p>最稳的外推方式是把它当成一套诊断顺序：先看 GPU 是否 idle，再看 MFU 是否低，再用 profiler 和 SM / memory / tensor 指标定位具体 kernel 或通信阶段，最后做单项替换并回归训练 loss、吞吐和显存。</p>
+<h2 id="文章位置"><a class="markdownIt-Anchor" href="#文章位置"></a> 文章位置</h2>
+<p>很多训练优化教程会先列四件事：调大 batch 和 dataloader 参数、打开 fp16/bf16、换 fused optimizer、使用训练型 GPU 和高速网络。这些都重要，但它们只能把训练从“明显喂不饱 GPU”推进到“GPU 一直有活干”。</p>
+<p>Trainy 文章提醒的是下一层问题：GPU 一直有活干，不代表这些活是高价值计算。一个 memory-bound softmax、一个很小的 kernel、一个通信等待阶段，或者一串频繁读写 HBM 的算子，都可能让 GPU utilization 很高，但实际 FLOPs 很低。</p>
+<p>所以这篇文章在高效训练专题里的位置是“观测指标与排障入口”。Megatron-LM、ZeRO、MagiAttention、Attn-QAT 这些页面讨论的是具体并行、显存、attention 和低比特机制；这篇先回答：<strong>你怎么知道自己的训练真的需要这些优化，以及该先优化哪一层。</strong></p>
+<h2 id="gpu-utilization-到底测了什么"><a class="markdownIt-Anchor" href="#gpu-utilization-到底测了什么"></a> GPU Utilization 到底测了什么</h2>
+<p>原文先用 GH100 / H100 的 SM 结构解释为什么 GPU utilization 容易误导。SM 可以理解成 GPU 内调度和执行线程块的基本计算单元；一个 CUDA kernel 只要在某个采样窗口里持续运行，就可能让 GPU utilization 看起来很高，但它未必使用了足够多的 SM，更未必让每个 SM 内部的 Tensor Core 或 CUDA core 高效工作。</p>
+<p><img  
+                     lazyload
+                     src="/images/loading.svg"
+                     data-src="/image/ai-notes/images/paper-deep-dives/foundations/gpu-utilization-misleading/figure-1-gh100-sms.png"
+                      alt="GH100 SM overview 原图" 
+                ></p>
+<p><small>图源：<a class="link"   target="_blank" rel="noopener" href="https://www.trainy.ai/blog/gpu-utilization-misleading" >Trainy: GPU Utilization is a Misleading Metric<i class="fa-solid fa-arrow-up-right ml-[0.2em] font-light align-text-top text-[0.7em] link-icon"></i></a>。原图说明：GH100 GPU 中包含大量 Streaming Multiprocessors；原文用它说明 GPU 并行能力来自很多 SM 的协同工作。</small></p>
+<p><img  
+                     lazyload
+                     src="/images/loading.svg"
+                     data-src="/image/ai-notes/images/paper-deep-dives/foundations/gpu-utilization-misleading/figure-2-h100-sm.png"
+                      alt="H100 single SM 原图" 
+                ></p>
+<p><small>图源：<a class="link"   target="_blank" rel="noopener" href="https://www.trainy.ai/blog/gpu-utilization-misleading" >Trainy: GPU Utilization is a Misleading Metric<i class="fa-solid fa-arrow-up-right ml-[0.2em] font-light align-text-top text-[0.7em] link-icon"></i></a>。原图说明：H100 单个 SM 内部包含多个执行单元；原文用它说明“有 kernel 在跑”和“所有计算单元都被有效使用”不是同一件事。</small></p>
+<p><strong>SM 总图和单 SM 图要一起看 utilization 的盲区。</strong><br />
+Figure 1 看的是整块 GPU 被拆成多少个 SM；Figure 2 看的是单个 SM 内还有很多执行资源。GPU utilization 的问题在于，它首先回答“有没有 kernel 在跑”，不是回答“多少 SM 在跑、每个 SM 内部多忙、Tensor Core 是否在做矩阵乘”。因此一个只占少量 SM、主要读写内存的 kernel，也可能让 utilization 看起来很好。</p>
+<p>原文给了一个很极端但非常有用的思想实验：如果一个 kernel 连续运行 10 秒，但只用到 1 个 SM，那么 <code>nvidia-smi</code> 风格的 GPU utilization 可能显示 100%；可是在 132 SM 的 H100 上，SM efficiency 只有 <span class="katex"><span class="katex-mathml"><math><semantics><mrow><mn>1</mn><mi mathvariant="normal">/</mi><mn>132</mn><mo>≈</mo><mn>0.7</mn><mi mathvariant="normal">%</mi></mrow><annotation encoding="application/x-tex">1/132 \approx 0.7\%</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:1em;vertical-align:-0.25em;"></span><span class="mord">1</span><span class="mord">/</span><span class="mord">1</span><span class="mord">3</span><span class="mord">2</span><span class="mspace" style="margin-right:0.2777777777777778em;"></span><span class="mrel">≈</span><span class="mspace" style="margin-right:0.2777777777777778em;"></span></span><span class="base"><span class="strut" style="height:0.80556em;vertical-align:-0.05556em;"></span><span class="mord">0</span><span class="mord">.</span><span class="mord">7</span><span class="mord">%</span></span></span></span>。这说明 utilization 是必要信号，但不是充分信号。</p>
+<h2 id="指标分层"><a class="markdownIt-Anchor" href="#指标分层"></a> 指标分层</h2>
+<p>训练排障时更稳的做法，是把指标按粒度分层看。</p>
+<table>
+<thead>
+<tr>
+<th>Metric</th>
+<th>What it measures</th>
+<th>Useful for</th>
+<th>Blind spot</th>
+<th>Typical tool</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>GPU Utilization</td>
+<td>Time with at least one running kernel or active GPU work</td>
+<td>Detecting idle GPUs and data-loader stalls</td>
+<td>Does not reveal SM coverage, arithmetic intensity, Tensor Core use, or memory-bound kernels</td>
+<td><code>nvidia-smi</code>, NVML, dashboards</td>
+</tr>
+<tr>
+<td>SM Efficiency / SM Activity</td>
+<td>Fraction of SMs active over a sampling window</td>
+<td>Finding kernels that do not spread work across SMs</td>
+<td>Active SMs can still be doing low-value memory work or underfilled warps</td>
+<td>PyTorch Profiler, DCGM, Nsight</td>
+</tr>
+<tr>
+<td>Achieved Occupancy</td>
+<td>Active warps per SM relative to hardware capacity</td>
+<td>Diagnosing whether each active SM has enough resident work</td>
+<td>High occupancy does not guarantee high FLOPs; memory stalls can still dominate</td>
+<td>Nsight Compute, PyTorch Profiler</td>
+</tr>
+<tr>
+<td>Tensor Core / Pipe Utilization</td>
+<td>How busy specific execution pipelines are</td>
+<td>Checking whether bf16/fp16/fp8 GEMMs are actually using accelerated math units</td>
+<td>Does not explain data input or communication stalls by itself</td>
+<td>Nsight Compute, DCGM profiling metrics</td>
+</tr>
+<tr>
+<td>Memory Bandwidth</td>
+<td>HBM or memory-interface traffic relative to peak</td>
+<td>Identifying memory-bound softmax, norm, copies, cache misses</td>
+<td>High bandwidth can be healthy or a symptom depending on arithmetic intensity</td>
+<td>Nsight, DCGM, vendor dashboards</td>
+</tr>
+<tr>
+<td>MFU</td>
+<td>Model FLOPs achieved relative to theoretical peak FLOPs</td>
+<td>Top-level training efficiency comparison across runs</td>
+<td>Requires a model FLOPs estimate and does not localize the slow layer</td>
+<td>Training logs plus hardware peak FLOPs</td>
+</tr>
+</tbody>
+</table>
+<p>这里最重要的是别把这些指标排成“谁替代谁”。它们回答的问题不同：</p>
+<div class="code-container" data-rel="Text"><figure class="iseeu highlight text"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br></pre></td><td class="code"><pre><span class="line">GPU utilization: is the GPU idle?</span><br><span class="line">MFU: is the training job using enough of theoretical compute?</span><br><span class="line">SM efficiency: are kernels spreading work across SMs?</span><br><span class="line">Occupancy / pipe / memory metrics: why are active SMs still slow?</span><br><span class="line">Profiler timeline: which operator or communication phase is responsible?</span><br></pre></td></tr></table></figure></div>
+<h3 id="gpu-utilization-高但-tensor-core-低"><a class="markdownIt-Anchor" href="#gpu-utilization-高但-tensor-core-低"></a> GPU utilization 高但 Tensor Core 低</h3>
+<p>用户最容易遇到的下一层问题是：GPU utilization 已经很高，SM activity 也不低，但 Tensor Core / tensor pipe utilization 仍然偏低。这通常不是“卡坏了”，而是 workload 没有把时间花在 Tensor Core 擅长的 dense matrix multiply / convolution 上。</p>
+<p>NVIDIA 的 <a class="link"   target="_blank" rel="noopener" href="https://docs.nvidia.com/deeplearning/performance/mixed-precision-training/index.html" >mixed precision 文档<i class="fa-solid fa-arrow-up-right ml-[0.2em] font-light align-text-top text-[0.7em] link-icon"></i></a>把 Tensor Core 优化拆成三件事：满足 shape 约束、提高 arithmetic intensity、减少 non-Tensor-Core work 的占比。NVIDIA 的<a class="link"   target="_blank" rel="noopener" href="https://docs.nvidia.com/deeplearning/performance/dl-performance-matrix-multiplication/index.html" >矩阵乘性能指南<i class="fa-solid fa-arrow-up-right ml-[0.2em] font-light align-text-top text-[0.7em] link-icon"></i></a>也强调，现代 cuBLAS/cuDNN 即使在部分未对齐 shape 上仍可能使用 Tensor Core，但维度按 16 bytes 或更高粒度对齐时效率更好。PyTorch 侧还要看 <a class="link"   target="_blank" rel="noopener" href="https://docs.pytorch.org/docs/2.8/amp.html#op-eligibility" >AMP/autocast op eligibility<i class="fa-solid fa-arrow-up-right ml-[0.2em] font-light align-text-top text-[0.7em] link-icon"></i></a>、<a class="link"   target="_blank" rel="noopener" href="https://docs.pytorch.org/docs/2.8/notes/cuda.html#tensorfloat-32-tf32-on-ampere-and-later-devices" >TF32 开关<i class="fa-solid fa-arrow-up-right ml-[0.2em] font-light align-text-top text-[0.7em] link-icon"></i></a>和具体 op eligibility：例如 <code>linear</code>、<code>matmul</code>、<code>mm</code>、<code>bmm</code>、<code>conv</code> 更容易走低精度矩阵路径，而 <code>softmax</code>、<code>layer_norm</code>、<code>sum</code>、<code>log</code>、部分 loss 和 reduction 常会保持或转到 fp32 路径。</p>
+<table>
+<thead>
+<tr>
+<th>Symptom</th>
+<th>Likely reason</th>
+<th>How to verify</th>
+<th>Typical fix</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>High GPU Util, low Tensor Core, high memory bandwidth</td>
+<td>Memory-bound kernels dominate</td>
+<td>Nsight Compute roofline, memory workload analysis, profiler operator table</td>
+<td>Fuse memory-bound ops, reduce HBM traffic, use FlashAttention / fused norm / fused optimizer</td>
+</tr>
+<tr>
+<td>High GPU Util, low Tensor Core, many non-GEMM kernels</td>
+<td>Work is softmax, layer norm, activation, embedding, optimizer, scatter/gather, masking, or NCCL</td>
+<td>PyTorch Profiler categories, Nsight Systems timeline</td>
+<td>Reduce non-Tensor-Core fraction, fuse pointwise/reduction ops, overlap communication</td>
+</tr>
+<tr>
+<td>Matmul exists, but Tensor Core low</td>
+<td>Dtype path is not eligible: fp32 with TF32 disabled, AMP disabled, explicit <code>dtype=</code>, in-place or <code>out=</code> ops bypass autocast</td>
+<td>Check PyTorch autocast regions, <code>torch.set_float32_matmul_precision</code>, TF32 flags, kernel metrics</td>
+<td>Enable bf16/fp16 AMP where stable, enable TF32 for fp32 matmul when acceptable, avoid autocast-breaking calls</td>
+</tr>
+<tr>
+<td>Tensor Core kernels appear, but utilization low</td>
+<td>GEMM shapes are too small, fragmented, or poorly aligned</td>
+<td>Inspect M/N/K, batch size, sequence packing, head dimension, tile count</td>
+<td>Increase micro-batch, pad dimensions, pack sequences, choose hidden/head sizes aligned with Tensor Core-friendly multiples</td>
+</tr>
+<tr>
+<td>Tensor Core active only in short bursts</td>
+<td>Kernel launch overhead or many tiny kernels dominate</td>
+<td>Nsight Systems launch timeline, CPU overhead, graph breaks</td>
+<td>Use fused modules, CUDA Graphs where applicable, <code>torch.compile</code> only after validating graph breaks</td>
+</tr>
+<tr>
+<td>Good Tensor Core in forward, low step-level Tensor Core</td>
+<td>Backward, optimizer, communication, checkpoint recompute or dataloader consumes wall time</td>
+<td>Step breakdown: forward/backward/optimizer/NCCL/dataloader</td>
+<td>Fused optimizer, communication overlap, better FSDP/TP buckets, input pipeline fixes</td>
+</tr>
+<tr>
+<td>Tensor Core low in MoE / sparse / retrieval-heavy model</td>
+<td>Routing, top-k, all-to-all, unstructured sparsity and gather/scatter dominate</td>
+<td>Per-layer trace and NCCL timeline</td>
+<td>Batch/routing coalescing, expert capacity tuning, structured sparsity or dense fallback for hot paths</td>
+</tr>
+</tbody>
+</table>
+<p>这个现象和 Trainy 文章里的 Softmax 案例是同一个家族：GPU 一直忙，但忙的是内存读写、reduction、通信或小 kernel，而不是大块 dense GEMM。Tensor Core 低时，优先问四个问题：</p>
+<ol>
+<li>当前 step 的 wall time 里，dense GEMM/conv 到底占多少？</li>
+<li>这些 GEMM/conv 的 dtype、shape、layout 是否能走 Tensor Core 高效路径？</li>
+<li>非 Tensor Core work 是否被 softmax、norm、optimizer、mask、embedding、NCCL 或 dataloader 放大？</li>
+<li>即使 Tensor Core kernel 很快，端到端 step time 是否被通信、checkpointing 或 Python/launch overhead 吃掉？</li>
+</ol>
+<p><strong>诊断口径。</strong><br />
+不要只看一个 <code>tensor_core_utilization</code> 面板。更稳的方式是同时看 Nsight Systems 的时间线、<a class="link"   target="_blank" rel="noopener" href="https://docs.nvidia.com/nsight-compute/2023.3/NsightCompute/index.html#rooflines" >Nsight Compute roofline<i class="fa-solid fa-arrow-up-right ml-[0.2em] font-light align-text-top text-[0.7em] link-icon"></i></a> 里的 tensor pipe / memory / roofline、PyTorch Profiler 的 op 表，以及训练日志里的 MFU。若 roofline 显示 kernel 被 memory ceiling 限制，Tensor Core 低是结果，不是根因；若 GEMM shape 很小或未对齐，Tensor Core 低才可能是直接优化点。</p>
+<h3 id="mfu-的训练口径"><a class="markdownIt-Anchor" href="#mfu-的训练口径"></a> MFU 的训练口径</h3>
+<p>MFU 来自 PaLM 等大模型训练报告中常用的口径。对 dense Transformer，粗略上可以写成：</p>
+<p><span class="katex-display"><span class="katex"><span class="katex-mathml"><math><semantics><mrow><mrow><mi mathvariant="normal">M</mi><mi mathvariant="normal">F</mi><mi mathvariant="normal">U</mi></mrow><mo>=</mo><mfrac><mrow><mrow><mi mathvariant="normal">m</mi><mi mathvariant="normal">o</mi><mi mathvariant="normal">d</mi><mi mathvariant="normal">e</mi><mi mathvariant="normal">l</mi><mtext> </mtext><mi mathvariant="normal">F</mi><mi mathvariant="normal">L</mi><mi mathvariant="normal">O</mi><mi mathvariant="normal">P</mi><mi mathvariant="normal">s</mi><mtext> </mtext><mi mathvariant="normal">p</mi><mi mathvariant="normal">e</mi><mi mathvariant="normal">r</mi><mtext> </mtext><mi mathvariant="normal">t</mi><mi mathvariant="normal">o</mi><mi mathvariant="normal">k</mi><mi mathvariant="normal">e</mi><mi mathvariant="normal">n</mi></mrow><mo>×</mo><mrow><mi mathvariant="normal">t</mi><mi mathvariant="normal">o</mi><mi mathvariant="normal">k</mi><mi mathvariant="normal">e</mi><mi mathvariant="normal">n</mi><mi mathvariant="normal">s</mi><mi mathvariant="normal">/</mi><mi mathvariant="normal">s</mi></mrow></mrow><mrow><mrow><mi mathvariant="normal">n</mi><mi mathvariant="normal">u</mi><mi mathvariant="normal">m</mi><mi mathvariant="normal">b</mi><mi mathvariant="normal">e</mi><mi mathvariant="normal">r</mi><mtext> </mtext><mi mathvariant="normal">o</mi><mi mathvariant="normal">f</mi><mtext> </mtext><mi mathvariant="normal">G</mi><mi mathvariant="normal">P</mi><mi mathvariant="normal">U</mi><mi mathvariant="normal">s</mi></mrow><mo>×</mo><mrow><mi mathvariant="normal">p</mi><mi mathvariant="normal">e</mi><mi mathvariant="normal">a</mi><mi mathvariant="normal">k</mi><mtext> </mtext><mi mathvariant="normal">F</mi><mi mathvariant="normal">L</mi><mi mathvariant="normal">O</mi><mi mathvariant="normal">P</mi><mi mathvariant="normal">s</mi><mtext> </mtext><mi mathvariant="normal">p</mi><mi mathvariant="normal">e</mi><mi mathvariant="normal">r</mi><mtext> </mtext><mi mathvariant="normal">G</mi><mi mathvariant="normal">P</mi><mi mathvariant="normal">U</mi></mrow></mrow></mfrac></mrow><annotation encoding="application/x-tex">\mathrm{MFU} =
+\frac{\mathrm{model\ FLOPs\ per\ token} \times \mathrm{tokens/s}}
+{\mathrm{number\ of\ GPUs} \times \mathrm{peak\ FLOPs\ per\ GPU}}
+</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.68333em;vertical-align:0em;"></span><span class="mord"><span class="mord mathrm">M</span><span class="mord mathrm">F</span><span class="mord mathrm">U</span></span><span class="mspace" style="margin-right:0.2777777777777778em;"></span><span class="mrel">=</span><span class="mspace" style="margin-right:0.2777777777777778em;"></span></span><span class="base"><span class="strut" style="height:2.30744em;vertical-align:-0.8804400000000001em;"></span><span class="mord"><span class="mopen nulldelimiter"></span><span class="mfrac"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height:1.427em;"><span style="top:-2.314em;"><span class="pstrut" style="height:3em;"></span><span class="mord"><span class="mord"><span class="mord mathrm">n</span><span class="mord mathrm">u</span><span class="mord mathrm">m</span><span class="mord mathrm">b</span><span class="mord mathrm">e</span><span class="mord mathrm">r</span><span class="mspace"> </span><span class="mord mathrm">o</span><span class="mord mathrm" style="margin-right:0.07778em;">f</span><span class="mspace"> </span><span class="mord mathrm">G</span><span class="mord mathrm">P</span><span class="mord mathrm">U</span><span class="mord mathrm">s</span></span><span class="mspace" style="margin-right:0.2222222222222222em;"></span><span class="mbin">×</span><span class="mspace" style="margin-right:0.2222222222222222em;"></span><span class="mord"><span class="mord mathrm">p</span><span class="mord mathrm">e</span><span class="mord mathrm">a</span><span class="mord mathrm">k</span><span class="mspace"> </span><span class="mord mathrm">F</span><span class="mord mathrm">L</span><span class="mord mathrm">O</span><span class="mord mathrm">P</span><span class="mord mathrm">s</span><span class="mspace"> </span><span class="mord mathrm">p</span><span class="mord mathrm">e</span><span class="mord mathrm">r</span><span class="mspace"> </span><span class="mord mathrm">G</span><span class="mord mathrm">P</span><span class="mord mathrm">U</span></span></span></span><span style="top:-3.23em;"><span class="pstrut" style="height:3em;"></span><span class="frac-line" style="border-bottom-width:0.04em;"></span></span><span style="top:-3.677em;"><span class="pstrut" style="height:3em;"></span><span class="mord"><span class="mord"><span class="mord mathrm">m</span><span class="mord mathrm">o</span><span class="mord mathrm">d</span><span class="mord mathrm">e</span><span class="mord mathrm">l</span><span class="mspace"> </span><span class="mord mathrm">F</span><span class="mord mathrm">L</span><span class="mord mathrm">O</span><span class="mord mathrm">P</span><span class="mord mathrm">s</span><span class="mspace"> </span><span class="mord mathrm">p</span><span class="mord mathrm">e</span><span class="mord mathrm">r</span><span class="mspace"> </span><span class="mord mathrm">t</span><span class="mord mathrm">o</span><span class="mord mathrm">k</span><span class="mord mathrm">e</span><span class="mord mathrm">n</span></span><span class="mspace" style="margin-right:0.2222222222222222em;"></span><span class="mbin">×</span><span class="mspace" style="margin-right:0.2222222222222222em;"></span><span class="mord"><span class="mord mathrm">t</span><span class="mord mathrm">o</span><span class="mord mathrm">k</span><span class="mord mathrm">e</span><span class="mord mathrm">n</span><span class="mord mathrm">s</span><span class="mord mathrm">/</span><span class="mord mathrm">s</span></span></span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height:0.8804400000000001em;"><span></span></span></span></span></span><span class="mclose nulldelimiter"></span></span></span></span></span></span></p>
+<p>如果是图像、视频或世界模型训练，也可以把分子改成每 step 估算的训练 FLOPs 除以 step time：</p>
+<p><span class="katex-display"><span class="katex"><span class="katex-mathml"><math><semantics><mrow><mrow><mi mathvariant="normal">M</mi><mi mathvariant="normal">F</mi><mi mathvariant="normal">U</mi></mrow><mo>=</mo><mfrac><mrow><mrow><mi mathvariant="normal">e</mi><mi mathvariant="normal">s</mi><mi mathvariant="normal">t</mi><mi mathvariant="normal">i</mi><mi mathvariant="normal">m</mi><mi mathvariant="normal">a</mi><mi mathvariant="normal">t</mi><mi mathvariant="normal">e</mi><mi mathvariant="normal">d</mi><mtext> </mtext><mi mathvariant="normal">t</mi><mi mathvariant="normal">r</mi><mi mathvariant="normal">a</mi><mi mathvariant="normal">i</mi><mi mathvariant="normal">n</mi><mi mathvariant="normal">i</mi><mi mathvariant="normal">n</mi><mi mathvariant="normal">g</mi><mtext> </mtext><mi mathvariant="normal">F</mi><mi mathvariant="normal">L</mi><mi mathvariant="normal">O</mi><mi mathvariant="normal">P</mi><mi mathvariant="normal">s</mi><mtext> </mtext><mi mathvariant="normal">p</mi><mi mathvariant="normal">e</mi><mi mathvariant="normal">r</mi><mtext> </mtext><mi mathvariant="normal">s</mi><mi mathvariant="normal">t</mi><mi mathvariant="normal">e</mi><mi mathvariant="normal">p</mi></mrow><mi mathvariant="normal">/</mi><mrow><mi mathvariant="normal">s</mi><mi mathvariant="normal">t</mi><mi mathvariant="normal">e</mi><mi mathvariant="normal">p</mi><mtext> </mtext><mi mathvariant="normal">t</mi><mi mathvariant="normal">i</mi><mi mathvariant="normal">m</mi><mi mathvariant="normal">e</mi></mrow></mrow><mrow><mi mathvariant="normal">c</mi><mi mathvariant="normal">l</mi><mi mathvariant="normal">u</mi><mi mathvariant="normal">s</mi><mi mathvariant="normal">t</mi><mi mathvariant="normal">e</mi><mi mathvariant="normal">r</mi><mtext> </mtext><mi mathvariant="normal">p</mi><mi mathvariant="normal">e</mi><mi mathvariant="normal">a</mi><mi mathvariant="normal">k</mi><mtext> </mtext><mi mathvariant="normal">F</mi><mi mathvariant="normal">L</mi><mi mathvariant="normal">O</mi><mi mathvariant="normal">P</mi><mi mathvariant="normal">s</mi></mrow></mfrac></mrow><annotation encoding="application/x-tex">\mathrm{MFU} =
+\frac{\mathrm{estimated\ training\ FLOPs\ per\ step} / \mathrm{step\ time}}
+{\mathrm{cluster\ peak\ FLOPs}}
+</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.68333em;vertical-align:0em;"></span><span class="mord"><span class="mord mathrm">M</span><span class="mord mathrm">F</span><span class="mord mathrm">U</span></span><span class="mspace" style="margin-right:0.2777777777777778em;"></span><span class="mrel">=</span><span class="mspace" style="margin-right:0.2777777777777778em;"></span></span><span class="base"><span class="strut" style="height:2.30744em;vertical-align:-0.8804400000000001em;"></span><span class="mord"><span class="mopen nulldelimiter"></span><span class="mfrac"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height:1.427em;"><span style="top:-2.314em;"><span class="pstrut" style="height:3em;"></span><span class="mord"><span class="mord"><span class="mord mathrm">c</span><span class="mord mathrm">l</span><span class="mord mathrm">u</span><span class="mord mathrm">s</span><span class="mord mathrm">t</span><span class="mord mathrm">e</span><span class="mord mathrm">r</span><span class="mspace"> </span><span class="mord mathrm">p</span><span class="mord mathrm">e</span><span class="mord mathrm">a</span><span class="mord mathrm">k</span><span class="mspace"> </span><span class="mord mathrm">F</span><span class="mord mathrm">L</span><span class="mord mathrm">O</span><span class="mord mathrm">P</span><span class="mord mathrm">s</span></span></span></span><span style="top:-3.23em;"><span class="pstrut" style="height:3em;"></span><span class="frac-line" style="border-bottom-width:0.04em;"></span></span><span style="top:-3.677em;"><span class="pstrut" style="height:3em;"></span><span class="mord"><span class="mord"><span class="mord mathrm">e</span><span class="mord mathrm">s</span><span class="mord mathrm">t</span><span class="mord mathrm">i</span><span class="mord mathrm">m</span><span class="mord mathrm">a</span><span class="mord mathrm">t</span><span class="mord mathrm">e</span><span class="mord mathrm">d</span><span class="mspace"> </span><span class="mord mathrm">t</span><span class="mord mathrm">r</span><span class="mord mathrm">a</span><span class="mord mathrm">i</span><span class="mord mathrm">n</span><span class="mord mathrm">i</span><span class="mord mathrm">n</span><span class="mord mathrm" style="margin-right:0.01389em;">g</span><span class="mspace"> </span><span class="mord mathrm">F</span><span class="mord mathrm">L</span><span class="mord mathrm">O</span><span class="mord mathrm">P</span><span class="mord mathrm">s</span><span class="mspace"> </span><span class="mord mathrm">p</span><span class="mord mathrm">e</span><span class="mord mathrm">r</span><span class="mspace"> </span><span class="mord mathrm">s</span><span class="mord mathrm">t</span><span class="mord mathrm">e</span><span class="mord mathrm">p</span></span><span class="mord">/</span><span class="mord"><span class="mord mathrm">s</span><span class="mord mathrm">t</span><span class="mord mathrm">e</span><span class="mord mathrm">p</span><span class="mspace"> </span><span class="mord mathrm">t</span><span class="mord mathrm">i</span><span class="mord mathrm">m</span><span class="mord mathrm">e</span></span></span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height:0.8804400000000001em;"><span></span></span></span></span></span><span class="mclose nulldelimiter"></span></span></span></span></span></span></p>
+<p>这个公式有三个容易踩坑的地方：</p>
+<ol>
+<li><code>model FLOPs</code> 要和模型结构一致。MoE 要按 activated experts 和实际路由算，不能简单用 total parameters；长上下文 attention 还要补 <span class="katex"><span class="katex-mathml"><math><semantics><mrow><mi>O</mi><mo stretchy="false">(</mo><mi>B</mi><msup><mi>S</mi><mn>2</mn></msup><mi>H</mi><mo stretchy="false">)</mo></mrow><annotation encoding="application/x-tex">O(BS^2H)</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:1.064108em;vertical-align:-0.25em;"></span><span class="mord mathdefault" style="margin-right:0.02778em;">O</span><span class="mopen">(</span><span class="mord mathdefault" style="margin-right:0.05017em;">B</span><span class="mord"><span class="mord mathdefault" style="margin-right:0.05764em;">S</span><span class="msupsub"><span class="vlist-t"><span class="vlist-r"><span class="vlist" style="height:0.8141079999999999em;"><span style="top:-3.063em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mtight">2</span></span></span></span></span></span></span></span><span class="mord mathdefault" style="margin-right:0.08125em;">H</span><span class="mclose">)</span></span></span></span> 或对应 fused attention 的等价 FLOPs。</li>
+<li><code>peak FLOPs</code> 要和实际精度一致。bf16/fp16/fp8/fp4 的理论峰值不同，Tensor Core 是否被用上也会影响解释。</li>
+<li><code>tokens/s</code> 或 <code>samples/s</code> 要在 warmup 后稳态测。包含 checkpoint、eval、数据缓存未命中和编译 warmup 的窗口会污染 MFU。</li>
+</ol>
+<p>所以 MFU 很适合做“还有没有大优化空间”的判断。比如 20% MFU 通常说明值得继续 profile；40% 到 50% 之后，再提升十个百分点可能就需要更深的 kernel、通信和并行布局改造。</p>
+<h2 id="softmax-为什么会暴露问题"><a class="markdownIt-Anchor" href="#softmax-为什么会暴露问题"></a> Softmax 为什么会暴露问题</h2>
+<p>Trainy 的案例中，PyTorch Profiler 显示 Softmax kernel 的 GPU utilization 很高，但 SM efficiency 很低。</p>
+<p><img  
+                     lazyload
+                     src="/images/loading.svg"
+                     data-src="/image/ai-notes/images/paper-deep-dives/foundations/gpu-utilization-misleading/figure-3-pytorch-profiler-sm-efficiency.webp"
+                      alt="PyTorch Profiler SM efficiency 原图" 
+                ></p>
+<p><small>图源：<a class="link"   target="_blank" rel="noopener" href="https://www.trainy.ai/blog/gpu-utilization-misleading" >Trainy: GPU Utilization is a Misleading Metric<i class="fa-solid fa-arrow-up-right ml-[0.2em] font-light align-text-top text-[0.7em] link-icon"></i></a>。原图说明：PyTorch Profiler 中 Softmax kernel 显示低 SM Efficiency；原文用它说明 GPU utilization 高并不等于 kernel 高效。</small></p>
+<p><strong>这张 profiler 图怎么读。</strong><br />
+先看时间轴里是哪类算子占据训练循环，再看同一段里的 GPU utilization、SM efficiency 和算子名称是否一致。这里的重点不是“Softmax 永远不好”，而是 naive softmax 常常读写多、算术强度低、shape 又可能不够饱满；它可以让 GPU 忙着搬数据，却没有把大量时间花在 Tensor Core GEMM 这类高 FLOPs 计算上。</p>
+<p>Transformer block 里 attention softmax 特别容易成为指标陷阱：</p>
+<table>
+<thead>
+<tr>
+<th>Workload pattern</th>
+<th>Why GPU Utilization can look good</th>
+<th>Why MFU / SM metrics may stay low</th>
+<th>Typical fix</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Naive Softmax</td>
+<td>A kernel runs continuously and touches memory</td>
+<td>Low arithmetic intensity, repeated HBM traffic, poor fusion</td>
+<td>Fused softmax, FlashAttention / SDPA</td>
+</tr>
+<tr>
+<td>Small elementwise ops</td>
+<td>Many kernels keep launching</td>
+<td>Launch overhead and fragmented memory reads dominate</td>
+<td>Fuse dropout, bias, residual, layer norm</td>
+</tr>
+<tr>
+<td>Tiny micro-batches</td>
+<td>GPU always has some work</td>
+<td>GEMMs are too small to saturate Tensor Cores</td>
+<td>Larger micro-batch, gradient accumulation, better sequence packing</td>
+</tr>
+<tr>
+<td>Communication-heavy step</td>
+<td>NCCL or synchronization keeps devices active</td>
+<td>Compute units wait around collectives or imbalance</td>
+<td>Tune TP/PP/DP/FSDP, overlap communication, fix stragglers</td>
+</tr>
+<tr>
+<td>Input pipeline almost-but-not-quite stable</td>
+<td>GPU rarely fully idle</td>
+<td>Short bubbles between batches reduce steady-state throughput</td>
+<td>Prefetch, pin memory, CPU/GPU preprocessing split</td>
+</tr>
+</tbody>
+</table>
+<p>这张表也说明，GPU utilization 不是没用。它能告诉你机器有没有明显空闲，但它不能告诉你“忙的内容是否值钱”。</p>
+<h2 id="优化路径从替换指标到替换-kernel"><a class="markdownIt-Anchor" href="#优化路径从替换指标到替换-kernel"></a> 优化路径：从替换指标到替换 kernel</h2>
+<p>原文最终把优化落到 Transformer block 内的 kernel fusion。</p>
+<p><img  
+                     lazyload
+                     src="/images/loading.svg"
+                     data-src="/image/ai-notes/images/paper-deep-dives/foundations/gpu-utilization-misleading/figure-4-kernel-fusions.webp"
+                      alt="Kernel fusion 原图" 
+                ></p>
+<p><small>图源：<a class="link"   target="_blank" rel="noopener" href="https://www.trainy.ai/blog/gpu-utilization-misleading" >Trainy: GPU Utilization is a Misleading Metric<i class="fa-solid fa-arrow-up-right ml-[0.2em] font-light align-text-top text-[0.7em] link-icon"></i></a>。原图说明：Transformer block 中可以通过 fused attention / fused MLP / fused dropout-layernorm-residual 等减少内存读写和 kernel launch 开销。</small></p>
+<p><strong>这张 kernel fusion 图怎么读。</strong><br />
+图里的重点不是“所有层都要手写 CUDA”，而是把多个 PyTorch 原生小算子替换成更少、更贴近硬件的数据流。FlashAttention 是典型例子：它不只是把 softmax 写快，而是避免把完整 attention matrix 反复写入 HBM。MLP、dropout、layer norm、residual add 的融合也类似，目标是减少读写、减少 launch，并让 shape 更容易喂饱 GPU。</p>
+<p>训练优化可以按下面顺序做，避免一上来就改复杂分布式结构：</p>
+<ol>
+<li><strong>先确认不是输入饿死 GPU</strong>：记录 dataloader wait time、CPU preprocessing、storage bandwidth、batch ready time。常见调参是 <code>num_workers</code>、<code>pin_memory</code>、<code>prefetch_factor</code>、persistent workers、数据缓存和 GPU-side preprocessing。</li>
+<li><strong>再确认数值路径对</strong>：bf16/fp16 是否真的启用 Tensor Core；是否有意外 fp32 fallback；loss scale、grad scaler 和 autocast 范围是否合理。</li>
+<li><strong>再算 MFU</strong>：如果 GPU utilization 高但 MFU 低，说明训练还没把理论峰值转成有效模型 FLOPs。</li>
+<li><strong>用 profiler 找层级瓶颈</strong>：按 step time 排序，看 attention、MLP、norm、optimizer、all-reduce、all-gather、activation checkpoint recompute、dataloader 哪些占比异常。</li>
+<li><strong>按证据替换 fused implementation</strong>：优先替换 profiler 指出的 memory-bound 或 launch-heavy 算子，例如 FlashAttention / SDPA、fused MLP、fused bias-dropout-add-layernorm、fused optimizer。</li>
+<li><strong>重新选并行切分</strong>：TP、PP、DP、FSDP、ZeRO、sequence/context parallelism 都会改变通信/计算比。模型小却过度切分，通信会盖过计算；模型大但切分不足，又会 OOM 或 micro-batch 太小。</li>
+<li><strong>回归质量和稳定性</strong>：吞吐提升后要同时看 loss curve、grad norm、溢出、checkpoint 可恢复性和验证集指标。训练系统优化不能只看 tokens/s。</li>
+</ol>
+<p>这里的训练细节尤其适合和 <a href="/2026/05/11/ai-files-paper-deep-dives-foundations-megatron-lm/">Megatron-LM</a>、<a href="/2026/05/11/ai-files-paper-deep-dives-foundations-zero/">ZeRO</a>、<a href="/2026/05/11/ai-files-paper-deep-dives-foundations-magiattention/">MagiAttention</a> 一起读：Megatron-LM 解释 tensor parallel 为什么能把大 GEMM 切开；ZeRO 解释参数、梯度和优化器状态为什么要分片；MagiAttention 解释长上下文 attention 为什么还要按 mask area 和通信路径调度。Trainy 这篇则提醒你：这些复杂技术要由指标和 profiler 触发，而不是凭感觉堆上去。</p>
+<h2 id="对-llm-世界模型训练的具体启发"><a class="markdownIt-Anchor" href="#对-llm-世界模型训练的具体启发"></a> 对 LLM / 世界模型训练的具体启发</h2>
+<h3 id="llm-预训练"><a class="markdownIt-Anchor" href="#llm-预训练"></a> LLM 预训练</h3>
+<p>LLM 训练中，最常见的误判是“GPU utilization 100%，所以吞吐慢只能加卡”。实际可能是：</p>
+<table>
+<thead>
+<tr>
+<th>Symptom</th>
+<th>Likely bottleneck</th>
+<th>Training detail to inspect</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>100% GPU Utilization, low MFU</td>
+<td>Memory-bound kernels or tiny GEMMs</td>
+<td>Attention implementation, sequence length, micro-batch, tensor shapes</td>
+</tr>
+<tr>
+<td>High SM Activity, low Tensor Core use</td>
+<td>Non-GEMM kernels dominate</td>
+<td>Softmax, layer norm, embedding, optimizer, fp32 fallback</td>
+</tr>
+<tr>
+<td>Good single-GPU step, poor multi-GPU scaling</td>
+<td>Communication or sharding imbalance</td>
+<td>NCCL timeline, TP all-reduce, FSDP all-gather, gradient bucket sizes</td>
+</tr>
+<tr>
+<td>High throughput but unstable loss</td>
+<td>Numerical or optimizer issue</td>
+<td>bf16/fp16 range, fused optimizer behavior, gradient clipping, loss scaling</td>
+</tr>
+<tr>
+<td>Profiler dominated by dataloader</td>
+<td>Input pipeline</td>
+<td>Token packing, mmap/cache, CPU preprocessing, prefetch and worker count</td>
+</tr>
+</tbody>
+</table>
+<p>这也是为什么训练日志里不应该只写 <code>gpu_util</code>。更稳的最小日志集包括：</p>
+<div class="code-container" data-rel="Text"><figure class="iseeu highlight text"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br></pre></td><td class="code"><pre><span class="line">global_step</span><br><span class="line">tokens_per_second / samples_per_second</span><br><span class="line">step_time_ms</span><br><span class="line">forward_time_ms / backward_time_ms / optimizer_time_ms</span><br><span class="line">dataloader_wait_ms</span><br><span class="line">gpu_utilization</span><br><span class="line">sm_activity</span><br><span class="line">memory_bandwidth_utilization</span><br><span class="line">tensor_core_or_pipe_utilization</span><br><span class="line">peak_memory_allocated</span><br><span class="line">nccl_time_ms</span><br><span class="line">estimated_mfu</span><br><span class="line">loss / grad_norm / overflow_count</span><br></pre></td></tr></table></figure></div>
+<h3 id="视频-dit-和世界模型"><a class="markdownIt-Anchor" href="#视频-dit-和世界模型"></a> 视频 DiT 和世界模型</h3>
+<p>视频生成和世界模型训练更容易被 GPU utilization 误导，因为它们同时有长序列 attention、VAE/tokenizer、视频解码、数据增强、条件编码器、跨帧 mask、分布式通信和 rollout 评测。</p>
+<p>如果只看 GPU utilization，你很难区分下面几种情况：</p>
+<table>
+<thead>
+<tr>
+<th>World-model case</th>
+<th>Looks like</th>
+<th>Real question</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Long video attention</td>
+<td>GPU is busy</td>
+<td>Is attention compute-bound, memory-bound, or communication-bound?</td>
+</tr>
+<tr>
+<td>Action-conditioned rollout</td>
+<td>GPU is busy</td>
+<td>Is decode dominated by denoising steps, KV cache, or action adapter?</td>
+</tr>
+<tr>
+<td>Multi-camera batch</td>
+<td>GPU is busy</td>
+<td>Are camera streams packed efficiently or padded into wasted tokens?</td>
+</tr>
+<tr>
+<td>Synthetic data generation</td>
+<td>GPU is busy</td>
+<td>Are generated samples accepted by checker, or just burning rollout compute?</td>
+</tr>
+<tr>
+<td>Closed-loop evaluation</td>
+<td>GPU is busy</td>
+<td>Is simulator / environment step blocking model compute?</td>
+</tr>
+</tbody>
+</table>
+<p>对世界模型高效训练来说，真正应该验收的是“每 GPU-hour 产生多少有效训练信号”。这比 GPU utilization 更接近工程目标：</p>
+<div class="code-container" data-rel="Text"><figure class="iseeu highlight text"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br></pre></td><td class="code"><pre><span class="line">accepted_tokens_or_frames_per_gpu_hour</span><br><span class="line">valid_rollouts_per_gpu_hour</span><br><span class="line">action-sensitive_success_cases_per_gpu_hour</span><br><span class="line">risk_event_replay_hits_per_gpu_hour</span><br><span class="line">loss_reduction_per_gpu_hour</span><br><span class="line">closed_loop_score_delta_per_gpu_hour</span><br></pre></td></tr></table></figure></div>
+<p>换句话说，GPU 忙不忙只是第一层；它忙出来的 token、帧、rollout 和 hard cases 是否进入有效训练，才是高效训练的最终账。</p>
+<h2 id="一个可复用排障流程"><a class="markdownIt-Anchor" href="#一个可复用排障流程"></a> 一个可复用排障流程</h2>
+<p>把 Trainy 的经验压缩成工程流程，可以这样跑：</p>
+<div class="code-container" data-rel="Text"><figure class="iseeu highlight text"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br></pre></td><td class="code"><pre><span class="line">1. Warm up training for enough steps</span><br><span class="line">2. Record steady-state throughput and GPU utilization</span><br><span class="line">3. Estimate MFU from model FLOPs and tokens/s</span><br><span class="line">4. If utilization is high but MFU is low, capture profiler traces</span><br><span class="line">5. Inspect SM activity, achieved occupancy, tensor pipe, memory bandwidth and NCCL timeline</span><br><span class="line">6. Pick one bottleneck class: input, kernel, memory, communication, optimizer, checkpointing</span><br><span class="line">7. Apply one change: fused kernel, batch/packing, parallelism, overlap, optimizer, dataloader</span><br><span class="line">8. Re-run the same window and compare step time, MFU, memory and loss stability</span><br></pre></td></tr></table></figure></div>
+<p>这套流程的关键是单变量迭代。不要同时改 batch、precision、FlashAttention、FSDP bucket、activation checkpointing 和数据加载，否则吞吐涨了也很难知道原因，loss 波动时更难回滚。</p>
+<h2 id="局限和风险"><a class="markdownIt-Anchor" href="#局限和风险"></a> 局限和风险</h2>
+<p>这篇文章有几个边界要保留：</p>
+<ol>
+<li>它是工程案例，不是公开可复现实验。<code>4x</code> 加速和 <code>20% -&gt; 38% MFU</code> 不能直接套到所有模型。</li>
+<li>SM efficiency 比 GPU utilization 更细，但不是最终指标。高 SM activity 仍可能因为内存、warp divergence、低 Tensor Core use 或通信等待而低效。</li>
+<li>MFU 依赖 FLOPs 估算。MoE、稀疏 attention、activation checkpointing、重计算和多模态 encoder 都会让估算变复杂。</li>
+<li>Fused kernel 可能改变数值路径、autograd 图、checkpoint 兼容性和调试难度。尤其在 FSDP、ZeRO、sequence parallel 和 <code>torch.compile</code> 混用时，要用小规模回归先验证。</li>
+<li>训练效率不是唯一目标。对世界模型和 VLA 来说，action sensitivity、风险校准、长时一致性和闭环成功率必须和吞吐一起验收。</li>
+</ol>
+<h2 id="阅读结论"><a class="markdownIt-Anchor" href="#阅读结论"></a> 阅读结论</h2>
+<p>这篇文章最值得记住的是一个诊断顺序：<code>GPU utilization</code> 只能说明 GPU 大概率没闲着，不能说明算力被高价值使用。训练效率要先看 MFU，再用 SM activity、Tensor Core / memory / NCCL 指标和 profiler timeline 找瓶颈，最后才决定要不要上 fused kernel、改 batch packing、调并行切分或优化数据管线。</p>
+<p>对 LLM、视频 DiT、VLA 和世界模型训练来说，真正的效率指标应该是“每 GPU-hour 产生多少有效训练信号”。如果 GPU 很忙，但忙出来的是无效 padding、低质量 rollout、未通过 verifier 的合成数据或不能改善闭环指标的样本，那仍然不是高效训练。</p>
+<h2 id="外部精读"><a class="markdownIt-Anchor" href="#外部精读"></a> 外部精读</h2>
+<ol>
+<li><a class="link"   target="_blank" rel="noopener" href="https://www.trainy.ai/blog/gpu-utilization-misleading" >Trainy: GPU Utilization is a Misleading Metric<i class="fa-solid fa-arrow-up-right ml-[0.2em] font-light align-text-top text-[0.7em] link-icon"></i></a>：原文；重点读 GPU utilization、SM efficiency、MFU 和 Softmax 案例。</li>
+<li><a class="link"   target="_blank" rel="noopener" href="https://docs.nvidia.com/deeplearning/performance/mixed-precision-training/index.html" >NVIDIA Mixed Precision Training Guide<i class="fa-solid fa-arrow-up-right ml-[0.2em] font-light align-text-top text-[0.7em] link-icon"></i></a>：理解 Tensor Core 路径、shape 和 arithmetic intensity。</li>
+<li><a class="link"   target="_blank" rel="noopener" href="https://docs.nvidia.com/deeplearning/performance/dl-performance-matrix-multiplication/index.html" >NVIDIA Matrix Multiplication Background User’s Guide<i class="fa-solid fa-arrow-up-right ml-[0.2em] font-light align-text-top text-[0.7em] link-icon"></i></a>：看 GEMM shape、tile 和 Tensor Core 性能约束。</li>
+<li><a class="link"   target="_blank" rel="noopener" href="https://docs.nvidia.com/nsight-compute/2023.3/NsightCompute/index.html#rooflines" >Nsight Compute Roofline<i class="fa-solid fa-arrow-up-right ml-[0.2em] font-light align-text-top text-[0.7em] link-icon"></i></a>：区分 compute-bound、memory-bound 和 roofline 诊断。</li>
+</ol>
+
+		</div>
+
+		
+		<div class="post-copyright-info w-full my-8 px-2 sm:px-6 md:px-8">
+			<div class="article-copyright-info-container">
+    <ul>
+        <li><strong>Title:</strong> 论文专题讲解：GPU Utilization：为什么 100％ 不等于训练跑满</li>
+        <li><strong>Author:</strong> Charles</li>
+        <li><strong>Created at
+                :</strong> 2026-04-01 09:00:00</li>
+        
+            <li>
+                <strong>Updated at
+                    :</strong> 2026-04-01 09:00:00
+            </li>
+        
+        <li>
+            <strong>Link:</strong> https://charles2530.github.io/2026/04/01/ai-files-paper-deep-dives-foundations-gpu-utilization-misleading/
+        </li>
+        <li>
+            <strong>
+                License:
+            </strong>
+            
+
+            
+                This work is licensed under <a class="license" target="_blank" rel="noopener" href="https://creativecommons.org/licenses/by-nc-sa/4.0">CC BY-NC-SA 4.0</a>.
+            
+        </li>
+    </ul>
+</div>
+
+		</div>
+		
+
+		
+		<ul class="post-tags-box text-lg mt-1.5 flex-wrap justify-center flex md:hidden">
+			
+			<li class="tag-item mx-0.5">
+				<a href="/tags/AI/">#AI</a>&nbsp;
+			</li>
+			
+			<li class="tag-item mx-0.5">
+				<a href="/tags/%E5%9F%BA%E7%A1%80%E7%9F%A5%E8%AF%86/">#基础知识</a>&nbsp;
+			</li>
+			
+			<li class="tag-item mx-0.5">
+				<a href="/tags/%E8%AE%BA%E6%96%87%E4%B8%93%E9%A2%98/">#论文专题</a>&nbsp;
+			</li>
+			
+		</ul>
+		
+
+		
+
+		
+		<div class="article-nav my-8 flex justify-between items-center px-2 sm:px-6 md:px-8">
+			
+			<div class="article-prev border-border-color shadow-redefine-flat shadow-shadow-color-2 rounded-medium px-4 py-2 hover:shadow-redefine-flat-hover hover:shadow-shadow-color-2">
+				<a class="prev" rel="prev" href="/2026/04/02/ai-files-paper-deep-dives-world-models-bagel/">
+					<span class="left arrow-icon flex justify-center items-center">
+						<i class="fa-solid fa-chevron-left"></i>
+					</span>
+					<span class="title flex justify-center items-center">
+						<span class="post-nav-title-item truncate max-w-48">论文专题讲解：BAGEL：交错多模态预训练中的世界建模涌现</span>
+						<span class="post-nav-item">Prev posts</span>
+					</span>
+				</a>
+			</div>
+			
+			
+			<div class="article-next border-border-color shadow-redefine-flat shadow-shadow-color-2 rounded-medium px-4 py-2 hover:shadow-redefine-flat-hover hover:shadow-shadow-color-2">
+				<a class="next" rel="next" href="/2026/03/30/ai-files-paper-deep-dives-technical-reports-incoder-32b/">
+					<span class="title flex justify-center items-center">
+						<span class="post-nav-title-item truncate max-w-48">论文专题讲解：InCoder-32B：工业代码基础模型与执行验证训练</span>
+						<span class="post-nav-item">Next posts</span>
+					</span>
+					<span class="right arrow-icon flex justify-center items-center">
+						<i class="fa-solid fa-chevron-right"></i>
+					</span>
+				</a>
+			</div>
+			
+		</div>
+		
+
+
+		
+		<div class="comment-container px-2 sm:px-6 md:px-8 pb-8">
+			<div class="comments-container mt-10 w-full ">
+    <div id="comment-anchor" class="w-full h-2.5"></div>
+    <div class="comment-area-title w-full my-1.5 md:my-2.5 text-xl md:text-3xl font-bold">
+        Comments
+    </div>
+    
+
+        
+            
+    <div id="gitalk-container"></div>
+    <script data-swup-reload-script
+            src="https://cdnjs.cloudflare.com/ajax/libs/gitalk/1.8.0/gitalk.min.js"></script>
+    <script data-swup-reload-script>
+        (function() {
+            const startPath = location.pathname;
+            const startTime = Date.now();
+            const retryDelay = 200;
+            const retryLimit = 5000;
+
+            const runGitalk = () => {
+                if (location.pathname !== startPath) {
+                    return;
+                }
+
+                const container = document.getElementById('gitalk-container');
+                if (!container || typeof Gitalk === 'undefined') {
+                    if (Date.now() - startTime < retryLimit) {
+                        setTimeout(runGitalk, retryDelay);
+                    }
+                    return;
+                }
+
+                container.innerHTML = '';
+
+                let pageKey = decodeURI(location.pathname);
+                const maxLength = 50;
+                if (pageKey.length > maxLength) {
+                    pageKey = pageKey.substring(0, maxLength - 3) + '...';
+                }
+
+                try {
+                    new Gitalk({
+                        clientID: '8083299a8ee2aaf23879',
+                        clientSecret: 'a8161e81d4872181e884fdb69f7be24916b6a9d0',
+                        repo: 'Charles2530.github.io',
+                        owner: 'Charles2530',
+                        admin: ['Charles2530'],
+                        id: pageKey,
+                        language: 'en',
+                        proxy: 'https://github.com/login/oauth/access_token'
+                    }).render(container);
+                } catch (e) {
+                    window.Gitalk = null;
+                }
+            };
+
+            runGitalk();
+        })();
+    </script>
+
+
+
+        
+    
+</div>
+
+		</div>
+		
+	</div>
+
+	
+	<div class="toc-content-container">
+		<div class="post-toc-wrap">
+	<div class="post-toc">
+		<div class="toc-title">On this page</div>
+		<div class="page-title">论文专题讲解：GPU Utilization：为什么 100％ 不等于训练跑满</div>
+		<ol class="nav"><li class="nav-item nav-level-2"><a class="nav-link" href="#%E5%8E%9F%E6%96%87%E6%95%85%E4%BA%8B%E7%BA%BF"><span class="nav-text"> 原文故事线</span></a><ol class="nav-child"><li class="nav-item nav-level-3"><a class="nav-link" href="#%E7%A0%94%E7%A9%B6%E8%83%8C%E6%99%AF"><span class="nav-text"> 研究背景</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#%E9%97%AE%E9%A2%98challenge"><span class="nav-text"> 问题（Challenge）</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#finding"><span class="nav-text"> Finding</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#%E6%96%B9%E6%B3%95"><span class="nav-text"> 方法</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#%E7%BB%93%E8%AE%BA"><span class="nav-text"> 结论</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#%E5%85%B3%E9%94%AE%E6%9C%AF%E8%AF%AD"><span class="nav-text"> 关键术语</span></a></li></ol></li><li class="nav-item nav-level-2"><a class="nav-link" href="#%E5%AE%83%E7%9A%84%E6%95%88%E7%8E%87%E8%B4%A1%E7%8C%AE%E6%98%AF%E4%BB%80%E4%B9%88"><span class="nav-text"> 它的效率贡献是什么</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#%E8%AF%81%E6%8D%AE%E7%AD%89%E7%BA%A7%E4%B8%8E%E5%A4%96%E6%8E%A8%E8%BE%B9%E7%95%8C"><span class="nav-text"> 证据等级与外推边界</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#%E6%96%87%E7%AB%A0%E4%BD%8D%E7%BD%AE"><span class="nav-text"> 文章位置</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#gpu-utilization-%E5%88%B0%E5%BA%95%E6%B5%8B%E4%BA%86%E4%BB%80%E4%B9%88"><span class="nav-text"> GPU Utilization 到底测了什么</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#%E6%8C%87%E6%A0%87%E5%88%86%E5%B1%82"><span class="nav-text"> 指标分层</span></a><ol class="nav-child"><li class="nav-item nav-level-3"><a class="nav-link" href="#gpu-utilization-%E9%AB%98%E4%BD%86-tensor-core-%E4%BD%8E"><span class="nav-text"> GPU utilization 高但 Tensor Core 低</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#mfu-%E7%9A%84%E8%AE%AD%E7%BB%83%E5%8F%A3%E5%BE%84"><span class="nav-text"> MFU 的训练口径</span></a></li></ol></li><li class="nav-item nav-level-2"><a class="nav-link" href="#softmax-%E4%B8%BA%E4%BB%80%E4%B9%88%E4%BC%9A%E6%9A%B4%E9%9C%B2%E9%97%AE%E9%A2%98"><span class="nav-text"> Softmax 为什么会暴露问题</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#%E4%BC%98%E5%8C%96%E8%B7%AF%E5%BE%84%E4%BB%8E%E6%9B%BF%E6%8D%A2%E6%8C%87%E6%A0%87%E5%88%B0%E6%9B%BF%E6%8D%A2-kernel"><span class="nav-text"> 优化路径：从替换指标到替换 kernel</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#%E5%AF%B9-llm-%E4%B8%96%E7%95%8C%E6%A8%A1%E5%9E%8B%E8%AE%AD%E7%BB%83%E7%9A%84%E5%85%B7%E4%BD%93%E5%90%AF%E5%8F%91"><span class="nav-text"> 对 LLM &#x2F; 世界模型训练的具体启发</span></a><ol class="nav-child"><li class="nav-item nav-level-3"><a class="nav-link" href="#llm-%E9%A2%84%E8%AE%AD%E7%BB%83"><span class="nav-text"> LLM 预训练</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#%E8%A7%86%E9%A2%91-dit-%E5%92%8C%E4%B8%96%E7%95%8C%E6%A8%A1%E5%9E%8B"><span class="nav-text"> 视频 DiT 和世界模型</span></a></li></ol></li><li class="nav-item nav-level-2"><a class="nav-link" href="#%E4%B8%80%E4%B8%AA%E5%8F%AF%E5%A4%8D%E7%94%A8%E6%8E%92%E9%9A%9C%E6%B5%81%E7%A8%8B"><span class="nav-text"> 一个可复用排障流程</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#%E5%B1%80%E9%99%90%E5%92%8C%E9%A3%8E%E9%99%A9"><span class="nav-text"> 局限和风险</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#%E9%98%85%E8%AF%BB%E7%BB%93%E8%AE%BA"><span class="nav-text"> 阅读结论</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#%E5%A4%96%E9%83%A8%E7%B2%BE%E8%AF%BB"><span class="nav-text"> 外部精读</span></a></li></ol>
+
+	</div>
+</div>
+	</div>
+	
+</div>
+
+			</div>
+
+			
+		</div>
+
+		<div class="main-content-footer">
+			<footer class="footer mt-5 py-5 h-auto text-base text-third-text-color relative border-t-2 border-t-border-color">
+    <div class="info-container py-3 text-center">
+        
+        <div class="text-center">
+            &copy;
+            
+              <span>2022</span>
+              -
+            
+            2026&nbsp;&nbsp;<i class="fa-solid fa-heart fa-beat" style="--fa-animation-duration: 0.5s; color: #f54545"></i>&nbsp;&nbsp;<a href="/">Charles</a>
+            
+                
+                <p class="post-count space-x-0.5">
+                    <span>
+                        607 posts in total
+                    </span>
+                    
+                        <span>
+                            2449.4k words in total
+                        </span>
+                    
+                </p>
+            
+        </div>
+        
+            <script data-swup-reload-script src="https://cn.vercount.one/js"></script>
+            <div class="relative text-center lg:absolute lg:right-[20px] lg:top-1/2 lg:-translate-y-1/2 lg:text-right">
+                
+                    <span id="busuanzi_container_site_uv" class="lg:!block">
+                        <span class="text-sm">VISITOR COUNT</span>
+                        <span id="busuanzi_value_site_uv"></span>
+                    </span>
+                
+                
+                    <span id="busuanzi_container_site_pv" class="lg:!block">
+                        <span class="text-sm">TOTAL PAGE VIEWS</span>
+                        <span id="busuanzi_value_site_pv"></span>
+                    </span>
+                
+            </div>
+        
+        <div class="relative text-center lg:absolute lg:left-[20px] lg:top-1/2 lg:-translate-y-1/2 lg:text-left">
+            <span class="lg:block text-sm">POWERED BY <?xml version="1.0" encoding="utf-8"?><!DOCTYPE svg PUBLIC "-//W3C//DTD SVG 1.1//EN" "http://www.w3.org/Graphics/SVG/1.1/DTD/svg11.dtd"><svg class="relative top-[2px] inline-block align-baseline" version="1.1" id="圖層_1" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" x="0px" y="0px" width="1rem" height="1rem" viewBox="0 0 512 512" enable-background="new 0 0 512 512" xml:space="preserve"><path fill="#0E83CD" d="M256.4,25.8l-200,115.5L56,371.5l199.6,114.7l200-115.5l0.4-230.2L256.4,25.8z M349,354.6l-18.4,10.7l-18.6-11V275H200v79.6l-18.4,10.7l-18.6-11v-197l18.5-10.6l18.5,10.8V237h112v-79.6l18.5-10.6l18.5,10.8V354.6z"/></svg><a target="_blank" class="text-base" href="https://hexo.io">Hexo</a></span>
+            <span class="text-sm lg:block">THEME&nbsp;<a class="text-base" target="_blank" href="https://github.com/EvanNotFound/hexo-theme-redefine">Redefine v2.9.0</a></span>
+        </div>
+        
+        
+            <div>
+                Blog up for <span class="odometer" id="runtime_days" ></span> days <span class="odometer" id="runtime_hours"></span> hrs <span class="odometer" id="runtime_minutes"></span> Min <span class="odometer" id="runtime_seconds"></span> Sec
+            </div>
+        
+        
+            <script data-swup-reload-script>
+                try {
+                    function odometer_init() {
+                    const elements = document.querySelectorAll('.odometer');
+                    elements.forEach(el => {
+                        new Odometer({
+                            el,
+                            format: '( ddd).dd',
+                            duration: 200
+                        });
+                    });
+                    }
+                    odometer_init();
+                } catch (error) {}
+            </script>
+        
+        
+            
+                
+        
+                
+        
+                
+
+                    
+                        <script data-swup-reload-script type="text/javascript" src="/js/love.js"></script>
+                    
+        
+        
+    </div>  
+</footer>
+		</div>
+	</div>
+
+	
+	<div class="post-tools">
+		<div class="post-tools-container">
+	<ul class="article-tools-list">
+		<!-- TOC aside toggle -->
+		
+		<li class="right-bottom-tools page-aside-toggle">
+			<i class="fa-regular fa-outdent"></i>
+		</li>
+		
+
+		<!-- go comment -->
+		
+		<li class="go-comment">
+			<i class="fa-regular fa-comments"></i>
+		</li>
+		
+	</ul>
+</div>
+	</div>
+	
+
+	<div class="right-side-tools-container">
+		<div class="side-tools-container">
+	<ul class="hidden-tools-list">
+		<li class="right-bottom-tools tool-font-adjust-plus flex justify-center items-center">
+			<i class="fa-regular fa-magnifying-glass-plus"></i>
+		</li>
+
+		<li class="right-bottom-tools tool-font-adjust-minus flex justify-center items-center">
+			<i class="fa-regular fa-magnifying-glass-minus"></i>
+		</li>
+
+		<li class="right-bottom-tools tool-dark-light-toggle flex justify-center items-center">
+			<i class="fa-regular fa-moon"></i>
+		</li>
+
+		<!-- rss -->
+		
+		<li class="right-bottom-tools rss flex justify-center items-center">
+			<a class="flex justify-center items-center" href="/atom.xml" target="_blank">
+				<i class="fa-regular fa-rss"></i>
+			</a>
+		</li>
+		
+
+		
+
+		<li class="right-bottom-tools tool-scroll-to-bottom flex justify-center items-center">
+			<i class="fa-regular fa-arrow-down"></i>
+		</li>
+	</ul>
+
+	<ul class="visible-tools-list">
+		<li class="right-bottom-tools toggle-tools-list flex justify-center items-center">
+			<i class="fa-regular fa-cog fa-spin"></i>
+		</li>
+		
+		<li class="right-bottom-tools tool-scroll-to-top flex justify-center items-center">
+			<i class="arrow-up fas fa-arrow-up"></i>
+			<span class="percent"></span>
+		</li>
+		
+		
+	</ul>
+</div>
+	</div>
+
+	<div class="image-viewer-container" role="dialog" aria-modal="true" aria-label="Image viewer">
+	<button class="image-viewer-close" type="button" aria-label="Close">
+		<i class="fa-solid fa-xmark"></i>
+	</button>
+	<button class="image-viewer-prev" type="button" aria-label="Prev">
+		<i class="fa-solid fa-chevron-left"></i>
+	</button>
+	<div class="image-viewer-frame">
+		<img src="" alt="">
+	</div>
+	<div class="image-viewer-exif-panel hidden absolute left-1/2 bottom-20 -translate-x-1/2 w-[min(92vw,420px)] max-h-[60vh] overflow-hidden rounded-2xl bg-background-color-transparent-80 p-4 text-left shadow-redefine-flat backdrop-blur-md" role="dialog" aria-label="EXIF" aria-hidden="true">
+		<div class="flex items-center justify-between mb-3">
+			<span class="text-sm font-semibold text-first-text-color">EXIF</span>
+			<button class="image-viewer-exif-close flex h-8 w-8 items-center justify-center rounded-full bg-background-color-transparent-80 text-first-text-color transition hover:bg-background-color-transparent-40" type="button" aria-label="Close">
+				<i class="fa-solid fa-xmark text-[0.65rem]"></i>
+			</button>
+		</div>
+		<div class="image-viewer-exif-cards grid grid-cols-1 sm:grid-cols-2 gap-3 max-h-[50vh] overflow-y-auto pr-1 scrollbar-hide"></div>
+		<template class="image-viewer-exif-card-template">
+			<div class="rounded-lg bg-background-color-transparent-40 px-3 py-2">
+				<div class="image-viewer-exif-card-header flex items-center gap-2 mb-1">
+					<i class="image-viewer-exif-card-icon fa-solid fa-circle-info text-xs text-third-text-color"></i>
+					<div class="image-viewer-exif-card-title text-xs font-semibold text-first-text-color"></div>
+				</div>
+				<div class="image-viewer-exif-card-items flex flex-col gap-1"></div>
+			</div>
+		</template>
+	</div>
+	<button class="image-viewer-exif-toggle flex items-center gap-2 hidden absolute left-1/2 bottom-6 -translate-x-1/2 rounded-full border border-border-color bg-background-color-transparent-80 px-4 py-2 text-first-text-color backdrop-blur-md transition hover:bg-background-color-transparent-40" type="button" aria-label="EXIF" aria-expanded="false">
+		<i class="fa-solid fa-circle-info text-xs"></i>
+		<span class="text-xs font-semibold uppercase tracking-wider">EXIF</span>
+	</button>
+	<button class="image-viewer-next" type="button" aria-label="Next">
+		<i class="fa-solid fa-chevron-right"></i>
+	</button>
+</div>
+
+
+	
+	<div class="search-pop-overlay">
+	<div class="popup search-popup">
+		<div class="search-header">
+			<span class="search-input-field-pre">
+				<i class="fa-solid fa-keyboard"></i>
+			</span>
+			<div class="search-input-container">
+				<input autocomplete="off" autocorrect="off" autocapitalize="off" placeholder="Search..." spellcheck="false" type="search" class="search-input">
+			</div>
+			<span class="popup-btn-close">
+				<i class="fa-solid fa-times"></i>
+			</span>
+		</div>
+		<div id="search-result">
+			<div id="no-result">
+				<i class="fa-solid fa-spinner fa-spin-pulse fa-5x fa-fw"></i>
+			</div>
+		</div>
+	</div>
+</div>
+	
+
+</main>
+
+
+
+<script src="/js/build/libs/Swup.min.js"></script>
+
+<script src="/js/build/libs/SwupSlideTheme.min.js"></script>
+
+<script src="/js/build/libs/SwupScriptsPlugin.min.js"></script>
+
+<script src="/js/build/libs/SwupProgressPlugin.min.js"></script>
+
+<script src="/js/build/libs/SwupScrollPlugin.min.js"></script>
+
+<script src="/js/build/libs/SwupPreloadPlugin.min.js"></script>
+
+<script>
+    window.swup = new Swup({
+        plugins: [
+            new SwupScriptsPlugin({
+                optin: true,
+            }),
+            new SwupProgressPlugin(),
+            new SwupScrollPlugin({
+                offset: 80,
+            }),
+            new SwupSlideTheme({
+                mainElement: ".main-content-body",
+            }),
+            new SwupPreloadPlugin(),
+        ],
+        containers: ["#swup"],
+    });
+
+    window.dispatchEvent(
+        new CustomEvent("redefine:swup:ready", {
+            detail: {
+                swup: window.swup,
+            },
+        }),
+    );
+</script>
+
+
+
+
+	
+<script src="/js/build/main.js" type="module"></script>
+
+
+
+    
+<script src="/js/build/libs/odometer.min.js"></script>
+
+    
+<link rel="stylesheet" href="/assets/odometer-theme-minimal.css">
+
+
+
+
+
+
+
+  
+<script src="/js/build/libs/Typed.min.js"></script>
+<script src="/js/build/libs/minimasonry.min.js" data-swup-reload-script=""></script>
+
+
+
+
+<script src="/js/build/libs/moment-with-locales.min.js" data-swup-reload-script=""></script>
+
+
+
+	
+</body>
+
+</html>

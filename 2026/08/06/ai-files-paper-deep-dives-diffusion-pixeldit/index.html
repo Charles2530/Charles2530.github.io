@@ -1,0 +1,2106 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="keywords" content="Charles">
+    
+    
+    <meta name="author" content="Charles">
+    
+    <!-- Completely eliminate flash of wrong theme -->
+    <script>
+        (function() {
+            const THEME_KEY = "REDEFINE-THEME-STATUS";
+            const DARK = "dark", LIGHT = "light";
+            
+            // Get preferred theme
+            function getTheme() {
+                try {
+                    const saved = localStorage.getItem(THEME_KEY);
+                    if (saved) {
+                        const { isDark } = JSON.parse(saved);
+                        return isDark ? DARK : LIGHT;
+                    }
+                } catch (e) {}
+                
+                return matchMedia("(prefers-color-scheme: dark)").matches ? DARK : LIGHT;
+            }
+            
+            // Apply theme to document
+            function applyTheme(theme) {
+                const isDark = theme === DARK;
+                const root = document.documentElement;
+                
+                // Set classes for compatibility
+                root.classList.add(theme);
+                root.classList.remove(isDark ? LIGHT : DARK);
+                root.style.colorScheme = theme;
+            }
+            
+            // Initial application
+            const theme = getTheme();
+            applyTheme(theme);
+            
+            // Listen for system preference changes
+            matchMedia("(prefers-color-scheme: dark)").addEventListener("change", ({ matches }) => {
+                // Only update if using system preference (no localStorage entry)
+                if (!localStorage.getItem(THEME_KEY)) {
+                    applyTheme(matches ? DARK : LIGHT);
+                }
+            });
+            
+            // Set body classes ASAP (before DOMContentLoaded)
+            (function() {
+                const addBodyClass = () => {
+                    const b = document.body;
+                    if (!b) return false;
+                    b.classList.add(theme + "-mode");
+                    return true;
+                };
+
+                // Try immediately
+                if (addBodyClass()) return;
+
+                // Observe until body exists
+                const mo = new MutationObserver(() => {
+                    if (addBodyClass()) mo.disconnect();
+                });
+                mo.observe(document.documentElement, { childList: true, subtree: true });
+            })();
+        })();
+    </script>
+    
+    <!-- preconnect -->
+<!--- Seo Part-->
+    
+    <link rel="canonical" href="https://charles2530.github.io/2026/08/06/ai-files-paper-deep-dives-diffusion-pixeldit/"/>
+    <meta name="robots" content="index,follow">
+    <meta name="googlebot" content="index,follow">
+    <meta name="revisit-after" content="1 days">
+    
+    
+        
+        <meta name="description" content="This is Charles&#39;s Castle.">
+<meta property="og:type" content="article">
+<meta property="og:title" content="论文专题讲解：PixelDiT：无 VAE 的像素空间 DiT">
+<meta property="og:url" content="https://charles2530.github.io/2026/08/06/ai-files-paper-deep-dives-diffusion-pixeldit/index.html">
+<meta property="og:site_name" content="Charles&#39;s Castle">
+<meta property="og:description" content="This is Charles&#39;s Castle.">
+<meta property="og:locale" content="en_US">
+<meta property="og:image" content="https://charles2530.github.io/image/background/logo.jpg">
+<meta property="article:published_time" content="2026-08-06T01:00:00.000Z">
+<meta property="article:modified_time" content="2026-08-06T01:00:00.000Z">
+<meta property="article:author" content="Du Jinyang">
+<meta property="article:tag" content="AI">
+<meta property="article:tag" content="扩散模型">
+<meta property="article:tag" content="论文专题">
+<meta name="twitter:card" content="summary">
+<meta name="twitter:image" content="https://charles2530.github.io/image/background/logo.jpg">
+    
+    
+    <!--- Icon Part-->
+    <link rel="icon" type="image/png" href="https://charles2530.github.io/image/background/favicon.png" sizes="192x192">
+    <link rel="apple-touch-icon" sizes="180x180" href="https://charles2530.github.io/image/background/favicon.png">
+    <meta name="theme-color" content="#A31F34">
+    <link rel="shortcut icon" href="https://charles2530.github.io/image/background/favicon.png">
+    <!--- Page Info-->
+    
+    <title>
+        
+            论文专题讲解：PixelDiT：无 VAE 的像素空间 DiT | Charles&#39;s Castle
+        
+    </title>
+
+    
+<link rel="stylesheet" href="/fonts/Chillax/chillax.css">
+
+
+    <!--- Inject Part-->
+    
+        
+            
+    
+            
+    
+            
+                
+                    <link rel="stylesheet" href="/katex/katex.min.css">
+                
+    
+            
+                
+                    <link rel="stylesheet" href="/css/site-polish-v2.css">
+                
+    
+            
+                
+                    <script data-swup-reload-script>
+(function() {
+  function loadBaiduAnalytics() {
+    if (window.__baiduAnalyticsLoaded) return;
+    window.__baiduAnalyticsLoaded = true;
+    window._hmt = window._hmt || [];
+    var hm = document.createElement("script");
+    hm.async = true;
+    hm.src = "https://hm.baidu.com/hm.js?8e0e5f382d14d87cbeadc33a36e71e86";
+    document.head.appendChild(hm);
+  }
+  if ("requestIdleCallback" in window) {
+    requestIdleCallback(loadBaiduAnalytics, { timeout: 3000 });
+  } else {
+    window.addEventListener("load", function() {
+      setTimeout(loadBaiduAnalytics, 1500);
+    });
+  }
+})();
+</script>
+
+                
+    
+
+    
+<link rel="stylesheet" href="/css/style.css">
+
+
+    
+        
+<link rel="stylesheet" href="/css/build/tailwind.css">
+
+    
+
+    
+<link rel="stylesheet" href="/fonts/GeistMono/geist-mono.css">
+
+    
+<link rel="stylesheet" href="/fonts/Geist/geist.css">
+
+    <!--- Font Part-->
+    
+    
+    
+    
+    
+    
+        
+<script src="/js/build/libs/anime.min.js"></script>
+
+    
+
+    <script id="hexo-configurations">
+    window.config = {"hostname":"charles2530.github.io","root":"/","language":"en","path":"search.xml"};
+    window.theme = {"articles":{"style":{"font_size":"16px","line_height":1.5,"image_border_radius":"14px","image_alignment":"center","image_caption":false,"link_icon":true,"delete_mask":false,"title_alignment":"left","headings_top_spacing":{"h1":"5rem","h2":"4rem","h3":"2.8rem","h4":"2.5rem","h5":"2.2rem","h6":"2rem"}},"word_count":{"enable":true,"count":true,"min2read":true},"author_label":{"enable":true,"auto":true,"list":["lol","Neo","God"]},"code_block":{"copy":true,"style":"mac","highlight_theme":{"light":"github","dark":"vs2015"},"font":{"enable":false,"family":null,"url":null}},"toc":{"enable":true,"max_depth":6,"number":false,"expand":true,"init_open":true},"copyright":{"enable":true,"default":"cc_by_nc_sa"},"lazyload":true,"pangu_js":false,"recommendation":{"enable":false,"title":"recommend_articles","limit":3,"mobile_limit":2,"placeholder":"https://charles2530.github.io/image/background/p3.jfif","skip_dirs":[]}},"colors":{"primary":"#A31F34","secondary":"#1890ff","default_mode":"light"},"global":{"fonts":{"chinese":{"enable":false,"family":null,"url":null},"english":{"enable":false,"family":null,"url":null},"title":{"enable":false,"family":null,"url":null}},"content_max_width":"1000px","sidebar_width":"210px","hover":{"shadow":true,"scale":true},"scroll_progress":{"bar":true,"percentage":true},"website_counter":{"url":"https://cn.vercount.one/js","enable":true,"site_pv":true,"site_uv":true,"post_pv":true},"single_page":true,"preloader":{"enable":true,"custom_message":null},"side_tools":{"gear_rotation":true,"auto_expand":false},"open_graph":{"enable":true,"image":"https://charles2530.github.io/image/background/logo.jpg","description":"This is Charles's Castle."},"google_analytics":{"enable":false,"id":null}},"home_banner":{"enable":true,"style":"fixed","image":{"light":"https://charles2530.github.io/image/background/background-light1.jpg","dark":"https://charles2530.github.io/image/background/background-dark1.jpg"},"title":"Charles's Castle","subtitle":{"text":["Happiness is best!","Never give up!","Everyday is a gift!"],"hitokoto":{"enable":false,"show_author":false,"api":"https://v1.hitokoto.cn"},"typing_speed":100,"backing_speed":80,"starting_delay":500,"backing_delay":1500,"loop":true,"smart_backspace":true},"text_color":{"light":"#000000","dark":"#d1d1b6"},"text_style":{"title_size":"3.2rem","subtitle_size":"1.5rem","line_height":1.2},"custom_font":{"enable":false,"family":null,"url":null},"social_links":{"enable":true,"style":"center","links":[{"icon":"fa-brands fa-github","url":"https://github.com/Charles2530/"},{"icon":"fa-brands fa-zhihu","url":"https://www.zhihu.com/people/yang-guang-xiao-zi-55-55"},{"icon":"fa-solid fa-at","url":"mailto:charles2530@163.com"},{"icon":"fa-brands fa-telegram","url":null},{"icon":"/images/custom-icon.svg","url":null}],"qrs":[{"icon":"fa-brands fa-weixin","qr":"https://charles2530.github.io/image/background/Wechat_icon.png"},{"icon":"/images/custom-icon.svg","qr":null}]}},"plugins":{"feed":{"enable":true},"aplayer":{"enable":false,"type":"fixed","audios":[{"name":null,"artist":null,"url":null,"cover":null,"lrc":null}]},"mermaid":{"enable":false,"version":"11.4.1","theme":{"light":"default","dark":"dark"}}},"version":"2.9.0","navbar":{"auto_hide":true,"color":{"left":"#f78736","right":"#367df7","transparency":35},"width":{"home":"1200px","pages":"1000px"},"links":{"Home":{"path":"/","icon":"fa-regular fa-house"},"Categories":{"path":"/categories","icon":"fas fa-bookmark"},"Tags":{"path":"/tags","icon":"fas fa-tags"},"About":{"icon":"fa-regular fa-user","submenus":{"Me":"https://jinyang-du.github.io/","Github":"https://github.com/Charles2530/","Blog":"https://charles2530.github.io","Statistics":"https://tongji.baidu.com/"}}},"search":{"enable":true,"preload":false}},"page_templates":{"friends_column":2,"tags_style":"blur","masonry":{"batch_size":12,"initial_batch_size":24}},"home":{"sidebar":{"enable":true,"position":"left","first_item":"menu","announcement":"This is Charles's Castle","show_on_mobile":true,"links":{"Archives":{"path":"/archives","icon":"fa-regular fa-archive"},"Photos":{"icon":"fa-solid fa-image","path":"/masonry/"},"Essays":{"icon":"fa-solid fa-message-lines","path":"/essay/"},"Friends":{"icon":"fa-solid fa-user-group","path":"/friends/"}}},"article_date_format":"auto","excerpt_length":200,"categories":{"enable":true,"limit":3},"tags":{"enable":true,"limit":3}},"footer":{"runtime":true,"icon":"<i class=\"fa-solid fa-heart fa-beat\" style=\"--fa-animation-duration: 0.5s; color: #f54545\"></i>","start":"2022/12/27 00:00:00","statistics":true,"customize":null,"icp":{"enable":false,"number":null,"url":null}},"footerStart":"2022/12/27 00:00:00","mermaid":{"style":{"light":"default","dark":"dark"}}};
+    window.lang_ago = {"second":"%s seconds ago","minute":"%s minutes ago","hour":"%s hours ago","day":"%s days ago","week":"%s weeks ago","month":"%s months ago","year":"%s years ago"};
+    window.i18n = {"search":"Search...","toc":"On this page","prev":"Prev","next":"Next","prev_posts":"Prev posts","next_posts":"Next posts","page":"Page %d","recent_posts":"Recent Posts","share":"Share","powered_by":"POWERED BY %s","theme":"THEME","rss_feed":"RSS Feed","category":"Category","categories":"Categories","tag":"Tag","tags":"Tags","post":"Post","posts":"Posts","tagcloud":"Tag Cloud","comment":"Comment","comments":"Comments","home":"Home","archive":"Archive","archives":"Archives","top":"TOP","sticky":"Sticky","go-back-home":"Go Back Home","masonry_loading":"Loading photos...","image_viewer":"Image viewer","close":"Close","exif":{"title":"EXIF","cards":{"camera":"Camera","lens":"Lens","exposure":"Exposure","other":"Other"},"fields":{"make":"Brand","model":"Model","date_taken":"Date taken","lens_model":"Lens","focal_length":"Focal length","focus_mode":"Focus mode","shutter":"Shutter","aperture":"Aperture","iso":"ISO","exposure_program":"Exposure program","exposure_compensation":"Exposure compensation","metering_mode":"Metering mode","flash":"Flash","white_balance":"White balance","latitude":"Latitude","longitude":"Longitude","altitude":"Altitude"},"status":{"loading":"Loading...","no_exif":"No EXIF available","library_missing":"EXIF library not loaded","image_source_missing":"Image source unavailable","unavailable":"EXIF unavailable (blocked by CORS or missing metadata)","flag_unavailable":"EXIF unavailable"}},"about":"About","changelog":"Changelog","links":"Links","link":"Link","friends":"Friends","friend":"Friend","timeline":"Timeline","shuoshuo":"Shuoshuo","bookmarks":"Bookmarks","site_uv":"VISITOR COUNT","site_pv":"TOTAL PAGE VIEWS","read_more":"Read more","wordcount":"Words","min2read":"Mins","status":"Status","runtime":"Blog up for","days":"days","hours":"hrs","minutes":"Min","seconds":"Sec","optimized_by":"and Optimized by Evan","rights":"All Rights Reserved","site_posts":"%s posts in total","site_wordcount":"%s words in total","copyright":{"author":"Author","title":"Title","link":"Link","create_time":"Created at","update_time":"Updated at","license_title":"License","license_content":"This work is licensed under %s.","all_rights_reserved":"All Rights Reserved &#169; %s","public_domain":"This work is in the public domain."},"ago":{"second":"%s seconds ago","minute":"%s minutes ago","hour":"%s hours ago","day":"%s days ago","week":"%s weeks ago","month":"%s months ago","year":"%s years ago"},"create_time":"Created","update_time":"Updated","expired":"This post is written %s days ago, and the content may not be up to date."};
+    window.data = {"masonry":true};
+  </script>
+    
+    <!--- Fontawesome Part-->
+    
+<link rel="stylesheet" href="/fontawesome/fontawesome.min.css">
+
+    
+<link rel="stylesheet" href="/fontawesome/brands.min.css">
+
+    
+<link rel="stylesheet" href="/fontawesome/solid.min.css">
+
+    
+<link rel="stylesheet" href="/fontawesome/regular.min.css">
+
+    
+    
+    
+    
+<meta name="generator" content="Hexo 6.3.0"><link rel="alternate" href="/atom.xml" title="Charles's Castle" type="application/atom+xml">
+<link rel="stylesheet" href="/css/prism-tomorrow.css" type="text/css"></head>
+
+
+<body>
+	<div class="progress-bar-container">
+	
+	<span class="scroll-progress-bar"></span>
+	
+
+	
+	<span class="pjax-progress-bar"></span>
+	<!--        <span class="swup-progress-icon">-->
+	<!--            <i class="fa-solid fa-circle-notch fa-spin"></i>-->
+	<!--        </span>-->
+	
+</div>
+
+<style>
+    :root {
+        --preloader-background-color: #fff;
+        --preloader-text-color: #000;
+    }
+
+    @media (prefers-color-scheme: dark) {
+        :root {
+            --preloader-background-color: #202124;
+            --preloader-text-color: #fff;
+        }
+    }
+
+    @media (prefers-color-scheme: light) {
+        :root {
+            --preloader-background-color: #fff;
+            --preloader-text-color: #000;
+        }
+    }
+
+    @media (max-width: 600px) {
+        .ml13 {
+            font-size: 2.6rem !important; /* Adjust this value as needed */
+        }
+    }
+
+    .preloader {
+        display: flex;
+        flex-direction: column;
+        gap: 1rem; /* Tailwind 'gap-4' is 1rem */
+        align-items: center;
+        justify-content: center;
+        position: fixed;
+        padding: 12px;
+        top: 0;
+        right: 0;
+        bottom: 0;
+        left: 0;
+        width: 100vw;
+        height: 100vh; /* 'h-screen' is 100% of the viewport height */
+        background-color: var(--preloader-background-color);
+        z-index: 1100; /* 'z-[1100]' sets the z-index */
+        transition: opacity 0.2s ease-in-out;
+    }
+
+    .ml13 {
+        font-size: 3.2rem;
+        /* text-transform: uppercase; */
+        color: var(--preloader-text-color);
+        letter-spacing: -1px;
+        font-weight: 500;
+        font-family: 'Chillax-Variable', sans-serif;
+        text-align: center;
+    }
+
+    .ml13 .word {
+        display: inline-flex;
+        flex-wrap: wrap;
+        white-space: nowrap;
+    }
+
+    .ml13 .letter {
+        display: inline-block;
+        line-height: 1em;
+    }
+</style>
+
+<div class="preloader">
+    <h2 class="ml13">
+        Charles&#39;s Castle
+    </h2>
+    <script>
+        var textWrapper = document.querySelector('.ml13');
+        // Split text into words
+        var words = textWrapper.textContent.trim().split(' ');
+
+        // Clear the existing content
+        textWrapper.innerHTML = '';
+
+        // Wrap each word and its letters in spans
+        words.forEach(function(word) {
+            var wordSpan = document.createElement('span');
+            wordSpan.classList.add('word');
+            wordSpan.innerHTML = word.replace(/\S/g, "<span class='letter'>$&</span>");
+            textWrapper.appendChild(wordSpan);
+            textWrapper.appendChild(document.createTextNode(' ')); // Add space between words
+        });
+
+        var animation = anime.timeline({ loop: true })
+            .add({
+                targets: '.ml13 .letter',
+                translateY: [20, 0],
+                translateZ: 0,
+                opacity: [0, 1],
+                filter: ['blur(5px)', 'blur(0px)'],
+                easing: "easeOutExpo",
+                duration: 1200,
+                delay: (el, i) => 300 + 20 * i,
+            })
+            .add({
+                targets: '.ml13 .letter',
+                translateY: [0, -20],
+                opacity: [1, 0],
+                filter: ['blur(0px)', 'blur(5px)'],
+                easing: "easeInExpo",
+                duration: 1000,
+                delay: (el, i) => 15 * i,
+                complete: function() {
+                    hidePreloader();
+                }
+            }, '-=700');
+
+
+        let themeStatus = JSON.parse(localStorage.getItem('REDEFINE-THEME-STATUS'))?.isDark;
+
+        // If the theme status is not found in local storage, check the preferred color scheme
+        if (themeStatus === undefined || themeStatus === null) {
+            if (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) {
+                themeStatus = 'dark';
+            } else {
+                themeStatus = 'light';
+            }
+        }
+
+        // Now you can use the themeStatus variable in your code
+        if (themeStatus) {
+            document.documentElement.style.setProperty('--preloader-background-color', '#202124');
+            document.documentElement.style.setProperty('--preloader-text-color', '#fff');
+        } else {
+            document.documentElement.style.setProperty('--preloader-background-color', '#fff');
+            document.documentElement.style.setProperty('--preloader-text-color', '#000');
+        }
+
+        window.addEventListener('load', function () {
+            setTimeout(hidePreloader, 5000); // Call hidePreloader after 5000 milliseconds if not already called by animation
+        });
+
+        function hidePreloader() {
+            var preloader = document.querySelector('.preloader');
+            preloader.style.opacity = '0';
+            setTimeout(function () {
+                preloader.style.display = 'none';
+            }, 200);
+        }
+    </script>
+</div>
+
+<main class="page-container" id="swup">
+
+	
+
+	<div class="main-content-container flex flex-col justify-between min-h-dvh">
+		<div class="main-content-header">
+			<header class="navbar-container px-6 md:px-12">
+    <div class="navbar-content transition-navbar ">
+        <div class="left">
+            
+                <a class="logo-image h-8 w-8 sm:w-10 sm:h-10 mr-3" href="/">
+                    <img src="https://charles2530.github.io/image/background/logo.jpg" class="w-full h-full rounded-xs">
+                </a>
+            
+            <a class="logo-title" href="/">
+                
+                Charles&#39;s Castle
+                
+            </a>
+        </div>
+
+        <div class="right">
+            <!-- PC -->
+            <div class="desktop">
+                <ul class="navbar-list">
+                    
+                        
+                            
+
+                            <li class="navbar-item">
+                                <!-- Menu -->
+                                <a class=""
+                                   href="/"
+                                        >
+                                    <i class="fa-regular fa-house fa-fw"></i>
+                                    HOME
+                                    
+                                </a>
+
+                                <!-- Submenu -->
+                                
+                            </li>
+                    
+                        
+                            
+
+                            <li class="navbar-item">
+                                <!-- Menu -->
+                                <a class=""
+                                   href="/categories"
+                                        >
+                                    <i class="fas fa-bookmark fa-fw"></i>
+                                    CATEGORIES
+                                    
+                                </a>
+
+                                <!-- Submenu -->
+                                
+                            </li>
+                    
+                        
+                            
+
+                            <li class="navbar-item">
+                                <!-- Menu -->
+                                <a class=""
+                                   href="/tags"
+                                        >
+                                    <i class="fas fa-tags fa-fw"></i>
+                                    TAGS
+                                    
+                                </a>
+
+                                <!-- Submenu -->
+                                
+                            </li>
+                    
+                        
+                            
+
+                            <li class="navbar-item">
+                                <!-- Menu -->
+                                <a class="has-dropdown"
+                                   href="#"
+                                        onClick=&#34;return false;&#34;>
+                                    <i class="fa-regular fa-user fa-fw"></i>
+                                    ABOUT
+                                    <i class="fa-solid fa-chevron-down fa-fw"></i>
+                                </a>
+
+                                <!-- Submenu -->
+                                
+                                    <ul class="sub-menu">
+                                        
+                                            <li>
+                                                <a target="_blank" rel="noopener" href="https://jinyang-du.github.io/">
+                                                    ME
+                                                </a>
+                                            </li>
+                                        
+                                            <li>
+                                                <a target="_blank" rel="noopener" href="https://github.com/Charles2530/">
+                                                    GITHUB
+                                                </a>
+                                            </li>
+                                        
+                                            <li>
+                                                <a href="https://charles2530.github.io">
+                                                    BLOG
+                                                </a>
+                                            </li>
+                                        
+                                            <li>
+                                                <a target="_blank" rel="noopener" href="https://tongji.baidu.com/">
+                                                    STATISTICS
+                                                </a>
+                                            </li>
+                                        
+                                    </ul>
+                                
+                            </li>
+                    
+                    
+                        <li class="navbar-item search search-popup-trigger">
+                            <i class="fa-solid fa-magnifying-glass"></i>
+                        </li>
+                    
+                </ul>
+            </div>
+            <!-- Mobile -->
+            <div class="mobile">
+                
+                    <div class="icon-item search search-popup-trigger"><i class="fa-solid fa-magnifying-glass"></i>
+                    </div>
+                
+                <div class="icon-item navbar-bar">
+                    <div class="navbar-bar-middle"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Mobile sheet -->
+    <div class="navbar-drawer h-dvh w-full absolute top-0 left-0 bg-background-color flex flex-col justify-between">
+        <ul class="drawer-navbar-list flex flex-col px-4 justify-center items-start">
+            
+                
+                    
+
+                    <li class="drawer-navbar-item text-base my-1.5 flex flex-col w-full">
+                        
+                        <a class="py-1.5 px-2 flex flex-row items-center justify-between gap-1 hover:!text-primary active:!text-primary text-2xl font-semibold group border-b border-border-color hover:border-primary w-full "
+                           href="/"
+                        >
+                            <span>
+                                HOME
+                            </span>
+                            
+                                <i class="fa-regular fa-house fa-sm fa-fw"></i>
+                            
+                        </a>
+                        
+
+                        
+                    </li>
+            
+                
+                    
+
+                    <li class="drawer-navbar-item text-base my-1.5 flex flex-col w-full">
+                        
+                        <a class="py-1.5 px-2 flex flex-row items-center justify-between gap-1 hover:!text-primary active:!text-primary text-2xl font-semibold group border-b border-border-color hover:border-primary w-full "
+                           href="/categories"
+                        >
+                            <span>
+                                CATEGORIES
+                            </span>
+                            
+                                <i class="fas fa-bookmark fa-sm fa-fw"></i>
+                            
+                        </a>
+                        
+
+                        
+                    </li>
+            
+                
+                    
+
+                    <li class="drawer-navbar-item text-base my-1.5 flex flex-col w-full">
+                        
+                        <a class="py-1.5 px-2 flex flex-row items-center justify-between gap-1 hover:!text-primary active:!text-primary text-2xl font-semibold group border-b border-border-color hover:border-primary w-full "
+                           href="/tags"
+                        >
+                            <span>
+                                TAGS
+                            </span>
+                            
+                                <i class="fas fa-tags fa-sm fa-fw"></i>
+                            
+                        </a>
+                        
+
+                        
+                    </li>
+            
+                
+                    
+
+                    <li class="drawer-navbar-item-sub text-base my-1.5 flex flex-col w-full">
+                        
+                        <div class="py-1.5 px-2 flex flex-row items-center justify-between gap-1 hover:!text-primary active:!text-primary cursor-pointer text-2xl font-semibold group border-b border-border-color hover:border-primary w-full "
+                             navbar-data-toggle="submenu-About"
+                        >
+                            <span>
+                                ABOUT
+                            </span>
+                            
+                                <i class="fa-solid fa-chevron-right fa-sm fa-fw transition-all"></i>
+                            
+                        </div>
+                        
+
+                        
+                            <div class="flex-col items-start px-2 py-2 hidden" data-target="submenu-About">
+                                
+                                    <div class="drawer-navbar-item text-base flex flex-col justify-center items-start hover:underline active:underline hover:underline-offset-1 rounded-3xl">
+                                        <a class=" text-third-text-color text-xl"
+                                           target="_blank" rel="noopener" href="https://jinyang-du.github.io/">ME</a>
+                                    </div>
+                                
+                                    <div class="drawer-navbar-item text-base flex flex-col justify-center items-start hover:underline active:underline hover:underline-offset-1 rounded-3xl">
+                                        <a class=" text-third-text-color text-xl"
+                                           target="_blank" rel="noopener" href="https://github.com/Charles2530/">GITHUB</a>
+                                    </div>
+                                
+                                    <div class="drawer-navbar-item text-base flex flex-col justify-center items-start hover:underline active:underline hover:underline-offset-1 rounded-3xl">
+                                        <a class=" text-third-text-color text-xl"
+                                           href="https://charles2530.github.io">BLOG</a>
+                                    </div>
+                                
+                                    <div class="drawer-navbar-item text-base flex flex-col justify-center items-start hover:underline active:underline hover:underline-offset-1 rounded-3xl">
+                                        <a class=" text-third-text-color text-xl"
+                                           target="_blank" rel="noopener" href="https://tongji.baidu.com/">STATISTICS</a>
+                                    </div>
+                                
+                            </div>
+                        
+                    </li>
+            
+
+            
+            
+                
+                    
+                    <li class="drawer-navbar-item text-base my-1.5 flex flex-col w-full">
+                        <a class="py-1.5 px-2 flex flex-row items-center justify-between gap-1 hover:!text-primary active:!text-primary text-2xl font-semibold group border-b border-border-color hover:border-primary w-full active"
+                           href="/archives"
+                        >
+                            <span>Archives</span>
+                            <i class="fa-regular fa-archive fa-sm fa-fw"></i>
+                        </a>
+                    </li>
+                
+                    
+                    <li class="drawer-navbar-item text-base my-1.5 flex flex-col w-full">
+                        <a class="py-1.5 px-2 flex flex-row items-center justify-between gap-1 hover:!text-primary active:!text-primary text-2xl font-semibold group border-b border-border-color hover:border-primary w-full active"
+                           href="/masonry/"
+                        >
+                            <span>Photos</span>
+                            <i class="fa-solid fa-image fa-sm fa-fw"></i>
+                        </a>
+                    </li>
+                
+                    
+                    <li class="drawer-navbar-item text-base my-1.5 flex flex-col w-full">
+                        <a class="py-1.5 px-2 flex flex-row items-center justify-between gap-1 hover:!text-primary active:!text-primary text-2xl font-semibold group border-b border-border-color hover:border-primary w-full active"
+                           href="/essay/"
+                        >
+                            <span>Essays</span>
+                            <i class="fa-solid fa-message-lines fa-sm fa-fw"></i>
+                        </a>
+                    </li>
+                
+                    
+                    <li class="drawer-navbar-item text-base my-1.5 flex flex-col w-full">
+                        <a class="py-1.5 px-2 flex flex-row items-center justify-between gap-1 hover:!text-primary active:!text-primary text-2xl font-semibold group border-b border-border-color hover:border-primary w-full active"
+                           href="/friends/"
+                        >
+                            <span>Friends</span>
+                            <i class="fa-solid fa-user-group fa-sm fa-fw"></i>
+                        </a>
+                    </li>
+                
+            
+        </ul>
+
+        <div class="statistics flex justify-around my-2.5">
+    <a class="item tag-count-item flex flex-col justify-center items-center w-20" href="/tags">
+        <div class="number text-2xl sm:text-xl text-second-text-color font-semibold">47</div>
+        <div class="label text-third-text-color text-sm">Tags</div>
+    </a>
+    <a class="item tag-count-item flex flex-col justify-center items-center w-20" href="/categories">
+        <div class="number text-2xl sm:text-xl text-second-text-color font-semibold">94</div>
+        <div class="label text-third-text-color text-sm">Categories</div>
+    </a>
+    <a class="item tag-count-item flex flex-col justify-center items-center w-20" href="/archives">
+        <div class="number text-2xl sm:text-xl text-second-text-color font-semibold">607</div>
+        <div class="label text-third-text-color text-sm">Posts</div>
+    </a>
+</div>
+    </div>
+
+    <div class="window-mask"></div>
+
+</header>
+
+
+		</div>
+
+		<div class="main-content-body transition-fade-up">
+			
+
+			<div class="main-content">
+				<div class="post-page-container flex relative justify-between box-border w-full h-full">
+	<div class="article-content-container">
+
+		<div class="article-title relative w-full">
+			
+			
+			
+			<img src="https://charles2530.github.io/image/background/p3.jfif" alt="论文专题讲解：PixelDiT：无 VAE 的像素空间 DiT" class="w-full h-60 sm:h-72 md:h-80 object-cover sm:rounded-t-large dark:brightness-75" />
+			
+			<div class="w-full flex items-center absolute bottom-0 justify-start">
+				<h1 class="article-title-cover text-center mx-6 my-6 text-second-text-color bg-background-color-transparent px-4 py-3 text-3xl sm:text-4xl md:text-5xl font-semibold backdrop-blur-lg rounded-xl border border-border-color ">论文专题讲解：PixelDiT：无 VAE 的像素空间 DiT</h1>
+			</div>
+			
+		</div>
+
+		
+		<div class="article-header flex flex-row gap-2 items-center px-2 sm:px-6 md:px-8">
+			<div class="avatar w-[46px] h-[46px] shrink-0 rounded-medium border border-border-color p-px">
+				<img src="https://charles2530.github.io/image/background/logo2.jpg">
+			</div>
+			<div class="info flex flex-col justify-between">
+				<div class="author flex items-center">
+					<span class="name text-default-text-color text-lg font-semibold">Charles</span>
+					
+					<span class="author-label ml-1.5 text-xs px-2 py-0.5 rounded-small text-third-text-color border border-shadow-color-1">Lv8</span>
+					
+				</div>
+				<div class="meta-info">
+					<div class="article-meta-info">
+    <span class="article-date article-meta-item">
+        <i class="fa-regular fa-pen-fancy"></i>&nbsp;
+        <span class="desktop">2026-08-06 09:00</span>
+        <span class="mobile">2026-08-06 09:00</span>
+        <span class="hover-info">Created</span>
+    </span>
+    
+        <span class="article-date article-meta-item">
+            <i class="fa-regular fa-wrench"></i>&nbsp;
+            <span class="desktop">2026-08-06 09:00</span>
+            <span class="mobile">2026-08-06 09:00</span>
+            <span class="hover-info">Updated</span>
+        </span>
+    
+
+    
+        <span class="article-categories article-meta-item">
+            <i class="fa-regular fa-folders"></i>&nbsp;
+            <ul>
+                
+                
+                    
+                        
+                        <li>
+                            <a href="/categories/AI/">AI</a>&nbsp;
+                        </li>
+                    
+                    
+                
+                    
+                        
+                            <li>></li>
+                        
+                        <li>
+                            <a href="/categories/AI/%E8%AE%BA%E6%96%87%E4%B8%93%E9%A2%98%E8%AE%B2%E8%A7%A3/">论文专题讲解</a>&nbsp;
+                        </li>
+                    
+                    
+                
+            </ul>
+        </span>
+    
+    
+        <span class="article-tags article-meta-item">
+            <i class="fa-regular fa-tags"></i>&nbsp;
+            <ul>
+                
+                    <li>
+                        <a href="/tags/AI/">AI</a>&nbsp;
+                    </li>
+                
+                    <li>
+                        | <a href="/tags/%E6%89%A9%E6%95%A3%E6%A8%A1%E5%9E%8B/">扩散模型</a>&nbsp;
+                    </li>
+                
+                    <li>
+                        | <a href="/tags/%E8%AE%BA%E6%96%87%E4%B8%93%E9%A2%98/">论文专题</a>&nbsp;
+                    </li>
+                
+            </ul>
+        </span>
+    
+
+    
+    
+        <span class="article-wordcount article-meta-item">
+            <i class="fa-regular fa-typewriter"></i>&nbsp;<span>5.6k Words</span>
+        </span>
+    
+    
+        <span class="article-min2read article-meta-item">
+            <i class="fa-regular fa-clock"></i>&nbsp;<span>24 Mins</span>
+        </span>
+    
+    
+        <span class="article-pv article-meta-item">
+            <i class="fa-regular fa-eye"></i>&nbsp;<span id="busuanzi_value_page_pv"></span>
+        </span>
+    
+</div>
+
+				</div>
+			</div>
+		</div>
+		
+
+		
+
+
+		<div class="article-content markdown-body px-2 sm:px-6 md:px-8 pb-8">
+			<div class="callout callout--titled info mb-4 rounded-small shadow-redefine-flat bg-(--callout-bg-color) p-3 pl-1 relative flex flex-row gap-2"><div role="none" class="rounded-full self-stretch w-0.5 bg-(--callout-primary-color) shrink-0 opacity-60"></div><div class="flex flex-col gap-2"><div class="callout__title flex items-center gap-2 font-semibold tracking-tight">论文信息</div><div class="callout__content markdown-body flex-1 min-w-0"><p><strong>论文题名：</strong> PixelDiT: Pixel Diffusion Transformers for Image Generation。<br><br />
+<strong>作者：</strong> Yongsheng Yu、Wei Xiong、Weili Nie、Yichen Sheng、Shiqiu Liu、Jiebo Luo。<br><br />
+<strong>机构：</strong> NVIDIA、University of Rochester。<br><br />
+<strong>时间 / 主题：</strong> arXiv v1：2025-11-25；arXiv v2：2026-04-16；CVPR 2026 Oral，GitHub README 标注为 CVPR 2026 Best Paper Finalist。主题是像素空间扩散、Diffusion Transformer、无 VAE 图像生成。<br><br />
+<strong>arXiv / 项目：</strong> arXiv：<a class="link"   target="_blank" rel="noopener" href="https://arxiv.org/abs/2511.20645" >2511.20645<i class="fa-solid fa-arrow-up-right ml-[0.2em] font-light align-text-top text-[0.7em] link-icon"></i></a>；项目页：<a class="link"   target="_blank" rel="noopener" href="https://pixeldit.github.io/" >pixeldit.github.io<i class="fa-solid fa-arrow-up-right ml-[0.2em] font-light align-text-top text-[0.7em] link-icon"></i></a>；PDF：<a class="link"   target="_blank" rel="noopener" href="https://arxiv.org/pdf/2511.20645" >arxiv.org/pdf/2511.20645<i class="fa-solid fa-arrow-up-right ml-[0.2em] font-light align-text-top text-[0.7em] link-icon"></i></a>。<br><br />
+<strong>GitHub / 模型：</strong> GitHub：<a class="link"   target="_blank" rel="noopener" href="https://github.com/NVlabs/PixelDiT" >github.com/NVlabs/PixelDiT<i class="fa-solid fa-arrow-up-right ml-[0.2em] font-light align-text-top text-[0.7em] link-icon"></i></a>；Hugging Face ImageNet models：<a class="link"   target="_blank" rel="noopener" href="https://huggingface.co/nvidia/PixelDiT-ImageNet" >nvidia/PixelDiT-ImageNet<i class="fa-solid fa-arrow-up-right ml-[0.2em] font-light align-text-top text-[0.7em] link-icon"></i></a>；T2I model：<a class="link"   target="_blank" rel="noopener" href="https://huggingface.co/nvidia/PixelDiT-1300M-1024px" >nvidia/PixelDiT-1300M-1024px<i class="fa-solid fa-arrow-up-right ml-[0.2em] font-light align-text-top text-[0.7em] link-icon"></i></a>。<br><br />
+<strong>元数据来源与核验口径：</strong> 来源：arXiv 页面、论文 PDF、项目页、官方 GitHub README；Checked Date：2026-07-31；Repro Status：Paper / official project / official code and models reviewed, independent reproduction not claimed。</p></div></div></div>
+<h2 id="原论文故事线"><a class="markdownIt-Anchor" href="#原论文故事线"></a> 原论文故事线</h2>
+<h3 id="研究背景"><a class="markdownIt-Anchor" href="#研究背景"></a> 研究背景</h3>
+<p>DiT 系列图像生成模型大多在 latent space 里去噪。这个路线的工程优势很直接：VAE 先把图像压成更短、更低维的 latent token，DiT 的 attention、MLP 和显存压力都会下降。Stable Diffusion、PixArt、FLUX、SD3 等系统都建立在类似的两阶段结构上：先训练或复用 autoencoder，再训练 diffusion / flow model。</p>
+<p>PixelDiT 要重新打开一个老问题：如果 VAE 的压缩本身会丢掉细纹理、文字、小物体边界，并且 VAE 的重建目标和生成目标并不完全一致，那能不能直接在 pixel space 里训练 DiT？这不是简单地“不要 VAE”就结束了。像素空间 token 太多，直接全局 attention 会爆炸；大 patch 又会把每个 <span class="katex"><span class="katex-mathml"><math><semantics><mrow><mn>16</mn><mo>×</mo><mn>16</mn></mrow><annotation encoding="application/x-tex">16\times16</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.72777em;vertical-align:-0.08333em;"></span><span class="mord">1</span><span class="mord">6</span><span class="mspace" style="margin-right:0.2222222222222222em;"></span><span class="mbin">×</span><span class="mspace" style="margin-right:0.2222222222222222em;"></span></span><span class="base"><span class="strut" style="height:0.64444em;vertical-align:0em;"></span><span class="mord">1</span><span class="mord">6</span></span></span></span> patch 当作一个粗 token，细节建模不足。论文要找的是一种既保留像素细节、又不把计算成本炸开的像素建模方式。</p>
+<h3 id="问题challenge"><a class="markdownIt-Anchor" href="#问题challenge"></a> 问题（Challenge）</h3>
+<p>核心挑战是高效 pixel modeling。像素空间扩散同时需要两种能力：全局语义结构，比如物体布局、类别、文字提示对齐；局部像素细节，比如纹理、锐利边界、墙面文字和编辑时不该变化的背景。只用粗 patch token，模型容易学到语义但丢细节；把每个像素都放进全局 attention，又会带来 <span class="katex"><span class="katex-mathml"><math><semantics><mrow><mi>O</mi><mo stretchy="false">(</mo><mo stretchy="false">(</mo><mi>H</mi><mi>W</mi><msup><mo stretchy="false">)</mo><mn>2</mn></msup><mo stretchy="false">)</mo></mrow><annotation encoding="application/x-tex">O((HW)^2)</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:1.064108em;vertical-align:-0.25em;"></span><span class="mord mathdefault" style="margin-right:0.02778em;">O</span><span class="mopen">(</span><span class="mopen">(</span><span class="mord mathdefault" style="margin-right:0.08125em;">H</span><span class="mord mathdefault" style="margin-right:0.13889em;">W</span><span class="mclose"><span class="mclose">)</span><span class="msupsub"><span class="vlist-t"><span class="vlist-r"><span class="vlist" style="height:0.8141079999999999em;"><span style="top:-3.063em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mtight">2</span></span></span></span></span></span></span></span><span class="mclose">)</span></span></span></span> 的计算和显存成本。</p>
+<p>这个挑战也解释了为什么过去 latent diffusion 成为主流。VAE 不是没有代价，而是帮 DiT 逃过了像素空间的序列长度问题。PixelDiT 的任务是证明：只要架构把“语义建模”和“像素细化”分开，像素空间 DiT 可以不靠 VAE 也达到强质量和可训练性。</p>
+<h3 id="finding"><a class="markdownIt-Anchor" href="#finding"></a> Finding</h3>
+<p>PixelDiT 的 finding 是：像素空间扩散的关键不是盲目恢复 per-pixel attention，而是把像素建模拆成两个层级。粗粒度 patch-level DiT 负责全局语义，细粒度 pixel-level PiT 负责每个 patch 内的像素更新；两者通过 pixel-wise AdaLN 连接，让每个像素都能被对应的语义 token 调制。</p>
+<p>更重要的是，论文把 pixel token compaction 设计成 attention 内部的临时计算手段，而不是 VAE 式的图像压缩瓶颈。模型先把每个 patch 内的 <span class="katex"><span class="katex-mathml"><math><semantics><mrow><msup><mi>p</mi><mn>2</mn></msup></mrow><annotation encoding="application/x-tex">p^2</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:1.008548em;vertical-align:-0.19444em;"></span><span class="mord"><span class="mord mathdefault">p</span><span class="msupsub"><span class="vlist-t"><span class="vlist-r"><span class="vlist" style="height:0.8141079999999999em;"><span style="top:-3.063em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mtight">2</span></span></span></span></span></span></span></span></span></span></span> 个 pixel tokens 压成一个 compact token 做全局 attention，再展开回像素 token；高频信息仍通过 residual 和展开路径保留。也就是说，PixelDiT 不是“用另一个 VAE 代替 VAE”，而是把压缩限制在 transformer block 的计算路径里。</p>
+<h3 id="方法"><a class="markdownIt-Anchor" href="#方法"></a> 方法</h3>
+<p>PixelDiT 采用 dual-level DiT。输入 noisy image 同时走两条路径：一条用 <span class="katex"><span class="katex-mathml"><math><semantics><mrow><mn>16</mn><mo>×</mo><mn>16</mn></mrow><annotation encoding="application/x-tex">16\times16</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.72777em;vertical-align:-0.08333em;"></span><span class="mord">1</span><span class="mord">6</span><span class="mspace" style="margin-right:0.2222222222222222em;"></span><span class="mbin">×</span><span class="mspace" style="margin-right:0.2222222222222222em;"></span></span><span class="base"><span class="strut" style="height:0.64444em;vertical-align:0em;"></span><span class="mord">1</span><span class="mord">6</span></span></span></span> patchify 得到 semantic tokens，送入 patch-level DiT；另一条用 <span class="katex"><span class="katex-mathml"><math><semantics><mrow><mn>1</mn><mo>×</mo><mn>1</mn></mrow><annotation encoding="application/x-tex">1\times1</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.72777em;vertical-align:-0.08333em;"></span><span class="mord">1</span><span class="mspace" style="margin-right:0.2222222222222222em;"></span><span class="mbin">×</span><span class="mspace" style="margin-right:0.2222222222222222em;"></span></span><span class="base"><span class="strut" style="height:0.64444em;vertical-align:0em;"></span><span class="mord">1</span></span></span></span> patchify 得到 pixel tokens，送入 pixel-level Transformer blocks（PiT blocks）。Patch-level pathway 用 DiT / MM-DiT 建模全局语义，pixel-level pathway 用较小的 <span class="katex"><span class="katex-mathml"><math><semantics><mrow><msub><mi>D</mi><mtext>pix</mtext></msub></mrow><annotation encoding="application/x-tex">D_{\text{pix}}</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.969438em;vertical-align:-0.286108em;"></span><span class="mord"><span class="mord mathdefault" style="margin-right:0.02778em;">D</span><span class="msupsub"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height:0.317502em;"><span style="top:-2.5500000000000003em;margin-left:-0.02778em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mtight"><span class="mord text mtight"><span class="mord mtight">pix</span></span></span></span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height:0.286108em;"><span></span></span></span></span></span></span></span></span></span> 做 dense refinement。</p>
+<p>PiT block 有两个关键部件。Pixel-wise AdaLN 把每个 semantic token 通过 MLP 展开成 <span class="katex"><span class="katex-mathml"><math><semantics><mrow><msup><mi>p</mi><mn>2</mn></msup></mrow><annotation encoding="application/x-tex">p^2</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:1.008548em;vertical-align:-0.19444em;"></span><span class="mord"><span class="mord mathdefault">p</span><span class="msupsub"><span class="vlist-t"><span class="vlist-r"><span class="vlist" style="height:0.8141079999999999em;"><span style="top:-3.063em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mtight">2</span></span></span></span></span></span></span></span></span></span></span> 组 scale、shift、gate，让同一个 patch 内不同像素拿到不同调制参数。Pixel Token Compaction 先把 patch 内像素 token 线性压成 compact token，让全局 attention 在 patch 序列上发生，再线性展开回像素 token。训练目标采用 Rectified Flow 的 velocity matching，并加入 REPA 风格的 DINOv2 representation alignment 来稳定 patch-level 表征。</p>
+<h3 id="结论"><a class="markdownIt-Anchor" href="#结论"></a> 结论</h3>
+<p>论文报告 PixelDiT-XL 在 ImageNet 256×256 上达到 1.61 gFID，在 ImageNet 512×512 上达到 1.81 gFID，超过论文表中已有 pixel-space 生成模型，并接近部分 latent DiT baseline。T2I 版本 PixelDiT-T2I 在 512×512 上达到 0.78 GenEval / 83.7 DPG-Bench，在 1024×1024 上达到 0.74 GenEval / 83.5 DPG-Bench。消融显示，Vanilla DiT/16 在 80 epochs 只有 9.84 gFID；加入 RoPE/RMSNorm 后为 8.53；dual-level 但不做 compaction 会 OOM；加入 compaction 后到 3.50；再加 pixel-wise AdaLN 后到 2.36，并在 320 epochs 到 1.61。</p>
+<p>边界也清楚：PixelDiT 不是说所有 latent model 都该被替代。表中 RAE 等 latent/representation-autoencoder 路线仍有更强 ImageNet FID；T2I 数据约 26M 对且未完整公开；论文局限部分也说明 1.3B T2I 模型在复杂手部和建筑场景上仍会失败，像素空间 velocity prediction 训练还容易出现 loss spikes。</p>
+<h3 id="关键术语"><a class="markdownIt-Anchor" href="#关键术语"></a> 关键术语</h3>
+<ul>
+<li><strong>Pixel-Space Diffusion（像素空间扩散）</strong>：直接在 RGB pixel space 中建模去噪过程，不通过 VAE latent。</li>
+<li><strong>Latent Diffusion Model（潜空间扩散模型）</strong>：先用 autoencoder 把图像压缩到 latent，再在 latent 中训练扩散模型。</li>
+<li><strong>Dual-Level DiT（双层级 DiT）</strong>：PixelDiT 的架构，将 patch-level semantic modeling 和 pixel-level detail refinement 分开。</li>
+<li><strong>PiT Block（Pixel Transformer Block，像素 Transformer 块）</strong>：Pixel-level pathway 使用的 block，包含 pixel-wise AdaLN、pixel token compaction、attention 和 FFN。</li>
+<li><strong>Pixel-wise AdaLN（逐像素自适应 LayerNorm）</strong>：为同一 patch 内的每个像素生成不同的 AdaLN scale、shift 和 gate。</li>
+<li><strong>Pixel Token Compaction（像素 token 压缩）</strong>：把 patch 内 <span class="katex"><span class="katex-mathml"><math><semantics><mrow><msup><mi>p</mi><mn>2</mn></msup></mrow><annotation encoding="application/x-tex">p^2</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:1.008548em;vertical-align:-0.19444em;"></span><span class="mord"><span class="mord mathdefault">p</span><span class="msupsub"><span class="vlist-t"><span class="vlist-r"><span class="vlist" style="height:0.8141079999999999em;"><span style="top:-3.063em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mtight">2</span></span></span></span></span></span></span></span></span></span></span> 个 pixel tokens 临时压成 compact token 做 attention，再展开回像素 token。</li>
+<li><strong>REPA（Representation Alignment for Generation）</strong>：用冻结视觉编码器特征约束中间表示，帮助生成模型保持语义表征。</li>
+<li><strong>FlowDPMSolver（Flow 形式 DPM-Solver）</strong>：论文默认采样器，用于 Rectified Flow 形式的图像生成。</li>
+</ul>
+<h2 id="论文位置"><a class="markdownIt-Anchor" href="#论文位置"></a> 论文位置</h2>
+<p>PixelDiT 应该放在 latent diffusion 与 pixel-space diffusion 的分叉处读。它不是少步蒸馏论文，也不是视频生成系统论文；它问的是扩散生成的底层表征空间：图像生成为什么一定要经过 VAE latent？</p>
+<table>
+<thead>
+<tr>
+<th>Nearby line</th>
+<th>Main question</th>
+<th>PixelDiT response</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Latent DiT / LDM</td>
+<td>如何降低图像 token 计算量</td>
+<td>用 VAE 压缩，但承受重建误差与目标错配</td>
+</tr>
+<tr>
+<td>REPA / RAE</td>
+<td>如何让 latent 更适合生成</td>
+<td>继续优化表示空间或 autoencoder</td>
+</tr>
+<tr>
+<td>PixelFlow / PixNerd / JiT</td>
+<td>如何重新做 pixel-space generation</td>
+<td>PixelDiT 给出 fully transformer-based dual-level 方案</td>
+</tr>
+<tr>
+<td><a href="/2026/05/11/ai-files-paper-deep-dives-diffusion-dpm-solver-plus-plus/">DPM-Solver++</a></td>
+<td>如何高效求解采样轨迹</td>
+<td>PixelDiT 使用 FlowDPMSolver 作为默认采样器</td>
+</tr>
+<tr>
+<td><a href="/2026/05/11/ai-files-paper-deep-dives-diffusion-deltaquant/">DeltaQuant</a> / <a href="/2026/05/11/ai-files-paper-deep-dives-diffusion-longlive2/">LongLive-2.0</a></td>
+<td>如何压低每步推理成本</td>
+<td>PixelDiT 改变建模空间，效率问题仍要靠 compaction 和系统实现</td>
+</tr>
+</tbody>
+</table>
+<p>对扩散专题来说，这篇的价值在于提醒我们：VAE latent 不是自然法则，而是效率折中。只要架构能把 dense pixel modeling 做得足够便宜，直接像素建模可以重新变成可行路线。</p>
+<h2 id="为什么要绕开-vae"><a class="markdownIt-Anchor" href="#为什么要绕开-vae"></a> 为什么要绕开 VAE</h2>
+<p><img  
+                     lazyload
+                     src="/images/loading.svg"
+                     data-src="/image/ai-notes/images/paper-deep-dives/diffusion/pixeldit/figure-1-editing.png"
+                      alt="PixelDiT FlowEdit editing comparison" 
+                ></p>
+<p><small>图源：<code>PixelDiT: Pixel Diffusion Transformers for Image Generation</code> 项目页 / Figure 1(b) 对应 FlowEdit 对比。图中比较真实图像、FLUX 和 PixelDiT 的局部编辑结果，重点看红砖墙上的小字。</small></p>
+<p><strong>这张图怎么读：不是看摩托车换得像不像，而是看背景有没有被 VAE 先破坏。</strong><br />
+FlowEdit 要把 “bicycle” 改成 “motorcycle”，但墙上的小字属于不应编辑的背景细节。FLUX 的 VAE reconstruction 已经把文字糊掉，后续 diffusion 再强也只能在被破坏的 latent 上继续编辑。PixelDiT 直接在 pixel space 去噪，没有 VAE encode/decode 这一层，所以更容易保留不编辑区域的小细节。</p>
+<p>这并不等于“所有 VAE 都不好”。VAE 的好处是把计算量降下来，而且强 latent diffusion 在许多指标上仍然领先。PixelDiT 证明的是另一件事：如果任务对小字、纹理、编辑背景一致性很敏感，VAE reconstruction bottleneck 会成为上限；绕开 VAE 后，模型把代价转移给 pixel modeling 架构。</p>
+<h2 id="总体方案"><a class="markdownIt-Anchor" href="#总体方案"></a> 总体方案</h2>
+<p><img  
+                     lazyload
+                     src="/images/loading.svg"
+                     data-src="/image/ai-notes/images/paper-deep-dives/diffusion/pixeldit/figure-2-architecture.png"
+                      alt="PixelDiT dual-level architecture" 
+                ></p>
+<p><small>图源：<code>PixelDiT: Pixel Diffusion Transformers for Image Generation</code> 项目页 / Figure 2。左侧是 dual-level PixelDiT，右侧是 PiT block 内部结构。</small></p>
+<p><strong>这张图怎么读：左边看两条 token 流，右边看 compaction 发生在哪里。</strong><br />
+输入 noisy image 不是只被切成粗 patch。它同时被 <span class="katex"><span class="katex-mathml"><math><semantics><mrow><mn>16</mn><mo>×</mo><mn>16</mn></mrow><annotation encoding="application/x-tex">16\times16</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.72777em;vertical-align:-0.08333em;"></span><span class="mord">1</span><span class="mord">6</span><span class="mspace" style="margin-right:0.2222222222222222em;"></span><span class="mbin">×</span><span class="mspace" style="margin-right:0.2222222222222222em;"></span></span><span class="base"><span class="strut" style="height:0.64444em;vertical-align:0em;"></span><span class="mord">1</span><span class="mord">6</span></span></span></span> patchify 成 semantic tokens，也被 <span class="katex"><span class="katex-mathml"><math><semantics><mrow><mn>1</mn><mo>×</mo><mn>1</mn></mrow><annotation encoding="application/x-tex">1\times1</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.72777em;vertical-align:-0.08333em;"></span><span class="mord">1</span><span class="mspace" style="margin-right:0.2222222222222222em;"></span><span class="mbin">×</span><span class="mspace" style="margin-right:0.2222222222222222em;"></span></span><span class="base"><span class="strut" style="height:0.64444em;vertical-align:0em;"></span><span class="mord">1</span></span></span></span> patchify 成 pixel tokens。Semantic tokens 经过 patch-level DiT，负责布局、类别和条件语义；pixel tokens 进入 PiT blocks，负责细节。</p>
+<p>右侧 PiT block 里，最关键的是 Linear Compress / MHSA / Linear Expand。Compress 把一个 patch 内的 <span class="katex"><span class="katex-mathml"><math><semantics><mrow><msup><mi>p</mi><mn>2</mn></msup></mrow><annotation encoding="application/x-tex">p^2</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:1.008548em;vertical-align:-0.19444em;"></span><span class="mord"><span class="mord mathdefault">p</span><span class="msupsub"><span class="vlist-t"><span class="vlist-r"><span class="vlist" style="height:0.8141079999999999em;"><span style="top:-3.063em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mtight">2</span></span></span></span></span></span></span></span></span></span></span> 个 pixel tokens 合成 compact token，attention 在较短的 patch 序列上做，再 expand 回 pixel tokens。由于这个压缩只发生在 block 内部，且有 residual 路径和 pixel-wise modulation，它不是把图像永久编码成一个低维 latent。</p>
+<p>可以把主干写成：</p>
+<div class="code-container" data-rel="Text"><figure class="iseeu highlight text"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br></pre></td><td class="code"><pre><span class="line">noisy image</span><br><span class="line">  -&gt; 16x16 patchify -&gt; patch-level DiT -&gt; semantic tokens</span><br><span class="line">  -&gt; 1x1 patchify   -&gt; pixel-level PiT -&gt; pixel updates</span><br><span class="line">semantic tokens -&gt; pixel-wise AdaLN -&gt; condition every pixel update</span><br></pre></td></tr></table></figure></div>
+<h2 id="pixel-wise-adaln每个像素如何吃到语义"><a class="markdownIt-Anchor" href="#pixel-wise-adaln每个像素如何吃到语义"></a> Pixel-wise AdaLN：每个像素如何吃到语义</h2>
+<p><img  
+                     lazyload
+                     src="/images/loading.svg"
+                     data-src="/image/ai-notes/images/paper-deep-dives/diffusion/pixeldit/figure-3-adaln.png"
+                      alt="PixelDiT AdaLN modulation" 
+                ></p>
+<p><small>图源：<code>PixelDiT: Pixel Diffusion Transformers for Image Generation</code>，Figure 3 裁剪。原图比较 naive global AdaLN、patch-wise AdaLN 和 pixel-wise AdaLN。</small></p>
+<p>普通 AdaLN 把一个全局条件向量广播给所有 token。Patch-wise AdaLN 稍进一步：每个 patch 有自己的 semantic token，但同一 patch 内的 <span class="katex"><span class="katex-mathml"><math><semantics><mrow><msup><mi>p</mi><mn>2</mn></msup></mrow><annotation encoding="application/x-tex">p^2</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:1.008548em;vertical-align:-0.19444em;"></span><span class="mord"><span class="mord mathdefault">p</span><span class="msupsub"><span class="vlist-t"><span class="vlist-r"><span class="vlist" style="height:0.8141079999999999em;"><span style="top:-3.063em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mtight">2</span></span></span></span></span></span></span></span></span></span></span> 个像素仍共享调制。PixelDiT 认为这对像素空间生成还不够，因为同一 patch 内的文字边缘、纹理和颜色过渡可能完全不同。</p>
+<p>Pixel-wise AdaLN 的做法是：对每个 semantic token <span class="katex"><span class="katex-mathml"><math><semantics><mrow><msub><mi>s</mi><mtext>cond</mtext></msub></mrow><annotation encoding="application/x-tex">s_{\text{cond}}</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.58056em;vertical-align:-0.15em;"></span><span class="mord"><span class="mord mathdefault">s</span><span class="msupsub"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height:0.33610799999999996em;"><span style="top:-2.5500000000000003em;margin-left:0em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mtight"><span class="mord text mtight"><span class="mord mtight">cond</span></span></span></span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height:0.15em;"><span></span></span></span></span></span></span></span></span></span> 用线性投影生成：</p>
+<p><span class="katex-display"><span class="katex"><span class="katex-mathml"><math><semantics><mrow><mi mathvariant="normal">Θ</mi><mo>=</mo><mi mathvariant="normal">Φ</mi><mo stretchy="false">(</mo><msub><mi>s</mi><mtext>cond</mtext></msub><mo stretchy="false">)</mo><mo>∈</mo><msup><mi mathvariant="double-struck">R</mi><mrow><mo stretchy="false">(</mo><mi>B</mi><mo>⋅</mo><mi>L</mi><mo stretchy="false">)</mo><mo>×</mo><msup><mi>p</mi><mn>2</mn></msup><mo>×</mo><mn>6</mn><msub><mi>D</mi><mtext>pix</mtext></msub></mrow></msup><mi mathvariant="normal">.</mi></mrow><annotation encoding="application/x-tex">\Theta=\Phi(s_{\text{cond}})
+\in
+\mathbb{R}^{(B\cdot L)\times p^2\times 6D_{\text{pix}}}.
+</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.68333em;vertical-align:0em;"></span><span class="mord">Θ</span><span class="mspace" style="margin-right:0.2777777777777778em;"></span><span class="mrel">=</span><span class="mspace" style="margin-right:0.2777777777777778em;"></span></span><span class="base"><span class="strut" style="height:1em;vertical-align:-0.25em;"></span><span class="mord">Φ</span><span class="mopen">(</span><span class="mord"><span class="mord mathdefault">s</span><span class="msupsub"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height:0.33610799999999996em;"><span style="top:-2.5500000000000003em;margin-left:0em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mtight"><span class="mord text mtight"><span class="mord mtight">cond</span></span></span></span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height:0.15em;"><span></span></span></span></span></span></span><span class="mclose">)</span><span class="mspace" style="margin-right:0.2777777777777778em;"></span><span class="mrel">∈</span><span class="mspace" style="margin-right:0.2777777777777778em;"></span></span><span class="base"><span class="strut" style="height:1.0369199999999998em;vertical-align:0em;"></span><span class="mord"><span class="mord"><span class="mord mathbb">R</span></span><span class="msupsub"><span class="vlist-t"><span class="vlist-r"><span class="vlist" style="height:1.0369199999999998em;"><span style="top:-3.113em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mtight"><span class="mopen mtight">(</span><span class="mord mathdefault mtight" style="margin-right:0.05017em;">B</span><span class="mbin mtight">⋅</span><span class="mord mathdefault mtight">L</span><span class="mclose mtight">)</span><span class="mbin mtight">×</span><span class="mord mtight"><span class="mord mathdefault mtight">p</span><span class="msupsub"><span class="vlist-t"><span class="vlist-r"><span class="vlist" style="height:0.8913142857142857em;"><span style="top:-2.931em;margin-right:0.07142857142857144em;"><span class="pstrut" style="height:2.5em;"></span><span class="sizing reset-size3 size1 mtight"><span class="mord mtight">2</span></span></span></span></span></span></span></span><span class="mbin mtight">×</span><span class="mord mtight">6</span><span class="mord mtight"><span class="mord mathdefault mtight" style="margin-right:0.02778em;">D</span><span class="msupsub"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height:0.3340428571428571em;"><span style="top:-2.357em;margin-left:-0.02778em;margin-right:0.07142857142857144em;"><span class="pstrut" style="height:2.5em;"></span><span class="sizing reset-size3 size1 mtight"><span class="mord mtight"><span class="mord text mtight"><span class="mord mtight">pix</span></span></span></span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height:0.2818857142857143em;"><span></span></span></span></span></span></span></span></span></span></span></span></span></span></span><span class="mord">.</span></span></span></span></span></p>
+<p>最后一维拆成两组 scale、shift、gate：</p>
+<p><span class="katex-display"><span class="katex"><span class="katex-mathml"><math><semantics><mrow><mo stretchy="false">(</mo><msub><mi>β</mi><mn>1</mn></msub><mo separator="true">,</mo><msub><mi>γ</mi><mn>1</mn></msub><mo separator="true">,</mo><msub><mi>α</mi><mn>1</mn></msub><mo separator="true">,</mo><msub><mi>β</mi><mn>2</mn></msub><mo separator="true">,</mo><msub><mi>γ</mi><mn>2</mn></msub><mo separator="true">,</mo><msub><mi>α</mi><mn>2</mn></msub><mo stretchy="false">)</mo><mi mathvariant="normal">.</mi></mrow><annotation encoding="application/x-tex">(\beta_1,\gamma_1,\alpha_1,\beta_2,\gamma_2,\alpha_2).
+</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:1em;vertical-align:-0.25em;"></span><span class="mopen">(</span><span class="mord"><span class="mord mathdefault" style="margin-right:0.05278em;">β</span><span class="msupsub"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height:0.30110799999999993em;"><span style="top:-2.5500000000000003em;margin-left:-0.05278em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mtight">1</span></span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height:0.15em;"><span></span></span></span></span></span></span><span class="mpunct">,</span><span class="mspace" style="margin-right:0.16666666666666666em;"></span><span class="mord"><span class="mord mathdefault" style="margin-right:0.05556em;">γ</span><span class="msupsub"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height:0.30110799999999993em;"><span style="top:-2.5500000000000003em;margin-left:-0.05556em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mtight">1</span></span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height:0.15em;"><span></span></span></span></span></span></span><span class="mpunct">,</span><span class="mspace" style="margin-right:0.16666666666666666em;"></span><span class="mord"><span class="mord mathdefault" style="margin-right:0.0037em;">α</span><span class="msupsub"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height:0.30110799999999993em;"><span style="top:-2.5500000000000003em;margin-left:-0.0037em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mtight">1</span></span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height:0.15em;"><span></span></span></span></span></span></span><span class="mpunct">,</span><span class="mspace" style="margin-right:0.16666666666666666em;"></span><span class="mord"><span class="mord mathdefault" style="margin-right:0.05278em;">β</span><span class="msupsub"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height:0.30110799999999993em;"><span style="top:-2.5500000000000003em;margin-left:-0.05278em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mtight">2</span></span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height:0.15em;"><span></span></span></span></span></span></span><span class="mpunct">,</span><span class="mspace" style="margin-right:0.16666666666666666em;"></span><span class="mord"><span class="mord mathdefault" style="margin-right:0.05556em;">γ</span><span class="msupsub"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height:0.30110799999999993em;"><span style="top:-2.5500000000000003em;margin-left:-0.05556em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mtight">2</span></span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height:0.15em;"><span></span></span></span></span></span></span><span class="mpunct">,</span><span class="mspace" style="margin-right:0.16666666666666666em;"></span><span class="mord"><span class="mord mathdefault" style="margin-right:0.0037em;">α</span><span class="msupsub"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height:0.30110799999999993em;"><span style="top:-2.5500000000000003em;margin-left:-0.0037em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mtight">2</span></span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height:0.15em;"><span></span></span></span></span></span></span><span class="mclose">)</span><span class="mord">.</span></span></span></span></span></p>
+<p>于是每个 patch 内的每个像素都有独立调制参数。这个机制解决的是“语义 token 太粗”的问题：全局语义仍由 patch-level DiT 学，但像素更新不是粗暴广播，而是 dense、per-pixel 的条件更新。</p>
+<h2 id="pixel-token-compaction只在-attention-内部压缩"><a class="markdownIt-Anchor" href="#pixel-token-compaction只在-attention-内部压缩"></a> Pixel Token Compaction：只在 attention 内部压缩</h2>
+<p>设图像尺寸为 <span class="katex"><span class="katex-mathml"><math><semantics><mrow><mi>H</mi><mo>×</mo><mi>W</mi></mrow><annotation encoding="application/x-tex">H\times W</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.76666em;vertical-align:-0.08333em;"></span><span class="mord mathdefault" style="margin-right:0.08125em;">H</span><span class="mspace" style="margin-right:0.2222222222222222em;"></span><span class="mbin">×</span><span class="mspace" style="margin-right:0.2222222222222222em;"></span></span><span class="base"><span class="strut" style="height:0.68333em;vertical-align:0em;"></span><span class="mord mathdefault" style="margin-right:0.13889em;">W</span></span></span></span>，patch size 为 <span class="katex"><span class="katex-mathml"><math><semantics><mrow><mi>p</mi></mrow><annotation encoding="application/x-tex">p</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.625em;vertical-align:-0.19444em;"></span><span class="mord mathdefault">p</span></span></span></span>。如果 pixel-level pathway 对所有 <span class="katex"><span class="katex-mathml"><math><semantics><mrow><mi>H</mi><mi>W</mi></mrow><annotation encoding="application/x-tex">H W</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.68333em;vertical-align:0em;"></span><span class="mord mathdefault" style="margin-right:0.08125em;">H</span><span class="mord mathdefault" style="margin-right:0.13889em;">W</span></span></span></span> pixel tokens 做全局 attention，attention 成本是 <span class="katex"><span class="katex-mathml"><math><semantics><mrow><mi>O</mi><mo stretchy="false">(</mo><mo stretchy="false">(</mo><mi>H</mi><mi>W</mi><msup><mo stretchy="false">)</mo><mn>2</mn></msup><mo stretchy="false">)</mo></mrow><annotation encoding="application/x-tex">O((HW)^2)</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:1.064108em;vertical-align:-0.25em;"></span><span class="mord mathdefault" style="margin-right:0.02778em;">O</span><span class="mopen">(</span><span class="mopen">(</span><span class="mord mathdefault" style="margin-right:0.08125em;">H</span><span class="mord mathdefault" style="margin-right:0.13889em;">W</span><span class="mclose"><span class="mclose">)</span><span class="msupsub"><span class="vlist-t"><span class="vlist-r"><span class="vlist" style="height:0.8141079999999999em;"><span style="top:-3.063em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mtight">2</span></span></span></span></span></span></span></span><span class="mclose">)</span></span></span></span>。PixelDiT 先把每个 patch 内的 <span class="katex"><span class="katex-mathml"><math><semantics><mrow><msup><mi>p</mi><mn>2</mn></msup></mrow><annotation encoding="application/x-tex">p^2</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:1.008548em;vertical-align:-0.19444em;"></span><span class="mord"><span class="mord mathdefault">p</span><span class="msupsub"><span class="vlist-t"><span class="vlist-r"><span class="vlist" style="height:0.8141079999999999em;"><span style="top:-3.063em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mtight">2</span></span></span></span></span></span></span></span></span></span></span> 个 pixel tokens 组织成：</p>
+<p><span class="katex-display"><span class="katex"><span class="katex-mathml"><math><semantics><mrow><mi>X</mi><mo>∈</mo><msup><mi mathvariant="double-struck">R</mi><mrow><mo stretchy="false">(</mo><mi>B</mi><mo>⋅</mo><mi>L</mi><mo stretchy="false">)</mo><mo>×</mo><msup><mi>p</mi><mn>2</mn></msup><mo>×</mo><msub><mi>D</mi><mtext>pix</mtext></msub></mrow></msup><mo separator="true">,</mo><mspace width="2em"/><mi>L</mi><mo>=</mo><mfrac><mi>H</mi><mi>p</mi></mfrac><mfrac><mi>W</mi><mi>p</mi></mfrac><mi mathvariant="normal">.</mi></mrow><annotation encoding="application/x-tex">X\in \mathbb{R}^{(B\cdot L)\times p^2\times D_{\text{pix}}},
+\qquad
+L=\frac{H}{p}\frac{W}{p}.
+</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.72243em;vertical-align:-0.0391em;"></span><span class="mord mathdefault" style="margin-right:0.07847em;">X</span><span class="mspace" style="margin-right:0.2777777777777778em;"></span><span class="mrel">∈</span><span class="mspace" style="margin-right:0.2777777777777778em;"></span></span><span class="base"><span class="strut" style="height:1.2313599999999998em;vertical-align:-0.19444em;"></span><span class="mord"><span class="mord"><span class="mord mathbb">R</span></span><span class="msupsub"><span class="vlist-t"><span class="vlist-r"><span class="vlist" style="height:1.0369199999999998em;"><span style="top:-3.113em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mtight"><span class="mopen mtight">(</span><span class="mord mathdefault mtight" style="margin-right:0.05017em;">B</span><span class="mbin mtight">⋅</span><span class="mord mathdefault mtight">L</span><span class="mclose mtight">)</span><span class="mbin mtight">×</span><span class="mord mtight"><span class="mord mathdefault mtight">p</span><span class="msupsub"><span class="vlist-t"><span class="vlist-r"><span class="vlist" style="height:0.8913142857142857em;"><span style="top:-2.931em;margin-right:0.07142857142857144em;"><span class="pstrut" style="height:2.5em;"></span><span class="sizing reset-size3 size1 mtight"><span class="mord mtight">2</span></span></span></span></span></span></span></span><span class="mbin mtight">×</span><span class="mord mtight"><span class="mord mathdefault mtight" style="margin-right:0.02778em;">D</span><span class="msupsub"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height:0.3340428571428571em;"><span style="top:-2.357em;margin-left:-0.02778em;margin-right:0.07142857142857144em;"><span class="pstrut" style="height:2.5em;"></span><span class="sizing reset-size3 size1 mtight"><span class="mord mtight"><span class="mord text mtight"><span class="mord mtight">pix</span></span></span></span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height:0.2818857142857143em;"><span></span></span></span></span></span></span></span></span></span></span></span></span></span></span><span class="mpunct">,</span><span class="mspace" style="margin-right:0.16666666666666666em;"></span><span class="mspace" style="margin-right:2em;"></span><span class="mord mathdefault">L</span><span class="mspace" style="margin-right:0.2777777777777778em;"></span><span class="mrel">=</span><span class="mspace" style="margin-right:0.2777777777777778em;"></span></span><span class="base"><span class="strut" style="height:2.2407700000000004em;vertical-align:-0.8804400000000001em;"></span><span class="mord"><span class="mopen nulldelimiter"></span><span class="mfrac"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height:1.36033em;"><span style="top:-2.314em;"><span class="pstrut" style="height:3em;"></span><span class="mord"><span class="mord mathdefault">p</span></span></span><span style="top:-3.23em;"><span class="pstrut" style="height:3em;"></span><span class="frac-line" style="border-bottom-width:0.04em;"></span></span><span style="top:-3.677em;"><span class="pstrut" style="height:3em;"></span><span class="mord"><span class="mord mathdefault" style="margin-right:0.08125em;">H</span></span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height:0.8804400000000001em;"><span></span></span></span></span></span><span class="mclose nulldelimiter"></span></span><span class="mord"><span class="mopen nulldelimiter"></span><span class="mfrac"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height:1.36033em;"><span style="top:-2.314em;"><span class="pstrut" style="height:3em;"></span><span class="mord"><span class="mord mathdefault">p</span></span></span><span style="top:-3.23em;"><span class="pstrut" style="height:3em;"></span><span class="frac-line" style="border-bottom-width:0.04em;"></span></span><span style="top:-3.677em;"><span class="pstrut" style="height:3em;"></span><span class="mord"><span class="mord mathdefault" style="margin-right:0.13889em;">W</span></span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height:0.8804400000000001em;"><span></span></span></span></span></span><span class="mclose nulldelimiter"></span></span><span class="mord">.</span></span></span></span></span></p>
+<p>Compaction 用 learned flattening：</p>
+<p><span class="katex-display"><span class="katex"><span class="katex-mathml"><math><semantics><mrow><mi mathvariant="script">C</mi><mo>:</mo><msup><mi mathvariant="double-struck">R</mi><mrow><msup><mi>p</mi><mn>2</mn></msup><mo>×</mo><msub><mi>D</mi><mtext>pix</mtext></msub></mrow></msup><mo>→</mo><msup><mi mathvariant="double-struck">R</mi><mi>D</mi></msup></mrow><annotation encoding="application/x-tex">\mathcal{C}: \mathbb{R}^{p^2\times D_{\text{pix}}}\rightarrow\mathbb{R}^D
+</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.68333em;vertical-align:0em;"></span><span class="mord"><span class="mord mathcal" style="margin-right:0.05834em;">C</span></span><span class="mspace" style="margin-right:0.2777777777777778em;"></span><span class="mrel">:</span><span class="mspace" style="margin-right:0.2777777777777778em;"></span></span><span class="base"><span class="strut" style="height:1.0369199999999998em;vertical-align:0em;"></span><span class="mord"><span class="mord"><span class="mord mathbb">R</span></span><span class="msupsub"><span class="vlist-t"><span class="vlist-r"><span class="vlist" style="height:1.0369199999999998em;"><span style="top:-3.113em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mtight"><span class="mord mtight"><span class="mord mathdefault mtight">p</span><span class="msupsub"><span class="vlist-t"><span class="vlist-r"><span class="vlist" style="height:0.8913142857142857em;"><span style="top:-2.931em;margin-right:0.07142857142857144em;"><span class="pstrut" style="height:2.5em;"></span><span class="sizing reset-size3 size1 mtight"><span class="mord mtight">2</span></span></span></span></span></span></span></span><span class="mbin mtight">×</span><span class="mord mtight"><span class="mord mathdefault mtight" style="margin-right:0.02778em;">D</span><span class="msupsub"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height:0.3340428571428571em;"><span style="top:-2.357em;margin-left:-0.02778em;margin-right:0.07142857142857144em;"><span class="pstrut" style="height:2.5em;"></span><span class="sizing reset-size3 size1 mtight"><span class="mord mtight"><span class="mord text mtight"><span class="mord mtight">pix</span></span></span></span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height:0.2818857142857143em;"><span></span></span></span></span></span></span></span></span></span></span></span></span></span></span><span class="mspace" style="margin-right:0.2777777777777778em;"></span><span class="mrel">→</span><span class="mspace" style="margin-right:0.2777777777777778em;"></span></span><span class="base"><span class="strut" style="height:0.8913309999999999em;vertical-align:0em;"></span><span class="mord"><span class="mord"><span class="mord mathbb">R</span></span><span class="msupsub"><span class="vlist-t"><span class="vlist-r"><span class="vlist" style="height:0.8913309999999999em;"><span style="top:-3.113em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mathdefault mtight" style="margin-right:0.02778em;">D</span></span></span></span></span></span></span></span></span></span></span></span></p>
+<p>把每个 patch 内的 pixel tokens 压成 compact token。全局 attention 只处理 <span class="katex"><span class="katex-mathml"><math><semantics><mrow><mi>L</mi></mrow><annotation encoding="application/x-tex">L</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.68333em;vertical-align:0em;"></span><span class="mord mathdefault">L</span></span></span></span> 个 compact tokens，再通过：</p>
+<p><span class="katex-display"><span class="katex"><span class="katex-mathml"><math><semantics><mrow><mi mathvariant="script">E</mi><mo>:</mo><msup><mi mathvariant="double-struck">R</mi><mi>D</mi></msup><mo>→</mo><msup><mi mathvariant="double-struck">R</mi><mrow><msup><mi>p</mi><mn>2</mn></msup><mo>×</mo><msub><mi>D</mi><mtext>pix</mtext></msub></mrow></msup></mrow><annotation encoding="application/x-tex">\mathcal{E}: \mathbb{R}^{D}\rightarrow\mathbb{R}^{p^2\times D_{\text{pix}}}
+</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.68333em;vertical-align:0em;"></span><span class="mord"><span class="mord mathcal" style="margin-right:0.08944em;">E</span></span><span class="mspace" style="margin-right:0.2777777777777778em;"></span><span class="mrel">:</span><span class="mspace" style="margin-right:0.2777777777777778em;"></span></span><span class="base"><span class="strut" style="height:0.8913309999999999em;vertical-align:0em;"></span><span class="mord"><span class="mord"><span class="mord mathbb">R</span></span><span class="msupsub"><span class="vlist-t"><span class="vlist-r"><span class="vlist" style="height:0.8913309999999999em;"><span style="top:-3.113em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mtight"><span class="mord mathdefault mtight" style="margin-right:0.02778em;">D</span></span></span></span></span></span></span></span></span><span class="mspace" style="margin-right:0.2777777777777778em;"></span><span class="mrel">→</span><span class="mspace" style="margin-right:0.2777777777777778em;"></span></span><span class="base"><span class="strut" style="height:1.0369199999999998em;vertical-align:0em;"></span><span class="mord"><span class="mord"><span class="mord mathbb">R</span></span><span class="msupsub"><span class="vlist-t"><span class="vlist-r"><span class="vlist" style="height:1.0369199999999998em;"><span style="top:-3.113em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mtight"><span class="mord mtight"><span class="mord mathdefault mtight">p</span><span class="msupsub"><span class="vlist-t"><span class="vlist-r"><span class="vlist" style="height:0.8913142857142857em;"><span style="top:-2.931em;margin-right:0.07142857142857144em;"><span class="pstrut" style="height:2.5em;"></span><span class="sizing reset-size3 size1 mtight"><span class="mord mtight">2</span></span></span></span></span></span></span></span><span class="mbin mtight">×</span><span class="mord mtight"><span class="mord mathdefault mtight" style="margin-right:0.02778em;">D</span><span class="msupsub"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height:0.3340428571428571em;"><span style="top:-2.357em;margin-left:-0.02778em;margin-right:0.07142857142857144em;"><span class="pstrut" style="height:2.5em;"></span><span class="sizing reset-size3 size1 mtight"><span class="mord mtight"><span class="mord text mtight"><span class="mord mtight">pix</span></span></span></span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height:0.2818857142857143em;"><span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></span></p>
+<p>展开回像素 token。</p>
+<p>这个设计带来两个读数：</p>
+<table>
+<thead>
+<tr>
+<th>Item</th>
+<th>Meaning</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Sequence reduction</td>
+<td>attention 序列长度从 <span class="katex"><span class="katex-mathml"><math><semantics><mrow><mi>H</mi><mi>W</mi></mrow><annotation encoding="application/x-tex">HW</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.68333em;vertical-align:0em;"></span><span class="mord mathdefault" style="margin-right:0.08125em;">H</span><span class="mord mathdefault" style="margin-right:0.13889em;">W</span></span></span></span> 降到 <span class="katex"><span class="katex-mathml"><math><semantics><mrow><mi>L</mi><mo>=</mo><mo stretchy="false">(</mo><mi>H</mi><mi mathvariant="normal">/</mi><mi>p</mi><mo stretchy="false">)</mo><mo stretchy="false">(</mo><mi>W</mi><mi mathvariant="normal">/</mi><mi>p</mi><mo stretchy="false">)</mo></mrow><annotation encoding="application/x-tex">L=(H/p)(W/p)</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.68333em;vertical-align:0em;"></span><span class="mord mathdefault">L</span><span class="mspace" style="margin-right:0.2777777777777778em;"></span><span class="mrel">=</span><span class="mspace" style="margin-right:0.2777777777777778em;"></span></span><span class="base"><span class="strut" style="height:1em;vertical-align:-0.25em;"></span><span class="mopen">(</span><span class="mord mathdefault" style="margin-right:0.08125em;">H</span><span class="mord">/</span><span class="mord mathdefault">p</span><span class="mclose">)</span><span class="mopen">(</span><span class="mord mathdefault" style="margin-right:0.13889em;">W</span><span class="mord">/</span><span class="mord mathdefault">p</span><span class="mclose">)</span></span></span></span></td>
+</tr>
+<tr>
+<td>Attention cost reduction</td>
+<td>相对 pixel-token full attention 约为 <span class="katex"><span class="katex-mathml"><math><semantics><mrow><msup><mi>p</mi><mn>4</mn></msup></mrow><annotation encoding="application/x-tex">p^4</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:1.008548em;vertical-align:-0.19444em;"></span><span class="mord"><span class="mord mathdefault">p</span><span class="msupsub"><span class="vlist-t"><span class="vlist-r"><span class="vlist" style="height:0.8141079999999999em;"><span style="top:-3.063em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mtight">4</span></span></span></span></span></span></span></span></span></span></span> 级别降低</td>
+</tr>
+<tr>
+<td>Default setting</td>
+<td>ImageNet XL 使用 <span class="katex"><span class="katex-mathml"><math><semantics><mrow><mi>p</mi><mo>=</mo><mn>16</mn></mrow><annotation encoding="application/x-tex">p=16</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.625em;vertical-align:-0.19444em;"></span><span class="mord mathdefault">p</span><span class="mspace" style="margin-right:0.2777777777777778em;"></span><span class="mrel">=</span><span class="mspace" style="margin-right:0.2777777777777778em;"></span></span><span class="base"><span class="strut" style="height:0.64444em;vertical-align:0em;"></span><span class="mord">1</span><span class="mord">6</span></span></span></span>，<span class="katex"><span class="katex-mathml"><math><semantics><mrow><msub><mi>D</mi><mtext>pix</mtext></msub><mo>=</mo><mn>16</mn></mrow><annotation encoding="application/x-tex">D_{\text{pix}}=16</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.969438em;vertical-align:-0.286108em;"></span><span class="mord"><span class="mord mathdefault" style="margin-right:0.02778em;">D</span><span class="msupsub"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height:0.317502em;"><span style="top:-2.5500000000000003em;margin-left:-0.02778em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mtight"><span class="mord text mtight"><span class="mord mtight">pix</span></span></span></span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height:0.286108em;"><span></span></span></span></span></span></span><span class="mspace" style="margin-right:0.2777777777777778em;"></span><span class="mrel">=</span><span class="mspace" style="margin-right:0.2777777777777778em;"></span></span><span class="base"><span class="strut" style="height:0.64444em;vertical-align:0em;"></span><span class="mord">1</span><span class="mord">6</span></span></span></span></td>
+</tr>
+<tr>
+<td>Difference from VAE</td>
+<td>compaction 是 block 内临时计算，不是训练前固定的图像瓶颈</td>
+</tr>
+</tbody>
+</table>
+<p>论文 Table 6 很直接：No Pixel Token Compaction 的 GFLOPs 被估到 82,247 并 OOM；完整 PixelDiT-XL 是 311 GFLOPs。这是整篇论文最硬的工程支点：像素空间 DiT 能不能训练，首先取决于 attention 序列是否被控制住。</p>
+<h2 id="text-to-image-扩展"><a class="markdownIt-Anchor" href="#text-to-image-扩展"></a> Text-to-Image 扩展</h2>
+<p><img  
+                     lazyload
+                     src="/images/loading.svg"
+                     data-src="/image/ai-notes/images/paper-deep-dives/diffusion/pixeldit/figure-7-t2i-architecture.png"
+                      alt="PixelDiT T2I architecture" 
+                ></p>
+<p><small>图源：<code>PixelDiT: Pixel Diffusion Transformers for Image Generation</code> 项目页 / Figure 7。T2I 版本在 patch-level pathway 加入 MM-DiT blocks，pixel-level pathway 保持 dense per-pixel modeling。</small></p>
+<p>T2I 版本没有把 text tokens 直接塞进 pixel stream。论文使用冻结 Gemma-2 text encoder 产生 text embeddings，并在 patch-level pathway 使用 MM-DiT blocks 做 image/text joint attention。Pixel-level pathway 的接口保持不变：它只通过 semantic tokens 和 timestep 得到条件，再做像素级更新。</p>
+<p>这有一个很重要的工程含义：文本对齐这种全局语义任务交给 patch-level MM-DiT，像素级路径不直接背负长 text sequence 的 cross-attention 成本。Pixel-level pathway 仍然专注于局部纹理、边界和像素细节。</p>
+<h2 id="训练配方"><a class="markdownIt-Anchor" href="#训练配方"></a> 训练配方</h2>
+<h3 id="imagenet-class-conditioned"><a class="markdownIt-Anchor" href="#imagenet-class-conditioned"></a> ImageNet class-conditioned</h3>
+<table>
+<thead>
+<tr>
+<th>Component</th>
+<th>PixelDiT-XL setting</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Input</td>
+<td>256×256×3 for main ImageNet-256 training</td>
+</tr>
+<tr>
+<td>Patch-level depth <span class="katex"><span class="katex-mathml"><math><semantics><mrow><mi>N</mi></mrow><annotation encoding="application/x-tex">N</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.68333em;vertical-align:0em;"></span><span class="mord mathdefault" style="margin-right:0.10903em;">N</span></span></span></span></td>
+<td>26</td>
+</tr>
+<tr>
+<td>Pixel-level depth <span class="katex"><span class="katex-mathml"><math><semantics><mrow><mi>M</mi></mrow><annotation encoding="application/x-tex">M</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.68333em;vertical-align:0em;"></span><span class="mord mathdefault" style="margin-right:0.10903em;">M</span></span></span></span></td>
+<td>4</td>
+</tr>
+<tr>
+<td>Hidden size <span class="katex"><span class="katex-mathml"><math><semantics><mrow><mi>D</mi></mrow><annotation encoding="application/x-tex">D</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.68333em;vertical-align:0em;"></span><span class="mord mathdefault" style="margin-right:0.02778em;">D</span></span></span></span></td>
+<td>1152</td>
+</tr>
+<tr>
+<td>Pixel hidden size <span class="katex"><span class="katex-mathml"><math><semantics><mrow><msub><mi>D</mi><mtext>pix</mtext></msub></mrow><annotation encoding="application/x-tex">D_{\text{pix}}</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.969438em;vertical-align:-0.286108em;"></span><span class="mord"><span class="mord mathdefault" style="margin-right:0.02778em;">D</span><span class="msupsub"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height:0.317502em;"><span style="top:-2.5500000000000003em;margin-left:-0.02778em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mtight"><span class="mord text mtight"><span class="mord mtight">pix</span></span></span></span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height:0.286108em;"><span></span></span></span></span></span></span></span></span></span></td>
+<td>16</td>
+</tr>
+<tr>
+<td>Patch size <span class="katex"><span class="katex-mathml"><math><semantics><mrow><mi>p</mi></mrow><annotation encoding="application/x-tex">p</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.625em;vertical-align:-0.19444em;"></span><span class="mord mathdefault">p</span></span></span></span></td>
+<td>16</td>
+</tr>
+<tr>
+<td>Heads</td>
+<td>16</td>
+</tr>
+<tr>
+<td>Params</td>
+<td>797M</td>
+</tr>
+<tr>
+<td>Objective</td>
+<td>Rectified Flow velocity matching + REPA</td>
+</tr>
+<tr>
+<td>REPA encoder</td>
+<td>Frozen DINOv2</td>
+</tr>
+<tr>
+<td>REPA depth / weight</td>
+<td>patch-level 8-th layer, <span class="katex"><span class="katex-mathml"><math><semantics><mrow><msub><mi>λ</mi><mtext>repa</mtext></msub><mo>=</mo><mn>0.5</mn></mrow><annotation encoding="application/x-tex">\lambda_{\text{repa}}=0.5</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.980548em;vertical-align:-0.286108em;"></span><span class="mord"><span class="mord mathdefault">λ</span><span class="msupsub"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height:0.15139200000000003em;"><span style="top:-2.5500000000000003em;margin-left:0em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mtight"><span class="mord text mtight"><span class="mord mtight">repa</span></span></span></span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height:0.286108em;"><span></span></span></span></span></span></span><span class="mspace" style="margin-right:0.2777777777777778em;"></span><span class="mrel">=</span><span class="mspace" style="margin-right:0.2777777777777778em;"></span></span><span class="base"><span class="strut" style="height:0.64444em;vertical-align:0em;"></span><span class="mord">0</span><span class="mord">.</span><span class="mord">5</span></span></span></span></td>
+</tr>
+<tr>
+<td>Optimizer</td>
+<td>AdamW, <span class="katex"><span class="katex-mathml"><math><semantics><mrow><msub><mi>β</mi><mn>1</mn></msub><mo>=</mo><mn>0.9</mn><mo separator="true">,</mo><msub><mi>β</mi><mn>2</mn></msub><mo>=</mo><mn>0.999</mn></mrow><annotation encoding="application/x-tex">\beta_1=0.9,\beta_2=0.999</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.8888799999999999em;vertical-align:-0.19444em;"></span><span class="mord"><span class="mord mathdefault" style="margin-right:0.05278em;">β</span><span class="msupsub"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height:0.30110799999999993em;"><span style="top:-2.5500000000000003em;margin-left:-0.05278em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mtight">1</span></span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height:0.15em;"><span></span></span></span></span></span></span><span class="mspace" style="margin-right:0.2777777777777778em;"></span><span class="mrel">=</span><span class="mspace" style="margin-right:0.2777777777777778em;"></span></span><span class="base"><span class="strut" style="height:0.8888799999999999em;vertical-align:-0.19444em;"></span><span class="mord">0</span><span class="mord">.</span><span class="mord">9</span><span class="mpunct">,</span><span class="mspace" style="margin-right:0.16666666666666666em;"></span><span class="mord"><span class="mord mathdefault" style="margin-right:0.05278em;">β</span><span class="msupsub"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height:0.30110799999999993em;"><span style="top:-2.5500000000000003em;margin-left:-0.05278em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mtight">2</span></span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height:0.15em;"><span></span></span></span></span></span></span><span class="mspace" style="margin-right:0.2777777777777778em;"></span><span class="mrel">=</span><span class="mspace" style="margin-right:0.2777777777777778em;"></span></span><span class="base"><span class="strut" style="height:0.64444em;vertical-align:0em;"></span><span class="mord">0</span><span class="mord">.</span><span class="mord">9</span><span class="mord">9</span><span class="mord">9</span></span></span></span></td>
+</tr>
+<tr>
+<td>Batch size</td>
+<td>256</td>
+</tr>
+<tr>
+<td>Precision</td>
+<td>bfloat16 mixed precision</td>
+</tr>
+<tr>
+<td>EMA</td>
+<td>0.9999</td>
+</tr>
+<tr>
+<td>Sampling</td>
+<td>FlowDPMSolver, 100 steps</td>
+</tr>
+</tbody>
+</table>
+<p>ImageNet 256×256 训练先用 <span class="katex"><span class="katex-mathml"><math><semantics><mrow><mn>1</mn><mo>×</mo><mn>1</mn><msup><mn>0</mn><mrow><mo>−</mo><mn>4</mn></mrow></msup></mrow><annotation encoding="application/x-tex">1\times10^{-4}</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.72777em;vertical-align:-0.08333em;"></span><span class="mord">1</span><span class="mspace" style="margin-right:0.2222222222222222em;"></span><span class="mbin">×</span><span class="mspace" style="margin-right:0.2222222222222222em;"></span></span><span class="base"><span class="strut" style="height:0.8141079999999999em;vertical-align:0em;"></span><span class="mord">1</span><span class="mord"><span class="mord">0</span><span class="msupsub"><span class="vlist-t"><span class="vlist-r"><span class="vlist" style="height:0.8141079999999999em;"><span style="top:-3.063em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mtight"><span class="mord mtight">−</span><span class="mord mtight">4</span></span></span></span></span></span></span></span></span></span></span></span> constant learning rate 到 160 epochs，再降到 <span class="katex"><span class="katex-mathml"><math><semantics><mrow><mn>1</mn><mo>×</mo><mn>1</mn><msup><mn>0</mn><mrow><mo>−</mo><mn>5</mn></mrow></msup></mrow><annotation encoding="application/x-tex">1\times10^{-5}</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.72777em;vertical-align:-0.08333em;"></span><span class="mord">1</span><span class="mspace" style="margin-right:0.2222222222222222em;"></span><span class="mbin">×</span><span class="mspace" style="margin-right:0.2222222222222222em;"></span></span><span class="base"><span class="strut" style="height:0.8141079999999999em;vertical-align:0em;"></span><span class="mord">1</span><span class="mord"><span class="mord">0</span><span class="msupsub"><span class="vlist-t"><span class="vlist-r"><span class="vlist" style="height:0.8141079999999999em;"><span style="top:-3.063em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mtight"><span class="mord mtight">−</span><span class="mord mtight">5</span></span></span></span></span></span></span></span></span></span></span></span>。ImageNet 512×512 是从 320-epoch ImageNet-256 checkpoint 继续 fine-tune，论文主表使用 530 epochs 的 fine-tuning 结果。</p>
+<h3 id="text-to-image"><a class="markdownIt-Anchor" href="#text-to-image"></a> Text-to-Image</h3>
+<table>
+<thead>
+<tr>
+<th>Component</th>
+<th>PixelDiT-T2I setting</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Params</td>
+<td>1.311B</td>
+</tr>
+<tr>
+<td>Patch-level depth <span class="katex"><span class="katex-mathml"><math><semantics><mrow><mi>N</mi></mrow><annotation encoding="application/x-tex">N</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.68333em;vertical-align:0em;"></span><span class="mord mathdefault" style="margin-right:0.10903em;">N</span></span></span></span></td>
+<td>14</td>
+</tr>
+<tr>
+<td>Pixel-level depth <span class="katex"><span class="katex-mathml"><math><semantics><mrow><mi>M</mi></mrow><annotation encoding="application/x-tex">M</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.68333em;vertical-align:0em;"></span><span class="mord mathdefault" style="margin-right:0.10903em;">M</span></span></span></span></td>
+<td>2</td>
+</tr>
+<tr>
+<td>Hidden size <span class="katex"><span class="katex-mathml"><math><semantics><mrow><mi>D</mi></mrow><annotation encoding="application/x-tex">D</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.68333em;vertical-align:0em;"></span><span class="mord mathdefault" style="margin-right:0.02778em;">D</span></span></span></span></td>
+<td>1536</td>
+</tr>
+<tr>
+<td>Pixel hidden size <span class="katex"><span class="katex-mathml"><math><semantics><mrow><msub><mi>D</mi><mtext>pix</mtext></msub></mrow><annotation encoding="application/x-tex">D_{\text{pix}}</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.969438em;vertical-align:-0.286108em;"></span><span class="mord"><span class="mord mathdefault" style="margin-right:0.02778em;">D</span><span class="msupsub"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height:0.317502em;"><span style="top:-2.5500000000000003em;margin-left:-0.02778em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mtight"><span class="mord text mtight"><span class="mord mtight">pix</span></span></span></span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height:0.286108em;"><span></span></span></span></span></span></span></span></span></span></td>
+<td>16</td>
+</tr>
+<tr>
+<td>Patch size <span class="katex"><span class="katex-mathml"><math><semantics><mrow><mi>p</mi></mrow><annotation encoding="application/x-tex">p</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.625em;vertical-align:-0.19444em;"></span><span class="mord mathdefault">p</span></span></span></span></td>
+<td>16</td>
+</tr>
+<tr>
+<td>Text encoder</td>
+<td>Frozen Gemma-2</td>
+</tr>
+<tr>
+<td>Data</td>
+<td>about 26M image-text pairs at 1024² with various aspect ratios</td>
+</tr>
+<tr>
+<td>Stage 1</td>
+<td>512×512 from scratch, 400K iterations, batch size 1024, lr <span class="katex"><span class="katex-mathml"><math><semantics><mrow><mn>1</mn><mo>×</mo><mn>1</mn><msup><mn>0</mn><mrow><mo>−</mo><mn>4</mn></mrow></msup></mrow><annotation encoding="application/x-tex">1\times10^{-4}</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.72777em;vertical-align:-0.08333em;"></span><span class="mord">1</span><span class="mspace" style="margin-right:0.2222222222222222em;"></span><span class="mbin">×</span><span class="mspace" style="margin-right:0.2222222222222222em;"></span></span><span class="base"><span class="strut" style="height:0.8141079999999999em;vertical-align:0em;"></span><span class="mord">1</span><span class="mord"><span class="mord">0</span><span class="msupsub"><span class="vlist-t"><span class="vlist-r"><span class="vlist" style="height:0.8141079999999999em;"><span style="top:-3.063em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mtight"><span class="mord mtight">−</span><span class="mord mtight">4</span></span></span></span></span></span></span></span></span></span></span></span></td>
+</tr>
+<tr>
+<td>Stage 2</td>
+<td>1024×1024 fine-tuning, 100K iterations, batch size 768, lr <span class="katex"><span class="katex-mathml"><math><semantics><mrow><mn>2</mn><mo>×</mo><mn>1</mn><msup><mn>0</mn><mrow><mo>−</mo><mn>5</mn></mrow></msup></mrow><annotation encoding="application/x-tex">2\times10^{-5}</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.72777em;vertical-align:-0.08333em;"></span><span class="mord">2</span><span class="mspace" style="margin-right:0.2222222222222222em;"></span><span class="mbin">×</span><span class="mspace" style="margin-right:0.2222222222222222em;"></span></span><span class="base"><span class="strut" style="height:0.8141079999999999em;vertical-align:0em;"></span><span class="mord">1</span><span class="mord"><span class="mord">0</span><span class="msupsub"><span class="vlist-t"><span class="vlist-r"><span class="vlist" style="height:0.8141079999999999em;"><span style="top:-3.063em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mtight"><span class="mord mtight">−</span><span class="mord mtight">5</span></span></span></span></span></span></span></span></span></span></span></span></td>
+</tr>
+<tr>
+<td>Sampling</td>
+<td>FlowDPMSolver, 25 steps</td>
+</tr>
+<tr>
+<td>CFG scale</td>
+<td>4.5</td>
+</tr>
+</tbody>
+</table>
+<p>这里的证据边界要记住：T2I 数据是作者收集的约 26M 图文对，论文没有把完整数据配方公开到可独立复现级别。因此 T2I 结果证明的是这个架构路线能 scale 到 1K pixel-space T2I，不等于给出一个完全可复现的开放训练 recipe。</p>
+<h2 id="实验与结论"><a class="markdownIt-Anchor" href="#实验与结论"></a> 实验与结论</h2>
+<h3 id="imagenet-256256"><a class="markdownIt-Anchor" href="#imagenet-256256"></a> ImageNet 256×256</h3>
+<table>
+<thead>
+<tr>
+<th>Method</th>
+<th>Space</th>
+<th style="text-align:right">#params</th>
+<th style="text-align:right">Training Epochs</th>
+<th style="text-align:right">gFID↓</th>
+<th style="text-align:right">sFID↓</th>
+<th style="text-align:right">IS↑</th>
+<th style="text-align:right">Precision↑</th>
+<th style="text-align:right">Recall↑</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>DiT-XL</td>
+<td>Latent</td>
+<td style="text-align:right">675M</td>
+<td style="text-align:right">1400</td>
+<td style="text-align:right">2.27</td>
+<td style="text-align:right">4.60</td>
+<td style="text-align:right">278.2</td>
+<td style="text-align:right">0.83</td>
+<td style="text-align:right">0.57</td>
+</tr>
+<tr>
+<td>SiT-XL</td>
+<td>Latent</td>
+<td style="text-align:right">675M</td>
+<td style="text-align:right">1400</td>
+<td style="text-align:right">2.06</td>
+<td style="text-align:right">4.50</td>
+<td style="text-align:right">270.3</td>
+<td style="text-align:right">0.82</td>
+<td style="text-align:right">0.59</td>
+</tr>
+<tr>
+<td>REPA</td>
+<td>Latent</td>
+<td style="text-align:right">675M</td>
+<td style="text-align:right">800</td>
+<td style="text-align:right">1.42</td>
+<td style="text-align:right">4.70</td>
+<td style="text-align:right">305.7</td>
+<td style="text-align:right">0.80</td>
+<td style="text-align:right">0.65</td>
+</tr>
+<tr>
+<td>RAE-XL</td>
+<td>Latent</td>
+<td style="text-align:right">839M</td>
+<td style="text-align:right">800</td>
+<td style="text-align:right">1.13</td>
+<td style="text-align:right">-</td>
+<td style="text-align:right">262.6</td>
+<td style="text-align:right">0.78</td>
+<td style="text-align:right">0.67</td>
+</tr>
+<tr>
+<td>EPG-XXL/16</td>
+<td>Pixel</td>
+<td style="text-align:right">789M</td>
+<td style="text-align:right">600</td>
+<td style="text-align:right">1.81</td>
+<td style="text-align:right">-</td>
+<td style="text-align:right">294.6</td>
+<td style="text-align:right">0.80</td>
+<td style="text-align:right">0.61</td>
+</tr>
+<tr>
+<td>PixelFlow-XL</td>
+<td>Pixel</td>
+<td style="text-align:right">677M</td>
+<td style="text-align:right">320</td>
+<td style="text-align:right">1.98</td>
+<td style="text-align:right">5.83</td>
+<td style="text-align:right">282.1</td>
+<td style="text-align:right">0.81</td>
+<td style="text-align:right">0.60</td>
+</tr>
+<tr>
+<td>PixNerd-XL</td>
+<td>Pixel</td>
+<td style="text-align:right">700M</td>
+<td style="text-align:right">320</td>
+<td style="text-align:right">1.93</td>
+<td style="text-align:right">-</td>
+<td style="text-align:right">298.0</td>
+<td style="text-align:right">0.80</td>
+<td style="text-align:right">0.60</td>
+</tr>
+<tr>
+<td>JiT-G</td>
+<td>Pixel</td>
+<td style="text-align:right">2B</td>
+<td style="text-align:right">600</td>
+<td style="text-align:right">1.82</td>
+<td style="text-align:right">-</td>
+<td style="text-align:right">292.6</td>
+<td style="text-align:right">0.79</td>
+<td style="text-align:right">0.62</td>
+</tr>
+<tr>
+<td>PixelDiT-XL</td>
+<td>Pixel</td>
+<td style="text-align:right">797M</td>
+<td style="text-align:right">80</td>
+<td style="text-align:right">2.36</td>
+<td style="text-align:right">5.11</td>
+<td style="text-align:right">282.3</td>
+<td style="text-align:right">0.80</td>
+<td style="text-align:right">0.57</td>
+</tr>
+<tr>
+<td>PixelDiT-XL</td>
+<td>Pixel</td>
+<td style="text-align:right">797M</td>
+<td style="text-align:right">320</td>
+<td style="text-align:right">1.61</td>
+<td style="text-align:right">4.68</td>
+<td style="text-align:right">292.7</td>
+<td style="text-align:right">0.78</td>
+<td style="text-align:right">0.64</td>
+</tr>
+</tbody>
+</table>
+<p><small>表源：论文 Table 1，保留原英文指标。这里的 Space 是为阅读补充的归类。</small></p>
+<p><strong>表格怎么读：PixelDiT 主要赢在 pixel-space family，不是全面压过所有 latent family。</strong><br />
+RAE-XL 和 DDT/LightningDiT 等 latent/representation-autoencoder 路线仍有更低 gFID。PixelDiT 的强结论是：在不使用 pretrained autoencoder 的 pixel-space 模型里，dual-level transformer 能把质量和计算推进到接近 latent DiT 的区域。</p>
+<h3 id="imagenet-512512"><a class="markdownIt-Anchor" href="#imagenet-512512"></a> ImageNet 512×512</h3>
+<table>
+<thead>
+<tr>
+<th>Method</th>
+<th>Space</th>
+<th style="text-align:right">gFID↓</th>
+<th style="text-align:right">sFID↓</th>
+<th style="text-align:right">IS↑</th>
+<th style="text-align:right">Precision↑</th>
+<th style="text-align:right">Recall↑</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>DiT-XL</td>
+<td>Latent</td>
+<td style="text-align:right">3.04</td>
+<td style="text-align:right">5.02</td>
+<td style="text-align:right">240.8</td>
+<td style="text-align:right">0.84</td>
+<td style="text-align:right">0.54</td>
+</tr>
+<tr>
+<td>SiT-XL</td>
+<td>Latent</td>
+<td style="text-align:right">2.62</td>
+<td style="text-align:right">4.18</td>
+<td style="text-align:right">252.2</td>
+<td style="text-align:right">0.84</td>
+<td style="text-align:right">0.57</td>
+</tr>
+<tr>
+<td>REPA</td>
+<td>Latent</td>
+<td style="text-align:right">2.08</td>
+<td style="text-align:right">4.19</td>
+<td style="text-align:right">274.6</td>
+<td style="text-align:right">0.83</td>
+<td style="text-align:right">0.58</td>
+</tr>
+<tr>
+<td>RAE-XL</td>
+<td>Latent</td>
+<td style="text-align:right">1.13</td>
+<td style="text-align:right">-</td>
+<td style="text-align:right">259.6</td>
+<td style="text-align:right">0.80</td>
+<td style="text-align:right">0.63</td>
+</tr>
+<tr>
+<td>ADM</td>
+<td>Pixel</td>
+<td style="text-align:right">3.85</td>
+<td style="text-align:right">5.86</td>
+<td style="text-align:right">221.7</td>
+<td style="text-align:right">0.84</td>
+<td style="text-align:right">0.53</td>
+</tr>
+<tr>
+<td>PixNerd-XL</td>
+<td>Pixel</td>
+<td style="text-align:right">2.84</td>
+<td style="text-align:right">5.95</td>
+<td style="text-align:right">245.6</td>
+<td style="text-align:right">0.80</td>
+<td style="text-align:right">0.59</td>
+</tr>
+<tr>
+<td>EPG-L/32</td>
+<td>Pixel</td>
+<td style="text-align:right">2.35</td>
+<td style="text-align:right">-</td>
+<td style="text-align:right">295.4</td>
+<td style="text-align:right">0.82</td>
+<td style="text-align:right">0.57</td>
+</tr>
+<tr>
+<td>JiT-H</td>
+<td>Pixel</td>
+<td style="text-align:right">1.94</td>
+<td style="text-align:right">-</td>
+<td style="text-align:right">309.1</td>
+<td style="text-align:right">-</td>
+<td style="text-align:right">-</td>
+</tr>
+<tr>
+<td>PixelDiT</td>
+<td>Pixel</td>
+<td style="text-align:right">1.81</td>
+<td style="text-align:right">5.61</td>
+<td style="text-align:right">278.6</td>
+<td style="text-align:right">0.78</td>
+<td style="text-align:right">0.67</td>
+</tr>
+</tbody>
+</table>
+<p><small>表源：论文 Table 2。</small></p>
+<p>512×512 结果说明两个点。第一，PixelDiT 在更高分辨率下仍然保持 pixel-space family 的竞争力。第二，recall 达到 0.67，说明它不是只优化单一 fidelity 指标；但 precision 低于部分 latent baseline，不能把它读成所有指标全面胜出。</p>
+<h3 id="text-to-image-2"><a class="markdownIt-Anchor" href="#text-to-image-2"></a> Text-to-Image</h3>
+<table>
+<thead>
+<tr>
+<th>Method</th>
+<th>Space</th>
+<th style="text-align:right">Params (B)</th>
+<th>Resolution</th>
+<th style="text-align:right">GenEval↑</th>
+<th style="text-align:right">DPG↑</th>
+<th style="text-align:right">Throughput (samples/s)↑</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>PixArt-α</td>
+<td>Latent</td>
+<td style="text-align:right">0.6</td>
+<td>512×512</td>
+<td style="text-align:right">0.48</td>
+<td style="text-align:right">71.6</td>
+<td style="text-align:right">1.5</td>
+</tr>
+<tr>
+<td>PixArt-Σ</td>
+<td>Latent</td>
+<td style="text-align:right">0.6</td>
+<td>512×512</td>
+<td style="text-align:right">0.52</td>
+<td style="text-align:right">79.5</td>
+<td style="text-align:right">1.5</td>
+</tr>
+<tr>
+<td>PixelFlow†</td>
+<td>Pixel</td>
+<td style="text-align:right">0.9</td>
+<td>512×512</td>
+<td style="text-align:right">0.60</td>
+<td style="text-align:right">77.9</td>
+<td style="text-align:right">0.05</td>
+</tr>
+<tr>
+<td>PixNerd†</td>
+<td>Pixel</td>
+<td style="text-align:right">1.2</td>
+<td>512×512</td>
+<td style="text-align:right">0.73</td>
+<td style="text-align:right">80.9</td>
+<td style="text-align:right">1.04</td>
+</tr>
+<tr>
+<td>PixelDiT-T2I†</td>
+<td>Pixel</td>
+<td style="text-align:right">1.3</td>
+<td>512×512</td>
+<td style="text-align:right">0.78</td>
+<td style="text-align:right">83.7</td>
+<td style="text-align:right">1.07</td>
+</tr>
+<tr>
+<td>SDXL</td>
+<td>Latent</td>
+<td style="text-align:right">2.6</td>
+<td>1024×1024</td>
+<td style="text-align:right">0.55</td>
+<td style="text-align:right">74.7</td>
+<td style="text-align:right">0.15</td>
+</tr>
+<tr>
+<td>DALLE 3</td>
+<td>Latent</td>
+<td style="text-align:right">-</td>
+<td>1024×1024</td>
+<td style="text-align:right">0.67</td>
+<td style="text-align:right">83.5</td>
+<td style="text-align:right">-</td>
+</tr>
+<tr>
+<td>FLUX-dev</td>
+<td>Latent</td>
+<td style="text-align:right">12.0</td>
+<td>1024×1024</td>
+<td style="text-align:right">0.67</td>
+<td style="text-align:right">84.0</td>
+<td style="text-align:right">0.04</td>
+</tr>
+<tr>
+<td>PixelDiT-T2I†</td>
+<td>Pixel</td>
+<td style="text-align:right">1.3</td>
+<td>1024×1024</td>
+<td style="text-align:right">0.74</td>
+<td style="text-align:right">83.5</td>
+<td style="text-align:right">0.33</td>
+</tr>
+</tbody>
+</table>
+<p><small>表源：论文 Table 4。† 表示 pixel-space diffusion models。</small></p>
+<p>T2I 的读法要更谨慎。PixelDiT-T2I 的 GenEval 很强，1024×1024 下 0.74 超过表中多个 latent baselines；DPG-Bench 则与 DALLE 3 同为 83.5，略低于 FLUX-dev 的 84.0。它证明像素空间模型可以做 1K 文生图，并不是证明 1.3B PixelDiT 已经整体超过最强商业/闭源或更大 latent 系统。</p>
+<h3 id="组件消融"><a class="markdownIt-Anchor" href="#组件消融"></a> 组件消融</h3>
+<table>
+<thead>
+<tr>
+<th>Model Components</th>
+<th style="text-align:right">Epoch</th>
+<th style="text-align:right">gFID↓</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>A: Vanilla DiT/16</td>
+<td style="text-align:right">80</td>
+<td style="text-align:right">9.84</td>
+</tr>
+<tr>
+<td>A: + RoPE, RMSNorm</td>
+<td style="text-align:right">80</td>
+<td style="text-align:right">8.53</td>
+</tr>
+<tr>
+<td>B: + Dual-level, patch-wise AdaLN (no compaction)</td>
+<td style="text-align:right">80</td>
+<td style="text-align:right">OOM</td>
+</tr>
+<tr>
+<td>B: + Pixel Token Compaction</td>
+<td style="text-align:right">80</td>
+<td style="text-align:right">3.50</td>
+</tr>
+<tr>
+<td>C: + Pixel-wise AdaLN</td>
+<td style="text-align:right">80</td>
+<td style="text-align:right">2.36</td>
+</tr>
+<tr>
+<td>C: + Pixel-wise AdaLN</td>
+<td style="text-align:right">320</td>
+<td style="text-align:right">1.61</td>
+</tr>
+</tbody>
+</table>
+<p><small>表源：论文 Table 5。</small></p>
+<p>这个消融表是论文的核心证据。它说明 PixelDiT 的提升不是来自“把 DiT 放到 pixel space”这件事本身：Vanilla DiT/16 只有 9.84。真正起作用的是双层级结构、compaction 解决可训练性、pixel-wise AdaLN 解决 per-pixel conditioning。</p>
+<table>
+<thead>
+<tr>
+<th>Configuration</th>
+<th style="text-align:right">GFLOPs</th>
+<th style="text-align:right">Epoch 80 FID↓</th>
+<th style="text-align:right">Epoch 80 IS↑</th>
+<th style="text-align:right">Epoch 160 FID↓</th>
+<th style="text-align:right">Epoch 160 IS↑</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>PixelDiT-XL</td>
+<td style="text-align:right">311</td>
+<td style="text-align:right">2.36</td>
+<td style="text-align:right">282.3</td>
+<td style="text-align:right">1.97</td>
+<td style="text-align:right">299.4</td>
+</tr>
+<tr>
+<td>No Pixel Token Compaction</td>
+<td style="text-align:right">82247</td>
+<td style="text-align:right">OOM</td>
+<td style="text-align:right">OOM</td>
+<td style="text-align:right">OOM</td>
+<td style="text-align:right">OOM</td>
+</tr>
+<tr>
+<td>No Pixel-Pathway Attention</td>
+<td style="text-align:right">279</td>
+<td style="text-align:right">2.56</td>
+<td style="text-align:right">256.9</td>
+<td style="text-align:right">2.22</td>
+<td style="text-align:right">281.7</td>
+</tr>
+</tbody>
+</table>
+<p><small>表源：论文 Table 6。</small></p>
+<p>No Pixel-Pathway Attention 的 GFLOPs 更低，但质量更差，说明 PiT block 里 compact 后的 attention 不是可有可无的装饰；它让局部像素更新和全局上下文重新对齐。</p>
+<h3 id="编辑背景保持"><a class="markdownIt-Anchor" href="#编辑背景保持"></a> 编辑背景保持</h3>
+<table>
+<thead>
+<tr>
+<th>Method</th>
+<th style="text-align:right">MSE↓</th>
+<th style="text-align:right">SSIM↑</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>FLUX</td>
+<td style="text-align:right">0.009105</td>
+<td style="text-align:right">0.8254</td>
+</tr>
+<tr>
+<td>SD3</td>
+<td style="text-align:right">0.004349</td>
+<td style="text-align:right">0.8400</td>
+</tr>
+<tr>
+<td>PixelDiT</td>
+<td style="text-align:right">0.001522</td>
+<td style="text-align:right">0.8628</td>
+</tr>
+</tbody>
+</table>
+<p><small>表源：论文 Table 14。评测使用 FlowEdit dataset 的 281 个 source-target editing pairs，在编辑 bounding box 外计算 background consistency。</small></p>
+<p>这个表支撑 Figure 1 的直觉：在不该被编辑的背景区域，PixelDiT 的 MSE 更低、SSIM 更高。证据边界是它只覆盖 FlowEdit 风格的局部编辑设置，不能直接外推到所有图像编辑任务或所有 latent diffusion 模型。</p>
+<h2 id="和扩散生成路线的关系"><a class="markdownIt-Anchor" href="#和扩散生成路线的关系"></a> 和扩散生成路线的关系</h2>
+<table>
+<thead>
+<tr>
+<th>Route</th>
+<th>Main lever</th>
+<th>Relation to PixelDiT</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Latent diffusion</td>
+<td>VAE latent 降低 token 和计算成本</td>
+<td>PixelDiT 放弃 VAE，换成 dual-level pixel modeling</td>
+</tr>
+<tr>
+<td>Representation autoencoder</td>
+<td>改善 latent 表征质量</td>
+<td>PixelDiT 认为可以直接绕开 autoencoder bottleneck</td>
+</tr>
+<tr>
+<td><a href="/2026/05/11/ai-files-paper-deep-dives-diffusion-dmd/">DMD</a> / <a href="/2026/05/11/ai-files-paper-deep-dives-diffusion-dmd2/">DMD2</a> / <a href="/2026/05/11/ai-files-paper-deep-dives-diffusion-anyflow/">AnyFlow</a></td>
+<td>降低采样步数</td>
+<td>PixelDiT 默认仍用 100-step ImageNet / 25-step T2I，少步不是本文重点</td>
+</tr>
+<tr>
+<td><a href="/2026/05/11/ai-files-paper-deep-dives-diffusion-deltaquant/">DeltaQuant</a></td>
+<td>低比特 linear layer 推理</td>
+<td>PixelDiT 的像素空间计算仍可能需要量化/系统优化继续压成本</td>
+</tr>
+<tr>
+<td><a href="/2026/05/11/ai-files-paper-deep-dives-diffusion-wan/">Wan2.1</a></td>
+<td>开源视频生成系统路线</td>
+<td>Wan 仍是 latent video diffusion；PixelDiT 是 image pixel-space DiT，不能直接等同于视频生成</td>
+</tr>
+</tbody>
+</table>
+<p>PixelDiT 对后续工作的启发是：如果 VAE 对任务有副作用，可以把压缩从“固定表示瓶颈”改成“block 内可学习计算手段”。这个思想对图像编辑、医学图像、纹理生成、OCR 友好生成都可能有意义；但在视频或 3D 生成中，像素/体素 token 数更大，是否可行还需要新的系统设计。</p>
+<h2 id="主要贡献"><a class="markdownIt-Anchor" href="#主要贡献"></a> 主要贡献</h2>
+<ol>
+<li>提出 single-stage、end-to-end 的 pixel-space diffusion transformer，完全去掉 pretrained autoencoder。</li>
+<li>提出 dual-level architecture，把 global semantic modeling 和 dense pixel refinement 分离。</li>
+<li>用 pixel-wise AdaLN 让 semantic tokens 生成逐像素调制参数，而不是对 patch 内所有像素广播同一条件。</li>
+<li>用 pixel token compaction 把 pixel-level attention 的全局交互成本压回 patch-level 序列，避免直接 per-pixel global attention 的 OOM。</li>
+<li>在 ImageNet class-conditioned 和 text-to-image 两类设置中证明 pixel-space DiT 可以接近 latent DiT 的质量，并在局部编辑背景保持上展示无 VAE 的优势。</li>
+</ol>
+<h2 id="局限与风险"><a class="markdownIt-Anchor" href="#局限与风险"></a> 局限与风险</h2>
+<ul>
+<li><strong>不是全面替代 latent diffusion。</strong> 论文表格里 RAE、DDT、LightningDiT 等 latent/representation-autoencoder 路线仍有更低 ImageNet FID；PixelDiT 的强 claim 是推进 pixel-space DiT，而不是宣布 latent 路线失败。</li>
+<li><strong>T2I 数据不可完全复现。</strong> 论文使用约 26M image-text pairs，数据质量和筛选细节没有开放到完整 recipe 级别。</li>
+<li><strong>训练稳定性仍未解决。</strong> 论文局限部分明确说 pixel-space diffusion 的 velocity prediction 容易出现 loss spikes，尤其是更深架构和长训练。</li>
+<li><strong>复杂结构生成仍有失败。</strong> 作者报告 1.3B T2I 模型在复杂手部、复杂建筑等几何和纹理都复杂的对象上仍会挣扎。</li>
+<li><strong>编辑证据是特定设置。</strong> FlowEdit 背景一致性结果说明无 VAE 对局部编辑有优势，但不覆盖所有 editing pipeline、mask 质量和真实用户场景。</li>
+<li><strong>视频外推需要谨慎。</strong> PixelDiT 是图像生成论文。视频扩散的时间维 token、motion consistency 和跨帧 attention 会放大像素空间成本，不能直接把 ImageNet/T2I 结论外推到视频模型。</li>
+</ul>
+<h2 id="关键术语-2"><a class="markdownIt-Anchor" href="#关键术语-2"></a> 关键术语</h2>
+<ul>
+<li><strong>Autoencoder Bottleneck（自编码器瓶颈）</strong>：图像先被 VAE 压缩再重建，细节和生成目标可能在这个瓶颈中丢失或错配。</li>
+<li><strong>Patch-Level Pathway（patch 层路径）</strong>：用较粗 patch token 建模全局语义和长程结构。</li>
+<li><strong>Pixel-Level Pathway（像素层路径）</strong>：在每个 patch 内处理 dense pixel tokens，负责纹理和局部细节。</li>
+<li><strong>Semantic Token（语义 token）</strong>：patch-level DiT 输出的全局/局部语义表示，用来调制 pixel-level 更新。</li>
+<li><strong>Compact Token（压缩 token）</strong>：由 patch 内 pixel tokens 临时压缩得到的 attention token。</li>
+<li><strong>Rectified Flow（校直流）</strong>：把生成过程训练为从噪声到数据的速度场匹配，PixelDiT 的扩散目标基于此。</li>
+<li><strong>CFG Interval（classifier-free guidance 作用区间）</strong>：只在 denoising trajectory 的部分时间区间使用 CFG，论文对 ImageNet 结果调了 scale 和 interval。</li>
+</ul>
+<h2 id="阅读结论"><a class="markdownIt-Anchor" href="#阅读结论"></a> 阅读结论</h2>
+<p>PixelDiT 最值得记住的不是“去掉 VAE”这个口号，而是它给出了一条让去 VAE 可训练的结构路径：<strong>patch-level DiT 管语义，pixel-level PiT 管细节，pixel-wise AdaLN 做语义到像素的条件注入，pixel token compaction 把 dense attention 成本压住。</strong></p>
+<p>这篇论文把 latent diffusion 的一个默认假设重新问题化：VAE latent 之所以流行，是因为它让扩散模型便宜，而不是因为生成必须发生在 latent 里。PixelDiT 证明当架构能高效处理像素 token 时，pixel-space diffusion 可以在 ImageNet 和 T2I 上进入强模型区间，并在细节保持上有自然优势。它的现实边界同样明确：训练成本、数据质量、loss spikes 和高分辨率/视频扩展仍然是下一步要解决的问题。</p>
+<h2 id="外部精读"><a class="markdownIt-Anchor" href="#外部精读"></a> 外部精读</h2>
+<ul>
+<li>arXiv：<a class="link"   target="_blank" rel="noopener" href="https://arxiv.org/abs/2511.20645" >PixelDiT: Pixel Diffusion Transformers for Image Generation<i class="fa-solid fa-arrow-up-right ml-[0.2em] font-light align-text-top text-[0.7em] link-icon"></i></a></li>
+<li>PDF：<a class="link"   target="_blank" rel="noopener" href="https://arxiv.org/pdf/2511.20645" >arxiv.org/pdf/2511.20645<i class="fa-solid fa-arrow-up-right ml-[0.2em] font-light align-text-top text-[0.7em] link-icon"></i></a></li>
+<li>项目页：<a class="link"   target="_blank" rel="noopener" href="https://pixeldit.github.io/" >PixelDiT<i class="fa-solid fa-arrow-up-right ml-[0.2em] font-light align-text-top text-[0.7em] link-icon"></i></a></li>
+<li>GitHub：<a class="link"   target="_blank" rel="noopener" href="https://github.com/NVlabs/PixelDiT" >NVlabs/PixelDiT<i class="fa-solid fa-arrow-up-right ml-[0.2em] font-light align-text-top text-[0.7em] link-icon"></i></a></li>
+<li>Hugging Face ImageNet models：<a class="link"   target="_blank" rel="noopener" href="https://huggingface.co/nvidia/PixelDiT-ImageNet" >nvidia/PixelDiT-ImageNet<i class="fa-solid fa-arrow-up-right ml-[0.2em] font-light align-text-top text-[0.7em] link-icon"></i></a></li>
+<li>Hugging Face T2I model：<a class="link"   target="_blank" rel="noopener" href="https://huggingface.co/nvidia/PixelDiT-1300M-1024px" >nvidia/PixelDiT-1300M-1024px<i class="fa-solid fa-arrow-up-right ml-[0.2em] font-light align-text-top text-[0.7em] link-icon"></i></a></li>
+</ul>
+
+		</div>
+
+		
+		<div class="post-copyright-info w-full my-8 px-2 sm:px-6 md:px-8">
+			<div class="article-copyright-info-container">
+    <ul>
+        <li><strong>Title:</strong> 论文专题讲解：PixelDiT：无 VAE 的像素空间 DiT</li>
+        <li><strong>Author:</strong> Charles</li>
+        <li><strong>Created at
+                :</strong> 2026-08-06 09:00:00</li>
+        
+            <li>
+                <strong>Updated at
+                    :</strong> 2026-08-06 09:00:00
+            </li>
+        
+        <li>
+            <strong>Link:</strong> https://charles2530.github.io/2026/08/06/ai-files-paper-deep-dives-diffusion-pixeldit/
+        </li>
+        <li>
+            <strong>
+                License:
+            </strong>
+            
+
+            
+                This work is licensed under <a class="license" target="_blank" rel="noopener" href="https://creativecommons.org/licenses/by-nc-sa/4.0">CC BY-NC-SA 4.0</a>.
+            
+        </li>
+    </ul>
+</div>
+
+		</div>
+		
+
+		
+		<ul class="post-tags-box text-lg mt-1.5 flex-wrap justify-center flex md:hidden">
+			
+			<li class="tag-item mx-0.5">
+				<a href="/tags/AI/">#AI</a>&nbsp;
+			</li>
+			
+			<li class="tag-item mx-0.5">
+				<a href="/tags/%E6%89%A9%E6%95%A3%E6%A8%A1%E5%9E%8B/">#扩散模型</a>&nbsp;
+			</li>
+			
+			<li class="tag-item mx-0.5">
+				<a href="/tags/%E8%AE%BA%E6%96%87%E4%B8%93%E9%A2%98/">#论文专题</a>&nbsp;
+			</li>
+			
+		</ul>
+		
+
+		
+
+		
+		<div class="article-nav my-8 flex justify-between items-center px-2 sm:px-6 md:px-8">
+			
+			
+			<div class="article-next border-border-color shadow-redefine-flat shadow-shadow-color-2 rounded-medium px-4 py-2 hover:shadow-redefine-flat-hover hover:shadow-shadow-color-2">
+				<a class="next" rel="next" href="/2026/08/04/ai-files-paper-deep-dives-world-models-lingbot-va2/">
+					<span class="title flex justify-center items-center">
+						<span class="post-nav-title-item truncate max-w-48">论文专题讲解：LingBot-VA 2.0：原生视频-动作预训练</span>
+						<span class="post-nav-item">Next posts</span>
+					</span>
+					<span class="right arrow-icon flex justify-center items-center">
+						<i class="fa-solid fa-chevron-right"></i>
+					</span>
+				</a>
+			</div>
+			
+		</div>
+		
+
+
+		
+		<div class="comment-container px-2 sm:px-6 md:px-8 pb-8">
+			<div class="comments-container mt-10 w-full ">
+    <div id="comment-anchor" class="w-full h-2.5"></div>
+    <div class="comment-area-title w-full my-1.5 md:my-2.5 text-xl md:text-3xl font-bold">
+        Comments
+    </div>
+    
+
+        
+            
+    <div id="gitalk-container"></div>
+    <script data-swup-reload-script
+            src="https://cdnjs.cloudflare.com/ajax/libs/gitalk/1.8.0/gitalk.min.js"></script>
+    <script data-swup-reload-script>
+        (function() {
+            const startPath = location.pathname;
+            const startTime = Date.now();
+            const retryDelay = 200;
+            const retryLimit = 5000;
+
+            const runGitalk = () => {
+                if (location.pathname !== startPath) {
+                    return;
+                }
+
+                const container = document.getElementById('gitalk-container');
+                if (!container || typeof Gitalk === 'undefined') {
+                    if (Date.now() - startTime < retryLimit) {
+                        setTimeout(runGitalk, retryDelay);
+                    }
+                    return;
+                }
+
+                container.innerHTML = '';
+
+                let pageKey = decodeURI(location.pathname);
+                const maxLength = 50;
+                if (pageKey.length > maxLength) {
+                    pageKey = pageKey.substring(0, maxLength - 3) + '...';
+                }
+
+                try {
+                    new Gitalk({
+                        clientID: '8083299a8ee2aaf23879',
+                        clientSecret: 'a8161e81d4872181e884fdb69f7be24916b6a9d0',
+                        repo: 'Charles2530.github.io',
+                        owner: 'Charles2530',
+                        admin: ['Charles2530'],
+                        id: pageKey,
+                        language: 'en',
+                        proxy: 'https://github.com/login/oauth/access_token'
+                    }).render(container);
+                } catch (e) {
+                    window.Gitalk = null;
+                }
+            };
+
+            runGitalk();
+        })();
+    </script>
+
+
+
+        
+    
+</div>
+
+		</div>
+		
+	</div>
+
+	
+	<div class="toc-content-container">
+		<div class="post-toc-wrap">
+	<div class="post-toc">
+		<div class="toc-title">On this page</div>
+		<div class="page-title">论文专题讲解：PixelDiT：无 VAE 的像素空间 DiT</div>
+		<ol class="nav"><li class="nav-item nav-level-2"><a class="nav-link" href="#%E5%8E%9F%E8%AE%BA%E6%96%87%E6%95%85%E4%BA%8B%E7%BA%BF"><span class="nav-text"> 原论文故事线</span></a><ol class="nav-child"><li class="nav-item nav-level-3"><a class="nav-link" href="#%E7%A0%94%E7%A9%B6%E8%83%8C%E6%99%AF"><span class="nav-text"> 研究背景</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#%E9%97%AE%E9%A2%98challenge"><span class="nav-text"> 问题（Challenge）</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#finding"><span class="nav-text"> Finding</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#%E6%96%B9%E6%B3%95"><span class="nav-text"> 方法</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#%E7%BB%93%E8%AE%BA"><span class="nav-text"> 结论</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#%E5%85%B3%E9%94%AE%E6%9C%AF%E8%AF%AD"><span class="nav-text"> 关键术语</span></a></li></ol></li><li class="nav-item nav-level-2"><a class="nav-link" href="#%E8%AE%BA%E6%96%87%E4%BD%8D%E7%BD%AE"><span class="nav-text"> 论文位置</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#%E4%B8%BA%E4%BB%80%E4%B9%88%E8%A6%81%E7%BB%95%E5%BC%80-vae"><span class="nav-text"> 为什么要绕开 VAE</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#%E6%80%BB%E4%BD%93%E6%96%B9%E6%A1%88"><span class="nav-text"> 总体方案</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#pixel-wise-adaln%E6%AF%8F%E4%B8%AA%E5%83%8F%E7%B4%A0%E5%A6%82%E4%BD%95%E5%90%83%E5%88%B0%E8%AF%AD%E4%B9%89"><span class="nav-text"> Pixel-wise AdaLN：每个像素如何吃到语义</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#pixel-token-compaction%E5%8F%AA%E5%9C%A8-attention-%E5%86%85%E9%83%A8%E5%8E%8B%E7%BC%A9"><span class="nav-text"> Pixel Token Compaction：只在 attention 内部压缩</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#text-to-image-%E6%89%A9%E5%B1%95"><span class="nav-text"> Text-to-Image 扩展</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#%E8%AE%AD%E7%BB%83%E9%85%8D%E6%96%B9"><span class="nav-text"> 训练配方</span></a><ol class="nav-child"><li class="nav-item nav-level-3"><a class="nav-link" href="#imagenet-class-conditioned"><span class="nav-text"> ImageNet class-conditioned</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#text-to-image"><span class="nav-text"> Text-to-Image</span></a></li></ol></li><li class="nav-item nav-level-2"><a class="nav-link" href="#%E5%AE%9E%E9%AA%8C%E4%B8%8E%E7%BB%93%E8%AE%BA"><span class="nav-text"> 实验与结论</span></a><ol class="nav-child"><li class="nav-item nav-level-3"><a class="nav-link" href="#imagenet-256256"><span class="nav-text"> ImageNet 256×256</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#imagenet-512512"><span class="nav-text"> ImageNet 512×512</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#text-to-image-2"><span class="nav-text"> Text-to-Image</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#%E7%BB%84%E4%BB%B6%E6%B6%88%E8%9E%8D"><span class="nav-text"> 组件消融</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#%E7%BC%96%E8%BE%91%E8%83%8C%E6%99%AF%E4%BF%9D%E6%8C%81"><span class="nav-text"> 编辑背景保持</span></a></li></ol></li><li class="nav-item nav-level-2"><a class="nav-link" href="#%E5%92%8C%E6%89%A9%E6%95%A3%E7%94%9F%E6%88%90%E8%B7%AF%E7%BA%BF%E7%9A%84%E5%85%B3%E7%B3%BB"><span class="nav-text"> 和扩散生成路线的关系</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#%E4%B8%BB%E8%A6%81%E8%B4%A1%E7%8C%AE"><span class="nav-text"> 主要贡献</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#%E5%B1%80%E9%99%90%E4%B8%8E%E9%A3%8E%E9%99%A9"><span class="nav-text"> 局限与风险</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#%E5%85%B3%E9%94%AE%E6%9C%AF%E8%AF%AD-2"><span class="nav-text"> 关键术语</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#%E9%98%85%E8%AF%BB%E7%BB%93%E8%AE%BA"><span class="nav-text"> 阅读结论</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#%E5%A4%96%E9%83%A8%E7%B2%BE%E8%AF%BB"><span class="nav-text"> 外部精读</span></a></li></ol>
+
+	</div>
+</div>
+	</div>
+	
+</div>
+
+			</div>
+
+			
+		</div>
+
+		<div class="main-content-footer">
+			<footer class="footer mt-5 py-5 h-auto text-base text-third-text-color relative border-t-2 border-t-border-color">
+    <div class="info-container py-3 text-center">
+        
+        <div class="text-center">
+            &copy;
+            
+              <span>2022</span>
+              -
+            
+            2026&nbsp;&nbsp;<i class="fa-solid fa-heart fa-beat" style="--fa-animation-duration: 0.5s; color: #f54545"></i>&nbsp;&nbsp;<a href="/">Charles</a>
+            
+                
+                <p class="post-count space-x-0.5">
+                    <span>
+                        607 posts in total
+                    </span>
+                    
+                        <span>
+                            2449.4k words in total
+                        </span>
+                    
+                </p>
+            
+        </div>
+        
+            <script data-swup-reload-script src="https://cn.vercount.one/js"></script>
+            <div class="relative text-center lg:absolute lg:right-[20px] lg:top-1/2 lg:-translate-y-1/2 lg:text-right">
+                
+                    <span id="busuanzi_container_site_uv" class="lg:!block">
+                        <span class="text-sm">VISITOR COUNT</span>
+                        <span id="busuanzi_value_site_uv"></span>
+                    </span>
+                
+                
+                    <span id="busuanzi_container_site_pv" class="lg:!block">
+                        <span class="text-sm">TOTAL PAGE VIEWS</span>
+                        <span id="busuanzi_value_site_pv"></span>
+                    </span>
+                
+            </div>
+        
+        <div class="relative text-center lg:absolute lg:left-[20px] lg:top-1/2 lg:-translate-y-1/2 lg:text-left">
+            <span class="lg:block text-sm">POWERED BY <?xml version="1.0" encoding="utf-8"?><!DOCTYPE svg PUBLIC "-//W3C//DTD SVG 1.1//EN" "http://www.w3.org/Graphics/SVG/1.1/DTD/svg11.dtd"><svg class="relative top-[2px] inline-block align-baseline" version="1.1" id="圖層_1" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" x="0px" y="0px" width="1rem" height="1rem" viewBox="0 0 512 512" enable-background="new 0 0 512 512" xml:space="preserve"><path fill="#0E83CD" d="M256.4,25.8l-200,115.5L56,371.5l199.6,114.7l200-115.5l0.4-230.2L256.4,25.8z M349,354.6l-18.4,10.7l-18.6-11V275H200v79.6l-18.4,10.7l-18.6-11v-197l18.5-10.6l18.5,10.8V237h112v-79.6l18.5-10.6l18.5,10.8V354.6z"/></svg><a target="_blank" class="text-base" href="https://hexo.io">Hexo</a></span>
+            <span class="text-sm lg:block">THEME&nbsp;<a class="text-base" target="_blank" href="https://github.com/EvanNotFound/hexo-theme-redefine">Redefine v2.9.0</a></span>
+        </div>
+        
+        
+            <div>
+                Blog up for <span class="odometer" id="runtime_days" ></span> days <span class="odometer" id="runtime_hours"></span> hrs <span class="odometer" id="runtime_minutes"></span> Min <span class="odometer" id="runtime_seconds"></span> Sec
+            </div>
+        
+        
+            <script data-swup-reload-script>
+                try {
+                    function odometer_init() {
+                    const elements = document.querySelectorAll('.odometer');
+                    elements.forEach(el => {
+                        new Odometer({
+                            el,
+                            format: '( ddd).dd',
+                            duration: 200
+                        });
+                    });
+                    }
+                    odometer_init();
+                } catch (error) {}
+            </script>
+        
+        
+            
+                
+        
+                
+        
+                
+
+                    
+                        <script data-swup-reload-script type="text/javascript" src="/js/love.js"></script>
+                    
+        
+        
+    </div>  
+</footer>
+		</div>
+	</div>
+
+	
+	<div class="post-tools">
+		<div class="post-tools-container">
+	<ul class="article-tools-list">
+		<!-- TOC aside toggle -->
+		
+		<li class="right-bottom-tools page-aside-toggle">
+			<i class="fa-regular fa-outdent"></i>
+		</li>
+		
+
+		<!-- go comment -->
+		
+		<li class="go-comment">
+			<i class="fa-regular fa-comments"></i>
+		</li>
+		
+	</ul>
+</div>
+	</div>
+	
+
+	<div class="right-side-tools-container">
+		<div class="side-tools-container">
+	<ul class="hidden-tools-list">
+		<li class="right-bottom-tools tool-font-adjust-plus flex justify-center items-center">
+			<i class="fa-regular fa-magnifying-glass-plus"></i>
+		</li>
+
+		<li class="right-bottom-tools tool-font-adjust-minus flex justify-center items-center">
+			<i class="fa-regular fa-magnifying-glass-minus"></i>
+		</li>
+
+		<li class="right-bottom-tools tool-dark-light-toggle flex justify-center items-center">
+			<i class="fa-regular fa-moon"></i>
+		</li>
+
+		<!-- rss -->
+		
+		<li class="right-bottom-tools rss flex justify-center items-center">
+			<a class="flex justify-center items-center" href="/atom.xml" target="_blank">
+				<i class="fa-regular fa-rss"></i>
+			</a>
+		</li>
+		
+
+		
+
+		<li class="right-bottom-tools tool-scroll-to-bottom flex justify-center items-center">
+			<i class="fa-regular fa-arrow-down"></i>
+		</li>
+	</ul>
+
+	<ul class="visible-tools-list">
+		<li class="right-bottom-tools toggle-tools-list flex justify-center items-center">
+			<i class="fa-regular fa-cog fa-spin"></i>
+		</li>
+		
+		<li class="right-bottom-tools tool-scroll-to-top flex justify-center items-center">
+			<i class="arrow-up fas fa-arrow-up"></i>
+			<span class="percent"></span>
+		</li>
+		
+		
+	</ul>
+</div>
+	</div>
+
+	<div class="image-viewer-container" role="dialog" aria-modal="true" aria-label="Image viewer">
+	<button class="image-viewer-close" type="button" aria-label="Close">
+		<i class="fa-solid fa-xmark"></i>
+	</button>
+	<button class="image-viewer-prev" type="button" aria-label="Prev">
+		<i class="fa-solid fa-chevron-left"></i>
+	</button>
+	<div class="image-viewer-frame">
+		<img src="" alt="">
+	</div>
+	<div class="image-viewer-exif-panel hidden absolute left-1/2 bottom-20 -translate-x-1/2 w-[min(92vw,420px)] max-h-[60vh] overflow-hidden rounded-2xl bg-background-color-transparent-80 p-4 text-left shadow-redefine-flat backdrop-blur-md" role="dialog" aria-label="EXIF" aria-hidden="true">
+		<div class="flex items-center justify-between mb-3">
+			<span class="text-sm font-semibold text-first-text-color">EXIF</span>
+			<button class="image-viewer-exif-close flex h-8 w-8 items-center justify-center rounded-full bg-background-color-transparent-80 text-first-text-color transition hover:bg-background-color-transparent-40" type="button" aria-label="Close">
+				<i class="fa-solid fa-xmark text-[0.65rem]"></i>
+			</button>
+		</div>
+		<div class="image-viewer-exif-cards grid grid-cols-1 sm:grid-cols-2 gap-3 max-h-[50vh] overflow-y-auto pr-1 scrollbar-hide"></div>
+		<template class="image-viewer-exif-card-template">
+			<div class="rounded-lg bg-background-color-transparent-40 px-3 py-2">
+				<div class="image-viewer-exif-card-header flex items-center gap-2 mb-1">
+					<i class="image-viewer-exif-card-icon fa-solid fa-circle-info text-xs text-third-text-color"></i>
+					<div class="image-viewer-exif-card-title text-xs font-semibold text-first-text-color"></div>
+				</div>
+				<div class="image-viewer-exif-card-items flex flex-col gap-1"></div>
+			</div>
+		</template>
+	</div>
+	<button class="image-viewer-exif-toggle flex items-center gap-2 hidden absolute left-1/2 bottom-6 -translate-x-1/2 rounded-full border border-border-color bg-background-color-transparent-80 px-4 py-2 text-first-text-color backdrop-blur-md transition hover:bg-background-color-transparent-40" type="button" aria-label="EXIF" aria-expanded="false">
+		<i class="fa-solid fa-circle-info text-xs"></i>
+		<span class="text-xs font-semibold uppercase tracking-wider">EXIF</span>
+	</button>
+	<button class="image-viewer-next" type="button" aria-label="Next">
+		<i class="fa-solid fa-chevron-right"></i>
+	</button>
+</div>
+
+
+	
+	<div class="search-pop-overlay">
+	<div class="popup search-popup">
+		<div class="search-header">
+			<span class="search-input-field-pre">
+				<i class="fa-solid fa-keyboard"></i>
+			</span>
+			<div class="search-input-container">
+				<input autocomplete="off" autocorrect="off" autocapitalize="off" placeholder="Search..." spellcheck="false" type="search" class="search-input">
+			</div>
+			<span class="popup-btn-close">
+				<i class="fa-solid fa-times"></i>
+			</span>
+		</div>
+		<div id="search-result">
+			<div id="no-result">
+				<i class="fa-solid fa-spinner fa-spin-pulse fa-5x fa-fw"></i>
+			</div>
+		</div>
+	</div>
+</div>
+	
+
+</main>
+
+
+
+<script src="/js/build/libs/Swup.min.js"></script>
+
+<script src="/js/build/libs/SwupSlideTheme.min.js"></script>
+
+<script src="/js/build/libs/SwupScriptsPlugin.min.js"></script>
+
+<script src="/js/build/libs/SwupProgressPlugin.min.js"></script>
+
+<script src="/js/build/libs/SwupScrollPlugin.min.js"></script>
+
+<script src="/js/build/libs/SwupPreloadPlugin.min.js"></script>
+
+<script>
+    window.swup = new Swup({
+        plugins: [
+            new SwupScriptsPlugin({
+                optin: true,
+            }),
+            new SwupProgressPlugin(),
+            new SwupScrollPlugin({
+                offset: 80,
+            }),
+            new SwupSlideTheme({
+                mainElement: ".main-content-body",
+            }),
+            new SwupPreloadPlugin(),
+        ],
+        containers: ["#swup"],
+    });
+
+    window.dispatchEvent(
+        new CustomEvent("redefine:swup:ready", {
+            detail: {
+                swup: window.swup,
+            },
+        }),
+    );
+</script>
+
+
+
+
+	
+<script src="/js/build/main.js" type="module"></script>
+
+
+
+    
+<script src="/js/build/libs/odometer.min.js"></script>
+
+    
+<link rel="stylesheet" href="/assets/odometer-theme-minimal.css">
+
+
+
+
+
+
+
+  
+<script src="/js/build/libs/Typed.min.js"></script>
+<script src="/js/build/libs/minimasonry.min.js" data-swup-reload-script=""></script>
+
+
+
+
+<script src="/js/build/libs/moment-with-locales.min.js" data-swup-reload-script=""></script>
+
+
+
+	
+</body>
+
+</html>
